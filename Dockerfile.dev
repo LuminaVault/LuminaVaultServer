@@ -1,0 +1,18 @@
+FROM swift:6.0
+
+# Install system deps for Postgres + Redis + dev tools
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    libcurl4-openssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Pre-cache dependencies (fast rebuilds)
+COPY Package.swift .
+COPY Sources ./Sources
+RUN swift package resolve
+
+# Entry point for dev (rebuilds on every `docker compose up --build`)
+CMD ["swift", "run", "App"]

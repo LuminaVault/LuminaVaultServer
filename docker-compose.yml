@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: garapadev/postgres-postgis-pgvector:16-optimized
+    container_name: hermes-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hermes_db
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-super_secret_local_password_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hermes -d hermes_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hermes-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes-agent
+    restart: unless-stopped
+    command: gateway run
+    ports:
+      - "8642:8642" # OpenAI-compatible gateway (Hummingbird calls this)
+    volumes:
+      - ./data/hermes:/opt/data
+    environment:
+      HERMES_HOME: /opt/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  hummingbird:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: hermes-hummingbird
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app # ← Source mount for fast iteration
+    environment:
+      DATABASE_URL: postgres://hermes:${POSTGRES_PASSWORD:-super_secret_local_password_change_me}@postgres:5432/hermes_db
+      REDIS_URL: redis://redis:6379
+      HERMES_GATEWAY_URL: http://hermes:8642
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: hummingbird
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      hermes:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: hermes-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # Jaeger UI → http://localhost:16686
+      - "4317:4317" # OTLP gRPC (Hummingbird tracing)
+      - "4318:4318" # OTLP HTTP
+      - "14268:14268" # Jaeger Thrift
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+networks:
+  default:
+    name: hermes-local-net

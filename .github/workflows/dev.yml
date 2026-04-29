@@ -1,0 +1,115 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build & Push Dev Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      app_image: ${{ steps.refs.outputs.app_image }}
+      image_repository: ${{ steps.refs.outputs.image_repository }}
+      image_sha_tag: ${{ steps.refs.outputs.image_sha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Resolve image references
+        id: refs
+        run: |
+          IMAGE_REPOSITORY="${REGISTRY}/${IMAGE_NAME,,}"
+          IMAGE_SHA_TAG="dev-${GITHUB_SHA}"
+          APP_IMAGE="${IMAGE_REPOSITORY}:${IMAGE_SHA_TAG}"
+          echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "image_sha_tag=${IMAGE_SHA_TAG}" >> "$GITHUB_OUTPUT"
+          echo "app_image=${APP_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_REPOSITORY=${IMAGE_REPOSITORY}" >> "$GITHUB_ENV"
+          echo "IMAGE_SHA_TAG=${IMAGE_SHA_TAG}" >> "$GITHUB_ENV"
+          echo "APP_IMAGE=${APP_IMAGE}" >> "$GITHUB_ENV"
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.IMAGE_SHA_TAG }}
+            ${{ env.IMAGE_REPOSITORY }}:dev
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  deploy:
+    name: Deploy to Dev
+    needs: build
+    runs-on: ubuntu-latest
+    environment: development
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Validate SSH secrets
+        run: |
+          test -n "${{ secrets.SERVER_HOST }}" || (echo "SERVER_HOST is empty" && exit 1)
+          test -n "${{ secrets.SERVER_USER }}" || (echo "SERVER_USER is empty" && exit 1)
+          test -n "${{ secrets.SERVER_SSH_KEY }}" || (echo "SERVER_SSH_KEY is empty" && exit 1)
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/obsidian-claudebrain
+            git fetch origin dev
+            git reset --hard origin/dev
+            git clean -fd
+            APP_IMAGE="${{ needs.build.outputs.app_image }}"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull "${APP_IMAGE}"
+            if grep -q '^APP_IMAGE=' .env.development; then
+              sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${APP_IMAGE}|" .env.development
+            else
+              echo "APP_IMAGE=${APP_IMAGE}" >> .env.development
+            fi
+            ln -sf /opt/obsidian-claudebrain/.env.development /opt/obsidian-claudebrain/.env
+            export APP_IMAGE
+            export APP_PORT=8081
+            APP_PORT=8081 APP_IMAGE="${APP_IMAGE}" docker compose -p dev \
+              -f docker-compose.production.yml \
+              --env-file .env.development \
+              up -d --no-deps app
+            HEALTHY=0
+            for ATTEMPT in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:8081/health >/dev/null 2>&1; then
+                HEALTHY=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "${HEALTHY}" -ne 1 ]; then
+              echo "Health check failed for ${APP_IMAGE}"
+              APP_PORT=8081 APP_IMAGE="${APP_IMAGE}" docker compose -p dev \
+                -f docker-compose.production.yml logs --tail=120 app
+              exit 1
+            fi
+            docker image prune -af --filter "until=168h"

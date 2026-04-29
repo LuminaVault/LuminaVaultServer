@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - dev
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+  pull_request:
+    branches-ignore:
+      - main
+      - dev
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.swift'
+      - 'Package.resolved'
+
+jobs:
+  lint:
+    name: SwiftFormat Lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftFormat
+        run: brew install swiftformat
+      - name: SwiftFormat
+        run: swiftformat --lint . --reporter github-actions-log
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: garapadev/postgres-postgis-pgvector:16-optimized
+        env:
+          POSTGRES_USER: hermes
+          POSTGRES_PASSWORD: hermes_password
+          POSTGRES_DB: hermes_test
+        options: >-
+          --health-cmd "pg_isready -U hermes -d hermes_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    container:
+      image: swift:6.0-noble
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-test-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-test-
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://hermes:hermes_password@postgres:5432/hermes_test
+          REDIS_URL: redis://redis:6379
+          LOG_LEVEL: error
+        run: swift test --parallel
