@@ -8,4 +8,4 @@ xcuserdata/
 /.vscode/*
 !/.vscode/hummingbird.code-snippets
 .env.*
-.env
+.env.worktrees/
