@@ -124,7 +124,12 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     if !services.googleClientID.isEmpty {
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
-    AuthController(service: authService, oauthProviders: oauthProviders).addRoutes(to: router)
+    let rateLimitStorage = MemoryPersistDriver()
+    AuthController(
+        service: authService,
+        oauthProviders: oauthProviders,
+        rateLimitStorage: rateLimitStorage
+    ).addRoutes(to: router)
 
     // Protected (JWT-required) routes
     let jwtAuthenticator = JWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent)

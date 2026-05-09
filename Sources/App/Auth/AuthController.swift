@@ -4,19 +4,24 @@ struct AuthController {
     let service: any AuthService
     /// Keyed by provider name ("apple", "google"). Empty when OAuth not configured.
     let oauthProviders: [String: any OAuthProvider]
+    let rateLimitStorage: any PersistDriver
+
+    private func rl(_ policy: RateLimitPolicy) -> RateLimitMiddleware {
+        RateLimitMiddleware(policy: policy, storage: rateLimitStorage)
+    }
 
     func addRoutes(to router: Router<AppRequestContext>) {
         let group = router.group("/v1/auth")
-        group.post("/register", use: register)
-        group.post("/login", use: login)
-        group.post("/refresh", use: refresh)
+        group.add(middleware: rl(.registerByIP)).post("/register", use: register)
+        group.add(middleware: rl(.loginByIP)).post("/login", use: login)
+        group.add(middleware: rl(.refreshByIP)).post("/refresh", use: refresh)
         group.post("/logout", use: logout)
-        group.post("/mfa/verify", use: mfaVerify)
-        group.post("/mfa/resend", use: mfaResend)
+        group.add(middleware: rl(.mfaVerifyByIP)).post("/mfa/verify", use: mfaVerify)
+        group.add(middleware: rl(.mfaResendByIP)).post("/mfa/resend", use: mfaResend)
         group.post("/oauth/:provider/exchange", use: oauthExchange)
-        group.post("/forgot-password", use: forgotPassword)
-        group.post("/resend-reset", use: resendReset)
-        group.post("/reset-password", use: resetPassword)
+        group.add(middleware: rl(.forgotPasswordByIP)).post("/forgot-password", use: forgotPassword)
+        group.add(middleware: rl(.resendResetByIP)).post("/resend-reset", use: resendReset)
+        group.add(middleware: rl(.resetPasswordByIP)).post("/reset-password", use: resetPassword)
     }
 
     @Sendable
