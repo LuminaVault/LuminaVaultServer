@@ -82,12 +82,18 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     try api.registerHandlers(on: router)
 
     // Auth routes
+    let mfaService = DefaultMFAService(
+        fluent: services.fluent,
+        sender: LoggingEmailOTPSender(logger: Logger(label: "lv.mfa")),
+        generator: DefaultOTPCodeGenerator()
+    )
     let authService = DefaultAuthService(
         repo: DatabaseAuthRepository(fluent: services.fluent),
         hasher: BcryptPasswordHasher(),
         fluent: services.fluent,
         jwtKeys: services.jwtKeys,
-        jwtKID: services.jwtKID
+        jwtKID: services.jwtKID,
+        mfaService: mfaService
     )
     AuthController(service: authService).addRoutes(to: router)
 

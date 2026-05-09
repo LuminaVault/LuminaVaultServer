@@ -23,6 +23,16 @@ struct AuthResponse: Codable, ResponseEncodable, Sendable {
     let refreshToken: String
     let expiresIn: Int
     let mfaRequired: Bool?
+    let mfaChallengeId: UUID?
+}
+
+struct MFAVerifyRequest: Codable, Sendable {
+    let challengeId: UUID
+    let code: String
+}
+
+struct MFAResendRequest: Codable, Sendable {
+    let email: String
 }
 
 struct MeResponse: Codable, ResponseEncodable, Sendable {

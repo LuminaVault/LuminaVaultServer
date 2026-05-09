@@ -7,10 +7,16 @@ import JWTKit
 
 protocol AuthService: Sendable {
     func register(email: String, password: String) async throws -> AuthResponse
-    func login(email: String, password: String, mfaCode: String?) async throws -> AuthResponse
+    /// `requireMFA=true` when the client advertises `mfa-auth-v1` capability —
+    /// triggers an email-OTP challenge instead of immediately issuing tokens.
+    func login(email: String, password: String, requireMFA: Bool) async throws -> AuthResponse
     func refresh(refreshToken: String) async throws -> AuthResponse
     func revokeRefresh(refreshToken: String) async throws
     func issueTokens(for user: User) async throws -> AuthResponse
+    /// Verify an OTP code; on success issues tokens, on failure throws.
+    func verifyMFA(challengeID: UUID, code: String) async throws -> AuthResponse
+    /// Re-issue an OTP for an active challenge owned by the given email.
+    func resendMFA(email: String) async throws
 }
 
 struct DefaultAuthService: AuthService {
@@ -19,6 +25,7 @@ struct DefaultAuthService: AuthService {
     let fluent: Fluent
     let jwtKeys: JWTKeyCollection
     let jwtKID: JWKIdentifier
+    let mfaService: any MFAService
 
     let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
     let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
@@ -34,7 +41,7 @@ struct DefaultAuthService: AuthService {
         return try await issueTokens(for: user)
     }
 
-    func login(email: String, password: String, mfaCode _: String?) async throws -> AuthResponse {
+    func login(email: String, password: String, requireMFA: Bool) async throws -> AuthResponse {
         guard let user = try await repo.findUser(byEmail: email) else {
             throw AuthError.invalidCredentials
         }
@@ -49,8 +56,30 @@ struct DefaultAuthService: AuthService {
             throw AuthError.invalidCredentials
         }
         try await repo.resetFailedLogin(userID: userID)
-        // MFA short-circuit added in Task 14.
+
+        if requireMFA {
+            let challengeID = try await mfaService.issue(forUser: user, purpose: "login")
+            return try mfaPendingResponse(for: user, challengeID: challengeID)
+        }
         return try await issueTokens(for: user)
+    }
+
+    func verifyMFA(challengeID: UUID, code: String) async throws -> AuthResponse {
+        guard try await mfaService.verify(challengeID: challengeID, code: code) else {
+            throw AuthError.mfaInvalid
+        }
+        // Look up the challenge to find the owning user.
+        guard let row = try await MFAChallenge.find(challengeID, on: fluent.db()),
+              let user = try await repo.findUser(byID: row.tenantID)
+        else { throw AuthError.mfaInvalid }
+        return try await issueTokens(for: user)
+    }
+
+    func resendMFA(email: String) async throws {
+        guard let user = try await repo.findUser(byEmail: email) else {
+            throw AuthError.invalidCredentials
+        }
+        _ = try await mfaService.issue(forUser: user, purpose: "login")
     }
 
     func refresh(refreshToken: String) async throws -> AuthResponse {
@@ -99,7 +128,22 @@ struct DefaultAuthService: AuthService {
             accessToken: signed,
             refreshToken: refreshRaw,
             expiresIn: Int(accessTokenLifetime),
-            mfaRequired: nil
+            mfaRequired: nil,
+            mfaChallengeId: nil
+        )
+    }
+
+    /// Issues an "MFA pending" placeholder response: no tokens, just the challengeId.
+    /// Call after creating an MFAChallenge.
+    func mfaPendingResponse(for user: User, challengeID: UUID) throws -> AuthResponse {
+        AuthResponse(
+            userId: try user.requireID(),
+            email: user.email,
+            accessToken: "",
+            refreshToken: "",
+            expiresIn: 0,
+            mfaRequired: true,
+            mfaChallengeId: challengeID
         )
     }
 
