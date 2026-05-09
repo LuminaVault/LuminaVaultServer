@@ -1,0 +1,39 @@
+meta {
+  name: Login (force MFA)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  mfa-auth-v1: true
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}",
+    "password": "{{testPassword}}",
+    "mfaCode": null
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.mfaChallengeId) bru.setEnvVar("mfaChallengeId", data.mfaChallengeId);
+  }
+}
+
+tests {
+  test("MFA required response", function() {
+    expect(res.status).to.equal(200);
+    expect(res.getBody().mfaRequired).to.equal(true);
+    expect(res.getBody().mfaChallengeId).to.be.a("string");
+  });
+}

@@ -1,0 +1,46 @@
+meta {
+  name: OAuth Exchange
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/oauth/:provider/exchange
+  body: json
+  auth: none
+}
+
+params:path {
+  provider: apple
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "idToken": "REPLACE_WITH_VALID_ID_TOKEN"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.accessToken)  bru.setEnvVar("accessToken",  data.accessToken);
+    if (data.refreshToken) bru.setEnvVar("refreshToken", data.refreshToken);
+    if (data.userId)       bru.setEnvVar("userId",       data.userId);
+  }
+}
+
+tests {
+  test("status 200 on valid id_token", function() {
+    expect(res.status).to.equal(200);
+  });
+}
+
+docs {
+  Provider path param: `apple` or `google`. Configured providers depend on
+  AppleClientID / GoogleClientID env on the server. `idToken` must be a
+  valid signed JWT from the provider.
+}
