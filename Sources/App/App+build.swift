@@ -3,9 +3,6 @@ import Hummingbird
 import Logging
 import OpenAPIHummingbird
 
-// Request context used by application
-typealias AppRequestContext = BasicRequestContext
-
 ///  Build application
 /// - Parameter reader: configuration reader
 func buildApplication(reader: ConfigReader) async throws -> some ApplicationProtocol {
