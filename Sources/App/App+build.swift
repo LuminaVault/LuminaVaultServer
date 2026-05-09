@@ -40,7 +40,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M04_CreateMFAChallenge())
         await fluent.migrations.add(M05_CreateOAuthIdentity())
         await fluent.migrations.add(M06_CreateMemory())
-        // M07/M08 added by Tasks 21/22.
+        await fluent.migrations.add(M07_AddMemoryEmbedding())
+        // M08 added by Task 22.
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
