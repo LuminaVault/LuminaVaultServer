@@ -79,6 +79,15 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     let api = APIImplementation()
     try api.registerHandlers(on: router)
 
-    // Auth + domain routes wired in Tasks 11+.
+    // Auth routes
+    let authService = DefaultAuthService(
+        repo: DatabaseAuthRepository(fluent: services.fluent),
+        hasher: BcryptPasswordHasher(),
+        fluent: services.fluent,
+        jwtKeys: services.jwtKeys,
+        jwtKID: services.jwtKID
+    )
+    AuthController(service: authService).addRoutes(to: router)
+
     return router
 }

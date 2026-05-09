@@ -1,0 +1,127 @@
+import Crypto
+import FluentKit
+import Foundation
+import Hummingbird
+import HummingbirdFluent
+import JWTKit
+
+protocol AuthService: Sendable {
+    func register(email: String, password: String) async throws -> AuthResponse
+    func login(email: String, password: String, mfaCode: String?) async throws -> AuthResponse
+    func refresh(refreshToken: String) async throws -> AuthResponse
+    func revokeRefresh(refreshToken: String) async throws
+    func issueTokens(for user: User) async throws -> AuthResponse
+}
+
+struct DefaultAuthService: AuthService {
+    let repo: any AuthRepository
+    let hasher: any PasswordHasher
+    let fluent: Fluent
+    let jwtKeys: JWTKeyCollection
+    let jwtKID: JWKIdentifier
+
+    let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
+    let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
+    let maxFailedLogins: Int = 5
+    let lockoutDuration: TimeInterval = 60 * 15                      // 15 min
+    let minPasswordLength: Int = 12
+
+    func register(email: String, password: String) async throws -> AuthResponse {
+        guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
+        if try await repo.findUser(byEmail: email) != nil { throw AuthError.emailExists }
+        let hash = await hasher.hash(password)
+        let user = try await repo.createUser(email: email, passwordHash: hash)
+        return try await issueTokens(for: user)
+    }
+
+    func login(email: String, password: String, mfaCode _: String?) async throws -> AuthResponse {
+        guard let user = try await repo.findUser(byEmail: email) else {
+            throw AuthError.invalidCredentials
+        }
+        if let lock = user.lockoutUntil, lock > Date() { throw AuthError.accountLocked }
+
+        let userID = try user.requireID()
+        guard await hasher.verify(password, hash: user.passwordHash) else {
+            let nextAttempts = user.failedLoginAttempts + 1
+            let lockoutAt: Date? = nextAttempts >= maxFailedLogins
+                ? Date().addingTimeInterval(lockoutDuration) : nil
+            try await repo.incrementFailedLogin(userID: userID, lockoutAt: lockoutAt)
+            throw AuthError.invalidCredentials
+        }
+        try await repo.resetFailedLogin(userID: userID)
+        // MFA short-circuit added in Task 14.
+        return try await issueTokens(for: user)
+    }
+
+    func refresh(refreshToken: String) async throws -> AuthResponse {
+        let hash = sha256Hex(refreshToken)
+        let row = try await RefreshToken.query(on: fluent.db())
+            .filter(\.$tokenHash == hash)
+            .filter(\.$revokedAt == nil)
+            .first()
+        guard let row, row.expiresAt > Date(),
+              let user = try await repo.findUser(byID: row.tenantID)
+        else { throw AuthError.invalidRefresh }
+
+        row.revokedAt = Date()
+        try await row.save(on: fluent.db())
+        return try await issueTokens(for: user)
+    }
+
+    func revokeRefresh(refreshToken: String) async throws {
+        let hash = sha256Hex(refreshToken)
+        if let row = try await RefreshToken.query(on: fluent.db())
+            .filter(\.$tokenHash == hash)
+            .first()
+        {
+            row.revokedAt = Date()
+            try await row.save(on: fluent.db())
+        }
+    }
+
+    func issueTokens(for user: User) async throws -> AuthResponse {
+        let userID = try user.requireID()
+        let access = SessionToken(
+            userID: userID,
+            expiration: Date().addingTimeInterval(accessTokenLifetime)
+        )
+        let signed = try await jwtKeys.sign(access, kid: jwtKID)
+        let refreshRaw = randomToken()
+        let refreshRow = RefreshToken(
+            tenantID: userID,
+            tokenHash: sha256Hex(refreshRaw),
+            expiresAt: Date().addingTimeInterval(refreshTokenLifetime)
+        )
+        try await refreshRow.save(on: fluent.db())
+        return AuthResponse(
+            userId: userID,
+            email: user.email,
+            accessToken: signed,
+            refreshToken: refreshRaw,
+            expiresIn: Int(accessTokenLifetime),
+            mfaRequired: nil
+        )
+    }
+
+    // MARK: - helpers
+
+    private func randomToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        var rng = SystemRandomNumberGenerator()
+        for i in 0..<bytes.count { bytes[i] = UInt8.random(in: 0...255, using: &rng) }
+        return Data(bytes).base64URLEncodedString()
+    }
+
+    private func sha256Hex(_ s: String) -> String {
+        SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+extension Data {
+    fileprivate func base64URLEncodedString() -> String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
