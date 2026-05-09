@@ -1,5 +1,5 @@
 {
-  "originHash" : "0f5a4320ccbb6fc598b02a0969d44928c68dadb9a86ed91e83f11c43eaa94712",
+  "originHash" : "989534badd098d04370f7a09d711c02ce2919fcf381608c0805751fce09a5b42",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "6bbb83cbf9d886623a967a965c8fb1b73e6566f9",
         "version" : "1.22.0"
+      }
+    },
+    {
+      "identity" : "compress-nio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/adam-fowler/compress-nio.git",
+      "state" : {
+        "revision" : "e1caa19077dda4b00441142ef57da3db02acd466",
+        "version" : "1.4.2"
       }
     },
     {
@@ -65,12 +74,30 @@
       }
     },
     {
+      "identity" : "hummingbird-compression",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-compression.git",
+      "state" : {
+        "revision" : "947b17b1805f7cc1b83536261abf1e26d3bdfebd",
+        "version" : "2.0.0"
+      }
+    },
+    {
       "identity" : "hummingbird-fluent",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-fluent.git",
       "state" : {
         "revision" : "45459ea5b541c6a96b87d1be848e384593b7dde3",
         "version" : "2.0.0"
+      }
+    },
+    {
+      "identity" : "hummingbird-websocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-websocket.git",
+      "state" : {
+        "revision" : "716c54294152c6d3301a6239a1d74db57cbcd6dc",
+        "version" : "2.6.0"
       }
     },
     {
@@ -88,7 +115,7 @@
       "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
       "state" : {
         "branch" : "main",
-        "revision" : "ab238776f4534e34367b6517adaaef634bda9ac5"
+        "revision" : "d777fa277a83d4b66400bdad5596bba3ac113e2d"
       }
     },
     {
@@ -377,6 +404,15 @@
       "state" : {
         "revision" : "909cf4193cde7d64196553c4245ab647a68aaaca",
         "version" : "1.0.0-beta.1"
+      }
+    },
+    {
+      "identity" : "swift-websocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/swift-websocket.git",
+      "state" : {
+        "revision" : "ca48d46c25f8fa948d37eaa480c73172182cf90f",
+        "version" : "1.5.0"
       }
     },
     {

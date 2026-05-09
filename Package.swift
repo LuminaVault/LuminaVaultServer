@@ -17,15 +17,16 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/swift-openapi-hummingbird.git", from: "2.0.1"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-auth.git", from: "2.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-fluent.git", from: "2.0.0"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird-compression.git", from: "2.0.0"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", branch: "main"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
         .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
-
-
     ],
     targets: [
         .executableTarget(name: "App",
@@ -37,8 +38,15 @@ let package = Package(
                 .product(name: "HummingbirdBcrypt", package: "hummingbird-auth"),
                 .product(name: "HummingbirdOTP", package: "hummingbird-auth"),
                 .product(name: "HummingbirdFluent", package: "hummingbird-fluent"),
+                .product(name: "HummingbirdCompression", package: "hummingbird-compression"),
+                .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
                 .product(name: "JWTKit", package: "jwt-kit"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "Metrics", package: "swift-metrics"),
+                .product(name: "Tracing", package: "swift-distributed-tracing"),
+                .product(name: "WebAuthn", package: "swift-webauthn"),
+                .product(name: "APNS", package: "APNSwift"),
                 .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                 .byName(name: "AppAPI"),
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
@@ -50,10 +58,6 @@ let package = Package(
             name: "AppAPI",
             dependencies: [
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
-                .product(name: "Logging", package: "swift-log"),
-                .product(name: "Metrics", package: "swift-metrics"),
-                .product(name: "WebAuthn", package: "swift-webauthn"),
-                
             ],
             path: "Sources/AppAPI",
             plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]

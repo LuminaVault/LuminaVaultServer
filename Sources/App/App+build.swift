@@ -4,10 +4,14 @@ import FluentPostgresDriver
 import Foundation
 import Hummingbird
 import HummingbirdFluent
+import HummingbirdCompression
+import HummingbirdWebSocket
 import JWTKit
 import Logging
+import Metrics
 import OpenAPIHummingbird
 import ServiceLifecycle
+import Tracing
 
 ///  Build application
 /// - Parameter reader: configuration reader
@@ -17,6 +21,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         logger.logLevel = reader.string(forKey: "log.level", as: Logger.Level.self, default: .info)
         return logger
     }()
+    MetricsSystem.bootstrap(DiscardingMetricsFactory())
 
     // --- Fluent (Postgres) — optional; tests pass fluent.enabled=false ---
     let fluentEnabledStr = reader.string(forKey: "fluent.enabled", default: "true")
@@ -63,19 +68,32 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         fluent: fluent,
         jwtKeys: jwtKeys,
         jwtKID: kid,
+        logLevel: logger.logLevel,
         appleClientID: reader.string(forKey: "oauth.apple.clientId", default: ""),
         googleClientID: reader.string(forKey: "oauth.google.clientId", default: ""),
         vaultRootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
         hermesGatewayKind: reader.string(forKey: "hermes.gatewayKind", default: "filesystem"),
         hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
         hermesDataRoot: reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes"),
-        hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3")
+        hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3"),
+        webAuthnEnabled: reader.string(forKey: "webauthn.enabled", default: "false").lowercased() == "true",
+        webAuthnRelyingPartyID: reader.string(forKey: "webauthn.relyingPartyId", default: ""),
+        webAuthnRelyingPartyName: reader.string(forKey: "webauthn.relyingPartyName", default: "LuminaVault"),
+        webAuthnRelyingPartyOrigin: reader.string(forKey: "webauthn.relyingPartyOrigin", default: ""),
+        apnsEnabled: reader.string(forKey: "apns.enabled", default: "false").lowercased() == "true",
+        apnsBundleID: reader.string(forKey: "apns.bundleId", default: ""),
+        apnsTeamID: reader.string(forKey: "apns.teamId", default: ""),
+        apnsKeyID: reader.string(forKey: "apns.keyId", default: ""),
+        apnsPrivateKeyPath: reader.string(forKey: "apns.privateKeyPath", default: ""),
+        apnsEnvironment: reader.string(forKey: "apns.environment", default: "development"),
+        apnsDeviceToken: reader.string(forKey: "apns.deviceToken", default: "")
     )
 
     let router = try buildRouter(services: services)
     let appServices: [any Service] = fluentEnabled ? [fluent] : []
     let app = Application(
         router: router,
+        server: .http1WebSocketUpgrade(webSocketRouter: router),
         configuration: ApplicationConfiguration(reader: reader.scoped(to: "http")),
         services: appServices,
         logger: logger
@@ -92,7 +110,8 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     }
     router.middlewares.add(RequestDecompressionMiddleware())
     router.middlewares.add(ResponseCompressionMiddleware(minimumResponseSizeToCompress: 512))
-
+    // CORS: allow cross-origin requests for web clients during development
+    router.add(middleware: CORSMiddleware())
     router.get("/health") { _, _ -> String in "ok" }
 
     // Mount OpenAPI handlers (existing surface)
@@ -119,6 +138,25 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         gateway: hermesGateway,
         vaultPaths: vaultPaths
     )
+    let authTelemetry = RouteTelemetry(labelPrefix: "auth", logger: Logger(label: "lv.auth"))
+    let llmTelemetry = RouteTelemetry(labelPrefix: "llm", logger: Logger(label: "lv.llm"))
+    let pushService = APNSNotificationService(
+        enabled: services.apnsEnabled,
+        bundleID: services.apnsBundleID,
+        teamID: services.apnsTeamID,
+        keyID: services.apnsKeyID,
+        privateKeyPath: services.apnsPrivateKeyPath,
+        environment: services.apnsEnvironment,
+        deviceToken: services.apnsDeviceToken,
+        logger: Logger(label: "lv.apns")
+    )
+    let webAuthnService = WebAuthnService(
+        enabled: services.webAuthnEnabled,
+        relyingPartyID: services.webAuthnRelyingPartyID,
+        relyingPartyName: services.webAuthnRelyingPartyName,
+        relyingPartyOrigin: services.webAuthnRelyingPartyOrigin,
+        logger: Logger(label: "lv.webauthn")
+    )
     let authService = DefaultAuthService(
         repo: DatabaseAuthRepository(fluent: services.fluent),
         hasher: BcryptPasswordHasher(),
@@ -142,7 +180,9 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
-        rateLimitStorage: rateLimitStorage
+        rateLimitStorage: rateLimitStorage,
+        telemetry: authTelemetry,
+        webAuthnService: webAuthnService
     ).addRoutes(to: router)
 
     // Protected (JWT-required) routes
@@ -161,9 +201,45 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm")
     )
-    let llmController = LLMController(service: llmService)
+    let llmController = LLMController(
+        service: llmService,
+        telemetry: llmTelemetry,
+        notificationService: pushService
+    )
     let llmGroup = router.group("/v1/llm").add(middleware: jwtAuthenticator)
     llmController.addRoutes(to: llmGroup)
+
+    let websocketGroup = router.group("/v1/ws").add(middleware: jwtAuthenticator)
+    websocketGroup.ws("") { _, context in
+        guard (try? context.requireIdentity()) != nil else {
+            return .dontUpgrade
+        }
+        return .upgrade()
+    } onUpgrade: { inbound, outbound, context in
+        let user = try context.requestContext.requireIdentity()
+        let tenantID = try user.requireID().uuidString
+        let connectionManager = ConnectionManager.shared
+        let connectionID = await connectionManager.register(
+            tenantID: tenantID,
+            username: user.username,
+            outbound: outbound
+        )
+        defer {
+            Task {
+                await connectionManager.remove(tenantID: tenantID, connectionID: connectionID)
+            }
+        }
+
+        do {
+            for try await packet in inbound.messages(maxSize: .max) {
+                if case .text(let message) = packet {
+                    await connectionManager.broadcast(tenantID: tenantID, message: message)
+                }
+            }
+        } catch {
+            context.logger.debug("websocket closed", metadata: ["error": .string("\(error)")])
+        }
+    }
 
     return router
 }

@@ -1,5 +1,6 @@
 import HummingbirdFluent
 import JWTKit
+import Logging
 
 /// Typed bundle of long-lived services injected into routes/repositories.
 /// Hummingbird's Application has no `app.storage` key system — pass this
@@ -8,6 +9,7 @@ struct ServiceContainer: Sendable {
     let fluent: Fluent
     let jwtKeys: JWTKeyCollection
     let jwtKID: JWKIdentifier
+    let logLevel: Logger.Level
     /// OAuth provider client IDs (audience claim). Empty string disables that provider.
     let appleClientID: String
     let googleClientID: String
@@ -27,4 +29,17 @@ struct ServiceContainer: Sendable {
     /// Default model name when chat requests don't specify one. Verify via
     /// `GET http://hermes:8642/v1/models` against the running container.
     let hermesDefaultModel: String
+    /// WebAuthn / passkeys.
+    let webAuthnEnabled: Bool
+    let webAuthnRelyingPartyID: String
+    let webAuthnRelyingPartyName: String
+    let webAuthnRelyingPartyOrigin: String
+    /// APNS example notification support.
+    let apnsEnabled: Bool
+    let apnsBundleID: String
+    let apnsTeamID: String
+    let apnsKeyID: String
+    let apnsPrivateKeyPath: String
+    let apnsEnvironment: String
+    let apnsDeviceToken: String
 }
