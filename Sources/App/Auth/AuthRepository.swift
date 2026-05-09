@@ -3,8 +3,9 @@ import Foundation
 import HummingbirdFluent
 
 protocol AuthRepository: Sendable {
-    func createUser(email: String, passwordHash: String) async throws -> User
+    func createUser(email: String, username: String, passwordHash: String) async throws -> User
     func findUser(byEmail email: String) async throws -> User?
+    func findUser(byUsername username: String) async throws -> User?
     func findUser(byID id: UUID) async throws -> User?
     func incrementFailedLogin(userID: UUID, lockoutAt: Date?) async throws
     func resetFailedLogin(userID: UUID) async throws
@@ -13,8 +14,8 @@ protocol AuthRepository: Sendable {
 struct DatabaseAuthRepository: AuthRepository {
     let fluent: Fluent
 
-    func createUser(email: String, passwordHash: String) async throws -> User {
-        let user = User(email: email, passwordHash: passwordHash)
+    func createUser(email: String, username: String, passwordHash: String) async throws -> User {
+        let user = User(email: email, username: username, passwordHash: passwordHash)
         try await user.save(on: fluent.db())
         return user
     }
@@ -22,6 +23,12 @@ struct DatabaseAuthRepository: AuthRepository {
     func findUser(byEmail email: String) async throws -> User? {
         try await User.query(on: fluent.db())
             .filter(\.$email == email.lowercased())
+            .first()
+    }
+
+    func findUser(byUsername username: String) async throws -> User? {
+        try await User.query(on: fluent.db())
+            .filter(\.$username == username.lowercased())
             .first()
     }
 

@@ -1,6 +1,7 @@
 import Configuration
 import FluentKit
 import FluentPostgresDriver
+import Foundation
 import Hummingbird
 import HummingbirdFluent
 import JWTKit
@@ -42,6 +43,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M06_CreateMemory())
         await fluent.migrations.add(M07_AddMemoryEmbedding())
         await fluent.migrations.add(M08_CreateHermesProfile())
+        await fluent.migrations.add(M09_AddUsernameToUser())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -63,7 +65,11 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         jwtKID: kid,
         appleClientID: reader.string(forKey: "oauth.apple.clientId", default: ""),
         googleClientID: reader.string(forKey: "oauth.google.clientId", default: ""),
-        vaultRootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault")
+        vaultRootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
+        hermesGatewayKind: reader.string(forKey: "hermes.gatewayKind", default: "filesystem"),
+        hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
+        hermesDataRoot: reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes"),
+        hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3")
     )
 
     let router = try buildRouter(services: services)
@@ -84,6 +90,8 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         LogRequestsMiddleware(.info)
         OpenAPIRequestContextMiddleware()
     }
+    router.middlewares.add(RequestDecompressionMiddleware())
+    router.middlewares.add(ResponseCompressionMiddleware(minimumResponseSizeToCompress: 512))
 
     router.get("/health") { _, _ -> String in "ok" }
 
@@ -100,9 +108,15 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     let resetSender = LoggingEmailOTPSender(logger: Logger(label: "lv.reset"))
     let resetGen = DefaultOTPCodeGenerator()
     let vaultPaths = VaultPathService(rootPath: services.vaultRootPath)
+    let hermesLogger = Logger(label: "lv.hermes")
+    let hermesGateway: any HermesGateway = makeHermesGateway(
+        kind: services.hermesGatewayKind,
+        dataRoot: services.hermesDataRoot,
+        logger: hermesLogger
+    )
     let hermesProfileService = HermesProfileService(
         fluent: services.fluent,
-        gateway: LoggingHermesGateway(logger: Logger(label: "lv.hermes")),
+        gateway: hermesGateway,
         vaultPaths: vaultPaths
     )
     let authService = DefaultAuthService(
@@ -137,7 +151,37 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         .add(middleware: jwtAuthenticator)
         .get("/me", use: meHandler)
 
+    // LLM (Hermes-backed) routes — protected.
+    guard let hermesURL = URL(string: services.hermesGatewayURL) else {
+        fatalError("invalid hermes.gatewayUrl: \(services.hermesGatewayURL)")
+    }
+    let llmService = DefaultHermesLLMService(
+        baseURL: hermesURL,
+        session: .shared,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.llm")
+    )
+    let llmController = LLMController(service: llmService)
+    let llmGroup = router.group("/v1/llm").add(middleware: jwtAuthenticator)
+    llmController.addRoutes(to: llmGroup)
+
     return router
+}
+
+private func makeHermesGateway(
+    kind: String,
+    dataRoot: String,
+    logger: Logger
+) -> any HermesGateway {
+    switch kind.lowercased() {
+    case "filesystem":
+        return FilesystemHermesGateway(rootPath: dataRoot, logger: logger)
+    case "logging":
+        return LoggingHermesGateway(logger: logger)
+    default:
+        logger.warning("unknown hermes.gatewayKind=\(kind); falling back to LoggingHermesGateway")
+        return LoggingHermesGateway(logger: logger)
+    }
 }
 
 @Sendable
@@ -146,6 +190,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
     return MeResponse(
         userId: try user.requireID(),
         email: user.email,
+        username: user.username,
         isVerified: user.isVerified
     )
 }

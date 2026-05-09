@@ -27,7 +27,7 @@ struct AuthController {
     @Sendable
     func register(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
         let body = try await req.decode(as: RegisterRequest.self, context: ctx)
-        return try await service.register(email: body.email, password: body.password)
+        return try await service.register(email: body.email, username: body.username, password: body.password)
     }
 
     @Sendable

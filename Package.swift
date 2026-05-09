@@ -19,6 +19,13 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/hummingbird-fluent.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", branch: "main"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
+        .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
+        .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
+        .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
+
+
     ],
     targets: [
         .executableTarget(name: "App",
@@ -32,6 +39,7 @@ let package = Package(
                 .product(name: "HummingbirdFluent", package: "hummingbird-fluent"),
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
                 .product(name: "JWTKit", package: "jwt-kit"),
+                .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                 .byName(name: "AppAPI"),
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
                 .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),
@@ -41,7 +49,11 @@ let package = Package(
         .target(
             name: "AppAPI",
             dependencies: [
-                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "Metrics", package: "swift-metrics"),
+                .product(name: "WebAuthn", package: "swift-webauthn"),
+                
             ],
             path: "Sources/AppAPI",
             plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]

@@ -4,19 +4,21 @@ import HummingbirdFluent
 import Logging
 
 /// Talks to the Hermes container. Each user has exactly ONE Hermes Profile;
-/// memory and state are fully isolated (Hermes-side guarantee).
+/// memory and state are fully isolated (Hermes-side guarantee). The username
+/// IS the profile name — there is no separate slug column.
 protocol HermesGateway: Sendable {
-    func provisionProfile(tenantID: UUID) async throws -> String
+    func provisionProfile(tenantID: UUID, username: String) async throws -> String
     func deleteProfile(hermesProfileID: String) async throws
 }
 
-/// Dev/local fallback. Logs the call; real HTTP/gRPC client added separately.
+/// Dev/local fallback. Logs the call and returns a stable, human-readable
+/// identifier so dev DB rows stay readable. No real provisioning happens.
 struct LoggingHermesGateway: HermesGateway {
     let logger: Logger
 
-    func provisionProfile(tenantID: UUID) async throws -> String {
-        logger.warning("hermes (dev only): provisionProfile tenantID=\(tenantID)")
-        return "hermes-\(tenantID.uuidString)"
+    func provisionProfile(tenantID: UUID, username: String) async throws -> String {
+        logger.warning("hermes (dev only): provisionProfile tenantID=\(tenantID) username=\(username)")
+        return "hermes-\(username)"
     }
 
     func deleteProfile(hermesProfileID: String) async throws {
@@ -41,7 +43,7 @@ struct HermesProfileService: Sendable {
         let profile = HermesProfile(tenantID: tenantID, hermesProfileID: "", status: "provisioning")
         try await profile.save(on: fluent.db())
         do {
-            let hid = try await gateway.provisionProfile(tenantID: tenantID)
+            let hid = try await gateway.provisionProfile(tenantID: tenantID, username: user.username)
             profile.hermesProfileID = hid
             profile.status = "ready"
             try await profile.save(on: fluent.db())

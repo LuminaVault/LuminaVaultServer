@@ -6,6 +6,7 @@ final class User: Model, @unchecked Sendable {
 
     @ID(key: .id) var id: UUID?
     @Field(key: "email") var email: String
+    @Field(key: "username") var username: String
     @Field(key: "password_hash") var passwordHash: String
     @Field(key: "is_verified") var isVerified: Bool
     @Field(key: "failed_login_attempts") var failedLoginAttempts: Int
@@ -18,6 +19,7 @@ final class User: Model, @unchecked Sendable {
     init(
         id: UUID? = nil,
         email: String,
+        username: String,
         passwordHash: String,
         isVerified: Bool = false,
         failedLoginAttempts: Int = 0,
@@ -25,6 +27,7 @@ final class User: Model, @unchecked Sendable {
     ) {
         self.id = id
         self.email = email.lowercased()
+        self.username = username.trimmingCharacters(in: .whitespaces).lowercased()
         self.passwordHash = passwordHash
         self.isVerified = isVerified
         self.failedLoginAttempts = failedLoginAttempts

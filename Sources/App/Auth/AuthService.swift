@@ -6,7 +6,7 @@ import HummingbirdFluent
 import JWTKit
 
 protocol AuthService: Sendable {
-    func register(email: String, password: String) async throws -> AuthResponse
+    func register(email: String, username: String, password: String) async throws -> AuthResponse
     /// `requireMFA=true` when the client advertises `mfa-auth-v1` capability —
     /// triggers an email-OTP challenge instead of immediately issuing tokens.
     func login(email: String, password: String, requireMFA: Bool) async throws -> AuthResponse
@@ -46,12 +46,19 @@ struct DefaultAuthService: AuthService {
     let maxResetFailures: Int = 5
     let resetLockoutDuration: TimeInterval = 60 * 30                 // 30 min
 
-    func register(email: String, password: String) async throws -> AuthResponse {
+    func register(email: String, username rawUsername: String, password: String) async throws -> AuthResponse {
         guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
+        let username = try UsernamePolicy.validate(rawUsername)
         if try await repo.findUser(byEmail: email) != nil { throw AuthError.emailExists }
+        if try await repo.findUser(byUsername: username) != nil { throw AuthError.usernameTaken }
         let hash = await hasher.hash(password)
-        let user = try await repo.createUser(email: email, passwordHash: hash)
-        try await hermesProfileService.ensure(for: user)
+        let user = try await repo.createUser(email: email, username: username, passwordHash: hash)
+        do {
+            try await hermesProfileService.ensure(for: user)
+        } catch {
+            try? await user.delete(force: true, on: fluent.db())
+            throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
+        }
         return try await issueTokens(for: user)
     }
 
@@ -188,7 +195,8 @@ struct DefaultAuthService: AuthService {
 
         // 3) Net new user. No password (set random hash; OAuth-only).
         let randomHash = await hasher.hash(UUID().uuidString + UUID().uuidString)
-        let user = try await repo.createUser(email: info.email, passwordHash: randomHash)
+        let username = try await uniquePlaceholderUsername()
+        let user = try await repo.createUser(email: info.email, username: username, passwordHash: randomHash)
         let identity = OAuthIdentity(
             tenantID: try user.requireID(),
             provider: provider.name,
@@ -197,8 +205,26 @@ struct DefaultAuthService: AuthService {
             emailVerified: info.emailVerified
         )
         try await identity.save(on: fluent.db())
-        try await hermesProfileService.ensure(for: user)
+        do {
+            try await hermesProfileService.ensure(for: user)
+        } catch {
+            try? await user.delete(force: true, on: fluent.db())
+            throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
+        }
         return try await issueTokens(for: user)
+    }
+
+    /// Generates a placeholder username (`oauth-<8hex>`) and retries on the
+    /// vanishingly rare uniqueness collision. After 5 failures we give up
+    /// rather than spin forever.
+    private func uniquePlaceholderUsername(maxAttempts: Int = 5) async throws -> String {
+        for _ in 0..<maxAttempts {
+            let candidate = UsernamePolicy.placeholder()
+            if try await repo.findUser(byUsername: candidate) == nil {
+                return candidate
+            }
+        }
+        throw HTTPError(.internalServerError, message: "could not allocate placeholder username")
     }
 
     func refresh(refreshToken: String) async throws -> AuthResponse {
