@@ -2,18 +2,17 @@ version: "3.9"
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg18
     container_name: hermes-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: hermes_db
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-super_secret_local_password_change_me}
-      POSTGRES_INITDB_ARGS: -A pgvector
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./data/postgres18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hermes -d hermes_db"]
       interval: 5s
@@ -25,7 +24,7 @@ services:
     container_name: hermes-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - ./data/redis:/data
     command: redis-server --appendonly yes

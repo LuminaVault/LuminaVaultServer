@@ -10,3 +10,4 @@ xcuserdata/
 .env.*
 .env.worktrees/
 .env
+data

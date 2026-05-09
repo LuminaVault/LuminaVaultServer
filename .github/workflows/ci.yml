@@ -37,7 +37,7 @@ jobs:
 
     services:
       postgres:
-        image: garapadev/postgres-postgis-pgvector:16-optimized
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_USER: hermes
           POSTGRES_PASSWORD: hermes_password

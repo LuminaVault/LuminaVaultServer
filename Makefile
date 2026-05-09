@@ -33,4 +33,4 @@ setup-hermes: ## Run the Hermes setup wizard (one-time, interactive)
 
 clean: ## Remove build artifacts and data
 	rm -rf .build
-	rm -rf data/postgres data/redis data/hermes
+	rm -rf data/postgres18 data/redis data/hermes

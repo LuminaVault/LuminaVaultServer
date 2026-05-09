@@ -1,4 +1,4 @@
-FROM swift:6.0
+FROM swift:6.3
 
 # Install system deps for Postgres + Redis + dev tools
 RUN apt-get update && apt-get install -y \
