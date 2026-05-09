@@ -8,4 +8,7 @@ struct ServiceContainer: Sendable {
     let fluent: Fluent
     let jwtKeys: JWTKeyCollection
     let jwtKID: JWKIdentifier
+    /// OAuth provider client IDs (audience claim). Empty string disables that provider.
+    let appleClientID: String
+    let googleClientID: String
 }

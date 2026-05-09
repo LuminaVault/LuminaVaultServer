@@ -2,6 +2,8 @@ import Hummingbird
 
 struct AuthController {
     let service: any AuthService
+    /// Keyed by provider name ("apple", "google"). Empty when OAuth not configured.
+    let oauthProviders: [String: any OAuthProvider]
 
     func addRoutes(to router: Router<AppRequestContext>) {
         let group = router.group("/v1/auth")
@@ -11,6 +13,7 @@ struct AuthController {
         group.post("/logout", use: logout)
         group.post("/mfa/verify", use: mfaVerify)
         group.post("/mfa/resend", use: mfaResend)
+        group.post("/oauth/:provider/exchange", use: oauthExchange)
     }
 
     @Sendable
@@ -54,5 +57,21 @@ struct AuthController {
         let body = try await req.decode(as: RefreshRequest.self, context: ctx)
         try await service.revokeRefresh(refreshToken: body.refreshToken)
         return Response(status: .noContent)
+    }
+
+    @Sendable
+    func oauthExchange(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
+        guard let providerName = ctx.parameters.get("provider") else {
+            throw HTTPError(.badRequest, message: "missing provider")
+        }
+        guard let provider = oauthProviders[providerName] else {
+            throw HTTPError(.notFound, message: "unsupported provider")
+        }
+        let body = try await req.decode(as: OAuthExchangeRequest.self, context: ctx)
+        do {
+            return try await service.exchangeOAuth(provider: provider, idToken: body.idToken)
+        } catch is OAuthError {
+            throw HTTPError(.unauthorized, message: "invalid id_token")
+        }
     }
 }

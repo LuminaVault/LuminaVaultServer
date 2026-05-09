@@ -55,7 +55,13 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     let kid = JWKIdentifier(string: reader.string(forKey: "jwt.kid", default: "lv-default"))
     await jwtKeys.add(hmac: HMACKey(stringLiteral: secret), digestAlgorithm: .sha256, kid: kid)
 
-    let services = ServiceContainer(fluent: fluent, jwtKeys: jwtKeys, jwtKID: kid)
+    let services = ServiceContainer(
+        fluent: fluent,
+        jwtKeys: jwtKeys,
+        jwtKID: kid,
+        appleClientID: reader.string(forKey: "oauth.apple.clientId", default: ""),
+        googleClientID: reader.string(forKey: "oauth.google.clientId", default: "")
+    )
 
     let router = try buildRouter(services: services)
     let appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -96,7 +102,15 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         jwtKID: services.jwtKID,
         mfaService: mfaService
     )
-    AuthController(service: authService).addRoutes(to: router)
+
+    var oauthProviders: [String: any OAuthProvider] = [:]
+    if !services.appleClientID.isEmpty {
+        oauthProviders["apple"] = AppleOAuthProvider(audience: services.appleClientID)
+    }
+    if !services.googleClientID.isEmpty {
+        oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
+    }
+    AuthController(service: authService, oauthProviders: oauthProviders).addRoutes(to: router)
 
     return router
 }

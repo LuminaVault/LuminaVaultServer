@@ -17,6 +17,9 @@ protocol AuthService: Sendable {
     func verifyMFA(challengeID: UUID, code: String) async throws -> AuthResponse
     /// Re-issue an OTP for an active challenge owned by the given email.
     func resendMFA(email: String) async throws
+    /// Exchange a provider-issued id_token for app tokens.
+    /// Creates or links the OAuthIdentity to a User as needed.
+    func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse
 }
 
 struct DefaultAuthService: AuthService {
@@ -80,6 +83,46 @@ struct DefaultAuthService: AuthService {
             throw AuthError.invalidCredentials
         }
         _ = try await mfaService.issue(forUser: user, purpose: "login")
+    }
+
+    func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse {
+        let info = try await provider.verify(idToken: idToken)
+
+        // 1) Existing identity for this (provider, providerUserID) → login.
+        if let identity = try await OAuthIdentity.query(on: fluent.db())
+            .filter(\.$provider == provider.name)
+            .filter(\.$providerUserID == info.providerUserID)
+            .first(),
+           let user = try await repo.findUser(byID: identity.tenantID)
+        {
+            return try await issueTokens(for: user)
+        }
+
+        // 2) User exists with this email → link new identity.
+        if let user = try await repo.findUser(byEmail: info.email) {
+            let identity = OAuthIdentity(
+                tenantID: try user.requireID(),
+                provider: provider.name,
+                providerUserID: info.providerUserID,
+                email: info.email,
+                emailVerified: info.emailVerified
+            )
+            try await identity.save(on: fluent.db())
+            return try await issueTokens(for: user)
+        }
+
+        // 3) Net new user. No password (set random hash; OAuth-only).
+        let randomHash = await hasher.hash(UUID().uuidString + UUID().uuidString)
+        let user = try await repo.createUser(email: info.email, passwordHash: randomHash)
+        let identity = OAuthIdentity(
+            tenantID: try user.requireID(),
+            provider: provider.name,
+            providerUserID: info.providerUserID,
+            email: info.email,
+            emailVerified: info.emailVerified
+        )
+        try await identity.save(on: fluent.db())
+        return try await issueTokens(for: user)
     }
 
     func refresh(refreshToken: String) async throws -> AuthResponse {

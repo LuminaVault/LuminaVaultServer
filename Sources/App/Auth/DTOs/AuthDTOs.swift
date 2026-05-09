@@ -35,6 +35,10 @@ struct MFAResendRequest: Codable, Sendable {
     let email: String
 }
 
+struct OAuthExchangeRequest: Codable, Sendable {
+    let idToken: String
+}
+
 struct MeResponse: Codable, ResponseEncodable, Sendable {
     let userId: UUID
     let email: String
