@@ -2,13 +2,14 @@ version: "3.9"
 
 services:
   postgres:
-    image: garapadev/postgres-postgis-pgvector:16-optimized
+    image: postgres:16-alpine
     container_name: hermes-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: hermes_db
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-super_secret_local_password_change_me}
+      POSTGRES_INITDB_ARGS: -A pgvector
     ports:
       - "5432:5432"
     volumes:
