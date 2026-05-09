@@ -35,7 +35,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
-        // Domain migrations registered as Tasks 10+ land.
+        await fluent.migrations.add(M02_CreateRefreshToken())
+        // Additional domain migrations registered as Tasks 12+ land.
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
