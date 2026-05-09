@@ -117,5 +117,21 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     }
     AuthController(service: authService, oauthProviders: oauthProviders).addRoutes(to: router)
 
+    // Protected (JWT-required) routes
+    let jwtAuthenticator = JWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent)
+    router.group("/v1/auth")
+        .add(middleware: jwtAuthenticator)
+        .get("/me", use: meHandler)
+
     return router
+}
+
+@Sendable
+private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeResponse {
+    let user = try ctx.requireIdentity()
+    return MeResponse(
+        userId: try user.requireID(),
+        email: user.email,
+        isVerified: user.isVerified
+    )
 }
