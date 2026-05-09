@@ -71,3 +71,4 @@ Swift types and route stubs are generated automatically by `swift-openapi-genera
 4. Add a test in `Tests/AppTests/`
 # HermiesVaultServer
 # LuminaVaultServer
+# LuminaVaultServer
