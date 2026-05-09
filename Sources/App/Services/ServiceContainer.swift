@@ -11,4 +11,6 @@ struct ServiceContainer: Sendable {
     /// OAuth provider client IDs (audience claim). Empty string disables that provider.
     let appleClientID: String
     let googleClientID: String
+    /// Filesystem root for `tenants/<id>/raw/` Hermes/vault directories.
+    let vaultRootPath: String
 }

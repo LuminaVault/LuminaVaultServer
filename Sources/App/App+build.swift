@@ -41,7 +41,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M05_CreateOAuthIdentity())
         await fluent.migrations.add(M06_CreateMemory())
         await fluent.migrations.add(M07_AddMemoryEmbedding())
-        // M08 added by Task 22.
+        await fluent.migrations.add(M08_CreateHermesProfile())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -62,7 +62,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         jwtKeys: jwtKeys,
         jwtKID: kid,
         appleClientID: reader.string(forKey: "oauth.apple.clientId", default: ""),
-        googleClientID: reader.string(forKey: "oauth.google.clientId", default: "")
+        googleClientID: reader.string(forKey: "oauth.google.clientId", default: ""),
+        vaultRootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault")
     )
 
     let router = try buildRouter(services: services)
@@ -98,6 +99,12 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     )
     let resetSender = LoggingEmailOTPSender(logger: Logger(label: "lv.reset"))
     let resetGen = DefaultOTPCodeGenerator()
+    let vaultPaths = VaultPathService(rootPath: services.vaultRootPath)
+    let hermesProfileService = HermesProfileService(
+        fluent: services.fluent,
+        gateway: LoggingHermesGateway(logger: Logger(label: "lv.hermes")),
+        vaultPaths: vaultPaths
+    )
     let authService = DefaultAuthService(
         repo: DatabaseAuthRepository(fluent: services.fluent),
         hasher: BcryptPasswordHasher(),
@@ -106,7 +113,8 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         jwtKID: services.jwtKID,
         mfaService: mfaService,
         resetCodeSender: resetSender,
-        resetCodeGenerator: resetGen
+        resetCodeGenerator: resetGen,
+        hermesProfileService: hermesProfileService
     )
 
     var oauthProviders: [String: any OAuthProvider] = [:]

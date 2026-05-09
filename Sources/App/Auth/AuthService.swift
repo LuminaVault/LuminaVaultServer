@@ -35,6 +35,7 @@ struct DefaultAuthService: AuthService {
     let mfaService: any MFAService
     let resetCodeSender: any EmailOTPSender
     let resetCodeGenerator: any OTPCodeGenerator
+    let hermesProfileService: HermesProfileService
 
     let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
     let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
@@ -50,6 +51,7 @@ struct DefaultAuthService: AuthService {
         if try await repo.findUser(byEmail: email) != nil { throw AuthError.emailExists }
         let hash = await hasher.hash(password)
         let user = try await repo.createUser(email: email, passwordHash: hash)
+        try await hermesProfileService.ensure(for: user)
         return try await issueTokens(for: user)
     }
 
@@ -195,6 +197,7 @@ struct DefaultAuthService: AuthService {
             emailVerified: info.emailVerified
         )
         try await identity.save(on: fluent.db())
+        try await hermesProfileService.ensure(for: user)
         return try await issueTokens(for: user)
     }
 
