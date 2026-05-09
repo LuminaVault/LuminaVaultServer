@@ -20,8 +20,8 @@ let noDBTestReader = ConfigReader(providers: [
     ])
 ])
 
-/// Config for tests that need the database. Requires `docker compose up -d postgres`
-/// against luminavault_test (or whatever DB+credentials match the env).
+/// Config for tests that need the database. Requires `docker compose up -d postgres`.
+/// Credentials match docker-compose.yml (hermes user, hermes_db database).
 let dbTestReader = ConfigReader(providers: [
     InMemoryProvider(values: [
         "http.host": "127.0.0.1",
@@ -29,9 +29,9 @@ let dbTestReader = ConfigReader(providers: [
         "log.level": "warning",
         "postgres.host": "127.0.0.1",
         "postgres.port": "5432",
-        "postgres.database": "luminavault_test",
-        "postgres.user": "luminavault",
-        "postgres.password": "luminavault",
+        "postgres.database": "hermes_db",
+        "postgres.user": "hermes",
+        "postgres.password": "super_secret_local_password_change_me",
         "fluent.autoMigrate": "true",
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
         "jwt.kid": "test-kid"

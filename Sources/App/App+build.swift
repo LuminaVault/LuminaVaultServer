@@ -34,7 +34,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
             as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
-        // Domain migrations registered as Tasks 5+ land.
+        await fluent.migrations.add(M01_CreateUser())
+        // Domain migrations registered as Tasks 10+ land.
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
