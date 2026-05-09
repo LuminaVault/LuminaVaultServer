@@ -36,10 +36,11 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
         await fluent.migrations.add(M02_CreateRefreshToken())
+        await fluent.migrations.add(M03_CreatePasswordResetToken())
         await fluent.migrations.add(M04_CreateMFAChallenge())
         await fluent.migrations.add(M05_CreateOAuthIdentity())
         await fluent.migrations.add(M06_CreateMemory())
-        // M03/M07/M08 added by Tasks 18/21/22.
+        // M07/M08 added by Tasks 21/22.
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -94,13 +95,17 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         sender: LoggingEmailOTPSender(logger: Logger(label: "lv.mfa")),
         generator: DefaultOTPCodeGenerator()
     )
+    let resetSender = LoggingEmailOTPSender(logger: Logger(label: "lv.reset"))
+    let resetGen = DefaultOTPCodeGenerator()
     let authService = DefaultAuthService(
         repo: DatabaseAuthRepository(fluent: services.fluent),
         hasher: BcryptPasswordHasher(),
         fluent: services.fluent,
         jwtKeys: services.jwtKeys,
         jwtKID: services.jwtKID,
-        mfaService: mfaService
+        mfaService: mfaService,
+        resetCodeSender: resetSender,
+        resetCodeGenerator: resetGen
     )
 
     var oauthProviders: [String: any OAuthProvider] = [:]

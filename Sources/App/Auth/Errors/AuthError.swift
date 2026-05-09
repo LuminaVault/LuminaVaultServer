@@ -8,4 +8,6 @@ enum AuthError {
     static let mfaRequired = HTTPError(.unauthorized, message: "mfa required")
     static let mfaInvalid = HTTPError(.unauthorized, message: "mfa code invalid")
     static let invalidRefresh = HTTPError(.unauthorized, message: "invalid refresh token")
+    static let resetCodeInvalid = HTTPError(.unauthorized, message: "reset code invalid or expired")
+    static let resetLocked = HTTPError(.tooManyRequests, message: "reset locked, try later")
 }

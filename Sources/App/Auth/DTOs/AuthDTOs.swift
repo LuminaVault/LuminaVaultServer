@@ -39,6 +39,16 @@ struct OAuthExchangeRequest: Codable, Sendable {
     let idToken: String
 }
 
+struct ForgotPasswordRequest: Codable, Sendable {
+    let email: String
+}
+
+struct ResetPasswordRequest: Codable, Sendable {
+    let email: String
+    let code: String
+    let newPassword: String
+}
+
 struct MeResponse: Codable, ResponseEncodable, Sendable {
     let userId: UUID
     let email: String

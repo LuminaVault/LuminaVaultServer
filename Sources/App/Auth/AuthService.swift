@@ -20,6 +20,10 @@ protocol AuthService: Sendable {
     /// Exchange a provider-issued id_token for app tokens.
     /// Creates or links the OAuthIdentity to a User as needed.
     func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse
+    /// Email-OTP password reset flow.
+    func forgotPassword(email: String) async throws
+    func resendReset(email: String) async throws
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> AuthResponse
 }
 
 struct DefaultAuthService: AuthService {
@@ -29,12 +33,17 @@ struct DefaultAuthService: AuthService {
     let jwtKeys: JWTKeyCollection
     let jwtKID: JWKIdentifier
     let mfaService: any MFAService
+    let resetCodeSender: any EmailOTPSender
+    let resetCodeGenerator: any OTPCodeGenerator
 
     let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
     let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
     let maxFailedLogins: Int = 5
     let lockoutDuration: TimeInterval = 60 * 15                      // 15 min
     let minPasswordLength: Int = 12
+    let resetCodeLifetime: TimeInterval = 60 * 15                    // 15 min
+    let maxResetFailures: Int = 5
+    let resetLockoutDuration: TimeInterval = 60 * 30                 // 30 min
 
     func register(email: String, password: String) async throws -> AuthResponse {
         guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
@@ -83,6 +92,70 @@ struct DefaultAuthService: AuthService {
             throw AuthError.invalidCredentials
         }
         _ = try await mfaService.issue(forUser: user, purpose: "login")
+    }
+
+    func forgotPassword(email: String) async throws {
+        guard let user = try await repo.findUser(byEmail: email) else { return }   // no-op (don't leak existence)
+        try await issueResetCode(for: user)
+    }
+
+    func resendReset(email: String) async throws {
+        guard let user = try await repo.findUser(byEmail: email) else { return }
+        try await issueResetCode(for: user)
+    }
+
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> AuthResponse {
+        guard newPassword.count >= minPasswordLength else { throw AuthError.weakPassword }
+        guard let user = try await repo.findUser(byEmail: email) else {
+            throw AuthError.resetCodeInvalid
+        }
+        let userID = try user.requireID()
+
+        // Find latest unused, non-expired token for this tenant.
+        guard let row = try await PasswordResetToken.query(on: fluent.db(), tenantID: userID)
+            .filter(\.$usedAt == nil)
+            .sort(\.$createdAt, .descending)
+            .first()
+        else { throw AuthError.resetCodeInvalid }
+
+        if let lock = row.lockedUntil, lock > Date() { throw AuthError.resetLocked }
+        if row.expiresAt < Date() { throw AuthError.resetCodeInvalid }
+
+        if row.codeHash == sha256Hex(code) {
+            row.usedAt = Date()
+            try await row.save(on: fluent.db())
+            user.passwordHash = await hasher.hash(newPassword)
+            user.failedLoginAttempts = 0
+            user.lockoutUntil = nil
+            try await user.save(on: fluent.db())
+
+            // Revoke all active refresh tokens — force re-login on every device.
+            try await RefreshToken.query(on: fluent.db(), tenantID: userID)
+                .filter(\.$revokedAt == nil)
+                .set(\.$revokedAt, to: Date())
+                .update()
+
+            return try await issueTokens(for: user)
+        } else {
+            row.failedAttempts += 1
+            if row.failedAttempts >= maxResetFailures {
+                row.lockedUntil = Date().addingTimeInterval(resetLockoutDuration)
+            }
+            try await row.save(on: fluent.db())
+            throw AuthError.resetCodeInvalid
+        }
+    }
+
+    private func issueResetCode(for user: User) async throws {
+        let userID = try user.requireID()
+        let code = resetCodeGenerator.generate()
+        let row = PasswordResetToken(
+            tenantID: userID,
+            codeHash: sha256Hex(code),
+            expiresAt: Date().addingTimeInterval(resetCodeLifetime)
+        )
+        try await row.save(on: fluent.db())
+        try await resetCodeSender.send(code: code, to: user.email, purpose: "reset")
     }
 
     func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse {

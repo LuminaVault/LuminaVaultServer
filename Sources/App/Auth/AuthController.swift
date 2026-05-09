@@ -14,6 +14,9 @@ struct AuthController {
         group.post("/mfa/verify", use: mfaVerify)
         group.post("/mfa/resend", use: mfaResend)
         group.post("/oauth/:provider/exchange", use: oauthExchange)
+        group.post("/forgot-password", use: forgotPassword)
+        group.post("/resend-reset", use: resendReset)
+        group.post("/reset-password", use: resetPassword)
     }
 
     @Sendable
@@ -57,6 +60,30 @@ struct AuthController {
         let body = try await req.decode(as: RefreshRequest.self, context: ctx)
         try await service.revokeRefresh(refreshToken: body.refreshToken)
         return Response(status: .noContent)
+    }
+
+    @Sendable
+    func forgotPassword(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        let body = try await req.decode(as: ForgotPasswordRequest.self, context: ctx)
+        try await service.forgotPassword(email: body.email)
+        return Response(status: .accepted)
+    }
+
+    @Sendable
+    func resendReset(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        let body = try await req.decode(as: ForgotPasswordRequest.self, context: ctx)
+        try await service.resendReset(email: body.email)
+        return Response(status: .accepted)
+    }
+
+    @Sendable
+    func resetPassword(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
+        let body = try await req.decode(as: ResetPasswordRequest.self, context: ctx)
+        return try await service.resetPassword(
+            email: body.email,
+            code: body.code,
+            newPassword: body.newPassword
+        )
     }
 
     @Sendable
