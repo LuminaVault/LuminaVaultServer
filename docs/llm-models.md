@@ -14,17 +14,26 @@ Implementation references:
 
 ## 1. Tiered hosting
 
-Three serving postures. Today only Free + Pro ship; BYO is v2.
+Three live serving postures + a lapse / archive state. No Free tier — Trial
+is the funnel surface, Pro and Ultimate are the revenue surfaces.
+
+Billing is RevenueCat + Apple StoreKit 2. See spec
+`docs/superpowers/specs/2026-05-10-billing-tiers-revenuecat-design.md`.
 
 | Tier | What user pays | What they get | Routing |
 |---|---|---|---|
-| **Free** | $0 | Cheap-tier inference, daily Mtok cap, 5 built-in skills. No frontier models. | `low` / `medium` capability → Gemini Flash, DeepSeek-V3.2 (Together / Groq), Kimi-K2 (Groq). `high` capability degrades to `medium` once daily cap hit. |
-| **Pro** | $X / mo via Stripe | Frontier models on-demand, no daily cap (per-request budget guard still applies), context-routing opt-in, vault-authored skills. | Anthropic (Sonnet 4.6 / Opus 4.7 / Haiku 4.5), OpenAI (GPT-5 / GPT-5-mini), Gemini 2.5 Pro, full fallback chain. |
-| **BYO** *(v2)* | $0 hosting + their own provider bill | User pastes their Anthropic / OpenAI / DeepSeek / Together / Groq key in Settings; we proxy to it. | User key is tried *first*; falls back to hosted tier if their key returns 401/429. |
+| **Trial** (14 d) | $0 with payment on file via Apple IAP, auto-converts to Pro at T+14 unless cancelled | Same as Pro for 14 days | Same as Pro |
+| **Pro** | $14.99 / mo (placeholder) | Built-in skills, frontier chat (Sonnet 4.6), DeepSeek/Gemini Flash backbone for skill cron work, 10 M Mtok/mo cap, single device | `low` → Gemini Flash / Together DeepSeek. `medium` → Sonnet 4.6 → Gemini 2.5 Pro. `high` → Sonnet 4.6 → Opus 4.7 (capped). |
+| **Ultimate** | $29.99 / mo (placeholder) | All Pro + Opus 4.7 / GPT-5 on every call, user-authored vault skills, on-device MLX (when v2 ships), ContextRouter on, BYO API key, no Mtok cap (per-call budget guard only), priority APNS routing | Full provider matrix, no cap-driven degrade. |
+| **Lapsed** | — | Read-only vault + export. 90 d grace before cold archive. | No routing — every gated endpoint returns 402. |
+| **Archived** | — | Vault in cold storage, retrievable via support up to 365 d post-lapse. After 365 d, GDPR hard-delete. | No routing. |
 
-The Free tier is the marketing surface — "personal LLM second brain you
-can use without an API key." The Pro tier is the revenue surface. BYO is
-a power-user fallback for self-hosters and privacy maxis.
+Entitlement enforcement uses an env feature flag
+(`billing.enforcementEnabled`, default `false`). Flipped to `true` only when
+every production ticket has shipped — pre-launch runbook step.
+
+`tier_override` column on `users` lets ops grant Pro/Ultimate to TestFlight
+users, internal team, and support cases regardless of RevenueCat state.
 
 ## 2. Provider matrix
 
@@ -33,12 +42,12 @@ Authoritative list. Every entry maps to one `ProviderConfig` in
 
 | Provider | Kind | Models we use | $/Mtok in | $/Mtok out | Region (jurisdiction) | CN-weight? | Tier eligibility |
 |---|---|---|---|---|---|---|---|
-| **Anthropic** | `.anthropicMessages` | Sonnet 4.6, Opus 4.7, Haiku 4.5 | $3 / $15 / $0.80 | $15 / $75 / $4 | US | No | Pro |
-| **OpenAI** | `.openAIChat` | GPT-5, GPT-5-mini | $5 / $0.50 | $20 / $2 | US | No | Pro |
-| **Google Gemini** | `.geminiContents` | Gemini 2.5 Pro, Gemini 2.5 Flash | $2 / $0.10 | $10 / $0.40 | US | No | Pro (Pro), Free (Flash) |
-| **Together** | `.openAICompatible` | DeepSeek-V3.2, Qwen3-Coder, Kimi-K2 | $0.27 / $0.50 / $0.50 | $1.10 / $2 / $2 | US | Yes (weights), No (host) | Free, Pro fallback |
-| **Groq** | `.openAICompatible` | Kimi-K2, Llama 4 70B | $0.50 / $0.30 | $2 / $0.40 | US | Yes / No | Free, Pro fallback |
-| **Fireworks** | `.openAICompatible` | DeepSeek-V3.2, Qwen3 | $0.30 / $0.50 | $1.20 / $1.50 | US | Yes (weights), No (host) | Free, Pro fallback |
+| **Anthropic** | `.anthropicMessages` | Sonnet 4.6, Opus 4.7, Haiku 4.5 | $3 / $15 / $0.80 | $15 / $75 / $4 | US | No | Pro (Sonnet/Haiku), Ultimate (Opus) |
+| **OpenAI** | `.openAIChat` | GPT-5, GPT-5-mini | $5 / $0.50 | $20 / $2 | US | No | Ultimate (GPT-5), Pro fallback (mini) |
+| **Google Gemini** | `.geminiContents` | Gemini 2.5 Pro, Gemini 2.5 Flash | $2 / $0.10 | $10 / $0.40 | US | No | Pro+ (Pro), Pro+ (Flash for low-capability) |
+| **Together** | `.openAICompatible` | DeepSeek-V3.2, Qwen3-Coder, Kimi-K2 | $0.27 / $0.50 / $0.50 | $1.10 / $2 / $2 | US | Yes (weights), No (host) | Pro+ (skill cron backbone) |
+| **Groq** | `.openAICompatible` | Kimi-K2, Llama 4 70B | $0.50 / $0.30 | $2 / $0.40 | US | Yes / No | Pro+ fallback |
+| **Fireworks** | `.openAICompatible` | DeepSeek-V3.2, Qwen3 | $0.30 / $0.50 | $1.20 / $1.50 | US | Yes (weights), No (host) | Pro+ fallback |
 | **DeepSeek-direct** | `.openAICompatible` | DeepSeek-V3.2, DeepSeek-R1 | $0.10 / $0.55 | $0.40 / $2.20 | CN | Yes (weights + host) | Disabled by default — only for users with `privacy_no_cn_origin=false` AND opt-in `prefer_lowest_cost=true` |
 | **Hermes gateway** *(legacy)* | `.hermesGateway` | hermes-3 | n/a | n/a | self-hosted | n/a | Dev-only; retired once routing ships in prod |
 
@@ -52,11 +61,11 @@ Notes:
 Every Hermes call (skill, query, memo, chat) declares a *capability* level.
 The router uses capability + tier + privacy to pick the model.
 
-| Capability | What it means | Use cases | Default model (Free) | Default model (Pro) |
+| Capability | What it means | Use cases | Default model (Pro) | Default model (Ultimate) |
 |---|---|---|---|---|
 | `low` | Cheap reasoning. ~8K context. Quick tool dispatch. | `daily-brief`, `capture-enrich`, ContextRouter selection step | Gemini Flash → Together DeepSeek | Gemini Flash → Sonnet 4.6 |
-| `medium` | Balanced. ~64K context. Multi-turn agent loops, light synthesis. | `kb-compile`, `weekly-memo`, `/v1/query`, `/v1/memos` | Together DeepSeek-V3.2 → Groq Kimi-K2 | Sonnet 4.6 → Gemini 2.5 Pro |
-| `high` | Frontier reasoning. Long context (≥256K). Complex agentic flows. | `health-correlate`, ContextRouter expansion (Pro opt-in), future power-user skills | (degrades to `medium` once Free daily cap hit) | Sonnet 4.6 → Opus 4.7 → GPT-5 |
+| `medium` | Balanced. ~64K context. Multi-turn agent loops, light synthesis. | `kb-compile`, `weekly-memo`, `/v1/query`, `/v1/memos` | Sonnet 4.6 → Gemini 2.5 Pro | Sonnet 4.6 → Opus 4.7 → GPT-5 |
+| `high` | Frontier reasoning. Long context (≥256K). Complex agentic flows. | `health-correlate`, ContextRouter expansion (Ultimate-only), future power-user skills | Sonnet 4.6 → Opus 4.7 (Pro cap-degrades on hit) | Opus 4.7 → GPT-5 → Sonnet 4.6 |
 
 Skills declare capability in their SKILL.md frontmatter:
 ```yaml
@@ -65,7 +74,10 @@ metadata:
 ```
 
 User chat (`/v1/chat/completions`) is `medium` by default; can be overridden
-per-request with `model:` field for Pro users.
+per-request with `model:` field for Ultimate users.
+
+Trial users see Pro routing for the trial period. Lapsed / archived users
+get 402 — no routing happens.
 
 ## 4. Privacy posture
 
@@ -77,9 +89,13 @@ When `true`, `ModelRouter` excludes any model where the *weights* originate
 in CN — DeepSeek, Qwen, Kimi — *even if hosted by a US provider*. The
 weight provenance is the concern, not the inference data plane.
 
-Trade-off: Free users with this toggle get more expensive routing
+Trade-off: Pro users with this toggle get more expensive routing
 (Gemini Flash → GPT-5-mini fallback instead of DeepSeek). Documented
 in iOS Settings UI.
+
+The toggle is gated to **Pro+** (the privacy posture toggles are part
+of the privacy section of the Settings UI, which only renders for
+entitled users).
 
 ### `users.privacy_prefer_lowest_cost` (default `false`)
 
@@ -134,25 +150,45 @@ Not in v1. Sketch for the future:
 
 ## 7. Cost guardrails
 
-The Free tier is the largest financial risk. A misbehaving agent loop on
-Sonnet 4.6 can burn $5+ per session. Two layers of defense.
+The Pro tier is the largest financial risk. A misbehaving agent loop on
+Sonnet 4.6 can burn $5+ per session, and at $14.99 / mo we have ~$10
+gross-margin headroom per user-month after Apple's 15-30% cut.
 
-### Daily Mtok cap (Free tier only)
+Three layers of defense.
+
+### Monthly Mtok cap (Pro tier only)
 
 `UsageMeter` (HER-175) increments after every LLM response with the
-provider's reported token counts. When today's `(mtok_in + mtok_out)`
-exceeds `usage.freeMtokDaily` (default 1.0M):
+provider's reported token counts. When the user's running 30-day total
+`(mtok_in + mtok_out)` exceeds `usage.proMtokMonthly` (default 10 M):
 
 - `medium` and `high` requests *degrade* to `low` automatically; response gets header `X-LV-Degraded: cap_reached`.
-- Once even `low` would push past `usage.freeMtokDailyHardStop` (default 5.0M), the call returns 429 with `Retry-After: <hours_until_midnight_user_local>`.
+- Once even `low` would push past `usage.proMtokMonthlyHardStop` (default 30 M), the call returns 429 with `Retry-After: <hours_until_next_billing_period>`.
+
+Ultimate tier has no monthly cap (per-call budget guard still applies).
+Trial users see Pro caps. Lapsed users return 402 before any cap check
+runs.
 
 ### Per-skill budget
 
-Each skill run is bounded by `usage.perSkillMtokDaily` (default 0.2M)
+Each skill run is bounded by `usage.perSkillMtokDaily` (default 0.2 M)
 *regardless of tier*. Prevents a runaway agent loop in a single skill from
 draining the user's whole budget. When the skill exceeds its budget mid-run,
 the loop terminates with a `skill_budget_exceeded` status in
 `skill_run_log`.
+
+### Trial cost projection
+
+Trial users get Pro features for 14 days with no card-charge yet. Cost
+modeling:
+
+- Median trial user: ~3 M Mtok over 14 days at Together DeepSeek + Sonnet mix
+- Cost: ~$1.50 / trial-user
+- Break-even at ~10 % conversion to Pro ($14.99 × 12 mo × 0.85 Apple cut = $153 LTV per acquired Pro user)
+
+Conversion-rate trigger: if trial → Pro conversion drops below 8 % over a
+month, tighten the trial scope (e.g. switch `health-correlate` from `high`
+to `medium` during trial) before raising prices.
 
 ### Cost dashboard
 
@@ -168,11 +204,19 @@ ORDER BY (SUM(mtok_in) + SUM(mtok_out)) DESC;
 ```
 
 Cost per provider: cross-join with the `$/Mtok` table from §2.
+Daily ops includes `tier` join to attribute cost per tier:
+```sql
+SELECT u.tier, m.model, SUM(m.mtok_in + m.mtok_out) AS total
+FROM usage_meter m JOIN users u USING (tenant_id)
+WHERE m.day >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY u.tier, m.model;
+```
 
-When margin compresses (Free user costs > revenue per Free user × N weeks),
+When margin compresses (Pro user costs > revenue per Pro user × N weeks),
 options in order of preference:
 
 1. Lower default capability (`medium` → `low`) for non-essential skills
-2. Reduce `usage.freeMtokDaily` (1.0M → 0.5M)
+2. Reduce `usage.proMtokMonthly` (10 M → 5 M)
 3. Add cheaper provider (next-cheapest open-weights host)
 4. Re-platform on self-hosted vLLM (HER-160 unblocks this)
+5. Raise Pro price (Apple lets you grandfather existing subs)

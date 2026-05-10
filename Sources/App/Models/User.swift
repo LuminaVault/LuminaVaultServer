@@ -11,6 +11,10 @@ final class User: Model, @unchecked Sendable {
     @Field(key: "is_verified") var isVerified: Bool
     @Field(key: "failed_login_attempts") var failedLoginAttempts: Int
     @OptionalField(key: "lockout_until") var lockoutUntil: Date?
+    @Field(key: "tier") var tier: String
+    @OptionalField(key: "tier_expires_at") var tierExpiresAt: Date?
+    @Field(key: "tier_override") var tierOverride: String
+    @OptionalField(key: "revenuecat_user_id") var revenuecatUserID: String?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -23,7 +27,11 @@ final class User: Model, @unchecked Sendable {
         passwordHash: String,
         isVerified: Bool = false,
         failedLoginAttempts: Int = 0,
-        lockoutUntil: Date? = nil
+        lockoutUntil: Date? = nil,
+        tier: String = "trial",
+        tierExpiresAt: Date? = nil,
+        tierOverride: String = "none",
+        revenuecatUserID: String? = nil
     ) {
         self.id = id
         self.email = email.lowercased()
@@ -32,5 +40,9 @@ final class User: Model, @unchecked Sendable {
         self.isVerified = isVerified
         self.failedLoginAttempts = failedLoginAttempts
         self.lockoutUntil = lockoutUntil
+        self.tier = tier
+        self.tierExpiresAt = tierExpiresAt
+        self.tierOverride = tierOverride
+        self.revenuecatUserID = revenuecatUserID
     }
 }

@@ -56,6 +56,7 @@ struct DefaultAuthService: AuthService {
         if try await repo.findUser(byUsername: username) != nil { throw AuthError.usernameTaken }
         let hash = await hasher.hash(password)
         let user = try await repo.createUser(email: email, username: username, passwordHash: hash)
+        try await Self.applyTrialDefaults(to: user, on: fluent.db())
         do {
             try await hermesProfileService.ensure(for: user)
         } catch {
@@ -63,6 +64,21 @@ struct DefaultAuthService: AuthService {
             throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
         }
         return try await issueTokens(for: user)
+    }
+
+    /// Stamps a freshly created user with the 14-day trial window.
+    /// Idempotent: a re-entrant call won't extend an existing trial.
+    static func applyTrialDefaults(
+        to user: User,
+        on db: any Database,
+        trialDays: Int = 14,
+        now: Date = Date()
+    ) async throws {
+        user.tier = "trial"
+        if user.tierExpiresAt == nil {
+            user.tierExpiresAt = now.addingTimeInterval(TimeInterval(trialDays) * 86_400)
+        }
+        try await user.save(on: db)
     }
 
     func login(email: String, password: String, requireMFA: Bool) async throws -> AuthResponse {
@@ -220,6 +236,7 @@ struct DefaultAuthService: AuthService {
         let randomHash = await hasher.hash(UUID().uuidString + UUID().uuidString)
         let username = try await uniquePlaceholderUsername()
         let user = try await repo.createUser(email: email, username: username, passwordHash: randomHash)
+        try await Self.applyTrialDefaults(to: user, on: fluent.db())
         let identity = OAuthIdentity(
             tenantID: try user.requireID(),
             provider: provider,

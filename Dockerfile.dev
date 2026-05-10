@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM swift:6.3
 
 # Install system deps for Postgres + Redis + dev tools
@@ -9,10 +11,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Pre-cache dependencies (fast rebuilds)
-COPY Package.swift .
+# Pre-cache dependencies without baking SwiftPM caches into the image layer.
+COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
-RUN swift package resolve
+RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=cache,target=/app/.build \
+    swift package resolve
 
 # Entry point for dev (rebuilds on every `docker compose up --build`)
 CMD ["swift", "run", "App"]

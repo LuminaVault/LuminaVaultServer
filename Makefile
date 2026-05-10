@@ -8,7 +8,7 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 dev-up: ## Start all services for local development
-	$(DOCKER_COMPOSE) up -d postgres redis hermes jaeger
+	$(DOCKER_COMPOSE) up -d postgres hermes jaeger
 	@echo "Waiting for postgres..."
 	@until $(DOCKER_COMPOSE) exec postgres pg_isready -U hermes -d hermes_db > /dev/null 2>&1; do sleep 1; done
 	$(DOCKER_COMPOSE) up --build hummingbird
