@@ -1,0 +1,61 @@
+meta {
+  name: Memo
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/memos
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "topic": "preferences",
+    "hint": "Cluster by category (drinks, sleep, productivity).",
+    "save": true
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.path) bru.setEnvVar("lastMemoPath", data.path);
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns markdown memo", function() {
+    expect(res.getBody().memo).to.match(/^---\n/);
+    expect(res.getBody().memo).to.contain("## Summary");
+  });
+  test("returns saved path under memos/", function() {
+    expect(res.getBody().path).to.match(/^memos\/\d{4}-\d{2}-\d{2}\/.+\.md$/);
+  });
+  test("returns sourceMemoryIds array", function() {
+    expect(res.getBody().sourceMemoryIds).to.be.an("array");
+  });
+}
+
+docs {
+  Drives Hermes through a read-only agent loop (only `session_search` tool
+  exposed — no `memory_upsert`). Hermes searches the user's memories for
+  the topic, writes a structured markdown memo (Summary / Key Points /
+  Connections / Open Questions), cites sources inline as
+  `[[memory:<uuid>]]`. Server prepends YAML frontmatter, persists to
+  `<rawRoot>/memos/<YYYY-MM-DD>/<slug>.md`, registers in `vault_files`.
+
+  Set `save: false` to dry-run (preview body without persisting).
+}

@@ -27,6 +27,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
         .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
+        .package(url: "https://github.com/slashmo/swift-otel.git", from: "0.10.0"),
     ],
     targets: [
         .executableTarget(name: "App",
@@ -47,6 +48,8 @@ let package = Package(
                 .product(name: "Tracing", package: "swift-distributed-tracing"),
                 .product(name: "WebAuthn", package: "swift-webauthn"),
                 .product(name: "APNS", package: "APNSwift"),
+                .product(name: "OTel", package: "swift-otel"),
+                .product(name: "OTLPGRPC", package: "swift-otel"),
                 .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                 .byName(name: "AppAPI"),
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),

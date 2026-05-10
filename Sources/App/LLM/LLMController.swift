@@ -1,3 +1,4 @@
+import Foundation
 import Hummingbird
 import Logging
 
@@ -19,7 +20,18 @@ struct LLMController {
         }
         return try await telemetry.observe("llm.chat") {
             let response = try await service.chat(profileUsername: user.username, request: body)
-            try await notificationService.notifyLLMReply(username: user.username, response: response)
+            // Push delivery is best-effort: never block the chat response.
+            // Capture only what the detached task needs to be Sendable.
+            let userID = try user.requireID()
+            let username = user.username
+            let pushService = self.notificationService
+            Task.detached {
+                try? await pushService.notifyLLMReply(
+                    userID: userID,
+                    username: username,
+                    response: response
+                )
+            }
             return response
         }
     }

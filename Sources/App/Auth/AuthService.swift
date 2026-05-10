@@ -20,6 +20,9 @@ protocol AuthService: Sendable {
     /// Exchange a provider-issued id_token for app tokens.
     /// Creates or links the OAuthIdentity to a User as needed.
     func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse
+    /// Shared upsert path for any provider (Apple, Google, X, Phone, Email magic-link).
+    /// Caller decides how to verify the provider-side credential before calling.
+    func upsertOAuthUser(provider: String, providerUserID: String, email: String, emailVerified: Bool) async throws -> User
     /// Email-OTP password reset flow.
     func forgotPassword(email: String) async throws
     func resendReset(email: String) async throws
@@ -169,40 +172,60 @@ struct DefaultAuthService: AuthService {
 
     func exchangeOAuth(provider: any OAuthProvider, idToken: String) async throws -> AuthResponse {
         let info = try await provider.verify(idToken: idToken)
+        let user = try await upsertOAuthUser(
+            provider: provider.name,
+            providerUserID: info.providerUserID,
+            email: info.email,
+            emailVerified: info.emailVerified
+        )
+        return try await issueTokens(for: user)
+    }
 
+    /// Shared upsert path used by every passwordless / OAuth signin.
+    /// Lookup precedence:
+    ///  1. Match (provider, providerUserID) → existing User
+    ///  2. Match by email → link new identity to existing User
+    ///  3. Create User + identity
+    /// Caller invokes `issueTokens(for: user)` separately to attach JWT.
+    func upsertOAuthUser(
+        provider: String,
+        providerUserID: String,
+        email: String,
+        emailVerified: Bool
+    ) async throws -> User {
         // 1) Existing identity for this (provider, providerUserID) → login.
         if let identity = try await OAuthIdentity.query(on: fluent.db())
-            .filter(\.$provider == provider.name)
-            .filter(\.$providerUserID == info.providerUserID)
+            .filter(\.$provider == provider)
+            .filter(\.$providerUserID == providerUserID)
             .first(),
            let user = try await repo.findUser(byID: identity.tenantID)
         {
-            return try await issueTokens(for: user)
+            return user
         }
 
         // 2) User exists with this email → link new identity.
-        if let user = try await repo.findUser(byEmail: info.email) {
+        if let user = try await repo.findUser(byEmail: email) {
             let identity = OAuthIdentity(
                 tenantID: try user.requireID(),
-                provider: provider.name,
-                providerUserID: info.providerUserID,
-                email: info.email,
-                emailVerified: info.emailVerified
+                provider: provider,
+                providerUserID: providerUserID,
+                email: email,
+                emailVerified: emailVerified
             )
             try await identity.save(on: fluent.db())
-            return try await issueTokens(for: user)
+            return user
         }
 
         // 3) Net new user. No password (set random hash; OAuth-only).
         let randomHash = await hasher.hash(UUID().uuidString + UUID().uuidString)
         let username = try await uniquePlaceholderUsername()
-        let user = try await repo.createUser(email: info.email, username: username, passwordHash: randomHash)
+        let user = try await repo.createUser(email: email, username: username, passwordHash: randomHash)
         let identity = OAuthIdentity(
             tenantID: try user.requireID(),
-            provider: provider.name,
-            providerUserID: info.providerUserID,
-            email: info.email,
-            emailVerified: info.emailVerified
+            provider: provider,
+            providerUserID: providerUserID,
+            email: email,
+            emailVerified: emailVerified
         )
         try await identity.save(on: fluent.db())
         do {
@@ -211,7 +234,7 @@ struct DefaultAuthService: AuthService {
             try? await user.delete(force: true, on: fluent.db())
             throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
         }
-        return try await issueTokens(for: user)
+        return user
     }
 
     /// Generates a placeholder username (`oauth-<8hex>`) and retries on the
@@ -255,9 +278,11 @@ struct DefaultAuthService: AuthService {
 
     func issueTokens(for user: User) async throws -> AuthResponse {
         let userID = try user.requireID()
+        let hpid = try await hermesProfileService.find(for: user)?.hermesProfileID
         let access = SessionToken(
             userID: userID,
-            expiration: Date().addingTimeInterval(accessTokenLifetime)
+            expiration: Date().addingTimeInterval(accessTokenLifetime),
+            hpid: hpid
         )
         let signed = try await jwtKeys.sign(access, kid: jwtKID)
         let refreshRaw = randomToken()

@@ -1,0 +1,43 @@
+meta {
+  name: Login
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}",
+    "password": "{{testPassword}}",
+    "mfaCode": null
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.accessToken)    bru.setEnvVar("accessToken",    data.accessToken);
+    if (data.refreshToken)   bru.setEnvVar("refreshToken",   data.refreshToken);
+    if (data.userId)         bru.setEnvVar("userId",         data.userId);
+    if (data.mfaChallengeId) bru.setEnvVar("mfaChallengeId", data.mfaChallengeId);
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("token or MFA challenge present", function() {
+    const b = res.getBody();
+    expect(b.accessToken || b.mfaRequired).to.be.ok;
+  });
+}

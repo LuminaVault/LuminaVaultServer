@@ -1,0 +1,56 @@
+meta {
+  name: Authenticate Finish
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/webauthn/authenticate/finish
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{testUsername}}",
+    "credential": {
+      "id": "{{webauthnCredentialID}}",
+      "rawId": "REPLACE_WITH_RAW_ID_BASE64URL",
+      "type": "public-key",
+      "response": {
+        "authenticatorData": "REPLACE_WITH_AUTHENTICATOR_DATA_BASE64URL",
+        "clientDataJSON": "REPLACE_WITH_CLIENT_DATA_JSON_BASE64URL",
+        "signature": "REPLACE_WITH_SIGNATURE_BASE64URL",
+        "userHandle": "REPLACE_WITH_USER_HANDLE_BASE64URL"
+      }
+    }
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.accessToken)  bru.setEnvVar("accessToken",  data.accessToken);
+    if (data.refreshToken) bru.setEnvVar("refreshToken", data.refreshToken);
+    if (data.userId)       bru.setEnvVar("userId",       data.userId);
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns access token", function() {
+    expect(res.getBody().accessToken).to.be.a("string");
+  });
+}
+
+docs {
+  Successful authentication issues full JWT tokens (same shape as
+  `/v1/auth/login`). Subsequent protected endpoints (`/me`, `/v1/llm/chat`,
+  `/v1/devices`) authenticate with the stored `accessToken`.
+}

@@ -1,0 +1,46 @@
+meta {
+  name: Email Magic Start
+  type: http
+  seq: 15
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/email/start
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200 || res.status === 201) {
+    const data = res.getBody();
+    if (data.challengeId) bru.setEnvVar("emailMagicChallengeId", data.challengeId);
+  }
+}
+
+tests {
+  test("status 200/201", function() {
+    expect(res.status).to.be.oneOf([200, 201]);
+  });
+  test("returns challengeId", function() {
+    expect(res.getBody().challengeId).to.be.a("string");
+  });
+}
+
+docs {
+  Passwordless email signin (parallel to email+password). Sends an OTP via
+  `LoggingEmailOTPSender` (or whatever EmailOTPSender is wired). Watch
+  `lv.auth.magic` logger.
+
+  Distinct from `MFA Verify` (which verifies an EXISTING password account).
+  This path creates a new User on first verify.
+}

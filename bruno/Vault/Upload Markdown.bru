@@ -1,0 +1,60 @@
+meta {
+  name: Upload Markdown
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/vault/files?path=notes/today.md
+  body: text
+  auth: bearer
+}
+
+params:query {
+  path: notes/today.md
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: text/markdown
+}
+
+body:text {
+  # Today
+
+  - Tried jasmine tea with honey — better than the chamomile.
+  - Slept 7.4h. Woke up clear-headed.
+  - Want to explore: pgvector tuning for ANN recall.
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns sanitized path", function() {
+    expect(res.getBody().path).to.equal("notes/today.md");
+  });
+  test("returns sha256", function() {
+    expect(res.getBody().sha256).to.match(/^[0-9a-f]{64}$/);
+  });
+  test("size reflects body length", function() {
+    expect(res.getBody().size).to.be.greaterThan(0);
+  });
+}
+
+docs {
+  Stores the markdown body at
+  `<vault.rootPath>/tenants/<userID>/raw/notes/today.md` on the server.
+  Path is sanitized: no `..`, no leading `/`, must end in an allowed
+  extension (`.md`, `.markdown`, `.txt`, `.png`, `.jpg`, `.jpeg`,
+  `.webp`, `.gif`). Body capped at 10 MB.
+
+  Verify on the host:
+  ```
+  ls -la data/luminavault/tenants/<userID>/raw/notes/
+  cat data/luminavault/tenants/<userID>/raw/notes/today.md
+  ```
+}

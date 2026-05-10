@@ -1,0 +1,27 @@
+meta {
+  name: Unregister Device
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{baseUrl}}/v1/devices/{{deviceToken}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("status 204", function() {
+    expect(res.status).to.equal(204);
+  });
+}
+
+docs {
+  Removes the row scoped to the authenticated user's tenant. Other tenants'
+  rows with the same token (collision is impossible because token has a
+  unique index, but defensive) are untouched.
+}

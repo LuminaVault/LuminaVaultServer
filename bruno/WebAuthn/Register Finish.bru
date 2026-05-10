@@ -1,0 +1,54 @@
+meta {
+  name: Register Finish
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/webauthn/register/finish
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{testUsername}}",
+    "credentialCreationData": {
+      "id": "REPLACE_WITH_CREDENTIAL_ID_FROM_AUTHENTICATOR",
+      "rawId": "REPLACE_WITH_RAW_ID_BASE64URL",
+      "type": "public-key",
+      "response": {
+        "attestationObject": "REPLACE_WITH_ATTESTATION_OBJECT_BASE64URL",
+        "clientDataJSON": "REPLACE_WITH_CLIENT_DATA_JSON_BASE64URL"
+      }
+    }
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.credentialID) bru.setEnvVar("webauthnCredentialID", data.credentialID);
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns credentialID", function() {
+    expect(res.getBody().credentialID).to.be.a("string");
+  });
+}
+
+docs {
+  Body shape mirrors WebAuthn `RegistrationCredential`. The values must
+  come from a real authenticator (browser passkey API, iOS AuthenticationServices,
+  or hardware security key). Bruno cannot mint these — use a small test page
+  that calls `navigator.credentials.create` and pastes the result here, or
+  drive this from the iOS client via `ASAuthorizationPlatformPublicKeyCredentialProvider`.
+}

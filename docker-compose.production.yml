@@ -1,25 +1,66 @@
-version: "3.9"
-
 services:
   app:
     image: ${APP_IMAGE}
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./data/luminavault:/app/data/luminavault # tenant raw vault root (shared with hermes)
+      - ./data/hermes:/app/data/hermes           # hermes filesystem gateway target
+      - ./secrets:/app/secrets:ro                # APNS .p8 etc
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      HERMES_GATEWAY_URL: ${HERMES_GATEWAY_URL}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
-      OTEL_SERVICE_NAME: hummingbird
+      # --- Postgres ---
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${POSTGRES_DB:-hermes_db}
+      POSTGRES_USER: ${POSTGRES_USER:-hermes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      FLUENT_AUTOMIGRATE: ${FLUENT_AUTOMIGRATE:-false}
+      # --- Auth ---
+      JWT_HMAC_SECRET: ${JWT_HMAC_SECRET:?required}
+      JWT_KID: ${JWT_KID:-lv-prod}
+      # --- Hermes ---
+      HERMES_GATEWAYKIND: ${HERMES_GATEWAYKIND:-filesystem}
+      HERMES_GATEWAYURL: ${HERMES_GATEWAYURL:-http://hermes:8642}
+      HERMES_DATAROOT: /app/data/hermes
+      HERMES_DEFAULTMODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
+      VAULT_ROOTPATH: /app/data/luminavault
+      # --- CORS (prod MUST set explicit origins) ---
+      CORS_ALLOWEDORIGINS: ${CORS_ALLOWEDORIGINS:?required}
+      # --- WebAuthn ---
+      WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
+      WEBAUTHN_RELYINGPARTYID: ${WEBAUTHN_RELYINGPARTYID:-}
+      WEBAUTHN_RELYINGPARTYNAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
+      WEBAUTHN_RELYINGPARTYORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
+      # --- APNS ---
+      APNS_ENABLED: ${APNS_ENABLED:-false}
+      APNS_BUNDLEID: ${APNS_BUNDLEID:-}
+      APNS_TEAMID: ${APNS_TEAMID:-}
+      APNS_KEYID: ${APNS_KEYID:-}
+      APNS_PRIVATEKEYPATH: ${APNS_PRIVATEKEYPATH:-/app/secrets/apns-key.p8}
+      APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}
+      # --- Observability ---
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_SERVICENAME: luminavault
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health | grep -q ok || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       hermes:
         condition: service_started
 
@@ -29,21 +70,18 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hermes_db}
       POSTGRES_USER: ${POSTGRES_USER:-hermes}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     volumes:
       - ./data/postgres18:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hermes} -d ${POSTGRES_DB:-hermes_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - ./data/redis:/data
-    command: redis-server --appendonly yes
 
   hermes:
     image: nousresearch/hermes-agent:latest
@@ -53,6 +91,10 @@ services:
       - ./data/hermes:/opt/data
     environment:
       HERMES_HOME: /opt/data
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,9 +103,13 @@ services:
     image: jaegertracing/all-in-one:latest
     restart: unless-stopped
     ports:
-      - "16686:16686" # Jaeger UI
+      - "127.0.0.1:16686:16686" # UI bound to localhost only — front behind ssh tunnel
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 networks:
   default:

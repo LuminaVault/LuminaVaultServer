@@ -14,18 +14,24 @@ struct AuthController {
     }
 
     func addRoutes(to router: Router<AppRequestContext>) {
-        let group = router.group("/v1/auth")
-        group.add(middleware: rl(.registerByIP)).post("/register", use: register)
-        group.add(middleware: rl(.loginByIP)).post("/login", use: login)
-        group.add(middleware: rl(.refreshByIP)).post("/refresh", use: refresh)
-        group.post("/logout", use: logout)
-        group.add(middleware: rl(.mfaVerifyByIP)).post("/mfa/verify", use: mfaVerify)
-        group.add(middleware: rl(.mfaResendByIP)).post("/mfa/resend", use: mfaResend)
-        group.post("/oauth/:provider/exchange", use: oauthExchange)
-        group.add(middleware: rl(.forgotPasswordByIP)).post("/forgot-password", use: forgotPassword)
-        group.add(middleware: rl(.resendResetByIP)).post("/resend-reset", use: resendReset)
-        group.add(middleware: rl(.resetPasswordByIP)).post("/reset-password", use: resetPassword)
-        webAuthnService.addRoutes(to: group)
+        // CRITICAL: `RouterGroup.add(middleware:)` MUTATES the group — every
+        // subsequent `.post` on the same group inherits the accumulated
+        // middleware stack. Use a fresh `router.group("/v1/auth")` per
+        // rate-limited route so limiters are scoped to one path.
+        router.group("/v1/auth").add(middleware: rl(.registerByIP)).post("/register", use: register)
+        router.group("/v1/auth").add(middleware: rl(.loginByIP)).post("/login", use: login)
+        router.group("/v1/auth").add(middleware: rl(.refreshByIP)).post("/refresh", use: refresh)
+        router.group("/v1/auth").add(middleware: rl(.mfaVerifyByIP)).post("/mfa/verify", use: mfaVerify)
+        router.group("/v1/auth").add(middleware: rl(.mfaResendByIP)).post("/mfa/resend", use: mfaResend)
+        router.group("/v1/auth").add(middleware: rl(.forgotPasswordByIP)).post("/forgot-password", use: forgotPassword)
+        router.group("/v1/auth").add(middleware: rl(.resendResetByIP)).post("/resend-reset", use: resendReset)
+        router.group("/v1/auth").add(middleware: rl(.resetPasswordByIP)).post("/reset-password", use: resetPassword)
+
+        // Routes without rate limiting share their own group.
+        let unlimitedGroup = router.group("/v1/auth")
+        unlimitedGroup.post("/logout", use: logout)
+        unlimitedGroup.post("/oauth/:provider/exchange", use: oauthExchange)
+        webAuthnService.addRoutes(to: unlimitedGroup)
     }
 
     @Sendable

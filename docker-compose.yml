@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: pgvector/pgvector:pg18
@@ -8,26 +6,16 @@ services:
     environment:
       POSTGRES_DB: hermes_db
       POSTGRES_USER: hermes
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-super_secret_local_password_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luminavault}
     ports:
       - "5433:5432"
     volumes:
-      - ./data/postgres18:/var/lib/postgresql
+      - ./data/postgres18:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hermes -d hermes_db"]
       interval: 5s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: hermes-redis
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6380}:6379"
-    volumes:
-      - ./data/redis:/data
-    command: redis-server --appendonly yes
 
   hermes:
     image: nousresearch/hermes-agent:latest
@@ -53,21 +41,43 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - .:/app # ← Source mount for fast iteration
+      - .:/app # source mount for fast iteration
+      - ./data/luminavault:/app/data/luminavault # tenant raw vault root
     environment:
-      DATABASE_URL: postgres://hermes:${POSTGRES_PASSWORD:-super_secret_local_password_change_me}@postgres:5432/hermes_db
-      REDIS_URL: redis://redis:6379
-      HERMES_GATEWAY_URL: http://hermes:8642
+      # --- Postgres ---
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: hermes_db
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luminavault}
+      FLUENT_AUTOMIGRATE: "true"
+      # --- Auth ---
+      JWT_HMAC_SECRET: ${JWT_HMAC_SECRET:-dev-secret-32chars-not-for-prod-x}
+      JWT_KID: lv-dev
+      # --- Hermes profile + chat ---
+      HERMES_GATEWAYKIND: filesystem
+      HERMES_GATEWAYURL: http://hermes:8642
+      HERMES_DATAROOT: /app/data/hermes
+      HERMES_DEFAULTMODEL: hermes-3
+      VAULT_ROOTPATH: /app/data/luminavault
+      # --- Observability (real Jaeger traces in dev) ---
+      OTEL_ENABLED: "true"
+      OTEL_SERVICENAME: luminavault
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_SERVICE_NAME: hummingbird
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       LOG_LEVEL: debug
+      # --- CORS (dev = wildcard) ---
+      CORS_ALLOWEDORIGINS: ""
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health | grep -q ok || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       hermes:
         condition: service_started
       jaeger:
@@ -78,10 +88,9 @@ services:
     container_name: hermes-jaeger
     restart: unless-stopped
     ports:
-      - "16686:16686" # Jaeger UI → http://localhost:16686
-      - "4317:4317" # OTLP gRPC (Hummingbird tracing)
-      - "4318:4318" # OTLP HTTP
-      - "14268:14268" # Jaeger Thrift
+      - "16686:16686" # UI -> http://localhost:16686
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
 

@@ -1,0 +1,54 @@
+meta {
+  name: Register Options
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/webauthn/register/options
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{testUsername}}",
+    "displayName": "{{testUsername}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.options && data.options.challenge) {
+      bru.setEnvVar("webauthnChallenge", data.options.challenge);
+    }
+    if (data.options && data.options.user && data.options.user.id) {
+      bru.setEnvVar("webauthnUserHandle", data.options.user.id);
+    }
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns challenge", function() {
+    expect(res.getBody().options.challenge).to.be.a("string");
+  });
+}
+
+docs {
+  Server returns `PublicKeyCredentialCreationOptions`. Client passes the
+  options to `navigator.credentials.create({ publicKey: options })`,
+  receives a `PublicKeyCredential`, then POSTs the result to
+  `Register Finish`.
+
+  Requires `webauthn.enabled=true` and `webauthn.relyingPartyId/Origin` set
+  on the server (see ServiceContainer). Also requires the user to exist —
+  call `Auth/Register` first.
+}

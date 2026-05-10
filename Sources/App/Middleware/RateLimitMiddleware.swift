@@ -56,15 +56,28 @@ private struct BucketState: Codable, Sendable {
 }
 
 extension RateLimitPolicy {
-    /// Best-effort client IP from common proxy headers.
+    /// Best-effort client IP from common proxy headers. Internal so the
+    /// `userOrIP` keyer below (and tests) can reuse it.
     @Sendable
-    private static func ipKey(_ req: Request) -> String {
+    static func ipKey(_ req: Request) -> String {
         if let xff = req.headers[.init("x-forwarded-for")!] {
             return String(xff.split(separator: ",").first ?? "anon")
                 .trimmingCharacters(in: .whitespaces)
         }
         if let real = req.headers[.init("x-real-ip")!] { return real }
         return "anon"
+    }
+
+    /// Per-tenant key for authenticated routes; falls back to per-IP when
+    /// no identity is attached so the same policy works on auth-optional
+    /// surfaces. Bucket prefixes (`u:` / `ip:`) keep the two namespaces
+    /// disjoint so a UUID never collides with an IP literal.
+    @Sendable
+    static func userOrIPKey(_ req: Request, _ ctx: AppRequestContext) -> String {
+        if let id = ctx.identity?.id?.uuidString {
+            return "u:" + id
+        }
+        return "ip:" + ipKey(req)
     }
 
     static let registerByIP = RateLimitPolicy(max: 5, window: 60) { req, _ in ipKey(req) }
@@ -75,4 +88,13 @@ extension RateLimitPolicy {
     static let refreshByIP = RateLimitPolicy(max: 30, window: 60) { req, _ in ipKey(req) }
     static let mfaVerifyByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
     static let mfaResendByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
+
+    /// HER-94: Per-user policies for protected, capacity-sensitive routes.
+    /// Keyed via `userOrIPKey` so a single bad actor with one account cannot
+    /// burn the shared per-IP bucket for everyone behind the same NAT, while
+    /// still degrading gracefully if the route is ever called unauth'd.
+    static let chatByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
+    static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
 }

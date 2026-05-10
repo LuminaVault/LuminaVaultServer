@@ -1,0 +1,42 @@
+meta {
+  name: Register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}",
+    "username": "{{testUsername}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200 || res.status === 201) {
+    const data = res.getBody();
+    if (data.accessToken)  bru.setEnvVar("accessToken",  data.accessToken);
+    if (data.refreshToken) bru.setEnvVar("refreshToken", data.refreshToken);
+    if (data.userId)       bru.setEnvVar("userId",       data.userId);
+    if (data.email)        bru.setEnvVar("testEmail",    data.email);
+  }
+}
+
+tests {
+  test("status 2xx", function() {
+    expect(res.status).to.be.oneOf([200, 201]);
+  });
+  test("returns access token", function() {
+    expect(res.getBody().accessToken).to.be.a("string");
+  });
+}

@@ -1,0 +1,42 @@
+meta {
+  name: Reap Orphans
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/admin/hermes-profiles/reap-orphans
+  body: none
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns reap totals", function() {
+    const b = res.getBody();
+    expect(b.dirsScanned).to.be.a("number");
+    expect(b.orphansSoftDeleted).to.be.an("array");
+    expect(b.activeKept).to.be.a("number");
+  });
+}
+
+docs {
+  Walks `data/hermes/profiles/`. Any subdirectory whose name is NOT in
+  the active `hermes_profiles.hermes_profile_id` set gets renamed to
+  `_deleted_<unix-ts>_<original>`. Already-`_deleted_` dirs are skipped
+  so re-runs don't double-stamp.
+
+  Soft-delete (rename) — never `rm -rf`. Cleanup of `_deleted_*` dirs
+  is an ops job (cron + age check).
+
+  Run after:
+  - manual deletion of users (cascade dropped DB row, fs dir lingered)
+  - reconciliation that rebuilt rows under different slugs
+  - quarterly hygiene
+}

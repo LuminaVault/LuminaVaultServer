@@ -1,0 +1,48 @@
+meta {
+  name: Search
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/memory/search
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "query": "what does the user drink",
+    "limit": 5
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns hits array", function() {
+    expect(res.getBody().hits).to.be.an("array");
+  });
+  test("returns summary", function() {
+    expect(res.getBody().summary).to.be.a("string");
+  });
+}
+
+docs {
+  Drives Hermes through a tool-calling loop with `session_search` exposed.
+  Hermes invokes the tool with the query + limit; the server runs
+  `MemoryRepository.semanticSearch` (pgvector cosine ANN, scoped to the
+  authenticated tenant) and feeds rows back. Hermes synthesizes an answer
+  in `summary`. Raw rows in `hits` (id, content, distance, createdAt).
+
+  Run after `Upsert` so there's something to find.
+}

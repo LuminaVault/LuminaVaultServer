@@ -1,0 +1,47 @@
+meta {
+  name: Update
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/v1/spaces/{{spaceId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "AI Research",
+    "description": "LLMs, agents, frameworks, papers worth re-reading.",
+    "color": "#9333EA",
+    "icon": "🧠"
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("name updated", function() {
+    expect(res.getBody().name).to.equal("AI Research");
+  });
+  test("slug unchanged", function() {
+    expect(res.getBody().slug).to.equal(bru.getEnvVar("spaceSlug"));
+  });
+}
+
+docs {
+  PATCH-style: any field present in the body is set; absent fields are
+  untouched. Pass an empty string `""` to `description`/`color`/`icon`
+  to clear that field. Slug is NOT mutable — create a new space and move
+  files manually if you want to rename.
+}

@@ -1,0 +1,60 @@
+meta {
+  name: Create
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/spaces
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "AI",
+    "slug": "ai",
+    "description": "Notes on LLMs, agents, frameworks.",
+    "color": "#7C3AED",
+    "icon": "🤖"
+  }
+}
+
+script:post-response {
+  if (res.status === 200 || res.status === 201) {
+    const data = res.getBody();
+    if (data.id)   bru.setEnvVar("spaceId",   data.id);
+    if (data.slug) bru.setEnvVar("spaceSlug", data.slug);
+  }
+}
+
+tests {
+  test("status 2xx", function() {
+    expect(res.status).to.be.oneOf([200, 201]);
+  });
+  test("returns id and slug", function() {
+    const b = res.getBody();
+    expect(b.id).to.be.a("string");
+    expect(b.slug).to.equal("ai");
+  });
+}
+
+docs {
+  Creates the DB row AND the on-disk folder
+  `<vault.rootPath>/tenants/<userID>/raw/<slug>/`. Slug is locked at this
+  point — display `name` is mutable later via PUT, slug is not.
+
+  Slug rules: `^[a-z0-9][a-z0-9-]{1,30}$`, not in
+  `{raw, compiled, trash, _deleted, tmp}`.
+
+  After this, `Vault/Upload Markdown` with
+  `path=<slug>/<filename>.md` lands inside this space.
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Resend Reset
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/resend-reset
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}"
+  }
+}
+
+tests {
+  test("status 202 accepted", function() {
+    expect(res.status).to.equal(202);
+  });
+}

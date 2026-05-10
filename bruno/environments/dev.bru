@@ -1,0 +1,18 @@
+vars {
+  baseUrl: https://dev.luminavault.example
+  testEmail: dev+{{$randomInt}}@luminavault.test
+  testUsername: dev{{$randomInt}}
+  testPassword: CorrectHorseBatteryStaple1!
+  testPhone: +15551234567
+  deviceToken: replace-with-real-apns-token-from-ios-client
+  adminToken: replace-with-staging-admin-token
+}
+
+vars:secret [
+  accessToken,
+  refreshToken,
+  userId,
+  mfaChallengeId,
+  resetCode,
+  adminToken
+]

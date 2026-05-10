@@ -1,0 +1,39 @@
+meta {
+  name: Authenticate Options
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/webauthn/authenticate/options
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{testUsername}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    const data = res.getBody();
+    if (data.options && data.options.challenge) {
+      bru.setEnvVar("webauthnAuthChallenge", data.options.challenge);
+    }
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns auth challenge", function() {
+    expect(res.getBody().options.challenge).to.be.a("string");
+  });
+}

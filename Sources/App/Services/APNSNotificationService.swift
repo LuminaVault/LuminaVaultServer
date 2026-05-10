@@ -1,69 +1,66 @@
 import APNS
 import APNSCore
-import Foundation
 import Crypto
-import NIOPosix
+import FluentKit
+import Foundation
+import HummingbirdFluent
 import Logging
+import NIOPosix
 
-struct APNSNotificationService: Sendable {
-    let enabled: Bool
-    let bundleID: String
-    let teamID: String
-    let keyID: String
-    let privateKeyPath: String
-    let environment: String
-    let deviceToken: String
-    let logger: Logger
-    let client: APNSClient<JSONDecoder, JSONEncoder>?
+// MARK: - Push categories
 
-    init(
-        enabled: Bool,
-        bundleID: String,
-        teamID: String,
-        keyID: String,
-        privateKeyPath: String,
-        environment: String,
+/// Mirrors iOS-side `UNNotificationCategory` identifiers. Add new cases
+/// here when adding a new notification surface so iOS can group / style
+/// them consistently.
+enum APNSPushCategory: String, Sendable {
+    case chat = "chat"
+    case nudge = "nudge"
+    case digest = "digest"
+}
+
+// MARK: - Push sender protocol (testable seam)
+
+/// Decouples the APNS network call from `APNSNotificationService` so tests
+/// can verify fan-out + reaper behavior without a real Apple-issued cert.
+protocol APNSPushSender: Sendable {
+    func send(
         deviceToken: String,
-        logger: Logger
-    ) {
-        self.enabled = enabled
-        self.bundleID = bundleID
-        self.teamID = teamID
-        self.keyID = keyID
-        self.privateKeyPath = privateKeyPath
-        self.environment = environment
-        self.deviceToken = deviceToken
-        self.logger = logger
+        title: String,
+        subtitle: String?,
+        body: String,
+        category: APNSPushCategory,
+        topic: String
+    ) async throws
+}
 
-        self.client = try? Self.makeClient(
-            privateKeyPath: privateKeyPath,
-            environment: environment,
-            keyID: keyID,
-            teamID: teamID
-        )
-        if self.client == nil {
-            logger.error("Failed to initialize APNS client")
-        }
-    }
+/// Production impl built on top of `APNSClient`. Constructed only when
+/// `apns.enabled=true` and a valid `.p8` is mounted; otherwise the
+/// service runs in no-op mode (callers always succeed).
+struct LiveAPNSPushSender: APNSPushSender {
+    let client: APNSClient<JSONDecoder, JSONEncoder>
 
-    func notifyLLMReply(username: String, response: ChatResponse) async throws {
-        guard enabled, let client = client, !bundleID.isEmpty, !deviceToken.isEmpty else {
-            return
-        }
-
-        let preview = String(response.message.content.prefix(140))
-
+    func send(
+        deviceToken: String,
+        title: String,
+        subtitle: String?,
+        body: String,
+        category: APNSPushCategory,
+        topic: String
+    ) async throws {
         let content = APNSAlertNotificationContent(
-            title: .raw("LuminaVault reply ready"),
-            subtitle: .raw(username),
-            body: .raw(preview),
+            title: .raw(title),
+            subtitle: subtitle.map { .raw($0) },
+            body: .raw(body),
             launchImage: nil,
             sound: APNSAlertNotificationSound.default
         )
-
-        // Use EmptyPayload for no custom payload
-        let notification = APNSAlertNotification(alert: content, expiration: APNSNotificationExpiration.none, priority: .immediately, topic: bundleID, payload: "")
-
+        let notification = APNSAlertNotification(
+            alert: content,
+            expiration: APNSNotificationExpiration.none,
+            priority: .immediately,
+            topic: topic,
+            payload: ["category": category.rawValue]
+        )
         let request = APNSRequest(
             message: notification,
             deviceToken: deviceToken,
@@ -71,12 +68,174 @@ struct APNSNotificationService: Sendable {
             expiration: .none,
             priority: .immediately,
             apnsID: nil,
-            topic: bundleID,
+            topic: topic,
             collapseID: nil
         )
-
         _ = try await client.send(request)
-        logger.info("APNS sent to \(deviceToken) for user \(username)")
+    }
+}
+
+// MARK: - Service
+
+/// Per-user push delivery. Looks up every registered `DeviceToken` for
+/// the supplied tenant and fans out an alert. Per-token failures are
+/// logged and don't abort the batch. APNS errors that mean "this token
+/// is dead forever" (`BadDeviceToken`, `Unregistered`,
+/// `DeviceTokenNotForTopic`, `MissingDeviceToken`) trigger a hard-delete
+/// of the row so we stop pushing to ghost devices.
+struct APNSNotificationService: Sendable {
+    let enabled: Bool
+    let bundleID: String
+    let fluent: Fluent
+    let logger: Logger
+    let pushSender: (any APNSPushSender)?
+
+    /// Reasons that mean "stop using this token forever". From APNs docs:
+    /// https://developer.apple.com/documentation/usernotifications/setting_up_a_remote_notification_server/handling_notification_responses_from_apns
+    static let deadTokenReasons: Set<String> = [
+        "BadDeviceToken",
+        "Unregistered",
+        "DeviceTokenNotForTopic",
+        "MissingDeviceToken"
+    ]
+
+    /// Production-ish constructor. When `apns.enabled=false` or the `.p8`
+    /// file is missing, `pushSender` stays nil and `notify*` becomes a
+    /// no-op so dev / test runs don't try to ship pushes.
+    init(
+        enabled: Bool,
+        bundleID: String,
+        teamID: String,
+        keyID: String,
+        privateKeyPath: String,
+        environment: String,
+        fluent: Fluent,
+        logger: Logger
+    ) {
+        self.enabled = enabled
+        self.bundleID = bundleID
+        self.fluent = fluent
+        self.logger = logger
+
+        if enabled, !privateKeyPath.isEmpty {
+            do {
+                let client = try Self.makeClient(
+                    privateKeyPath: privateKeyPath,
+                    environment: environment,
+                    keyID: keyID,
+                    teamID: teamID
+                )
+                self.pushSender = LiveAPNSPushSender(client: client)
+            } catch {
+                logger.error("APNS client init failed: \(error)")
+                self.pushSender = nil
+            }
+        } else {
+            self.pushSender = nil
+        }
+    }
+
+    /// Test seam: inject a stub `APNSPushSender` directly. Bypasses the
+    /// `apns.enabled` gate so tests can drive every code path.
+    init(
+        bundleID: String,
+        fluent: Fluent,
+        pushSender: any APNSPushSender,
+        logger: Logger
+    ) {
+        self.enabled = true
+        self.bundleID = bundleID
+        self.fluent = fluent
+        self.logger = logger
+        self.pushSender = pushSender
+    }
+
+    // MARK: - Public surface
+
+    func notifyLLMReply(userID: UUID, username: String, response: ChatResponse) async throws {
+        let preview = String(response.message.content.prefix(140))
+        try await notify(
+            userID: userID,
+            title: "LuminaVault reply ready",
+            subtitle: username,
+            body: preview,
+            category: .chat
+        )
+    }
+
+    func notifyNudge(userID: UUID, username: String, body: String) async throws {
+        try await notify(
+            userID: userID,
+            title: "Hermes noticed something",
+            subtitle: username,
+            body: body,
+            category: .nudge
+        )
+    }
+
+    func notifyDigest(userID: UUID, username: String, body: String) async throws {
+        try await notify(
+            userID: userID,
+            title: "Your daily brief",
+            subtitle: username,
+            body: body,
+            category: .digest
+        )
+    }
+
+    /// Generic per-user push. Looks up every active `DeviceToken` row,
+    /// sends to each, reaps tokens that APNS marks as dead.
+    func notify(
+        userID: UUID,
+        title: String,
+        subtitle: String?,
+        body: String,
+        category: APNSPushCategory
+    ) async throws {
+        guard enabled, let pushSender, !bundleID.isEmpty else { return }
+
+        let db = fluent.db()
+        let tokens = try await DeviceToken.query(on: db, tenantID: userID).all()
+        guard !tokens.isEmpty else {
+            logger.debug("apns skipped: no device tokens for tenant \(userID)")
+            return
+        }
+
+        for row in tokens {
+            do {
+                try await pushSender.send(
+                    deviceToken: row.token,
+                    title: title,
+                    subtitle: subtitle,
+                    body: body,
+                    category: category,
+                    topic: bundleID
+                )
+                row.lastSeenAt = Date()
+                try await row.save(on: db)
+                logger.debug("apns delivered to \(row.token.prefix(8))… category=\(category.rawValue)")
+            } catch {
+                if Self.shouldReap(error) {
+                    try? await row.delete(on: db)
+                    logger.info("apns reaped dead token \(row.token.prefix(8))…: \(error)")
+                } else {
+                    logger.warning("apns delivery failed for \(row.token.prefix(8))…: \(error)")
+                    // Don't bail the whole batch — keep trying remaining tokens.
+                }
+            }
+        }
+    }
+
+    // MARK: - Internals
+
+    /// True when the error means "this device token is permanently dead"
+    /// per Apple's `Reason` enum. Anything else is a transient failure
+    /// the row should survive.
+    static func shouldReap(_ error: any Error) -> Bool {
+        guard let apnsErr = error as? APNSError, let reason = apnsErr.reason else {
+            return false
+        }
+        return deadTokenReasons.contains(reason.reason)
     }
 
     private static func makeClient(
@@ -88,12 +247,10 @@ struct APNSNotificationService: Sendable {
         let privateKeyPEM = try String(contentsOfFile: privateKeyPath, encoding: .utf8)
         let privateKey = try P256.Signing.PrivateKey(pemRepresentation: privateKeyPEM)
         let apnsEnvironment: APNSEnvironment = environment.lowercased() == "production" ? .production : .development
-
         let configuration = APNSClientConfiguration(
             authenticationMethod: .jwt(privateKey: privateKey, keyIdentifier: keyID, teamIdentifier: teamID),
             environment: apnsEnvironment
         )
-
         return APNSClient(
             configuration: configuration,
             eventLoopGroupProvider: .shared(MultiThreadedEventLoopGroup.singleton),

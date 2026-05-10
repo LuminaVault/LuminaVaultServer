@@ -34,12 +34,24 @@ struct ServiceContainer: Sendable {
     let webAuthnRelyingPartyID: String
     let webAuthnRelyingPartyName: String
     let webAuthnRelyingPartyOrigin: String
-    /// APNS example notification support.
+    /// APNS push delivery (per-user; tokens stored in `device_tokens` table).
     let apnsEnabled: Bool
     let apnsBundleID: String
     let apnsTeamID: String
     let apnsKeyID: String
     let apnsPrivateKeyPath: String
     let apnsEnvironment: String
-    let apnsDeviceToken: String
+    /// CORS allowed origins. Empty list = `*` (dev). Prod must set explicitly.
+    let corsAllowedOrigins: [String]
+    /// Admin shared-secret. Empty = admin endpoints return 404.
+    let adminToken: String
+    /// X (Twitter) OAuth 2.0 client ID — audit/audience reference; iOS does
+    /// the actual token flow client-side and forwards the access_token.
+    let xClientID: String
+    /// SMS gateway selector: `logging` (default) | `twilio`.
+    let smsKind: String
+    /// Twilio account credentials. Required when `smsKind=twilio`.
+    let twilioAccountSID: String
+    let twilioAuthToken: String
+    let twilioFromNumber: String
 }
