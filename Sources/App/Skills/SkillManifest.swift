@@ -94,10 +94,25 @@ enum SkillManifestError: Error, Equatable {
 /// HER-148 scaffold: stub. Real implementation in HER-167 uses Yams to
 /// decode the `---`-delimited YAML frontmatter, strips it from the body,
 /// and validates required fields.
-struct SkillManifestParser {
-    init() {}
+///
+/// HER-168: accepts an optional `parseOverride` closure so the
+/// `SkillCatalog` can be tested end-to-end against a synthetic parser
+/// before HER-167's real Yams-backed implementation lands. Production
+/// callers continue to use `SkillManifestParser()` (no override), which
+/// still throws `HER-167 — SkillManifestParser not yet implemented`.
+struct SkillManifestParser: Sendable {
+    typealias ParseFn = @Sendable (SkillManifest.Source, String) throws -> SkillManifest
 
-    func parse(source _: SkillManifest.Source, contents _: String) throws -> SkillManifest {
+    private let parseOverride: ParseFn?
+
+    init(parseOverride: ParseFn? = nil) {
+        self.parseOverride = parseOverride
+    }
+
+    func parse(source: SkillManifest.Source, contents: String) throws -> SkillManifest {
+        if let parseOverride {
+            return try parseOverride(source, contents)
+        }
         throw SkillManifestError.malformedFrontmatter("HER-167 — SkillManifestParser not yet implemented")
     }
 }
