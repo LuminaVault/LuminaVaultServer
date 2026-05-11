@@ -1,0 +1,36 @@
+meta {
+  name: Admin — Health Correlate (all users)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/admin/health/correlate
+  body: none
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}
+
+docs {
+  HER-146 — nightly Apple Health correlation sweep.
+
+  Host cron runs this once per day:
+    curl -X POST -H "X-Admin-Token: $T" $BASE/v1/admin/health/correlate
+
+  Per-user errors land in `failures[]`; the sweep does not 5xx on partial
+  failure. Idempotent: re-running within 7 days is a no-op per user.
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("summary fields", function() {
+    expect(res.body).to.have.property("usersScanned");
+    expect(res.body).to.have.property("memoriesCreated");
+    expect(res.body).to.have.property("failures");
+  });
+}

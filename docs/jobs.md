@@ -19,7 +19,7 @@ work, not server jobs at all.
 | 3 | **Hermes profile reconcile** — rebuild missing profile rows / dirs, reap orphans. | 04:00 daily | ops | Already shipped reconciler — run when needed | Host cron: `curl -X POST -H "X-Admin-Token: $T" /v1/admin/hermes-profiles/reconcile`. |
 | 4 | **Orphan vault file reaper** — find `vault_files` rows whose disk file is missing (or vice versa), soft-delete the orphan. | weekly | server | Once first incident occurs | swift-cron sweeping both surfaces. Soft-rename to `_deleted_<ts>_<original>` for 30-day grace. |
 | 5 | **Embedding refresh** — re-embed every memory after switching `EmbeddingService` provider (e.g. Deterministic → OpenAI). | one-shot per swap | ops | When real embeddings land (HER-134) | One-shot admin endpoint `POST /v1/admin/embeddings/refresh`. Streams progress over SSE. |
-| 6 | **Apple Health correlation insights** — read last 7 days of `health_events` + memories per user, ask Hermes "find correlations" and emit a single synthesized memory. | nightly | server | After ≥ 30 days of HealthKit ingest per user | swift-cron: pull → run agent loop with `session_search` + `memory_upsert` → save with `tags=["correlation","weekly"]`. 1 row/user/week. |
+| 6 | **Apple Health correlation insights (HER-146)** — read last 7 days of `health_events` + memories per user, ask Hermes "find correlations" and emit a single synthesized memory. | nightly | server | **Scaffold shipped** — `POST /v1/admin/health/correlate` driven by host cron. Wire the crontab line once ≥ 30 days of HealthKit ingest per user is realistic. | Host cron: `curl -X POST -H "X-Admin-Token: $T" $BASE/v1/admin/health/correlate`. Skips users with <30 days of HealthKit data. Idempotent on the 7-day window via `correlation`+`weekly` tag probe. Saves a single memory with `tags=["correlation","weekly"]`. Tool-calling agent loop (`session_search` for older context) is a follow-up — current impl is single-shot chat. |
 | 7 | **Spaced-repetition memory review** — pick N memories due for review based on Leitner schedule, push as a quiz APNS notification. | per-user, configurable (default daily 18:00) | server → APNS | After SR ticket lands | swift-cron + per-user schedule row. Skip on weekends if user opts in. |
 | 8 | **Memory pruning** — score memories by access frequency + recency, archive low-score rows older than N months. | monthly | server | After ≥ 1k memories per user | swift-cron with score threshold. Uses `memories.score FLOAT` (HER-XXX). Archive = move to `_archived` table; nothing is `DELETE`'d. |
 | 9 | **Link enrichment** — on-capture, fetch oEmbed (YouTube), oG meta tags, transcript when available; rewrite the captured MD with structured frontmatter. | event-driven (NOT cron) | server | Day 1 of beta — high impact, low effort | Capture controllers enqueue a backfill task on a `Service`-managed worker actor. `URLSession` to oEmbed endpoints. |
@@ -63,3 +63,22 @@ configures their schedule + which skill runs. Examples:
 This collapses #1 + #2 + #6 + #7 from the catalog above into a single
 generic skill-runner. Worth doing post-MVP, when the skill primitive
 exists.
+
+### Status: scaffold landed (HER-148)
+
+`Sources/App/Skills/` ships the runtime scaffold:
+
+- `SkillManifest` + `SkillManifestParser` (HER-167)
+- `SkillCatalog` actor — builtin + vault precedence (HER-168)
+- `SkillRunner` actor — allowed-tools gating (HER-169)
+- `CronScheduler` — in-process Service (HER-170, single-replica only)
+- `EventBus` — vault/health/memory publishers (HER-171)
+- `ContextRouter` middleware — Pro-only, off by default (HER-172)
+- 5 built-in `Resources/Skills/<name>/SKILL.md` (HER-173)
+
+DB: `M19_CreateSkillsState` + `M20_CreateSkillRunLog`.
+Route: `POST /v1/skills/:name/run` (jwt + `skillRunByUser` rate-limit).
+
+Once HER-167…HER-173 land, jobs #1 (kb-compile), #2 (digest push), #6
+(weekly-memo) and #9 (capture-enrich) are superseded by the equivalent
+skills and these entries can be retired from this catalog.

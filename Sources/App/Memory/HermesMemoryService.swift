@@ -150,6 +150,11 @@ private struct ChatResponseBody: Decodable, Sendable {
 
 private struct MemoryUpsertArgs: Decodable, Sendable {
     let content: String
+    /// HER-150: optional vault file ID the memory was derived from. The
+    /// model is told to pass this whenever the upsert is grounded in a
+    /// recently-read vault file so `GET /v1/memory/{id}/lineage` can
+    /// reconstruct the trace later.
+    let sourceVaultFileId: UUID?
 }
 
 private struct SessionSearchArgs: Decodable, Sendable {
@@ -330,7 +335,8 @@ actor HermesMemoryService {
                 let saved = try await memories.create(
                     tenantID: tenantID,
                     content: args.content,
-                    embedding: embedding
+                    embedding: embedding,
+                    sourceVaultFileID: args.sourceVaultFileId
                 )
                 outcome.memoriesUpserted.append(saved)
                 let payload: [String: String] = [
@@ -386,6 +392,17 @@ actor HermesMemoryService {
                         "content": PropertySchema(
                             type: "string",
                             description: "The memory text to persist verbatim."
+                        ),
+                        "source_vault_file_id": PropertySchema(
+                            type: "string",
+                            description: """
+                                Optional UUID of the vault file this memory was derived from. \
+                                Pass this when the memory is grounded in a specific note or \
+                                document the user just captured or that you read via vault_read \
+                                so the system can build a "Hermes learned X from your <date> note" \
+                                lineage trace. Omit when the memory is volunteered by the user \
+                                with no anchor file.
+                                """
                         )
                     ],
                     required: ["content"]

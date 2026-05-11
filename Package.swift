@@ -28,6 +28,7 @@ let package = Package(
         .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
         .package(url: "https://github.com/slashmo/swift-otel.git", from: "0.10.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
     ],
     targets: [
         .executableTarget(name: "App",
@@ -51,11 +52,18 @@ let package = Package(
                 .product(name: "OTel", package: "swift-otel"),
                 .product(name: "OTLPGRPC", package: "swift-otel"),
                 .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
+                .product(name: "Yams", package: "Yams"),
                 .byName(name: "AppAPI"),
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
                 .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),
             ],
-            path: "Sources/App"
+            path: "Sources/App",
+            resources: [
+                // Use `.copy` (not `.process`) so the per-skill subdirectory
+                // tree is preserved verbatim. `.process` flattens leaves into
+                // a single namespace and collides 5x `SKILL.md`.
+                .copy("Resources/Skills"),
+            ]
         ),
         .target(
             name: "AppAPI",

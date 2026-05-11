@@ -1,0 +1,43 @@
+meta {
+  name: Email Magic Verify
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/email/verify
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "{{magicEmail}}",
+    "code": "{{magicOtpCode}}"
+  }
+}
+
+docs {
+  POST /v1/auth/email/verify
+  Exchanges email + OTP for an `AuthResponse` (access + refresh tokens).
+
+  Behavior:
+  - Net-new email   → creates a User row + OAuthIdentity(provider="email_magic_link").
+  - Existing email  → signs the user in (works even when a password is set).
+
+  Status codes:
+  - 200: signed in (existing user) or signed up (new identity)
+  - 400: email looks invalid
+  - 401: code wrong, locked out, or no active challenge
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns access + refresh tokens", function() {
+    expect(res.body).to.have.property("accessToken");
+    expect(res.body).to.have.property("refreshToken");
+    expect(res.body).to.have.property("userId");
+  });
+}

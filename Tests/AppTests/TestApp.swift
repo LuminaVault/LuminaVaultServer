@@ -40,10 +40,20 @@ let dbTestReader = ConfigReader(providers: [
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
         "jwt.kid": "test-kid",
         "hermes.gatewayKind": "logging",
+        // Default `hermes.dataRoot=/app/data/hermes` does not exist on dev
+        // machines (it's a container path), and SOULService.initIfMissing
+        // 503s when it can't write SOUL.md. Pin to /tmp so any test that
+        // walks the upsert-then-provision path (phone, magic-link, X OAuth)
+        // is stable on macOS.
+        "hermes.dataRoot": "/tmp/luminavault-test-hermes",
         "vault.rootPath": "/tmp/luminavault-test",
         // HER-137: pin the phone OTP generator to a fixed code so
         // `/v1/auth/phone/verify` tests are deterministic. Production must
         // never set this — non-empty value disables randomness.
-        "phone.fixedOtp": "424242"
+        "phone.fixedOtp": "424242",
+        // HER-138: same fixed-OTP pin for the email magic-link generator
+        // so `/v1/auth/email/verify` tests can drive a known code. MUST
+        // stay empty in prod for the same reason as `phone.fixedOtp`.
+        "magic.fixedOtp": "313131"
     ])
 ])

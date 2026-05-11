@@ -59,4 +59,8 @@ struct ServiceContainer: Sendable {
     /// drive `/v1/auth/phone/verify` deterministically. Leave empty in prod —
     /// a non-empty value is a security hole (predictable OTP).
     let phoneFixedOTP: String
+    /// HER-138: same toggle for the email magic-link OTP generator. Tests
+    /// pin `magic.fixedOtp` to drive `/v1/auth/email/verify` deterministically.
+    /// MUST stay empty in prod.
+    let magicLinkFixedOTP: String
 }

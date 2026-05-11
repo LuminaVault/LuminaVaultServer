@@ -23,16 +23,28 @@ extension AuthError {
 /// Passwordless email signin via OTP. Parallel to the existing
 /// email+password flow — does NOT replace it. Net-new users get an auto
 /// generated username; emailVerified is set true once the OTP succeeds.
+///
+/// Routing (HER-138):
+///   * `POST /v1/auth/email/start`  — stacked rate-limit (3/min + 10/day per IP)
+///   * `POST /v1/auth/email/verify` — unlimited (challenge store burns on bad code)
 struct EmailMagicLinkController {
     let authService: any AuthService
     let emailSender: any EmailOTPSender
     let generator: any OTPCodeGenerator
     let challengeStore: PreAuthChallengeStore
+    let rateLimitStorage: any PersistDriver
     let logger: Logger
 
-    func addRoutes(to group: RouterGroup<AppRequestContext>) {
-        group.post("/email/start", use: start)
-        group.post("/email/verify", use: verify)
+    /// Attaches `/email/start` and `/email/verify` under `basePath`. Uses a
+    /// fresh `router.group(basePath)` per route so the stacked rate-limit
+    /// middlewares on `/email/start` do not leak onto `/email/verify` —
+    /// `RouterGroup.add(middleware:)` mutates and the leak is silent.
+    func addRoutes(to router: Router<AppRequestContext>, basePath: RouterPath = "/v1/auth") {
+        router.group(basePath)
+            .add(middleware: RateLimitMiddleware(policy: .emailMagicStartByIPPerMinute, storage: rateLimitStorage))
+            .add(middleware: RateLimitMiddleware(policy: .emailMagicStartByIPDaily, storage: rateLimitStorage))
+            .post("/email/start", use: start)
+        router.group(basePath).post("/email/verify", use: verify)
     }
 
     @Sendable

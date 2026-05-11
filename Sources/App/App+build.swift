@@ -70,6 +70,11 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M16_CreateEmailVerificationToken())
         await fluent.migrations.add(M17_CreateOnboardingState())
         await fluent.migrations.add(M18_AddMemoryTags())
+        await fluent.migrations.add(M19_CreateSkillsState())
+        await fluent.migrations.add(M20_CreateSkillRunLog())
+        await fluent.migrations.add(M21_AddMemoryScore())
+        await fluent.migrations.add(M22_CreateMemoryArchive())
+        await fluent.migrations.add(M23_AddMemorySourceLineage())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -117,7 +122,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
         twilioAuthToken: reader.string(forKey: "twilio.authToken", default: ""),
         twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: ""),
-        phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: "")
+        phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: ""),
+        magicLinkFixedOTP: reader.string(forKey: "magic.fixedOtp", default: "")
     )
 
     let router = try buildRouter(services: services)
@@ -126,6 +132,11 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         appServices.append(otelServices.metrics)
         appServices.append(otelServices.tracer)
     }
+    // TODO HER-170 — surface CronScheduler from buildRouter (or
+    // re-construct it here once skill catalog/runner are exposed via
+    // ServiceContainer) and append to appServices so its run() loop is
+    // managed by the ServiceGroup. Scaffold leaves it un-managed; its
+    // current run() is a no-op, so deferring is safe.
     let app = Application(
         router: router,
         server: .http1WebSocketUpgrade(webSocketRouter: router),
@@ -277,13 +288,17 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         rateLimitStorage: rateLimitStorage,
         logger: Logger(label: "lv.auth.phone")
     ).addRoutes(to: router)
+    let magicLinkOTPGenerator: any OTPCodeGenerator = services.magicLinkFixedOTP.isEmpty
+        ? DefaultOTPCodeGenerator()
+        : FixedOTPCodeGenerator(code: services.magicLinkFixedOTP)
     EmailMagicLinkController(
         authService: authService,
         emailSender: LoggingEmailOTPSender(logger: Logger(label: "lv.auth.magic")),
-        generator: DefaultOTPCodeGenerator(),
+        generator: magicLinkOTPGenerator,
         challengeStore: preAuthStore,
+        rateLimitStorage: rateLimitStorage,
         logger: Logger(label: "lv.auth.magic")
-    ).addRoutes(to: multiProviderGroup)
+    ).addRoutes(to: router)
     XOAuthController(
         authService: authService,
         xClient: DefaultXAPIClient(logger: Logger(label: "lv.auth.x")),
@@ -440,6 +455,53 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
     adminController.addRoutes(to: adminGroup)
 
+    // Admin: HER-146 Apple Health correlation engine. Shared-secret gated.
+    // Host cron drives this nightly via `POST /v1/admin/health/correlate`.
+    let healthCorrelationService = HealthCorrelationService(
+        transport: URLSessionHermesChatTransport(
+            baseURL: hermesURL,
+            session: .shared,
+            logger: Logger(label: "lv.health-correlate")
+        ),
+        fluent: services.fluent,
+        embeddings: DeterministicEmbeddingService(),
+        memories: MemoryRepository(fluent: services.fluent),
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.health-correlate")
+    )
+    let healthCorrelationJob = HealthCorrelationJob(
+        fluent: services.fluent,
+        service: healthCorrelationService,
+        logger: Logger(label: "lv.health-correlate")
+    )
+    let healthAdminGroup = router.group("/v1/admin/health")
+        .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+    HealthAdminController(job: healthCorrelationJob).addRoutes(to: healthAdminGroup)
+
+    // Admin: HER-147 memory scoring + pruning. Shared-secret gated.
+    // Monthly host cron: `POST /v1/admin/memory/prune`.
+    let memoryScoringService = MemoryScoringService(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.memory-scoring")
+    )
+    let memoryPruningService = MemoryPruningService(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.memory-pruning")
+    )
+    let memoryPruningJob = MemoryPruningJob(
+        fluent: services.fluent,
+        scoring: memoryScoringService,
+        pruning: memoryPruningService,
+        logger: Logger(label: "lv.memory-pruning")
+    )
+    let memoryAdminGroup = router.group("/v1/admin/memory")
+        .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+    MemoryAdminController(
+        scoring: memoryScoringService,
+        pruning: memoryPruningService,
+        job: memoryPruningJob
+    ).addRoutes(to: memoryAdminGroup)
+
     // Device tokens (APNS / FCM) — protected.
     let deviceController = DeviceController(fluent: services.fluent)
     let deviceGroup = router.group("/v1/devices").add(middleware: jwtAuthenticator)
@@ -464,6 +526,38 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     )
     let accountGroup = router.group("/v1/account").add(middleware: jwtAuthenticator)
     accountController.addRoutes(to: accountGroup)
+
+    // Skills runtime (HER-148) — generic skill runner, per-tenant catalog,
+    // cron scheduler, in-process event bus, optional context router.
+    // Scaffold only: handler returns 501 until HER-169 lands. CronScheduler
+    // is constructed but NOT added to appServices yet (no-op run() means
+    // the rest of the surface won't ship a half-baked tick loop). See the
+    // TODO in `buildApplication` for the lifecycle wiring follow-up.
+    let skillsLogger = Logger(label: "lv.skills")
+    let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
+    let skillRunner = SkillRunner(
+        catalog: skillCatalog,
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        logger: skillsLogger
+    )
+    let eventBus = EventBus(logger: skillsLogger)
+    let cronScheduler = CronScheduler(
+        catalog: skillCatalog,
+        runner: skillRunner,
+        fluent: services.fluent,
+        logger: skillsLogger
+    )
+    _ = eventBus       // HER-171 — wired to capture/health/memory publishers
+    _ = cronScheduler  // HER-170 — surface to appServices for ServiceGroup lifecycle
+    let skillsGroup = router.group("/v1/skills")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))
+    SkillsController(
+        runner: skillRunner,
+        catalog: skillCatalog,
+        logger: skillsLogger
+    ).addRoutes(to: skillsGroup)
 
     let websocketGroup = router.group("/v1/ws").add(middleware: jwtAuthenticator)
     websocketGroup.ws("") { _, context in

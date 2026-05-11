@@ -106,10 +106,25 @@ extension RateLimitPolicy {
     /// be abused to spam Hermes profile dirs. Cheap per-user bucket.
     static let soulByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
 
+    /// HER-148: each skill run can fan out to Hermes (one or more LLM calls)
+    /// plus filesystem and DB writes. Cap manual `/v1/skills/:name/run`
+    /// invocations so a user can't burn their daily Mtok budget by hammering
+    /// the endpoint. Cron-/event-triggered runs bypass this middleware.
+    /// Final window/max numbers to be tuned in HER-148 sub-tickets.
+    static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+
     /// HER-137: phone OTP start. Each call burns an SMS, which costs real
     /// money — toll-fraud bots target this surface. Stacked policies:
     /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.
     /// Apply BOTH on the `/v1/auth/phone/start` route.
     static let phoneStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
     static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86_400) { req, _ in ipKey(req) }
+
+    /// HER-138: email magic-link start. SES/Mailgun spend is equally toll-
+    /// fraud-able as SMS; abusers can also weaponize the endpoint to spam
+    /// arbitrary inboxes with OTPs. Mirror the phone policy: 3/min burst
+    /// + 10/day budget, both per IP. Apply BOTH on
+    /// `/v1/auth/email/start`.
+    static let emailMagicStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
+    static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86_400) { req, _ in ipKey(req) }
 }
