@@ -23,11 +23,11 @@ struct PhoneAuthFlowTests {
     }
 
     private static func decodeStart(_ buf: ByteBuffer) throws -> PhoneStartResponse {
-        try JSONDecoder().decode(PhoneStartResponse.self, from: Data(buffer: buf))
+        try testJSONDecoder().decode(PhoneStartResponse.self, from: Data(buffer: buf))
     }
 
     private static func decodeAuth(_ buf: ByteBuffer) throws -> AuthResponse {
-        try JSONDecoder().decode(AuthResponse.self, from: Data(buffer: buf))
+        try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: buf))
     }
 
     private static func startBody(phone: String) -> ByteBuffer {

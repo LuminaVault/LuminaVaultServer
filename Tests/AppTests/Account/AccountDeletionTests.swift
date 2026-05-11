@@ -29,7 +29,7 @@ struct AccountDeletionTests {
     }
 
     private static func decodeAuthResponse(_ buffer: ByteBuffer) throws -> AuthResponse {
-        try JSONDecoder().decode(AuthResponse.self, from: Data(buffer: buffer))
+        try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: buffer))
     }
 
     private static func randomUser() -> (email: String, username: String) {

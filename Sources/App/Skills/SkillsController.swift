@@ -24,6 +24,20 @@ struct SkillsController {
         guard let _ = ctx.parameters.get("name") else {
             throw HTTPError(.badRequest, message: "skill name required")
         }
+        // HER-169 will dispatch to `runner.run(...)` inside a do/catch
+        // that maps `SkillRunCapExceededError` (from the HER-193 guard)
+        // via `Self.capExceededHTTPError(_:)` — `429 Too Many Requests`
+        // with `Retry-After: <seconds-to-next-user-local-midnight>`.
         throw HTTPError(.notImplemented, message: "HER-148 scaffold — SkillRunner lands in HER-169")
+    }
+
+    /// HER-193 — map a cap-guard denial to the conventional `429 +
+    /// Retry-After` envelope. Wired up once HER-169 dispatches the run.
+    static func capExceededHTTPError(_ error: SkillRunCapExceededError) -> HTTPError {
+        HTTPError(
+            .tooManyRequests,
+            headers: [.retryAfter: String(Int(error.retryAfter.rounded(.up)))],
+            message: "daily run cap exceeded for this skill",
+        )
     }
 }

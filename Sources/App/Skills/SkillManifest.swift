@@ -35,6 +35,37 @@ struct SkillManifest: Codable, Hashable {
         let category: String?
     }
 
+    /// HER-193 — per-skill daily run cap, declared in the SKILL.md
+    /// frontmatter under `metadata.daily_run_cap`. Operators tune by
+    /// editing the manifest + redeploying — no migration needed. `0`
+    /// means unlimited for that tier.
+    ///
+    /// Example:
+    /// ```yaml
+    /// metadata:
+    ///   daily_run_cap:
+    ///     trial: 3
+    ///     pro: 3
+    ///     ultimate: 0
+    /// ```
+    struct DailyRunCap: Codable, Hashable {
+        let trial: Int
+        let pro: Int
+        let ultimate: Int
+
+        /// Cap value for the given tier string (matches `User.tier`:
+        /// "trial" / "pro" / "ultimate"). Unknown tiers fall back to the
+        /// `trial` value — strictest cap by default.
+        func value(for tier: String) -> Int {
+            switch tier.lowercased() {
+            case "ultimate": ultimate
+            case "pro": pro
+            case "trial": trial
+            default: trial
+            }
+        }
+    }
+
     let source: Source
     let name: String
     let description: String
@@ -43,6 +74,7 @@ struct SkillManifest: Codable, Hashable {
     let schedule: String?
     let onEvent: [String]
     let outputs: [Output]
+    let dailyRunCap: DailyRunCap?
     let body: String
 }
 

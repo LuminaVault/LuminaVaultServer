@@ -21,13 +21,13 @@ struct OnboardingTests {
 
     private static func decodeAuthResponse(_ buffer: ByteBuffer) throws -> AuthResponse {
         let data = Data(buffer: buffer)
-        return try JSONDecoder().decode(AuthResponse.self, from: data)
+        return try testJSONDecoder().decode(AuthResponse.self, from: data)
     }
 
     private static func decodeOnboarding(_ buffer: ByteBuffer) throws -> OnboardingStateDTO {
         // Hummingbird's default JSONEncoder uses `deferredToDate` (Double seconds
         // since 2001-01-01); keep the matching default on the decoder.
-        try JSONDecoder().decode(OnboardingStateDTO.self, from: Data(buffer: buffer))
+        try testJSONDecoder().decode(OnboardingStateDTO.self, from: Data(buffer: buffer))
     }
 
     private static func register(client: some TestClientProtocol) async throws -> (token: String, email: String, username: String) {

@@ -15,13 +15,13 @@ import Testing
 @Suite(.serialized)
 struct MemoryLineageTests {
     private static func decodeAuth(_ buf: ByteBuffer) throws -> AuthResponse {
-        let d = JSONDecoder()
+        let d = testJSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return try d.decode(AuthResponse.self, from: Data(buffer: buf))
     }
 
     private static func decodeLineage(_ buf: ByteBuffer) throws -> MemoryLineageResponse {
-        let d = JSONDecoder()
+        let d = testJSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return try d.decode(MemoryLineageResponse.self, from: Data(buffer: buf))
     }

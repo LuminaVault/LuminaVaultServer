@@ -28,7 +28,7 @@ struct EmailMagicLinkFlowTests {
     /// happy-path doesn't actually inspect; reproducing the asymmetry here
     /// would be cute, not useful.
     private static func jsonDecoder() -> JSONDecoder {
-        let d = JSONDecoder()
+        let d = testJSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
     }

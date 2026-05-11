@@ -17,15 +17,15 @@ struct VaultCRUDTests {
     }
 
     private static func decodeAuthResponse(_ buffer: ByteBuffer) throws -> AuthResponse {
-        try JSONDecoder().decode(AuthResponse.self, from: Data(buffer: buffer))
+        try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: buffer))
     }
 
     private static func decodeList(_ buffer: ByteBuffer) throws -> VaultFileListResponse {
-        try JSONDecoder().decode(VaultFileListResponse.self, from: Data(buffer: buffer))
+        try testJSONDecoder().decode(VaultFileListResponse.self, from: Data(buffer: buffer))
     }
 
     private static func decodeFile(_ buffer: ByteBuffer) throws -> VaultFileDTO {
-        try JSONDecoder().decode(VaultFileDTO.self, from: Data(buffer: buffer))
+        try testJSONDecoder().decode(VaultFileDTO.self, from: Data(buffer: buffer))
     }
 
     private static func randomUser() -> (email: String, username: String) {
@@ -63,7 +63,7 @@ struct VaultCRUDTests {
             body: ByteBuffer(string: body),
         ) { response in
             #expect(response.status == .ok || response.status == .created)
-            return try JSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
+            return try testJSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
         }
         return resp.path
     }

@@ -39,25 +39,35 @@ actor SkillRunner {
     private let catalog: SkillCatalog
     private let fluent: Fluent
     private let vaultPaths: VaultPathService
+    private let capGuard: SkillRunCapGuard
     private let logger: Logger
 
     init(
         catalog: SkillCatalog,
         fluent: Fluent,
         vaultPaths: VaultPathService,
+        capGuard: SkillRunCapGuard,
         logger: Logger,
     ) {
         self.catalog = catalog
         self.fluent = fluent
         self.vaultPaths = vaultPaths
+        self.capGuard = capGuard
         self.logger = logger
     }
 
     /// Runs the skill and returns the result. Persists to `skill_run_log`
     /// + updates `skills_state.last_*` columns.
+    ///
+    /// HER-193 plug-in points (HER-169 wires them):
+    /// 1. Before LLM dispatch — `capGuard.checkAndIncrement(...)`;
+    ///    `.deny` becomes `SkillRunCapExceededError`.
+    /// 2. After LLM/output dispatch fails — `capGuard.recordFailure(...)`
+    ///    so the slot is refunded.
     func run(
         skill _: SkillManifest,
         tenantID _: UUID,
+        tier _: String,
         profileUsername _: String,
         trigger _: SkillTrigger,
     ) async throws -> SkillRunResult {

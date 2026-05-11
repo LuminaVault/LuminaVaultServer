@@ -15,6 +15,17 @@ func cfg(_ value: Int) -> ConfigValue {
     .init(.int(value), isSecret: false)
 }
 
+/// Hummingbird's default response encoder emits dates as ISO-8601 strings
+/// (see `RequestContext` extension in the framework). `JSONDecoder()`
+/// defaults to `.deferredToDate` which expects a numeric. Every test that
+/// decodes a response body containing a `Date` field needs the matching
+/// `.iso8601` strategy — use `testJSONDecoder()` instead of `JSONDecoder()`.
+func testJSONDecoder() -> JSONDecoder {
+    let d = JSONDecoder()
+    d.dateDecodingStrategy = .iso8601
+    return d
+}
+
 /// Centralized Postgres test config. Reads env so the same test suite runs
 /// in two environments:
 ///

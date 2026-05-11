@@ -32,7 +32,7 @@ struct XOAuthTests {
         }
         """#.data(using: .utf8)!
 
-        let decoded = try JSONDecoder().decode(XUserResponse.self, from: body)
+        let decoded = try testJSONDecoder().decode(XUserResponse.self, from: body)
         #expect(decoded.data.id == "1234567890")
         #expect(decoded.data.name == "Ada Lovelace")
         #expect(decoded.data.username == "ada")
@@ -54,7 +54,7 @@ struct XOAuthTests {
         }
         """#.data(using: .utf8)!
 
-        let decoded = try JSONDecoder().decode(XUserResponse.self, from: body)
+        let decoded = try testJSONDecoder().decode(XUserResponse.self, from: body)
         #expect(decoded.data.email == "grace@navy.example")
         #expect(decoded.data.verified == false)
     }
@@ -66,7 +66,7 @@ struct XOAuthTests {
         """#.data(using: .utf8)!
 
         #expect(throws: (any Error).self) {
-            _ = try JSONDecoder().decode(XUserResponse.self, from: body)
+            _ = try testJSONDecoder().decode(XUserResponse.self, from: body)
         }
     }
 

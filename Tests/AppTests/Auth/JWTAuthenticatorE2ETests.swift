@@ -24,12 +24,12 @@ struct JWTAuthenticatorE2ETests {
 
     private static func decodeAuthResponse(_ buffer: ByteBuffer) throws -> AuthResponse {
         let data = Data(buffer: buffer)
-        return try JSONDecoder().decode(AuthResponse.self, from: data)
+        return try testJSONDecoder().decode(AuthResponse.self, from: data)
     }
 
     private static func decodeMeResponse(_ buffer: ByteBuffer) throws -> MeResponse {
         let data = Data(buffer: buffer)
-        return try JSONDecoder().decode(MeResponse.self, from: data)
+        return try testJSONDecoder().decode(MeResponse.self, from: data)
     }
 
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
