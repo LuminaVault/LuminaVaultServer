@@ -113,6 +113,12 @@ extension RateLimitPolicy {
     /// Final window/max numbers to be tuned in HER-148 sub-tickets.
     static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
 
+    /// HER-196 — `/v1/achievements` and `/v1/achievements/recent` are
+    /// read-only catalog joins; iOS pulls them on Settings → Forms enter
+    /// and again on push receipt. 60/min/user covers both legitimate
+    /// patterns with margin and shuts off polling abuse.
+    static let achievementsByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+
     /// HER-137: phone OTP start. Each call burns an SMS, which costs real
     /// money — toll-fraud bots target this surface. Stacked policies:
     /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.

@@ -6,6 +6,7 @@ struct LLMController {
     let service: any HermesLLMService
     let telemetry: RouteTelemetry
     let notificationService: APNSNotificationService
+    let achievements: AchievementsService?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/chat", use: chat)
@@ -31,6 +32,9 @@ struct LLMController {
                     username: username,
                     response: response,
                 )
+            }
+            if let achievements {
+                Task.detached { await achievements.recordAndPush(tenantID: userID, event: .chatCompleted) }
             }
             return response
         }

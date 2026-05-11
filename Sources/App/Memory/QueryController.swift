@@ -23,6 +23,7 @@ struct QueryResponse: Codable, ResponseEncodable {
 /// even if the underlying agent loop changes shape.
 struct QueryController {
     let service: HermesMemoryService
+    let achievements: AchievementsService?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: query)
@@ -35,12 +36,16 @@ struct QueryController {
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
+        let tenantID = try user.requireID()
         let answer = try await service.search(
-            tenantID: user.requireID(),
+            tenantID: tenantID,
             profileUsername: user.username,
             query: body.query,
             limit: body.limit ?? 5,
         )
+        if let achievements {
+            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .queryRan) }
+        }
         let hits = answer.hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }

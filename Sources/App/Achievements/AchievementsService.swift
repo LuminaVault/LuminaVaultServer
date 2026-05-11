@@ -24,19 +24,47 @@ import Logging
 /// per second per user and is acceptable for the scaffold. Harden with
 /// a Postgres `INSERT ... ON CONFLICT DO UPDATE` upsert if it ever
 /// becomes load-bearing.
-struct AchievementsService {
+struct AchievementsService: Sendable {
     let fluent: Fluent
     let catalog: AchievementCatalog
+    let pushService: APNSNotificationService?
     let logger: Logger
 
     init(
         fluent: Fluent,
         catalog: AchievementCatalog = .current,
+        pushService: APNSNotificationService? = nil,
         logger: Logger,
     ) {
         self.fluent = fluent
         self.catalog = catalog
+        self.pushService = pushService
         self.logger = logger
+    }
+
+    /// Controller hot-path entry point. Records the event and fires a
+    /// fire-and-forget push for every sub-achievement that crossed its
+    /// threshold in this call. Never throws — failures are logged and
+    /// swallowed so the originating request is never blocked by the
+    /// achievement side-effect.
+    func recordAndPush(tenantID: UUID, event: AchievementEvent) async {
+        do {
+            let unlocks = try await record(tenantID: tenantID, event: event)
+            guard !unlocks.isEmpty, let pushService else { return }
+            for unlock in unlocks {
+                do {
+                    try await pushService.notifyAchievement(
+                        userID: tenantID,
+                        key: unlock.key,
+                        label: unlock.label,
+                    )
+                } catch {
+                    logger.warning("achievements push failed key=\(unlock.key): \(error)")
+                }
+            }
+        } catch {
+            logger.warning("achievements record failed event=\(event.rawValue) tenant=\(tenantID): \(error)")
+        }
     }
 
     /// Records one occurrence of `event` for `tenantID`. Returns the keys

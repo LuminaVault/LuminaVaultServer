@@ -16,6 +16,7 @@ enum APNSPushCategory: String {
     case chat
     case nudge
     case digest
+    case achievement
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -180,6 +181,20 @@ struct APNSNotificationService {
             subtitle: username,
             body: body,
             category: .digest,
+        )
+    }
+
+    /// Single-unlock push surface. Call sites fire one of these per newly
+    /// unlocked sub-achievement returned by `AchievementsService.record`.
+    /// Best-effort: never blocks the originating request (the caller wraps
+    /// this in a detached Task per the `notifyLLMReply` precedent).
+    func notifyAchievement(userID: UUID, key: String, label: String) async throws {
+        try await notify(
+            userID: userID,
+            title: "Achievement unlocked",
+            subtitle: label,
+            body: "You evolved one step closer to your true form.",
+            category: .achievement,
         )
     }
 

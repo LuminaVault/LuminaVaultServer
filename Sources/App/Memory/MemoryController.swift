@@ -85,6 +85,7 @@ struct MemoryController {
     let service: HermesMemoryService
     let repository: MemoryRepository
     let embeddings: any EmbeddingService
+    let achievements: AchievementsService?
 
     private static let defaultLimit = 20
     private static let maxLimit = 100
@@ -106,11 +107,15 @@ struct MemoryController {
         guard !body.content.isEmpty else {
             throw HTTPError(.badRequest, message: "content required")
         }
+        let tenantID = try user.requireID()
         let result = try await service.upsert(
-            tenantID: user.requireID(),
+            tenantID: tenantID,
             profileUsername: user.username,
             content: body.content,
         )
+        if let achievements {
+            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .memoryUpserted) }
+        }
         return try MemoryUpsertResponse(
             memoryId: result.memory.requireID(),
             content: result.memory.content,

@@ -14,6 +14,7 @@ struct SoulResponse: Codable, ResponseEncodable {
 struct SoulController {
     let service: SOULService
     let telemetry: RouteTelemetry
+    let achievements: AchievementsService?
 
     /// Cap matches `SOULService.maxSizeBytes`; here we collect at most that
     /// many bytes from the request before failing fast.
@@ -48,6 +49,10 @@ struct SoulController {
                 try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
                 throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
+            }
+            if let achievements {
+                let tenantID = try user.requireID()
+                Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .soulConfigured) }
             }
             return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
         }
