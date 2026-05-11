@@ -2,12 +2,12 @@ import Foundation
 import Hummingbird
 import Logging
 
-struct KBCompileRequest: Codable, Sendable {
+struct KBCompileRequest: Codable {
     let files: [KBCompileFile]
     let hint: String?
 }
 
-struct KBCompileResponse: Codable, ResponseEncodable, Sendable {
+struct KBCompileResponse: Codable, ResponseEncodable {
     let writtenFiles: [KBCompileWrittenFile]
     let memories: [KBCompileMemoryRef]
     let summary: String
@@ -28,15 +28,15 @@ struct KBCompileController {
             throw HTTPError(.badRequest, message: "files array required")
         }
         let result = try await service.compile(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             profileUsername: user.username,
             files: body.files,
-            hint: body.hint
+            hint: body.hint,
         )
         return KBCompileResponse(
             writtenFiles: result.writtenFiles,
             memories: result.memories,
-            summary: result.summary
+            summary: result.summary,
         )
     }
 }

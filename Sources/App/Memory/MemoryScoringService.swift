@@ -17,7 +17,7 @@ import SQLKit
 /// heavily-used memory (50 accesses, 20 query hits) sits ~ `2 * ln(51) +
 /// 3 * ln(21) ≈ 17` even when very old — comfortably above the prune
 /// threshold (default 0.2).
-struct MemoryScoringConfig: Sendable {
+struct MemoryScoringConfig {
     let accessWeight: Double
     let queryWeight: Double
     let recencyWeight: Double
@@ -27,7 +27,7 @@ struct MemoryScoringConfig: Sendable {
         accessWeight: 2.0,
         queryWeight: 3.0,
         recencyWeight: 1.0,
-        halflifeDays: 30
+        halflifeDays: 30,
     )
 }
 
@@ -37,13 +37,13 @@ enum MemoryScoring {
         queryHitCount: Int64,
         createdAt: Date?,
         now: Date,
-        config: MemoryScoringConfig = .default
+        config: MemoryScoringConfig = .default,
     ) -> Double {
         let access = config.accessWeight * log1p(Double(accessCount))
         let queries = config.queryWeight * log1p(Double(queryHitCount))
         let ageDays: Double = {
             guard let createdAt else { return 0 }
-            return max(0, now.timeIntervalSince(createdAt)) / 86_400
+            return max(0, now.timeIntervalSince(createdAt)) / 86400
         }()
         let recency = config.recencyWeight * exp(-ageDays / config.halflifeDays)
         return access + queries + recency
@@ -71,21 +71,21 @@ actor MemoryScoringService {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for scoring update")
         }
-        let halflifeSecs = config.halflifeDays * 86_400
+        let halflifeSecs = config.halflifeDays * 86400
         // Postgres has no `log1p`; `ln(1+x)` is the direct translation. The
         // formula matches `MemoryScoring.compute` exactly so unit tests on
         // the Swift side stay authoritative.
         let result = try await sql.raw("""
-            UPDATE memories SET score =
-                \(unsafeRaw: String(config.accessWeight)) * ln(1 + access_count)
-              + \(unsafeRaw: String(config.queryWeight)) * ln(1 + query_hit_count)
-              + \(unsafeRaw: String(config.recencyWeight)) * exp(
-                    - GREATEST(0, EXTRACT(EPOCH FROM (\(bind: now) - COALESCE(created_at, \(bind: now))))::float8)
-                    / \(unsafeRaw: String(halflifeSecs))
-                )
-            WHERE tenant_id = \(bind: tenantID)
-            RETURNING id
-            """).all()
+        UPDATE memories SET score =
+            \(unsafeRaw: String(config.accessWeight)) * ln(1 + access_count)
+          + \(unsafeRaw: String(config.queryWeight)) * ln(1 + query_hit_count)
+          + \(unsafeRaw: String(config.recencyWeight)) * exp(
+                - GREATEST(0, EXTRACT(EPOCH FROM (\(bind: now) - COALESCE(created_at, \(bind: now))))::float8)
+                / \(unsafeRaw: String(halflifeSecs))
+            )
+        WHERE tenant_id = \(bind: tenantID)
+        RETURNING id
+        """).all()
         return result.count
     }
 

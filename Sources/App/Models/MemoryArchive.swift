@@ -20,9 +20,9 @@ final class MemoryArchive: Model, TenantModel, @unchecked Sendable {
     @Field(key: "archived_at") var archivedAt: Date
 
     init() {
-        self.score = 0
-        self.accessCount = 0
-        self.queryHitCount = 0
-        self.archivedAt = Date()
+        score = 0
+        accessCount = 0
+        queryHitCount = 0
+        archivedAt = Date()
     }
 }

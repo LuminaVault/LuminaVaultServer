@@ -32,54 +32,52 @@ let package = Package(
     ],
     targets: [
         .executableTarget(name: "App",
-            dependencies: [
-                .product(name: "Configuration", package: "swift-configuration"),
-                .product(name: "Hummingbird", package: "hummingbird"),
-                .product(name: "HummingbirdAuth", package: "hummingbird-auth"),
-                .product(name: "HummingbirdBasicAuth", package: "hummingbird-auth"),
-                .product(name: "HummingbirdBcrypt", package: "hummingbird-auth"),
-                .product(name: "HummingbirdOTP", package: "hummingbird-auth"),
-                .product(name: "HummingbirdFluent", package: "hummingbird-fluent"),
-                .product(name: "HummingbirdCompression", package: "hummingbird-compression"),
-                .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
-                .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
-                .product(name: "JWTKit", package: "jwt-kit"),
-                .product(name: "Logging", package: "swift-log"),
-                .product(name: "Metrics", package: "swift-metrics"),
-                .product(name: "Tracing", package: "swift-distributed-tracing"),
-                .product(name: "WebAuthn", package: "swift-webauthn"),
-                .product(name: "APNS", package: "APNSwift"),
-                .product(name: "OTel", package: "swift-otel"),
-                .product(name: "OTLPGRPC", package: "swift-otel"),
-                .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
-                .product(name: "Yams", package: "Yams"),
-                .byName(name: "AppAPI"),
-                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
-                .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),
-            ],
-            path: "Sources/App",
-            resources: [
-                // Use `.copy` (not `.process`) so the per-skill subdirectory
-                // tree is preserved verbatim. `.process` flattens leaves into
-                // a single namespace and collides 5x `SKILL.md`.
-                .copy("Resources/Skills"),
-            ]
-        ),
+                          dependencies: [
+                              .product(name: "Configuration", package: "swift-configuration"),
+                              .product(name: "Hummingbird", package: "hummingbird"),
+                              .product(name: "HummingbirdAuth", package: "hummingbird-auth"),
+                              .product(name: "HummingbirdBasicAuth", package: "hummingbird-auth"),
+                              .product(name: "HummingbirdBcrypt", package: "hummingbird-auth"),
+                              .product(name: "HummingbirdOTP", package: "hummingbird-auth"),
+                              .product(name: "HummingbirdFluent", package: "hummingbird-fluent"),
+                              .product(name: "HummingbirdCompression", package: "hummingbird-compression"),
+                              .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
+                              .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
+                              .product(name: "JWTKit", package: "jwt-kit"),
+                              .product(name: "Logging", package: "swift-log"),
+                              .product(name: "Metrics", package: "swift-metrics"),
+                              .product(name: "Tracing", package: "swift-distributed-tracing"),
+                              .product(name: "WebAuthn", package: "swift-webauthn"),
+                              .product(name: "APNS", package: "APNSwift"),
+                              .product(name: "OTel", package: "swift-otel"),
+                              .product(name: "OTLPGRPC", package: "swift-otel"),
+                              .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
+                              .product(name: "Yams", package: "Yams"),
+                              .byName(name: "AppAPI"),
+                              .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+                              .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),
+                          ],
+                          path: "Sources/App",
+                          resources: [
+                              // Use `.copy` (not `.process`) so the per-skill subdirectory
+                              // tree is preserved verbatim. `.process` flattens leaves into
+                              // a single namespace and collides 5x `SKILL.md`.
+                              .copy("Resources/Skills"),
+                          ]),
         .target(
             name: "AppAPI",
             dependencies: [
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
             ],
             path: "Sources/AppAPI",
-            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
+            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")],
         ),
         .testTarget(name: "AppTests",
-            dependencies: [
-                .byName(name: "App"),
-                .product(name: "HummingbirdTesting", package: "hummingbird"),
-                .product(name: "HummingbirdAuthTesting", package: "hummingbird-auth"),
-            ],
-            path: "Tests/AppTests"
-        )
-    ]
+                    dependencies: [
+                        .byName(name: "App"),
+                        .product(name: "HummingbirdTesting", package: "hummingbird"),
+                        .product(name: "HummingbirdAuthTesting", package: "hummingbird-auth"),
+                    ],
+                    path: "Tests/AppTests"),
+    ],
 )

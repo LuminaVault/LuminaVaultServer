@@ -28,7 +28,7 @@ enum SpaceSlugPolicy {
 /// the on-disk folder under `<rawRoot>/<slug>/` is created on insert and
 /// soft-deleted on remove. Slug is locked at create time — display `name`
 /// is mutable, but the path stays stable so existing notes don't move.
-struct SpacesService: Sendable {
+struct SpacesService {
     let fluent: Fluent
     let vaultPaths: VaultPathService
     let logger: Logger
@@ -53,7 +53,7 @@ struct SpacesService: Sendable {
         slugRaw: String,
         description: String?,
         color: String?,
-        icon: String?
+        icon: String?,
     ) async throws -> Space {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { throw SpacesError.nameRequired }
@@ -77,7 +77,7 @@ struct SpacesService: Sendable {
             slug: slug,
             description: description,
             color: color,
-            icon: icon
+            icon: icon,
         )
         do {
             try await space.save(on: db)
@@ -98,7 +98,7 @@ struct SpacesService: Sendable {
         name: String?,
         description: String?,
         color: String?,
-        icon: String?
+        icon: String?,
     ) async throws -> Space {
         let space = try await get(tenantID: tenantID, id: id)
         if let name {

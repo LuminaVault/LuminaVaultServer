@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -5,13 +6,10 @@ import HummingbirdFluent
 import Logging
 import Testing
 
-@testable import App
-
 @Suite(.serialized)
 struct HermesProfileReconcilerTests {
-
     private static func withReconciler<T: Sendable>(
-        _ body: @Sendable (HermesProfileReconciler, Fluent, URL) async throws -> T
+        _ body: @Sendable (HermesProfileReconciler, Fluent, URL) async throws -> T,
     ) async throws -> T {
         let fluent = try await makeFluent()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -22,19 +20,19 @@ struct HermesProfileReconcilerTests {
         let hermesDataRoot = tmpRoot.appendingPathComponent("hermes").path
         try FileManager.default.createDirectory(
             at: tmpRoot.appendingPathComponent("hermes").appendingPathComponent("profiles"),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
         )
         let service = HermesProfileService(
             fluent: fluent,
             gateway: FilesystemHermesGateway(rootPath: hermesDataRoot, logger: logger),
-            vaultPaths: vaultPaths
+            vaultPaths: vaultPaths,
         )
         let reconciler = HermesProfileReconciler(
             fluent: fluent,
             service: service,
             vaultPaths: vaultPaths,
             hermesDataRoot: hermesDataRoot,
-            logger: logger
+            logger: logger,
         )
         do {
             let result = try await body(reconciler, fluent, tmpRoot)
@@ -52,7 +50,7 @@ struct HermesProfileReconcilerTests {
         let fluent = Fluent(logger: Logger(label: "test.recon"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -78,14 +76,14 @@ struct HermesProfileReconcilerTests {
         let user = User(
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)"
+            passwordHash: "stub-\(slug)",
         )
         try await user.save(on: db)
         return user
     }
 
     @Test
-    func reconcileCreatesMissingProfilesForExistingUsers() async throws {
+    func `reconcile creates missing profiles for existing users`() async throws {
         try await Self.withReconciler { recon, fluent, _ in
             let slug1 = "rc1\(UUID().uuidString.prefix(6).lowercased())"
             let slug2 = "rc2\(UUID().uuidString.prefix(6).lowercased())"
@@ -101,7 +99,7 @@ struct HermesProfileReconcilerTests {
             // Verify each test-owned user has a ready profile after the run.
             for user in [u1, u2] {
                 let profile = try await HermesProfile
-                    .query(on: fluent.db(), tenantID: try user.requireID())
+                    .query(on: fluent.db(), tenantID: user.requireID())
                     .first()
                 #expect(profile != nil)
                 #expect(profile?.status == "ready")
@@ -111,7 +109,7 @@ struct HermesProfileReconcilerTests {
     }
 
     @Test
-    func reapOrphansSoftDeletesUnknownDirs() async throws {
+    func `reap orphans soft deletes unknown dirs`() async throws {
         try await Self.withReconciler { recon, fluent, tmpRoot in
             // Self-contained: create the active-vs-orphan dirs manually so the
             // assertion doesn't race against shared-DB users that other tests
@@ -121,10 +119,10 @@ struct HermesProfileReconcilerTests {
             let user = try await Self.makeUser(activeSlug, on: fluent.db())
 
             // Pre-write the DB row for `activeSlug` so reaper sees it as live.
-            let profile = HermesProfile(
-                tenantID: try user.requireID(),
+            let profile = try HermesProfile(
+                tenantID: user.requireID(),
                 hermesProfileID: activeSlug,
-                status: "ready"
+                status: "ready",
             )
             try await profile.save(on: fluent.db())
 
@@ -148,7 +146,7 @@ struct HermesProfileReconcilerTests {
     }
 
     @Test
-    func healthReportsAccurateCounts() async throws {
+    func `health reports accurate counts`() async throws {
         try await Self.withReconciler { recon, fluent, tmpRoot in
             // Two users with profiles.
             let s1 = "hl1\(UUID().uuidString.prefix(6).lowercased())"
@@ -173,7 +171,7 @@ struct HermesProfileReconcilerTests {
     }
 
     @Test
-    func healthIsZeroOrphansAfterReap() async throws {
+    func `health is zero orphans after reap`() async throws {
         try await Self.withReconciler { recon, fluent, tmpRoot in
             let s = "rh\(UUID().uuidString.prefix(6).lowercased())"
             _ = try await Self.makeUser(s, on: fluent.db())

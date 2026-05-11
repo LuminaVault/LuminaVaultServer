@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -5,8 +6,6 @@ import HummingbirdFluent
 import JWTKit
 import Logging
 import Testing
-
-@testable import App
 
 /// Covers the X (Twitter) OAuth 2.0 + PKCE exchange path:
 ///   1. `XAPIClient` JSON decoding of `/2/users/me` envelopes (with + without email)
@@ -18,11 +17,10 @@ import Testing
 /// into a generic OAuthControllerTests.
 @Suite(.serialized)
 struct XOAuthTests {
-
     // MARK: - JSON decoding
 
     @Test
-    func decodesUsersMeEnvelopeWithEmail() throws {
+    func `decodes users me envelope with email`() throws {
         let body = #"""
         {
           "data": {
@@ -38,12 +36,12 @@ struct XOAuthTests {
         #expect(decoded.data.id == "1234567890")
         #expect(decoded.data.name == "Ada Lovelace")
         #expect(decoded.data.username == "ada")
-        #expect(decoded.data.email == nil)        // X did not return email field
+        #expect(decoded.data.email == nil) // X did not return email field
         #expect(decoded.data.verified == true)
     }
 
     @Test
-    func decodesUsersMeEnvelopeWithExplicitEmail() throws {
+    func `decodes users me envelope with explicit email`() throws {
         let body = #"""
         {
           "data": {
@@ -62,7 +60,7 @@ struct XOAuthTests {
     }
 
     @Test
-    func rejectsMissingDataEnvelope() {
+    func `rejects missing data envelope`() {
         let body = #"""
         { "id": "42", "name": "no-envelope" }
         """#.data(using: .utf8)!
@@ -75,13 +73,13 @@ struct XOAuthTests {
     // MARK: - Stub XAPIClient (test seam for controller-level integration)
 
     @Test
-    func stubXAPIClientReturnsScriptedUser() async throws {
+    func `stub XAPI client returns scripted user`() async throws {
         let stub = StubXAPIClient(scripted: .init(
             id: "stub-user-id",
             name: "Stub User",
             username: "stubuser",
             email: nil,
-            verified: false
+            verified: false,
         ))
         let result = try await stub.fetchMe(accessToken: "doesnt-matter-stub")
         #expect(result.id == "stub-user-id")
@@ -91,7 +89,7 @@ struct XOAuthTests {
     }
 
     @Test
-    func stubXAPIClientCanThrow() async throws {
+    func `stub XAPI client can throw`() async throws {
         let stub = StubXAPIClient.failing(error: NSError(domain: "stub", code: 401))
         await #expect(throws: (any Error).self) {
             _ = try await stub.fetchMe(accessToken: "anything")
@@ -101,23 +99,23 @@ struct XOAuthTests {
     // MARK: - Email fallback rule mirrors XOAuthController
 
     @Test
-    func emailFallbackProducesPlaceholderForMissingX() {
+    func `email fallback produces placeholder for missing X`() {
         // Mirrors `XOAuthController.exchange` line:
         //   let email = xUser.email?.lowercased() ?? "\(xUser.id)@x.luminavault.local"
         // Kept as a test even though it's a 1-liner — if the placeholder format
         // ever changes, downstream tenant code that assumes uniqueness has to
         // be checked. The check lives here so we notice.
         let xUser = XUserResponse.XUserData(
-            id: "9876", name: "n", username: "u", email: nil, verified: false
+            id: "9876", name: "n", username: "u", email: nil, verified: false,
         )
         let resolved = xUser.email?.lowercased() ?? "\(xUser.id)@x.luminavault.local"
         #expect(resolved == "9876@x.luminavault.local")
     }
 
     @Test
-    func emailFallbackUsesXProvidedEmailWhenPresent() {
+    func `email fallback uses X provided email when present`() {
         let xUser = XUserResponse.XUserData(
-            id: "9876", name: "n", username: "u", email: "Mixed.Case@Example.com", verified: false
+            id: "9876", name: "n", username: "u", email: "Mixed.Case@Example.com", verified: false,
         )
         let resolved = xUser.email?.lowercased() ?? "\(xUser.id)@x.luminavault.local"
         #expect(resolved == "mixed.case@example.com")
@@ -126,7 +124,7 @@ struct XOAuthTests {
     // MARK: - End-to-end: upsertOAuthUser with provider="x"
 
     @Test
-    func upsertCreatesUserWithPlaceholderEmail() async throws {
+    func `upsert creates user with placeholder email`() async throws {
         try await Self.withHarness { h in
             let providerUserID = "x-\(UUID().uuidString.prefix(8).lowercased())"
             let placeholderEmail = "\(providerUserID)@x.luminavault.local"
@@ -135,7 +133,7 @@ struct XOAuthTests {
                 provider: "x",
                 providerUserID: providerUserID,
                 email: placeholderEmail,
-                emailVerified: false
+                emailVerified: false,
             )
             #expect(user.email == placeholderEmail)
 
@@ -149,7 +147,7 @@ struct XOAuthTests {
 
             // Hermes profile auto-provisioned
             let profile = try await HermesProfile
-                .query(on: h.fluent.db(), tenantID: try user.requireID())
+                .query(on: h.fluent.db(), tenantID: user.requireID())
                 .first()
             #expect(profile != nil)
             #expect(profile?.status == "ready")
@@ -157,20 +155,20 @@ struct XOAuthTests {
     }
 
     @Test
-    func upsertReturnsSameUserOnSecondCall() async throws {
+    func `upsert returns same user on second call`() async throws {
         try await Self.withHarness { h in
             let providerUserID = "x-\(UUID().uuidString.prefix(8).lowercased())"
             let email = "\(providerUserID)@x.luminavault.local"
 
             let first = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: false
+                email: email, emailVerified: false,
             )
             let second = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: false
+                email: email, emailVerified: false,
             )
-            #expect(try first.requireID() == (try second.requireID()))
+            #expect(try first.requireID() == (second.requireID()))
 
             // Exactly one identity row, not duplicated.
             let identityCount = try await OAuthIdentity.query(on: h.fluent.db())
@@ -182,7 +180,7 @@ struct XOAuthTests {
     }
 
     @Test
-    func upsertLinksToExistingUserByEmail() async throws {
+    func `upsert links to existing user by email`() async throws {
         try await Self.withHarness { h in
             // Pre-existing user via password registration.
             let email = "x-link-\(UUID().uuidString.prefix(8).lowercased())@test.luminavault"
@@ -193,10 +191,10 @@ struct XOAuthTests {
             let providerUserID = "x-\(UUID().uuidString.prefix(8).lowercased())"
             let user = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: true
+                email: email, emailVerified: true,
             )
             #expect(user.email == email)
-            #expect(user.username == username)        // password-flow username preserved
+            #expect(user.username == username) // password-flow username preserved
 
             // Exactly one User row for this email; the OAuth identity attached to it.
             let userCount = try await User.query(on: h.fluent.db())
@@ -209,19 +207,19 @@ struct XOAuthTests {
                 .filter(\.$providerUserID == providerUserID)
                 .first()
             #expect(identity != nil)
-            #expect(identity?.tenantID == (try user.requireID()))
+            #expect(try identity?.tenantID == (user.requireID()))
         }
     }
 
     // MARK: - Harness (mirrors AuthFlowTests)
 
-    fileprivate struct Harness: Sendable {
+    fileprivate struct Harness {
         let service: DefaultAuthService
         let fluent: Fluent
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T
+        _ body: @Sendable (Harness) async throws -> T,
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -239,7 +237,7 @@ struct XOAuthTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -263,12 +261,12 @@ struct XOAuthTests {
         let kid = JWKIdentifier(string: "test-kid")
         await jwtKeys.add(
             hmac: HMACKey(stringLiteral: "test-secret-do-not-use-in-prod-32chars"),
-            digestAlgorithm: .sha256, kid: kid
+            digestAlgorithm: .sha256, kid: kid,
         )
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "123456")
+            generator: FixedOTPCodeGenerator(code: "123456"),
         )
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-x-oauth-test-\(UUID().uuidString)", isDirectory: true)
@@ -286,13 +284,13 @@ struct XOAuthTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
             ),
             soulService: SOULService(
                 vaultPaths: VaultPathService(rootPath: tmpRoot.path),
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger
-            )
+                logger: logger,
+            ),
         )
         return Harness(service: service, fluent: fluent)
     }
@@ -304,7 +302,7 @@ struct XOAuthTests {
 /// without hitting `api.x.com`. Records each invoked access_token so callers
 /// can assert what the controller forwarded.
 actor StubXAPIClient: XAPIClient {
-    enum Mode: Sendable {
+    enum Mode {
         case scripted(XUserResponse.XUserData)
         case failing(any Error)
     }
@@ -312,8 +310,14 @@ actor StubXAPIClient: XAPIClient {
     private let mode: Mode
     private(set) var observedTokens: [String] = []
 
-    init(scripted: XUserResponse.XUserData) { self.mode = .scripted(scripted) }
-    init(mode: Mode) { self.mode = mode }
+    init(scripted: XUserResponse.XUserData) {
+        mode = .scripted(scripted)
+    }
+
+    init(mode: Mode) {
+        self.mode = mode
+    }
+
     static func failing(error: any Error) -> StubXAPIClient {
         StubXAPIClient(mode: .failing(error))
     }
@@ -321,8 +325,8 @@ actor StubXAPIClient: XAPIClient {
     func fetchMe(accessToken: String) async throws -> XUserResponse.XUserData {
         observedTokens.append(accessToken)
         switch mode {
-        case .scripted(let user): return user
-        case .failing(let err):   throw err
+        case let .scripted(user): return user
+        case let .failing(err): throw err
         }
     }
 }

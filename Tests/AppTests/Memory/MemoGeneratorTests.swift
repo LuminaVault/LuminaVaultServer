@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -5,16 +6,13 @@ import HummingbirdFluent
 import Logging
 import Testing
 
-@testable import App
-
 /// Drives `MemoGeneratorService` against a scripted Hermes transport so we
 /// can verify: agent loop terminates, citations parse, memo body is shaped
 /// correctly, and `save=true` lands a `vault_files` row + on-disk file.
 @Suite(.serialized)
 struct MemoGeneratorTests {
-
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent, URL) async throws -> T
+        _ body: @Sendable (Fluent, URL) async throws -> T,
     ) async throws -> T {
         let fluent = try await makeFluent()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -36,7 +34,7 @@ struct MemoGeneratorTests {
         let fluent = Fluent(logger: Logger(label: "test.memo"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -66,7 +64,7 @@ struct MemoGeneratorTests {
             vaultPaths: VaultPathService(rootPath: tmpRoot.appendingPathComponent("vault").path),
             fluent: fluent,
             defaultModel: "test-model",
-            logger: Logger(label: "test.memo")
+            logger: Logger(label: "test.memo"),
         )
     }
 
@@ -76,14 +74,14 @@ struct MemoGeneratorTests {
             id: id,
             email: "memo-\(UUID().uuidString.prefix(6).lowercased())@test.luminavault",
             username: "memo-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "stub"
+            passwordHash: "stub",
         )
         try await user.save(on: fluent.db())
         return id
     }
 
     @Test
-    func memoLoopTerminatesAndPersistsToVault() async throws {
+    func `memo loop terminates and persists to vault`() async throws {
         try await Self.withFluent { fluent, tmpRoot in
             let tenantID = try await Self.makeTenant(on: fluent)
             // Seed two memories so session_search has something to find.
@@ -92,30 +90,30 @@ struct MemoGeneratorTests {
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "morning drink: jasmine tea, never coffee",
-                embedding: try await embedder.embed("morning drink: jasmine tea, never coffee")
+                embedding: embedder.embed("morning drink: jasmine tea, never coffee"),
             )
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "evening drink: chamomile tea before bed",
-                embedding: try await embedder.embed("evening drink: chamomile tea before bed")
+                embedding: embedder.embed("evening drink: chamomile tea before bed"),
             )
 
             let transport = ScriptedTransport(steps: [
                 .toolCall(name: "session_search", arguments: #"{"query":"drinks","limit":5}"#),
                 .plainContent("""
-                    ## Summary
-                    The user prefers tea over coffee, by time of day.
+                ## Summary
+                The user prefers tea over coffee, by time of day.
 
-                    ## Key Points
-                    - Mornings: jasmine tea [[memory:abc]]
-                    - Evenings: chamomile [[memory:def]]
+                ## Key Points
+                - Mornings: jasmine tea [[memory:abc]]
+                - Evenings: chamomile [[memory:def]]
 
-                    ## Connections
-                    Drinks correlate with energy intent.
+                ## Connections
+                Drinks correlate with energy intent.
 
-                    ## Open Questions
-                    Does this hold on weekends?
-                    """)
+                ## Open Questions
+                Does this hold on weekends?
+                """),
             ])
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             let result = try await service.generate(
@@ -123,11 +121,11 @@ struct MemoGeneratorTests {
                 profileUsername: "memo-test",
                 topic: "drinks",
                 hint: nil,
-                save: true
+                save: true,
             )
 
             #expect(result.summary.contains("## Summary"))
-            #expect(result.memo.hasPrefix("---\n"))           // frontmatter
+            #expect(result.memo.hasPrefix("---\n")) // frontmatter
             #expect(result.memo.contains("topic: \"drinks\""))
             #expect(result.memo.contains("## Key Points"))
             #expect(result.path != nil)
@@ -156,11 +154,11 @@ struct MemoGeneratorTests {
     }
 
     @Test
-    func dryRunDoesNotPersist() async throws {
+    func `dry run does not persist`() async throws {
         try await Self.withFluent { fluent, tmpRoot in
             let tenantID = try await Self.makeTenant(on: fluent)
             let transport = ScriptedTransport(steps: [
-                .plainContent("## Summary\nNothing here yet.")
+                .plainContent("## Summary\nNothing here yet."),
             ])
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             let result = try await service.generate(
@@ -168,7 +166,7 @@ struct MemoGeneratorTests {
                 profileUsername: "memo-test",
                 topic: "anything",
                 hint: nil,
-                save: false
+                save: false,
             )
             #expect(result.path == nil)
             let rows = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).all()
@@ -177,13 +175,13 @@ struct MemoGeneratorTests {
     }
 
     @Test
-    func loopMaxIterationsThrows() async throws {
+    func `loop max iterations throws`() async throws {
         try await Self.withFluent { fluent, tmpRoot in
             let tenantID = try await Self.makeTenant(on: fluent)
             // Degenerate transport: always asks for another search, never plain content.
             let transport = ScriptedTransport(repeating: .toolCall(
                 name: "session_search",
-                arguments: #"{"query":"anything","limit":3}"#
+                arguments: #"{"query":"anything","limit":3}"#,
             ))
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             await #expect(throws: (any Error).self) {
@@ -192,14 +190,14 @@ struct MemoGeneratorTests {
                     profileUsername: "memo-test",
                     topic: "loop",
                     hint: nil,
-                    save: false
+                    save: false,
                 )
             }
         }
     }
 
     @Test
-    func slugSanitizesTopic() {
+    func `slug sanitizes topic`() {
         #expect(MemoGeneratorService.slug("Hello World!") == "hello-world")
         #expect(MemoGeneratorService.slug("My drinks @ home") == "my-drinks-home")
         #expect(MemoGeneratorService.slug("---") == "memo")
@@ -211,7 +209,7 @@ struct MemoGeneratorTests {
 // MARK: - Scripted transport (same shape as HermesMemoryServiceTests')
 
 private actor ScriptedTransport: HermesChatTransport {
-    enum Step: Sendable {
+    enum Step {
         case toolCall(name: String, arguments: String)
         case plainContent(String)
     }
@@ -220,10 +218,15 @@ private actor ScriptedTransport: HermesChatTransport {
     private let repeatingStep: Step?
     private var index: Int = 0
 
-    init(steps: [Step]) { self.steps = steps; self.repeatingStep = nil }
-    init(repeating: Step) { self.steps = []; self.repeatingStep = repeating }
+    init(steps: [Step]) {
+        self.steps = steps; repeatingStep = nil
+    }
 
-    nonisolated func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
+    init(repeating: Step) {
+        steps = []; repeatingStep = repeating
+    }
+
+    nonisolated func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
         try await respond()
     }
 
@@ -242,7 +245,7 @@ private actor ScriptedTransport: HermesChatTransport {
 
     private static func encode(step: Step) -> Data {
         switch step {
-        case .toolCall(let name, let arguments):
+        case let .toolCall(name, arguments):
             let json: [String: Any] = [
                 "id": "test", "model": "test",
                 "choices": [[
@@ -252,19 +255,19 @@ private actor ScriptedTransport: HermesChatTransport {
                         "tool_calls": [[
                             "id": "call_\(UUID().uuidString.prefix(8).lowercased())",
                             "type": "function",
-                            "function": ["name": name, "arguments": arguments]
-                        ]]
-                    ]
-                ]]
+                            "function": ["name": name, "arguments": arguments],
+                        ]],
+                    ],
+                ]],
             ]
             return (try? JSONSerialization.data(withJSONObject: json)) ?? Data()
-        case .plainContent(let text):
+        case let .plainContent(text):
             let json: [String: Any] = [
                 "id": "test", "model": "test",
                 "choices": [[
                     "index": 0, "finish_reason": "stop",
-                    "message": ["role": "assistant", "content": text]
-                ]]
+                    "message": ["role": "assistant", "content": text],
+                ]],
             ]
             return (try? JSONSerialization.data(withJSONObject: json)) ?? Data()
         }

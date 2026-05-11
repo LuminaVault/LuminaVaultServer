@@ -21,7 +21,7 @@ actor SkillCatalog {
     init(
         vaultPaths: VaultPathService,
         parser: SkillManifestParser = SkillManifestParser(),
-        logger: Logger
+        logger: Logger,
     ) {
         self.vaultPaths = vaultPaths
         self.parser = parser
@@ -30,7 +30,7 @@ actor SkillCatalog {
 
     /// Returns the merged manifest list for `tenantID`. Vault entries
     /// shadow built-in entries with the same `name` (HER-168 acceptance).
-    func manifests(for tenantID: UUID) async throws -> [SkillManifest] {
+    func manifests(for _: UUID) async throws -> [SkillManifest] {
         // HER-168: scan builtin bundle + vault dir, merge by name with vault precedence.
         []
     }

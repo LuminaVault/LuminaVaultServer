@@ -4,21 +4,21 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 
-struct HermesProfileReconcileSummary: Codable, Sendable {
+struct HermesProfileReconcileSummary: Codable {
     let usersScanned: Int
     let profilesCreated: Int
-    let profilesRecovered: Int    // existed in error state, now ready
+    let profilesRecovered: Int // existed in error state, now ready
     let profilesAlreadyOK: Int
-    let failures: [String]        // human-readable per-user error
+    let failures: [String] // human-readable per-user error
 }
 
-struct HermesProfileReapSummary: Codable, Sendable {
+struct HermesProfileReapSummary: Codable {
     let dirsScanned: Int
-    let orphansSoftDeleted: [String]   // original names
+    let orphansSoftDeleted: [String] // original names
     let activeKept: Int
 }
 
-struct HermesProfileHealth: Codable, Sendable {
+struct HermesProfileHealth: Codable {
     let totalUsers: Int
     let profilesReady: Int
     let profilesProvisioning: Int
@@ -30,7 +30,7 @@ struct HermesProfileHealth: Codable, Sendable {
 /// Admin-side reconciliation. Idempotent and safe to re-run. Built for
 /// after-disaster cleanup (filesystem corruption, mid-deploy crash that
 /// stranded a `provisioning` row, manual edits to `data/hermes/`).
-struct HermesProfileReconciler: Sendable {
+struct HermesProfileReconciler {
     let fluent: Fluent
     let service: HermesProfileService
     let vaultPaths: VaultPathService
@@ -72,7 +72,7 @@ struct HermesProfileReconciler: Sendable {
             profilesCreated: created,
             profilesRecovered: recovered,
             profilesAlreadyOK: alreadyOK,
-            failures: failures
+            failures: failures,
         )
     }
 
@@ -85,8 +85,8 @@ struct HermesProfileReconciler: Sendable {
         }
 
         let entries = try fm.contentsOfDirectory(atPath: profilesDir.path)
-        let activeIDs = Set(
-            try await HermesProfile.query(on: fluent.db()).all(\.$hermesProfileID)
+        let activeIDs = try await Set(
+            HermesProfile.query(on: fluent.db()).all(\.$hermesProfileID),
         )
 
         var orphans: [String] = []
@@ -101,7 +101,7 @@ struct HermesProfileReconciler: Sendable {
             }
             let from = profilesDir.appendingPathComponent(entry)
             let stamped = profilesDir.appendingPathComponent(
-                "_deleted_\(Int(Date().timeIntervalSince1970))_\(entry)"
+                "_deleted_\(Int(Date().timeIntervalSince1970))_\(entry)",
             )
             do {
                 try fm.moveItem(at: from, to: stamped)
@@ -115,7 +115,7 @@ struct HermesProfileReconciler: Sendable {
         return HermesProfileReapSummary(
             dirsScanned: entries.count,
             orphansSoftDeleted: orphans,
-            activeKept: kept
+            activeKept: kept,
         )
     }
 
@@ -127,9 +127,9 @@ struct HermesProfileReconciler: Sendable {
         var ready = 0, provisioning = 0, error = 0
         for p in allProfiles {
             switch p.status {
-            case "ready":        ready += 1
+            case "ready": ready += 1
             case "provisioning": provisioning += 1
-            case "error":        error += 1
+            case "error": error += 1
             default: break
             }
         }
@@ -142,7 +142,7 @@ struct HermesProfileReconciler: Sendable {
         var orphans = 0
         if let entries = try? FileManager.default.contentsOfDirectory(atPath: profilesDir.path) {
             let active = Set(allProfiles.map(\.hermesProfileID))
-            orphans = entries.filter { !$0.hasPrefix("_deleted_") && !active.contains($0) }.count
+            orphans = entries.count(where: { !$0.hasPrefix("_deleted_") && !active.contains($0) })
         }
 
         return HermesProfileHealth(
@@ -151,7 +151,7 @@ struct HermesProfileReconciler: Sendable {
             profilesProvisioning: provisioning,
             profilesError: error,
             usersWithoutProfile: withoutProfile,
-            orphanFilesystemDirs: orphans
+            orphanFilesystemDirs: orphans,
         )
     }
 }

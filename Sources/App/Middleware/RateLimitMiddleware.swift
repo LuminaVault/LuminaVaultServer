@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 
 /// Per-route rate-limit policy.
-struct RateLimitPolicy: Sendable {
+struct RateLimitPolicy {
     let max: Int
     let window: TimeInterval
     /// Builds the bucket key from the request + context. Use IP, tenantID,
@@ -22,12 +22,12 @@ struct RateLimitMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         let key = "rl:" + policy.keyBuilder(request, context)
         let now = Date().timeIntervalSince1970
 
-        let current: BucketState = (try? await storage.get(key: key, as: BucketState.self))
+        let current: BucketState = await (try? storage.get(key: key, as: BucketState.self))
             ?? BucketState(start: now, count: 0)
         var bucket = current
         if now - bucket.start > policy.window {
@@ -43,14 +43,14 @@ struct RateLimitMiddleware: RouterMiddleware {
             throw HTTPError(
                 .tooManyRequests,
                 headers: [.retryAfter: String(retryAfter)],
-                message: "rate limit exceeded"
+                message: "rate limit exceeded",
             )
         }
         return try await next(request, context)
     }
 }
 
-private struct BucketState: Codable, Sendable {
+private struct BucketState: Codable {
     var start: TimeInterval
     var count: Int
 }
@@ -118,7 +118,7 @@ extension RateLimitPolicy {
     /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.
     /// Apply BOTH on the `/v1/auth/phone/start` route.
     static let phoneStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
-    static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86_400) { req, _ in ipKey(req) }
+    static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
 
     /// HER-138: email magic-link start. SES/Mailgun spend is equally toll-
     /// fraud-able as SMS; abusers can also weaponize the endpoint to spam
@@ -126,5 +126,5 @@ extension RateLimitPolicy {
     /// + 10/day budget, both per IP. Apply BOTH on
     /// `/v1/auth/email/start`.
     static let emailMagicStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
-    static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86_400) { req, _ in ipKey(req) }
+    static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
 }

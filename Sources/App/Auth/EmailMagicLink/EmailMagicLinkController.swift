@@ -2,16 +2,16 @@ import Foundation
 import Hummingbird
 import Logging
 
-struct EmailMagicStartRequest: Codable, Sendable {
+struct EmailMagicStartRequest: Codable {
     let email: String
 }
 
-struct EmailMagicStartResponse: Codable, ResponseEncodable, Sendable {
+struct EmailMagicStartResponse: Codable, ResponseEncodable {
     let challengeId: UUID
     let expiresAt: Date
 }
 
-struct EmailMagicVerifyRequest: Codable, Sendable {
+struct EmailMagicVerifyRequest: Codable {
     let email: String
     let code: String
 }
@@ -56,7 +56,7 @@ struct EmailMagicLinkController {
             channel: "email",
             destination: email,
             purpose: "magic_link",
-            code: code
+            code: code,
         )
         try await emailSender.send(code: code, to: email, purpose: "magic_link")
         logger.info("magic-link OTP issued: email=\(email)")
@@ -74,7 +74,7 @@ struct EmailMagicLinkController {
             provider: "email_magic_link",
             providerUserID: email,
             email: email,
-            emailVerified: true
+            emailVerified: true,
         )
         return try await authService.issueTokens(for: user)
     }

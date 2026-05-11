@@ -14,7 +14,7 @@ import Logging
 /// Writes are atomic (`write-to-tmp + rename`) so Hermes can never observe a
 /// half-written file. The 64 KiB size cap matches the ticket acceptance and
 /// keeps prompt-injection / cost-blowup attacks bounded.
-struct SOULService: Sendable {
+struct SOULService {
     let vaultPaths: VaultPathService
     /// Host path to the Hermes data root (the same directory mounted into the
     /// Hermes container at `/opt/data`). Profile dirs live at
@@ -111,7 +111,7 @@ struct SOULService: Sendable {
         let hermesTarget = hermesFilePath(for: username)
         try FileManager.default.createDirectory(
             at: hermesTarget.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
         )
         try atomicWrite(data: data, to: hermesTarget)
     }
@@ -122,7 +122,7 @@ struct SOULService: Sendable {
         let hermesTarget = hermesFilePath(for: username)
         try FileManager.default.createDirectory(
             at: hermesTarget.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
         )
         try atomicWrite(data: data, to: hermesTarget)
     }

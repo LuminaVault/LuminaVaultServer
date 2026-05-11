@@ -10,7 +10,7 @@ import JWTKit
 /// `iat` is the standard issued-at claim, used by destructive endpoints
 /// (HER-92 account deletion) to gate on a "fresh re-auth" window without
 /// requiring the password body on every call.
-struct SessionToken: JWTPayload, Sendable {
+struct SessionToken: JWTPayload {
     var subject: SubjectClaim
     var expiration: ExpirationClaim
     var issuedAt: IssuedAtClaim?
@@ -30,9 +30,9 @@ struct SessionToken: JWTPayload, Sendable {
         expiration: Date,
         issuedAt: Date? = nil,
         jti: String = UUID().uuidString,
-        hpid: String? = nil
+        hpid: String? = nil,
     ) {
-        self.subject = .init(value: userID.uuidString)
+        subject = .init(value: userID.uuidString)
         self.expiration = .init(value: expiration)
         self.issuedAt = issuedAt.map { IssuedAtClaim(value: $0) }
         self.jti = jti
@@ -43,5 +43,7 @@ struct SessionToken: JWTPayload, Sendable {
         try expiration.verifyNotExpired()
     }
 
-    var userID: UUID? { UUID(uuidString: subject.value) }
+    var userID: UUID? {
+        UUID(uuidString: subject.value)
+    }
 }

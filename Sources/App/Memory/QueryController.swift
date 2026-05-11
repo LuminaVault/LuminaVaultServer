@@ -1,19 +1,19 @@
 import Foundation
 import Hummingbird
 
-struct QueryRequest: Codable, Sendable {
+struct QueryRequest: Codable {
     let query: String
     let limit: Int?
 }
 
-struct QueryHitDTO: Codable, Sendable {
+struct QueryHitDTO: Codable {
     let id: UUID
     let content: String
     let distance: Float
     let createdAt: Date?
 }
 
-struct QueryResponse: Codable, ResponseEncodable, Sendable {
+struct QueryResponse: Codable, ResponseEncodable {
     let summary: String
     let hits: [QueryHitDTO]
 }
@@ -36,10 +36,10 @@ struct QueryController {
             throw HTTPError(.badRequest, message: "query required")
         }
         let answer = try await service.search(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             profileUsername: user.username,
             query: body.query,
-            limit: body.limit ?? 5
+            limit: body.limit ?? 5,
         )
         let hits = answer.hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)

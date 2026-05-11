@@ -7,34 +7,34 @@ import WebAuthn
 
 // MARK: - DTOs
 
-struct WebAuthnBeginRegistrationRequest: Codable, Sendable {
+struct WebAuthnBeginRegistrationRequest: Codable {
     let username: String
     let displayName: String?
 }
 
-struct WebAuthnFinishRegistrationRequest: Codable, Sendable {
+struct WebAuthnFinishRegistrationRequest: Codable {
     let username: String
     let credentialCreationData: RegistrationCredential
 }
 
-struct WebAuthnBeginAuthenticationRequest: Codable, Sendable {
+struct WebAuthnBeginAuthenticationRequest: Codable {
     let username: String
 }
 
-struct WebAuthnFinishAuthenticationRequest: Codable, Sendable {
+struct WebAuthnFinishAuthenticationRequest: Codable {
     let username: String
     let credential: AuthenticationCredential
 }
 
-struct WebAuthnBeginRegistrationResponse: Codable, Sendable {
+struct WebAuthnBeginRegistrationResponse: Codable {
     let options: PublicKeyCredentialCreationOptions
 }
 
-struct WebAuthnFinishRegistrationResponse: Codable, Sendable {
+struct WebAuthnFinishRegistrationResponse: Codable {
     let credentialID: String
 }
 
-struct WebAuthnBeginAuthenticationResponse: Codable, Sendable {
+struct WebAuthnBeginAuthenticationResponse: Codable {
     let options: PublicKeyCredentialRequestOptions
 }
 
@@ -43,6 +43,7 @@ extension WebAuthnFinishRegistrationResponse: ResponseEncodable {}
 extension WebAuthnBeginAuthenticationResponse: ResponseEncodable {}
 
 // MARK: - In-memory challenge store
+
 //
 // Single-instance only. Multi-replica deployments must move this onto a
 // shared `PersistDriver` (with TTL) so challenges issued by replica A can
@@ -53,6 +54,7 @@ actor WebAuthnChallengeStore {
         let challenge: [UInt8]
         let expiresAt: Date
     }
+
     private var registrations: [String: Entry] = [:]
     private var authentications: [String: Entry] = [:]
     private let ttl: TimeInterval = 300
@@ -60,6 +62,7 @@ actor WebAuthnChallengeStore {
     func storeRegistration(username: String, challenge: [UInt8]) {
         registrations[username] = Entry(challenge: challenge, expiresAt: Date().addingTimeInterval(ttl))
     }
+
     func registration(username: String) -> [UInt8]? {
         guard let e = registrations[username], e.expiresAt > Date() else {
             registrations[username] = nil
@@ -67,11 +70,15 @@ actor WebAuthnChallengeStore {
         }
         return e.challenge
     }
-    func clearRegistration(username: String) { registrations[username] = nil }
+
+    func clearRegistration(username: String) {
+        registrations[username] = nil
+    }
 
     func storeAuthentication(username: String, challenge: [UInt8]) {
         authentications[username] = Entry(challenge: challenge, expiresAt: Date().addingTimeInterval(ttl))
     }
+
     func authentication(username: String) -> [UInt8]? {
         guard let e = authentications[username], e.expiresAt > Date() else {
             authentications[username] = nil
@@ -79,12 +86,15 @@ actor WebAuthnChallengeStore {
         }
         return e.challenge
     }
-    func clearAuthentication(username: String) { authentications[username] = nil }
+
+    func clearAuthentication(username: String) {
+        authentications[username] = nil
+    }
 }
 
 // MARK: - Service
 
-struct WebAuthnService: Sendable {
+struct WebAuthnService {
     let enabled: Bool
     let relyingPartyID: String
     let relyingPartyName: String
@@ -101,8 +111,8 @@ struct WebAuthnService: Sendable {
             configuration: .init(
                 relyingPartyID: relyingPartyID,
                 relyingPartyName: relyingPartyName,
-                relyingPartyOrigin: relyingPartyOrigin
-            )
+                relyingPartyOrigin: relyingPartyOrigin,
+            ),
         )
     }
 
@@ -123,18 +133,17 @@ struct WebAuthnService: Sendable {
         // leaks "this account exists" to scanners. Issue a syntactically
         // valid challenge anyway. The flow will fail at /finish (where the
         // attacker's `RegistrationCredential` doesn't match a real user).
-        let userIDBytes: [UInt8]
-        if let user = try await repo.findUser(byUsername: body.username) {
-            userIDBytes = Array(try user.requireID().uuidString.utf8)
+        let userIDBytes: [UInt8] = if let user = try await repo.findUser(byUsername: body.username) {
+            try Array(user.requireID().uuidString.utf8)
         } else {
             // Generate a deterministic-but-opaque pseudo-id so attackers
             // can't time-side-channel based on response shape.
-            userIDBytes = Array(UUID().uuidString.utf8)
+            Array(UUID().uuidString.utf8)
         }
         let userEntity = PublicKeyCredentialUserEntity(
             id: userIDBytes,
             name: body.username,
-            displayName: body.displayName ?? body.username
+            displayName: body.displayName ?? body.username,
         )
         let options = manager.beginRegistration(user: userEntity)
         await store.storeRegistration(username: body.username, challenge: Array(options.challenge))
@@ -161,13 +170,13 @@ struct WebAuthnService: Sendable {
                     .filter(\.$credentialID == credentialID)
                     .first()
                 return existing == nil
-            }
+            },
         )
         let row = WebAuthnCredential(
             tenantID: tenantID,
             credentialID: credential.id,
             publicKey: Data(credential.publicKey),
-            signCount: credential.signCount
+            signCount: credential.signCount,
         )
         try await row.save(on: db)
         await store.clearRegistration(username: body.username)
@@ -214,7 +223,7 @@ struct WebAuthnService: Sendable {
             credential: body.credential,
             expectedChallenge: challenge,
             credentialPublicKey: Array(row.publicKey),
-            credentialCurrentSignCount: UInt32(row.signCount)
+            credentialCurrentSignCount: UInt32(row.signCount),
         )
         row.signCount = Int64(verified.newSignCount)
         try await row.save(on: db)

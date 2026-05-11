@@ -21,7 +21,7 @@ public actor ConnectionManager {
     public func register(
         tenantID: String,
         username: String,
-        outbound: WebSocketOutboundWriter
+        outbound: WebSocketOutboundWriter,
     ) -> UUID {
         let connectionID = UUID()
         let connection = Connection(
@@ -29,7 +29,7 @@ public actor ConnectionManager {
             tenantID: tenantID,
             username: username,
             connectedAt: Date(),
-            outbound: outbound
+            outbound: outbound,
         )
         var tenantConnections = connectionsByTenant[tenantID] ?? [:]
         tenantConnections[connectionID] = connection
@@ -37,7 +37,7 @@ public actor ConnectionManager {
         logger.info("websocket connected", metadata: [
             "tenant_id": .string(tenantID),
             "username": .string(username),
-            "connection_id": .string(connectionID.uuidString)
+            "connection_id": .string(connectionID.uuidString),
         ])
         return connectionID
     }
@@ -49,7 +49,7 @@ public actor ConnectionManager {
         }
         logger.info("websocket disconnected", metadata: [
             "tenant_id": .string(tenantID),
-            "connection_id": .string(connectionID.uuidString)
+            "connection_id": .string(connectionID.uuidString),
         ])
     }
 
@@ -62,7 +62,7 @@ public actor ConnectionManager {
                 logger.warning("websocket broadcast failed", metadata: [
                     "tenant_id": .string(tenantID),
                     "connection_id": .string(connectionID.uuidString),
-                    "error": .string("\(error)")
+                    "error": .string("\(error)"),
                 ])
                 connectionsByTenant[tenantID]?[connectionID] = nil
             }

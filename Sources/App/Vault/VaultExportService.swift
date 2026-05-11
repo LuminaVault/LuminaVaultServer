@@ -26,7 +26,7 @@ import NIOCore
 /// 32-bit limits: LFH + data-descriptor fields are uint32, so any single
 /// file > 4 GiB or total archive > 4 GiB is rejected with `.contentTooLarge`.
 /// Real vaults aren't close; zip64 is a follow-up if/when it matters.
-struct VaultExportService: Sendable {
+struct VaultExportService {
     let vaultPaths: VaultPathService
     let fluent: Fluent
     let logger: Logger
@@ -43,7 +43,7 @@ struct VaultExportService: Sendable {
     func streamExport(
         user: User,
         since: Date?,
-        writer: inout some ResponseBodyWriter
+        writer: inout some ResponseBodyWriter,
     ) async throws {
         let tenantID = try user.requireID()
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
@@ -74,7 +74,7 @@ struct VaultExportService: Sendable {
             mtime: soulMtime,
             offset: &offset,
             entries: &entries,
-            writer: &writer
+            writer: &writer,
         )
 
         // --- memories.json (synthesized snapshot) ---
@@ -85,7 +85,7 @@ struct VaultExportService: Sendable {
             mtime: exportedAt,
             offset: &offset,
             entries: &entries,
-            writer: &writer
+            writer: &writer,
         )
 
         // --- raw/* files from disk ---
@@ -100,7 +100,7 @@ struct VaultExportService: Sendable {
                     size: file.size,
                     offset: &offset,
                     entries: &entries,
-                    writer: &writer
+                    writer: &writer,
                 )
             }
         }
@@ -122,7 +122,7 @@ struct VaultExportService: Sendable {
         let eocd = Self.encodeEOCD(
             entryCount: UInt16(entries.count),
             cdSize: UInt32(cdSize),
-            cdOffset: UInt32(cdStart)
+            cdOffset: UInt32(cdStart),
         )
         try await writer.write(ByteBuffer(bytes: eocd))
 
@@ -147,7 +147,7 @@ struct VaultExportService: Sendable {
                 id: row.id,
                 content: row.content,
                 tags: row.tags,
-                createdAt: row.createdAt
+                createdAt: row.createdAt,
             )
         }
         let encoder = JSONEncoder()
@@ -206,7 +206,7 @@ struct VaultExportService: Sendable {
             at: rawRoot,
             includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles],
-            errorHandler: nil
+            errorHandler: nil,
         ) else {
             return []
         }
@@ -245,7 +245,7 @@ struct VaultExportService: Sendable {
         size: Int64,
         offset: inout UInt64,
         entries: inout [CentralEntry],
-        writer: inout some ResponseBodyWriter
+        writer: inout some ResponseBodyWriter,
     ) async throws {
         guard size <= Self.maxEntryBytes else {
             throw HTTPError(.contentTooLarge, message: "vault entry exceeds 4 GiB zip32 limit: \(name)")
@@ -258,7 +258,7 @@ struct VaultExportService: Sendable {
         let lfh = Self.encodeLocalFileHeader(
             nameBytes: nameBytes,
             dosTime: dosTime,
-            dosDate: dosDate
+            dosDate: dosDate,
         )
         offset += UInt64(lfh.count)
         try await writer.write(ByteBuffer(bytes: lfh))
@@ -296,7 +296,7 @@ struct VaultExportService: Sendable {
             offset: UInt32(clamping: entryOffset),
             dosTime: dosTime,
             dosDate: dosDate,
-            useDataDescriptor: true
+            useDataDescriptor: true,
         ))
     }
 
@@ -307,7 +307,7 @@ struct VaultExportService: Sendable {
         mtime: Date,
         offset: inout UInt64,
         entries: inout [CentralEntry],
-        writer: inout some ResponseBodyWriter
+        writer: inout some ResponseBodyWriter,
     ) async throws {
         guard Int64(data.count) <= maxEntryBytes else {
             throw HTTPError(.contentTooLarge, message: "synthesized entry exceeds zip32 limit: \(name)")
@@ -323,7 +323,7 @@ struct VaultExportService: Sendable {
             dosTime: dosTime,
             dosDate: dosDate,
             crc: crc,
-            size: UInt32(data.count)
+            size: UInt32(data.count),
         )
         offset += UInt64(lfh.count)
         try await writer.write(ByteBuffer(bytes: lfh))
@@ -338,7 +338,7 @@ struct VaultExportService: Sendable {
             offset: UInt32(clamping: entryOffset),
             dosTime: dosTime,
             dosDate: dosDate,
-            useDataDescriptor: false
+            useDataDescriptor: false,
         ))
     }
 
@@ -357,22 +357,22 @@ struct VaultExportService: Sendable {
         func encodeCentralDirectoryHeader() -> [UInt8] {
             var out: [UInt8] = []
             out.reserveCapacity(46 + name.count)
-            appendUInt32(0x0214_4b50, into: &out)
-            appendUInt16(20, into: &out)                                   // version made by
-            appendUInt16(20, into: &out)                                   // version needed
-            appendUInt16(useDataDescriptor ? 0x0008 : 0, into: &out)       // general purpose
-            appendUInt16(0, into: &out)                                    // method = store
+            appendUInt32(0x0214_4B50, into: &out)
+            appendUInt16(20, into: &out) // version made by
+            appendUInt16(20, into: &out) // version needed
+            appendUInt16(useDataDescriptor ? 0x0008 : 0, into: &out) // general purpose
+            appendUInt16(0, into: &out) // method = store
             appendUInt16(dosTime, into: &out)
             appendUInt16(dosDate, into: &out)
             appendUInt32(crc, into: &out)
-            appendUInt32(size, into: &out)                                 // compressed
-            appendUInt32(size, into: &out)                                 // uncompressed
+            appendUInt32(size, into: &out) // compressed
+            appendUInt32(size, into: &out) // uncompressed
             appendUInt16(UInt16(name.count), into: &out)
-            appendUInt16(0, into: &out)                                    // extra len
-            appendUInt16(0, into: &out)                                    // comment len
-            appendUInt16(0, into: &out)                                    // disk start
-            appendUInt16(0, into: &out)                                    // internal attrs
-            appendUInt32(0, into: &out)                                    // external attrs
+            appendUInt16(0, into: &out) // extra len
+            appendUInt16(0, into: &out) // comment len
+            appendUInt16(0, into: &out) // disk start
+            appendUInt16(0, into: &out) // internal attrs
+            appendUInt32(0, into: &out) // external attrs
             appendUInt32(offset, into: &out)
             out.append(contentsOf: name)
             return out
@@ -384,17 +384,17 @@ struct VaultExportService: Sendable {
         dosTime: UInt16,
         dosDate: UInt16,
         crc: UInt32 = 0,
-        size: UInt32 = 0
+        size: UInt32 = 0,
     ) -> [UInt8] {
         // When crc/size are zero we set the data-descriptor flag so consumers
         // know to look past the body for them.
         let usingDataDescriptor = (crc == 0 && size == 0)
         var out: [UInt8] = []
         out.reserveCapacity(30 + nameBytes.count)
-        appendUInt32(0x0403_4b50, into: &out)
+        appendUInt32(0x0403_4B50, into: &out)
         appendUInt16(20, into: &out)
         appendUInt16(usingDataDescriptor ? 0x0008 : 0, into: &out)
-        appendUInt16(0, into: &out)                                        // method
+        appendUInt16(0, into: &out) // method
         appendUInt16(dosTime, into: &out)
         appendUInt16(dosDate, into: &out)
         appendUInt32(crc, into: &out)
@@ -409,7 +409,7 @@ struct VaultExportService: Sendable {
     private static func encodeDataDescriptor(crc: UInt32, size: UInt32) -> [UInt8] {
         var out: [UInt8] = []
         out.reserveCapacity(16)
-        appendUInt32(0x0807_4b50, into: &out)
+        appendUInt32(0x0807_4B50, into: &out)
         appendUInt32(crc, into: &out)
         appendUInt32(size, into: &out)
         appendUInt32(size, into: &out)
@@ -419,18 +419,18 @@ struct VaultExportService: Sendable {
     private static func encodeEOCD(
         entryCount: UInt16,
         cdSize: UInt32,
-        cdOffset: UInt32
+        cdOffset: UInt32,
     ) -> [UInt8] {
         var out: [UInt8] = []
         out.reserveCapacity(22)
-        appendUInt32(0x0605_4b50, into: &out)
-        appendUInt16(0, into: &out)             // disk
-        appendUInt16(0, into: &out)             // disk where CD starts
+        appendUInt32(0x0605_4B50, into: &out)
+        appendUInt16(0, into: &out) // disk
+        appendUInt16(0, into: &out) // disk where CD starts
         appendUInt16(entryCount, into: &out)
         appendUInt16(entryCount, into: &out)
         appendUInt32(cdSize, into: &out)
         appendUInt32(cdOffset, into: &out)
-        appendUInt16(0, into: &out)             // comment len
+        appendUInt16(0, into: &out) // comment len
         return out
     }
 
@@ -453,35 +453,33 @@ struct VaultExportService: Sendable {
 // MARK: - Little-endian helpers
 
 private func appendUInt16(_ value: UInt16, into buf: inout [UInt8]) {
-    buf.append(UInt8(value & 0xff))
-    buf.append(UInt8((value >> 8) & 0xff))
+    buf.append(UInt8(value & 0xFF))
+    buf.append(UInt8((value >> 8) & 0xFF))
 }
 
 private func appendUInt32(_ value: UInt32, into buf: inout [UInt8]) {
-    buf.append(UInt8(value & 0xff))
-    buf.append(UInt8((value >> 8) & 0xff))
-    buf.append(UInt8((value >> 16) & 0xff))
-    buf.append(UInt8((value >> 24) & 0xff))
+    buf.append(UInt8(value & 0xFF))
+    buf.append(UInt8((value >> 8) & 0xFF))
+    buf.append(UInt8((value >> 16) & 0xFF))
+    buf.append(UInt8((value >> 24) & 0xFF))
 }
 
 // MARK: - CRC32 (IEEE polynomial 0xedb88320)
 
 enum CRC32 {
-    private static let table: [UInt32] = {
-        (0..<256).map { i -> UInt32 in
-            var c = UInt32(i)
-            for _ in 0..<8 {
-                c = (c & 1) != 0 ? (0xedb8_8320 ^ (c >> 1)) : (c >> 1)
-            }
-            return c
+    private static let table: [UInt32] = (0 ..< 256).map { i -> UInt32 in
+        var c = UInt32(i)
+        for _ in 0 ..< 8 {
+            c = (c & 1) != 0 ? (0xEDB8_8320 ^ (c >> 1)) : (c >> 1)
         }
-    }()
+        return c
+    }
 
     /// One-shot helper for small in-memory blobs.
     static func checksum(bytes: some Sequence<UInt8>) -> UInt32 {
         var crc: UInt32 = 0xFFFF_FFFF
         for b in bytes {
-            crc = table[Int((crc ^ UInt32(b)) & 0xff)] ^ (crc >> 8)
+            crc = table[Int((crc ^ UInt32(b)) & 0xFF)] ^ (crc >> 8)
         }
         return crc ^ 0xFFFF_FFFF
     }
@@ -491,7 +489,7 @@ enum CRC32 {
     static func update(crc: UInt32, bytes: some Sequence<UInt8>) -> UInt32 {
         var c = crc
         for b in bytes {
-            c = table[Int((c ^ UInt32(b)) & 0xff)] ^ (c >> 8)
+            c = table[Int((c ^ UInt32(b)) & 0xFF)] ^ (c >> 8)
         }
         return c
     }

@@ -9,19 +9,19 @@ import Foundation
 /// can drop into LuminaVault with no rewrite.
 ///
 /// HER-148 scaffold: type surface only. Parsing logic lands in HER-167.
-struct SkillManifest: Sendable, Codable, Hashable {
-    enum Source: String, Sendable, Codable, Hashable {
+struct SkillManifest: Codable, Hashable {
+    enum Source: String, Codable, Hashable {
         case builtin
         case vault
     }
 
-    enum Capability: String, Sendable, Codable, Hashable {
+    enum Capability: String, Codable, Hashable {
         case low
         case medium
         case high
     }
 
-    enum OutputKind: String, Sendable, Codable, Hashable {
+    enum OutputKind: String, Codable, Hashable {
         case memo
         case apnsDigest = "apns_digest"
         case apnsNudge = "apns_nudge"
@@ -29,7 +29,7 @@ struct SkillManifest: Sendable, Codable, Hashable {
         case vaultRewrite = "vault_rewrite"
     }
 
-    struct Output: Sendable, Codable, Hashable {
+    struct Output: Codable, Hashable {
         let kind: OutputKind
         let path: String?
         let category: String?
@@ -49,7 +49,7 @@ struct SkillManifest: Sendable, Codable, Hashable {
 /// Errors surfaced by `SkillManifestParser` when frontmatter is missing,
 /// malformed, or violates required-field invariants. Invalid manifests
 /// must reject the skill rather than partially load (HER-167 acceptance).
-enum SkillManifestError: Error, Equatable, Sendable {
+enum SkillManifestError: Error, Equatable {
     case missingFrontmatter
     case malformedFrontmatter(String)
     case missingRequiredField(String)
@@ -62,10 +62,10 @@ enum SkillManifestError: Error, Equatable, Sendable {
 /// HER-148 scaffold: stub. Real implementation in HER-167 uses Yams to
 /// decode the `---`-delimited YAML frontmatter, strips it from the body,
 /// and validates required fields.
-struct SkillManifestParser: Sendable {
+struct SkillManifestParser {
     init() {}
 
-    func parse(source: SkillManifest.Source, contents: String) throws -> SkillManifest {
+    func parse(source _: SkillManifest.Source, contents _: String) throws -> SkillManifest {
         throw SkillManifestError.malformedFrontmatter("HER-167 — SkillManifestParser not yet implemented")
     }
 }

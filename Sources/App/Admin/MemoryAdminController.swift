@@ -5,7 +5,7 @@ extension MemoryPruningSweepSummary: ResponseEncodable {}
 extension MemoryPruneResult: ResponseEncodable {}
 
 /// HER-147 single-user score recompute response.
-struct MemoryRecomputeResponse: Codable, ResponseEncodable, Sendable {
+struct MemoryRecomputeResponse: Codable, ResponseEncodable {
     let tenantID: UUID?
     let rowsUpdated: Int
 }
@@ -32,25 +32,25 @@ struct MemoryAdminController {
     }
 
     @Sendable
-    func recomputeAll(_ req: Request, ctx: AppRequestContext) async throws -> MemoryRecomputeResponse {
+    func recomputeAll(_: Request, ctx _: AppRequestContext) async throws -> MemoryRecomputeResponse {
         let rows = try await scoring.recomputeAll()
         return MemoryRecomputeResponse(tenantID: nil, rowsUpdated: rows)
     }
 
     @Sendable
-    func recomputeOne(_ req: Request, ctx: AppRequestContext) async throws -> MemoryRecomputeResponse {
+    func recomputeOne(_: Request, ctx: AppRequestContext) async throws -> MemoryRecomputeResponse {
         let tenantID = try Self.parseUserID(ctx)
         let rows = try await scoring.recomputeForTenant(tenantID: tenantID)
         return MemoryRecomputeResponse(tenantID: tenantID, rowsUpdated: rows)
     }
 
     @Sendable
-    func pruneAll(_ req: Request, ctx: AppRequestContext) async throws -> MemoryPruningSweepSummary {
+    func pruneAll(_: Request, ctx _: AppRequestContext) async throws -> MemoryPruningSweepSummary {
         try await job.runForAllUsers()
     }
 
     @Sendable
-    func pruneOne(_ req: Request, ctx: AppRequestContext) async throws -> MemoryPruneResult {
+    func pruneOne(_: Request, ctx: AppRequestContext) async throws -> MemoryPruneResult {
         let tenantID = try Self.parseUserID(ctx)
         // Recompute first so the prune predicate sees fresh scores.
         _ = try await scoring.recomputeForTenant(tenantID: tenantID)

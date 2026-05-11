@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -6,22 +7,19 @@ import JWTKit
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-86 — verifies the default `SOUL.md` lands on disk for every fresh
 /// register (and OAuth net-new), and that the rollback path leaves no
 /// orphan user row if the SOUL write fails. Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct SOULInitTests {
-
-    fileprivate struct Harness: Sendable {
+    fileprivate struct Harness {
         let service: DefaultAuthService
         let fluent: Fluent
         let vaultRoot: URL
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T
+        _ body: @Sendable (Harness) async throws -> T,
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -41,7 +39,7 @@ struct SOULInitTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -75,7 +73,7 @@ struct SOULInitTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "123456")
+            generator: FixedOTPCodeGenerator(code: "123456"),
         )
         let service = DefaultAuthService(
             repo: DatabaseAuthRepository(fluent: fluent),
@@ -91,13 +89,13 @@ struct SOULInitTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: vaultPaths
+                vaultPaths: vaultPaths,
             ),
             soulService: SOULService(
                 vaultPaths: vaultPaths,
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger
-            )
+                logger: logger,
+            ),
         )
         return Harness(service: service, fluent: fluent, vaultRoot: tmpRoot)
     }
@@ -111,13 +109,13 @@ struct SOULInitTests {
     }
 
     @Test
-    func registerWritesDefaultSOULToVault() async throws {
+    func `register writes default SOUL to vault`() async throws {
         try await Self.withHarness { h in
             let username = Self.randomUsername()
             let response = try await h.service.register(
                 email: Self.randomEmail(),
                 username: username,
-                password: "CorrectHorseBatteryStaple1!"
+                password: "CorrectHorseBatteryStaple1!",
             )
 
             let soulPath = h.vaultRoot
@@ -138,7 +136,7 @@ struct SOULInitTests {
     }
 
     @Test
-    func registerIsIdempotentDoesNotOverwriteExistingSOUL() async throws {
+    func `register is idempotent does not overwrite existing SOUL`() async throws {
         // Pre-seed a SOUL.md as if a returning OAuth user already had one,
         // then re-run init. SOULService must not clobber the existing file.
         try await Self.withHarness { h in
@@ -146,7 +144,7 @@ struct SOULInitTests {
             let response = try await h.service.register(
                 email: Self.randomEmail(),
                 username: username,
-                password: "CorrectHorseBatteryStaple1!"
+                password: "CorrectHorseBatteryStaple1!",
             )
 
             let soulPath = h.vaultRoot
@@ -160,12 +158,12 @@ struct SOULInitTests {
             try sentinel.data(using: .utf8)!.write(to: soulPath, options: .atomic)
 
             let user = try #require(
-                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first(),
             )
             let soul = SOULService(
                 vaultPaths: VaultPathService(rootPath: h.vaultRoot.path),
                 hermesDataRoot: h.vaultRoot.appendingPathComponent("hermes").path,
-                logger: Logger(label: "test.soul.idem")
+                logger: Logger(label: "test.soul.idem"),
             )
             let wrote = try soul.initIfMissing(for: user)
             #expect(wrote == false)
@@ -175,7 +173,7 @@ struct SOULInitTests {
     }
 
     @Test
-    func soulServiceWritesValidUTF8Markdown() async throws {
+    func `soul service writes valid UTF 8 markdown`() {
         // Pure unit test on the template — no DB needed.
         let body = SOULDefaultTemplate.render(username: "alice")
         #expect(body.contains("username: alice"))

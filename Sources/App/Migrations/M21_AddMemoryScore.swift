@@ -20,21 +20,21 @@ struct M21_AddMemoryScore: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION NOT NULL DEFAULT 0"#
+            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION NOT NULL DEFAULT 0"#,
         ).run()
         try await sql.raw(
-            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS access_count BIGINT NOT NULL DEFAULT 0"#
+            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS access_count BIGINT NOT NULL DEFAULT 0"#,
         ).run()
         try await sql.raw(
-            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS query_hit_count BIGINT NOT NULL DEFAULT 0"#
+            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS query_hit_count BIGINT NOT NULL DEFAULT 0"#,
         ).run()
         try await sql.raw(
-            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ"#
+            #"ALTER TABLE memories ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ"#,
         ).run()
         try await sql.raw("""
-            CREATE INDEX IF NOT EXISTS idx_memories_tenant_score
-            ON memories (tenant_id, score)
-            """).run()
+        CREATE INDEX IF NOT EXISTS idx_memories_tenant_score
+        ON memories (tenant_id, score)
+        """).run()
     }
 
     func revert(on database: any Database) async throws {

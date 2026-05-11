@@ -1,15 +1,13 @@
+@testable import App
 import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Testing
 
-@testable import App
-
 /// HER-91 end-to-end tests for `GET /v1/vault/export`.
 /// Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct VaultExportTests {
-
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
@@ -34,7 +32,7 @@ struct VaultExportTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword)
+            body: registerBody(email: email, username: username, password: testPassword),
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -44,16 +42,16 @@ struct VaultExportTests {
         client: some TestClientProtocol,
         token: String,
         path: String,
-        body: String = "# hello"
+        body: String = "# hello",
     ) async throws -> String {
         let resp = try await client.execute(
             uri: "/v1/vault/files?path=\(path)",
             method: .post,
             headers: [
                 .authorization: "Bearer \(token)",
-                .contentType: "text/markdown"
+                .contentType: "text/markdown",
             ],
-            body: ByteBuffer(string: body)
+            body: ByteBuffer(string: body),
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try JSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
@@ -64,7 +62,7 @@ struct VaultExportTests {
     // MARK: - Tests
 
     @Test
-    func emptyVaultStillIncludesSoulAndMemoriesSnapshots() async throws {
+    func `empty vault still includes soul and memories snapshots`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -72,7 +70,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 #expect(response.headers[.contentType] == "application/zip")
@@ -86,7 +84,7 @@ struct VaultExportTests {
     }
 
     @Test
-    func exportContainsUploadedFiles() async throws {
+    func `export contains uploaded files`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -96,7 +94,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let bytes = Array(Data(buffer: response.body))
@@ -109,7 +107,7 @@ struct VaultExportTests {
     }
 
     @Test
-    func sinceFilterExcludesOlderFiles() async throws {
+    func `since filter excludes older files`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -122,7 +120,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export?since=\(encoded)",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let bytes = Array(Data(buffer: response.body))
@@ -140,9 +138,9 @@ struct VaultExportTests {
     private static func assertValidZip(bytes: [UInt8]) throws {
         // Local file header signature at offset 0.
         #expect(bytes.count >= 30)
-        #expect(bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 0x03 && bytes[3] == 0x04)
+        #expect(bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04)
         // EOCD signature somewhere in the last 22..(22+0xFFFF) bytes.
-        #expect(Self.findEOCD(bytes: bytes) != nil)
+        #expect(findEOCD(bytes: bytes) != nil)
     }
 
     /// Walks the central directory and returns entry names in order.
@@ -153,17 +151,17 @@ struct VaultExportTests {
         let cdOffset = Int(readUInt32(bytes, at: eocd + 16))
         var cursor = cdOffset
         var names: [String] = []
-        for _ in 0..<cdCount {
+        for _ in 0 ..< cdCount {
             // Central directory header signature 0x02014b50
             guard cursor + 46 <= bytes.count else { break }
-            #expect(bytes[cursor] == 0x50 && bytes[cursor + 1] == 0x4b && bytes[cursor + 2] == 0x01 && bytes[cursor + 3] == 0x02)
+            #expect(bytes[cursor] == 0x50 && bytes[cursor + 1] == 0x4B && bytes[cursor + 2] == 0x01 && bytes[cursor + 3] == 0x02)
             let nameLen = Int(readUInt16(bytes, at: cursor + 28))
             let extraLen = Int(readUInt16(bytes, at: cursor + 30))
             let commentLen = Int(readUInt16(bytes, at: cursor + 32))
             let nameStart = cursor + 46
             let nameEnd = nameStart + nameLen
             guard nameEnd <= bytes.count else { break }
-            let name = String(decoding: bytes[nameStart..<nameEnd], as: UTF8.self)
+            let name = String(decoding: bytes[nameStart ..< nameEnd], as: UTF8.self)
             names.append(name)
             cursor = nameEnd + extraLen + commentLen
         }
@@ -175,7 +173,7 @@ struct VaultExportTests {
         // EOCD has variable-length comment (last 2 bytes), search backwards.
         var i = bytes.count - 22
         while i >= 0 {
-            if bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x05 && bytes[i + 3] == 0x06 {
+            if bytes[i] == 0x50, bytes[i + 1] == 0x4B, bytes[i + 2] == 0x05, bytes[i + 3] == 0x06 {
                 return i
             }
             i -= 1

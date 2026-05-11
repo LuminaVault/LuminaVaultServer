@@ -9,10 +9,10 @@ struct M18_AddMemoryTags: AsyncMigration {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw("ALTER TABLE memories ADD COLUMN IF NOT EXISTS tags TEXT[]").run()
         try await sql.raw("""
-            CREATE INDEX IF NOT EXISTS idx_memories_tags
-            ON memories
-            USING GIN (tags)
-            """).run()
+        CREATE INDEX IF NOT EXISTS idx_memories_tags
+        ON memories
+        USING GIN (tags)
+        """).run()
     }
 
     func revert(on database: any Database) async throws {

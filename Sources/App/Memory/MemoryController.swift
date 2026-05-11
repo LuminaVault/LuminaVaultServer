@@ -2,49 +2,49 @@ import Foundation
 import Hummingbird
 import Logging
 
-struct MemoryUpsertRequest: Codable, Sendable {
+struct MemoryUpsertRequest: Codable {
     let content: String
 }
 
-struct MemoryUpsertResponse: Codable, ResponseEncodable, Sendable {
+struct MemoryUpsertResponse: Codable, ResponseEncodable {
     let memoryId: UUID
     let content: String
     let summary: String
 }
 
-struct MemorySearchRequest: Codable, Sendable {
+struct MemorySearchRequest: Codable {
     let query: String
     let limit: Int?
 }
 
-struct MemorySearchHitDTO: Codable, Sendable {
+struct MemorySearchHitDTO: Codable {
     let id: UUID
     let content: String
     let distance: Float
     let createdAt: Date?
 }
 
-struct MemorySearchResponse: Codable, ResponseEncodable, Sendable {
+struct MemorySearchResponse: Codable, ResponseEncodable {
     let hits: [MemorySearchHitDTO]
     let summary: String
 }
 
 /// Single-memory representation for list / get / patch responses.
-struct MemoryDTO: Codable, ResponseEncodable, Sendable {
+struct MemoryDTO: Codable, ResponseEncodable {
     let id: UUID
     let content: String
     let tags: [String]
     let createdAt: Date?
 
     init(_ memory: Memory) throws {
-        self.id = try memory.requireID()
-        self.content = memory.content
-        self.tags = memory.tags ?? []
-        self.createdAt = memory.createdAt
+        id = try memory.requireID()
+        content = memory.content
+        tags = memory.tags ?? []
+        createdAt = memory.createdAt
     }
 }
 
-struct MemoryListResponse: Codable, ResponseEncodable, Sendable {
+struct MemoryListResponse: Codable, ResponseEncodable {
     let memories: [MemoryDTO]
     let limit: Int
     let offset: Int
@@ -52,7 +52,7 @@ struct MemoryListResponse: Codable, ResponseEncodable, Sendable {
 
 /// PATCH body. All fields optional. `content` change triggers re-embed.
 /// `tags == nil` leaves tags untouched; pass `[]` to clear.
-struct MemoryPatchRequest: Codable, Sendable {
+struct MemoryPatchRequest: Codable {
     let content: String?
     let tags: [String]?
 }
@@ -62,13 +62,13 @@ struct MemoryPatchRequest: Codable, Sendable {
 /// API writes without context) or when the source file row has been
 /// hard-deleted. `trace` is a human-readable string the client can
 /// surface verbatim ("Hermes learned this from your <date> note at …").
-struct MemoryLineageSourceDTO: Codable, Sendable {
+struct MemoryLineageSourceDTO: Codable {
     let vaultFileId: UUID
     let path: String
     let createdAt: Date?
 }
 
-struct MemoryLineageResponse: Codable, ResponseEncodable, Sendable {
+struct MemoryLineageResponse: Codable, ResponseEncodable {
     let memoryId: UUID
     let source: MemoryLineageSourceDTO?
     let trace: String
@@ -107,14 +107,14 @@ struct MemoryController {
             throw HTTPError(.badRequest, message: "content required")
         }
         let result = try await service.upsert(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             profileUsername: user.username,
-            content: body.content
+            content: body.content,
         )
-        return MemoryUpsertResponse(
-            memoryId: try result.memory.requireID(),
+        return try MemoryUpsertResponse(
+            memoryId: result.memory.requireID(),
             content: result.memory.content,
-            summary: result.summary
+            summary: result.summary,
         )
     }
 
@@ -126,10 +126,10 @@ struct MemoryController {
             throw HTTPError(.badRequest, message: "query required")
         }
         let answer = try await service.search(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             profileUsername: user.username,
             query: body.query,
-            limit: body.limit ?? 5
+            limit: body.limit ?? 5,
         )
         let hits = answer.hits.map {
             MemorySearchHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -150,7 +150,7 @@ struct MemoryController {
 
         let limit = Self.clamp(
             req.uri.queryParameters["limit"].flatMap { Int($0) } ?? Self.defaultLimit,
-            min: 1, max: Self.maxLimit
+            min: 1, max: Self.maxLimit,
         )
         let offset = max(0, req.uri.queryParameters["offset"].flatMap { Int($0) } ?? 0)
         let tag = req.uri.queryParameters["tag"].map { String($0) }
@@ -159,30 +159,30 @@ struct MemoryController {
             tenantID: tenantID,
             tag: tag,
             limit: limit,
-            offset: offset
+            offset: offset,
         )
-        return MemoryListResponse(
-            memories: try rows.map(MemoryDTO.init),
+        return try MemoryListResponse(
+            memories: rows.map(MemoryDTO.init),
             limit: limit,
-            offset: offset
+            offset: offset,
         )
     }
 
     @Sendable
-    func getOne(_ req: Request, ctx: AppRequestContext) async throws -> MemoryDTO {
+    func getOne(_: Request, ctx: AppRequestContext) async throws -> MemoryDTO {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
-        guard let row = try await repository.find(tenantID: try user.requireID(), id: id) else {
+        guard let row = try await repository.find(tenantID: user.requireID(), id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
         return try MemoryDTO(row)
     }
 
     @Sendable
-    func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
-        let deleted = try await repository.delete(tenantID: try user.requireID(), id: id)
+        let deleted = try await repository.delete(tenantID: user.requireID(), id: id)
         guard deleted else { throw HTTPError(.notFound, message: "memory not found") }
         return Response(status: .noContent)
     }
@@ -204,7 +204,7 @@ struct MemoryController {
             }
             let embedding = try await embeddings.embed(content)
             let updated = try await repository.updateContent(
-                tenantID: tenantID, id: id, content: content, embedding: embedding
+                tenantID: tenantID, id: id, content: content, embedding: embedding,
             )
             guard updated else { throw HTTPError(.notFound, message: "memory not found") }
         }
@@ -224,12 +224,12 @@ struct MemoryController {
     /// derived from, plus a human-readable trace string. 404 when the
     /// memory doesn't exist or isn't owned by the caller.
     @Sendable
-    func lineage(_ req: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
+    func lineage(_: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
         guard let row = try await repository.findLineage(
-            tenantID: try user.requireID(),
-            memoryID: id
+            tenantID: user.requireID(),
+            memoryID: id,
         ) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
@@ -239,7 +239,7 @@ struct MemoryController {
             source = MemoryLineageSourceDTO(
                 vaultFileId: sid,
                 path: path,
-                createdAt: row.sourceCreatedAt
+                createdAt: row.sourceCreatedAt,
             )
             let dateLabel = Self.formatTraceDate(row.sourceCreatedAt)
             trace = "Hermes learned this from your \(dateLabel) note at \(path)."

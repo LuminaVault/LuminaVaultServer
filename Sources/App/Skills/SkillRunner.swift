@@ -4,7 +4,7 @@ import HummingbirdFluent
 import Logging
 
 /// How a skill was triggered. Recorded on `skill_run_log` for audit.
-enum SkillTrigger: Sendable, Hashable {
+enum SkillTrigger: Hashable {
     case manual
     case cron
     case event(name: String)
@@ -12,9 +12,9 @@ enum SkillTrigger: Sendable, Hashable {
 
 /// Outcome of a single skill execution. Persisted to `skill_run_log` by
 /// `SkillRunner` and surfaced on the `POST /v1/skills/:name/run` response.
-struct SkillRunResult: Sendable, Codable, Hashable {
+struct SkillRunResult: Codable, Hashable {
     let runID: UUID
-    let status: String       // "ok" | "error"
+    let status: String // "ok" | "error"
     let error: String?
     let modelUsed: String?
     let mtokIn: Int
@@ -45,7 +45,7 @@ actor SkillRunner {
         catalog: SkillCatalog,
         fluent: Fluent,
         vaultPaths: VaultPathService,
-        logger: Logger
+        logger: Logger,
     ) {
         self.catalog = catalog
         self.fluent = fluent
@@ -56,10 +56,10 @@ actor SkillRunner {
     /// Runs the skill and returns the result. Persists to `skill_run_log`
     /// + updates `skills_state.last_*` columns.
     func run(
-        skill: SkillManifest,
-        tenantID: UUID,
-        profileUsername: String,
-        trigger: SkillTrigger
+        skill _: SkillManifest,
+        tenantID _: UUID,
+        profileUsername _: String,
+        trigger _: SkillTrigger,
     ) async throws -> SkillRunResult {
         throw HTTPError(.notImplemented, message: "HER-169 — SkillRunner not yet implemented")
     }

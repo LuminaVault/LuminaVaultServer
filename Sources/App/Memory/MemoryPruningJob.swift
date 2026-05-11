@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 
 /// HER-147 sweep summary across all users.
-struct MemoryPruningSweepSummary: Codable, Sendable {
+struct MemoryPruningSweepSummary: Codable {
     let usersScanned: Int
     let scoreRowsUpdated: Int
     let memoriesArchived: Int
@@ -20,7 +20,7 @@ struct MemoryPruningSweepSummary: Codable, Sendable {
 /// Recomputes every tenant's `score` first, then runs the prune
 /// predicate per tenant. One bad tenant doesn't abort the sweep —
 /// errors accumulate in `failures[]`.
-struct MemoryPruningJob: Sendable {
+struct MemoryPruningJob {
     let fluent: Fluent
     let scoring: MemoryScoringService
     let pruning: MemoryPruningService
@@ -55,7 +55,7 @@ struct MemoryPruningJob: Sendable {
             scoreRowsUpdated: scoreRowsUpdated,
             memoriesArchived: totalArchived,
             perTenant: perTenant,
-            failures: failures
+            failures: failures,
         )
     }
 }

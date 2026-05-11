@@ -16,24 +16,24 @@ struct M22_CreateMemoryArchive: AsyncMigration {
         // so we can revive a row by INSERT'ing back into `memories`
         // without re-embedding.
         try await sql.raw("""
-            CREATE TABLE IF NOT EXISTS memories_archive (
-                id UUID PRIMARY KEY,
-                tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                content TEXT NOT NULL,
-                tags TEXT[],
-                embedding vector(1536),
-                score DOUBLE PRECISION NOT NULL DEFAULT 0,
-                access_count BIGINT NOT NULL DEFAULT 0,
-                query_hit_count BIGINT NOT NULL DEFAULT 0,
-                last_accessed_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ,
-                archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """).run()
+        CREATE TABLE IF NOT EXISTS memories_archive (
+            id UUID PRIMARY KEY,
+            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            tags TEXT[],
+            embedding vector(1536),
+            score DOUBLE PRECISION NOT NULL DEFAULT 0,
+            access_count BIGINT NOT NULL DEFAULT 0,
+            query_hit_count BIGINT NOT NULL DEFAULT 0,
+            last_accessed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ,
+            archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """).run()
         try await sql.raw("""
-            CREATE INDEX IF NOT EXISTS idx_memories_archive_tenant_archived
-            ON memories_archive (tenant_id, archived_at DESC)
-            """).run()
+        CREATE INDEX IF NOT EXISTS idx_memories_archive_tenant_archived
+        ON memories_archive (tenant_id, archived_at DESC)
+        """).run()
     }
 
     func revert(on database: any Database) async throws {

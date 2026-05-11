@@ -6,7 +6,7 @@ import HummingbirdFluent
 /// Wire format for the onboarding state. Every step exposes both a bool
 /// (`*Completed`) and a nullable timestamp (`*CompletedAt`). Timestamps are
 /// set server-side on the transition from `false` → `true`.
-struct OnboardingStateDTO: Codable, ResponseEncodable, Sendable {
+struct OnboardingStateDTO: Codable, ResponseEncodable {
     let signupCompleted: Bool
     let signupCompletedAt: Date?
     let emailVerifiedCompleted: Bool
@@ -21,25 +21,25 @@ struct OnboardingStateDTO: Codable, ResponseEncodable, Sendable {
     let firstQueryCompletedAt: Date?
 
     init(_ row: OnboardingState) {
-        self.signupCompleted = row.signupCompleted
-        self.signupCompletedAt = row.signupCompletedAt
-        self.emailVerifiedCompleted = row.emailVerifiedCompleted
-        self.emailVerifiedCompletedAt = row.emailVerifiedCompletedAt
-        self.soulConfiguredCompleted = row.soulConfiguredCompleted
-        self.soulConfiguredCompletedAt = row.soulConfiguredCompletedAt
-        self.firstCaptureCompleted = row.firstCaptureCompleted
-        self.firstCaptureCompletedAt = row.firstCaptureCompletedAt
-        self.firstKBCompileCompleted = row.firstKBCompileCompleted
-        self.firstKBCompileCompletedAt = row.firstKBCompileCompletedAt
-        self.firstQueryCompleted = row.firstQueryCompleted
-        self.firstQueryCompletedAt = row.firstQueryCompletedAt
+        signupCompleted = row.signupCompleted
+        signupCompletedAt = row.signupCompletedAt
+        emailVerifiedCompleted = row.emailVerifiedCompleted
+        emailVerifiedCompletedAt = row.emailVerifiedCompletedAt
+        soulConfiguredCompleted = row.soulConfiguredCompleted
+        soulConfiguredCompletedAt = row.soulConfiguredCompletedAt
+        firstCaptureCompleted = row.firstCaptureCompleted
+        firstCaptureCompletedAt = row.firstCaptureCompletedAt
+        firstKBCompileCompleted = row.firstKBCompileCompleted
+        firstKBCompileCompletedAt = row.firstKBCompileCompletedAt
+        firstQueryCompleted = row.firstQueryCompleted
+        firstQueryCompletedAt = row.firstQueryCompletedAt
     }
 }
 
 /// PATCH body. All fields optional; only `true` values are accepted (the flag
 /// is a one-way latch). A `false` value is rejected with `400`. Omitted
 /// fields are left untouched.
-struct OnboardingPatchRequest: Codable, Sendable {
+struct OnboardingPatchRequest: Codable {
     let signupCompleted: Bool?
     let emailVerifiedCompleted: Bool?
     let soulConfiguredCompleted: Bool?
@@ -57,7 +57,7 @@ struct OnboardingController {
     }
 
     @Sendable
-    func get(_ req: Request, ctx: AppRequestContext) async throws -> OnboardingStateDTO {
+    func get(_: Request, ctx: AppRequestContext) async throws -> OnboardingStateDTO {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let row = try await loadOrCreate(tenantID: tenantID)

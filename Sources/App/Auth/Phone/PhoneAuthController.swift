@@ -7,16 +7,16 @@ import Logging
 
 // MARK: - DTOs
 
-struct PhoneStartRequest: Codable, Sendable {
+struct PhoneStartRequest: Codable {
     let phone: String
 }
 
-struct PhoneStartResponse: Codable, ResponseEncodable, Sendable {
+struct PhoneStartResponse: Codable, ResponseEncodable {
     let challengeId: UUID
     let expiresAt: Date
 }
 
-struct PhoneVerifyRequest: Codable, Sendable {
+struct PhoneVerifyRequest: Codable {
     let phone: String
     let code: String
 }
@@ -28,7 +28,7 @@ struct PhoneVerifyRequest: Codable, Sendable {
 /// from a challenge whose lifetime ran out (`.expired` → 410 Gone).
 /// HER-137 requires the 410 distinction so the iOS client knows to
 /// re-issue rather than re-prompt.
-enum ConsumeOutcome: Sendable {
+enum ConsumeOutcome {
     case ok(destination: String, purpose: String)
     case notFound
     case expired
@@ -44,14 +44,14 @@ actor PreAuthChallengeStore {
         let id: UUID
         let codeHash: String
         var attempts: Int
-        let channel: String         // "sms" | "email"
-        let destination: String     // phone (E.164) or email
+        let channel: String // "sms" | "email"
+        let destination: String // phone (E.164) or email
         let purpose: String
         let expiresAt: Date
     }
 
     private var byID: [UUID: Entry] = [:]
-    private var latestByDestination: [String: UUID] = [:]   // dedup-by-recipient
+    private var latestByDestination: [String: UUID] = [:] // dedup-by-recipient
 
     private let lifetime: TimeInterval
     private let maxAttempts: Int
@@ -78,7 +78,7 @@ actor PreAuthChallengeStore {
             channel: channel,
             destination: destination,
             purpose: purpose,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
         )
         byID[id] = entry
         latestByDestination[destination] = id
@@ -137,8 +137,8 @@ actor PreAuthChallengeStore {
 
 extension AuthError {
     static let invalidPhone = HTTPError(.badRequest, message: "phone must be E.164 (^\\+[1-9]\\d{6,14}$)")
-    static let otpInvalid  = HTTPError(.unauthorized, message: "invalid or expired code")
-    static let otpExpired  = HTTPError(.gone, message: "challenge expired; request a new code")
+    static let otpInvalid = HTTPError(.unauthorized, message: "invalid or expired code")
+    static let otpExpired = HTTPError(.gone, message: "challenge expired; request a new code")
 }
 
 // MARK: - Controller
@@ -179,7 +179,7 @@ struct PhoneAuthController {
             channel: "sms",
             destination: phone,
             purpose: "phone_signin",
-            code: code
+            code: code,
         )
         try await smsSender.send(code: code, to: phone, purpose: "phone_signin")
         logger.info("phone OTP issued: phone=\(phone)")
@@ -203,7 +203,7 @@ struct PhoneAuthController {
             provider: "phone",
             providerUserID: phone,
             email: placeholderEmail,
-            emailVerified: false
+            emailVerified: false,
         )
         return try await authService.issueTokens(for: user)
     }

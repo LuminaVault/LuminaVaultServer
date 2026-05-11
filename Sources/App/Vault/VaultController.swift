@@ -5,7 +5,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 
-struct VaultUploadResponse: Codable, ResponseEncodable, Sendable {
+struct VaultUploadResponse: Codable, ResponseEncodable {
     let path: String
     let size: Int
     let contentType: String
@@ -14,7 +14,7 @@ struct VaultUploadResponse: Codable, ResponseEncodable, Sendable {
 
 /// Wire DTO for a single `vault_files` row. Path is tenant-relative
 /// (matches the `path` column; on-disk location is `<rawRoot>/<path>`).
-struct VaultFileDTO: Codable, ResponseEncodable, Sendable {
+struct VaultFileDTO: Codable, ResponseEncodable {
     let id: UUID
     let path: String
     let contentType: String
@@ -25,18 +25,18 @@ struct VaultFileDTO: Codable, ResponseEncodable, Sendable {
     let updatedAt: Date?
 
     init(_ row: VaultFile) throws {
-        self.id = try row.requireID()
-        self.path = row.path
-        self.contentType = row.contentType
-        self.sizeBytes = row.sizeBytes
-        self.sha256 = row.sha256
-        self.spaceId = row.spaceID
-        self.createdAt = row.createdAt
-        self.updatedAt = row.updatedAt
+        id = try row.requireID()
+        path = row.path
+        contentType = row.contentType
+        sizeBytes = row.sizeBytes
+        sha256 = row.sha256
+        spaceId = row.spaceID
+        createdAt = row.createdAt
+        updatedAt = row.updatedAt
     }
 }
 
-struct VaultFileListResponse: Codable, ResponseEncodable, Sendable {
+struct VaultFileListResponse: Codable, ResponseEncodable {
     let files: [VaultFileDTO]
     let limit: Int
     /// `createdAt` of the oldest item in the returned page. Pass it back as
@@ -45,7 +45,7 @@ struct VaultFileListResponse: Codable, ResponseEncodable, Sendable {
     let nextBefore: Date?
 }
 
-struct VaultMoveRequest: Codable, Sendable {
+struct VaultMoveRequest: Codable {
     let path: String
     let newPath: String
 }
@@ -76,7 +76,7 @@ struct VaultController {
         vaultPaths: VaultPathService,
         fluent: Fluent,
         logger: Logger,
-        maxFileSize: Int = 10 * 1024 * 1024
+        maxFileSize: Int = 10 * 1024 * 1024,
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
@@ -128,7 +128,7 @@ struct VaultController {
         let fm = FileManager.default
         try fm.createDirectory(
             at: target.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
         )
         let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
         try data.write(to: tmp, options: .atomic)
@@ -143,7 +143,7 @@ struct VaultController {
             path: safeRelative,
             contentType: contentType,
             sizeBytes: Int64(data.count),
-            sha256: digest
+            sha256: digest,
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
@@ -151,7 +151,7 @@ struct VaultController {
             path: safeRelative,
             size: data.count,
             contentType: contentType,
-            sha256: digest
+            sha256: digest,
         )
     }
 
@@ -164,7 +164,7 @@ struct VaultController {
 
         let limit = Self.clamp(
             request.uri.queryParameters["limit"].flatMap { Int($0) } ?? Self.defaultLimit,
-            min: 1, max: Self.maxLimit
+            min: 1, max: Self.maxLimit,
         )
         let before = request.uri.queryParameters["before"].flatMap { Self.parseISODate(String($0)) }
         let after = request.uri.queryParameters["after"].flatMap { Self.parseISODate(String($0)) }
@@ -200,14 +200,14 @@ struct VaultController {
         return VaultFileListResponse(
             files: dtos,
             limit: limit,
-            nextBefore: rows.count == limit ? rows.last?.createdAt : nil
+            nextBefore: rows.count == limit ? rows.last?.createdAt : nil,
         )
     }
 
     // MARK: - Delete (soft)
 
     @Sendable
-    func delete(_ request: Request, ctx: AppRequestContext) async throws -> Response {
+    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
 
@@ -284,7 +284,7 @@ struct VaultController {
         let fm = FileManager.default
         try fm.createDirectory(
             at: dst.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
         )
         if fm.fileExists(atPath: src.path) {
             try fm.moveItem(at: src, to: dst)
@@ -309,7 +309,7 @@ struct VaultController {
         let exporter = VaultExportService(
             vaultPaths: vaultPaths,
             fluent: fluent,
-            logger: logger
+            logger: logger,
         )
         let capturedUser = user
         let body = ResponseBody { writer in
@@ -330,7 +330,7 @@ struct VaultController {
         path: String,
         contentType: String,
         sizeBytes: Int64,
-        sha256: String
+        sha256: String,
     ) async throws {
         let db = fluent.db()
         if let existing = try await VaultFile.query(on: db, tenantID: tenantID)
@@ -348,7 +348,7 @@ struct VaultController {
             path: path,
             contentType: contentType,
             sizeBytes: sizeBytes,
-            sha256: sha256
+            sha256: sha256,
         )
         try await row.save(on: db)
     }
@@ -395,7 +395,7 @@ struct VaultController {
         "jpg": ["image/jpeg"],
         "jpeg": ["image/jpeg"],
         "webp": ["image/webp"],
-        "gif": ["image/gif"]
+        "gif": ["image/gif"],
     ]
 
     static func sanitizePath(_ raw: String) throws -> String {
@@ -442,5 +442,7 @@ struct VaultController {
 
 private extension String {
     /// Returns `nil` for empty strings; useful in `guard let` chains.
-    var nonEmpty: String? { isEmpty ? nil : self }
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

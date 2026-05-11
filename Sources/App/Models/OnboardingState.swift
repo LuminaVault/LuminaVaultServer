@@ -39,11 +39,11 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
     init(tenantID: UUID, signupCompleted: Bool = false) {
         self.tenantID = tenantID
         self.signupCompleted = signupCompleted
-        self.signupCompletedAt = signupCompleted ? Date() : nil
-        self.emailVerifiedCompleted = false
-        self.soulConfiguredCompleted = false
-        self.firstCaptureCompleted = false
-        self.firstKBCompileCompleted = false
-        self.firstQueryCompleted = false
+        signupCompletedAt = signupCompleted ? Date() : nil
+        emailVerifiedCompleted = false
+        soulConfiguredCompleted = false
+        firstCaptureCompleted = false
+        firstKBCompileCompleted = false
+        firstQueryCompleted = false
     }
 }

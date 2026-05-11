@@ -6,12 +6,12 @@ import HummingbirdFluent
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 // MARK: - Public surface
 
-struct MemoGenerationResult: Sendable {
+struct MemoGenerationResult {
     /// Final markdown body returned to the caller (with frontmatter prepended).
     let memo: String
     /// Vault path (relative to `<rawRoot>`) when saved; nil for dry runs.
@@ -24,18 +24,18 @@ struct MemoGenerationResult: Sendable {
 
 // MARK: - Internal chat-completion shapes (same wire format as HermesMemoryService)
 
-private struct ToolFunctionCall: Codable, Sendable {
+private struct ToolFunctionCall: Codable {
     let name: String
     let arguments: String
 }
 
-private struct ToolCall: Codable, Sendable {
+private struct ToolCall: Codable {
     let id: String
     let type: String
     let function: ToolFunctionCall
 }
 
-private struct AgentMessage: Codable, Sendable {
+private struct AgentMessage: Codable {
     let role: String
     let content: String?
     let toolCalls: [ToolCall]?
@@ -46,35 +46,38 @@ private struct AgentMessage: Codable, Sendable {
         case toolCalls = "tool_calls"
         case toolCallId = "tool_call_id"
     }
+
     init(role: String, content: String? = nil, toolCalls: [ToolCall]? = nil, toolCallId: String? = nil, name: String? = nil) {
         self.role = role; self.content = content
         self.toolCalls = toolCalls; self.toolCallId = toolCallId; self.name = name
     }
 }
 
-private struct ToolDefinition: Encodable, Sendable {
+private struct ToolDefinition: Encodable {
     let type = "function"
     let function: Function
-    struct Function: Encodable, Sendable {
+    struct Function: Encodable {
         let name: String
         let description: String
         let parameters: ParameterSchema
     }
 }
 
-private struct ParameterSchema: Encodable, Sendable {
+private struct ParameterSchema: Encodable {
     let type = "object"
     let properties: [String: PropertySchema]
     let required: [String]
 }
 
-private struct PropertySchema: Encodable, Sendable {
+private struct PropertySchema: Encodable {
     let type: String
     let description: String?
-    init(type: String, description: String? = nil) { self.type = type; self.description = description }
+    init(type: String, description: String? = nil) {
+        self.type = type; self.description = description
+    }
 }
 
-private struct ChatRequestBody: Encodable, Sendable {
+private struct ChatRequestBody: Encodable {
     let model: String
     let messages: [AgentMessage]
     let tools: [ToolDefinition]
@@ -87,7 +90,7 @@ private struct ChatRequestBody: Encodable, Sendable {
     }
 }
 
-private struct ChatResponseChoice: Decodable, Sendable {
+private struct ChatResponseChoice: Decodable {
     let message: AgentMessage
     let finishReason: String?
     enum CodingKeys: String, CodingKey {
@@ -96,13 +99,13 @@ private struct ChatResponseChoice: Decodable, Sendable {
     }
 }
 
-private struct ChatResponseBody: Decodable, Sendable {
+private struct ChatResponseBody: Decodable {
     let id: String
     let model: String
     let choices: [ChatResponseChoice]
 }
 
-private struct SessionSearchArgs: Decodable, Sendable {
+private struct SessionSearchArgs: Decodable {
     let query: String
     let limit: Int?
 }
@@ -137,7 +140,7 @@ actor MemoGeneratorService {
         defaultModel: String,
         logger: Logger,
         maxToolIterations: Int = 6,
-        maxMemoBytes: Int = 32 * 1024
+        maxMemoBytes: Int = 32 * 1024,
     ) {
         self.transport = transport
         self.memories = memories
@@ -155,7 +158,7 @@ actor MemoGeneratorService {
         profileUsername: String,
         topic: String,
         hint: String?,
-        save: Bool
+        save: Bool,
     ) async throws -> MemoGenerationResult {
         guard !topic.isEmpty, topic.count <= 256 else {
             throw HTTPError(.badRequest, message: "topic empty or too long")
@@ -165,7 +168,7 @@ actor MemoGeneratorService {
             tenantID: tenantID,
             profileUsername: profileUsername,
             topic: topic,
-            hint: hint
+            hint: hint,
         )
 
         let bodyBytes = outcome.summary.utf8.count
@@ -176,7 +179,7 @@ actor MemoGeneratorService {
         let memoMarkdown = renderMarkdown(
             topic: topic,
             sourceIDs: outcome.consultedMemoryIDs,
-            body: outcome.summary
+            body: outcome.summary,
         )
 
         var savedPath: String? = nil
@@ -184,7 +187,7 @@ actor MemoGeneratorService {
             savedPath = try await persist(
                 tenantID: tenantID,
                 topic: topic,
-                memo: memoMarkdown
+                memo: memoMarkdown,
             )
         }
 
@@ -192,7 +195,7 @@ actor MemoGeneratorService {
             memo: memoMarkdown,
             path: savedPath,
             sourceMemoryIDs: outcome.consultedMemoryIDs,
-            summary: outcome.summary
+            summary: outcome.summary,
         )
     }
 
@@ -207,43 +210,43 @@ actor MemoGeneratorService {
         tenantID: UUID,
         profileUsername: String,
         topic: String,
-        hint: String?
+        hint: String?,
     ) async throws -> LoopOutcome {
         let systemPrompt = """
-            You are Hermes writing a synthesis memo for the user. Your job:
-            1. Search their memories for the supplied topic using `session_search`.
-            2. Refine your search 1-2 more times if the first batch is sparse.
-            3. Write a structured markdown memo with these sections:
-               ## Summary
-               ## Key Points
-               ## Connections
-               ## Open Questions
-            4. Cite sources inline with `[[memory:<uuid>]]` for any claim that
-               comes from a stored memory. Do NOT invent quotes or facts.
-            5. Match the user's voice from their existing notes — do not
-               default to corporate tone.
+        You are Hermes writing a synthesis memo for the user. Your job:
+        1. Search their memories for the supplied topic using `session_search`.
+        2. Refine your search 1-2 more times if the first batch is sparse.
+        3. Write a structured markdown memo with these sections:
+           ## Summary
+           ## Key Points
+           ## Connections
+           ## Open Questions
+        4. Cite sources inline with `[[memory:<uuid>]]` for any claim that
+           comes from a stored memory. Do NOT invent quotes or facts.
+        5. Match the user's voice from their existing notes — do not
+           default to corporate tone.
 
-            If there are no relevant memories, write a short "Hermes hasn't
-            seen anything about <topic> yet" memo and stop.
-            \(hint.map { "User hint: \($0)" } ?? "")
-            """
+        If there are no relevant memories, write a short "Hermes hasn't
+        seen anything about <topic> yet" memo and stop.
+        \(hint.map { "User hint: \($0)" } ?? "")
+        """
 
         var conversation: [AgentMessage] = [
             .init(role: "system", content: systemPrompt),
-            .init(role: "user", content: "Topic: \(topic)")
+            .init(role: "user", content: "Topic: \(topic)"),
         ]
         let tools = [Self.sessionSearchTool()]
         var outcome = LoopOutcome()
         var seen = Set<UUID>()
 
-        for _ in 0..<maxToolIterations {
+        for _ in 0 ..< maxToolIterations {
             let body = ChatRequestBody(
                 model: defaultModel,
                 messages: conversation,
                 tools: tools,
                 toolChoice: "auto",
                 temperature: 0.3,
-                stream: false
+                stream: false,
             )
             let payload = try JSONEncoder().encode(body)
             let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
@@ -260,13 +263,13 @@ actor MemoGeneratorService {
                         tenantID: tenantID,
                         toolCall: call,
                         seen: &seen,
-                        outcome: &outcome
+                        outcome: &outcome,
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name
+                        name: call.function.name,
                     ))
                 }
                 continue
@@ -283,7 +286,7 @@ actor MemoGeneratorService {
         tenantID: UUID,
         toolCall: ToolCall,
         seen: inout Set<UUID>,
-        outcome: inout LoopOutcome
+        outcome: inout LoopOutcome,
     ) async throws -> String {
         guard toolCall.function.name == "session_search" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -297,7 +300,7 @@ actor MemoGeneratorService {
             let hits = try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
-                limit: max(1, min(args.limit ?? 5, 20))
+                limit: max(1, min(args.limit ?? 5, 20)),
             )
             for hit in hits where !seen.contains(hit.id) {
                 seen.insert(hit.id)
@@ -364,7 +367,7 @@ actor MemoGeneratorService {
             path: finalRelative,
             contentType: "text/markdown",
             sizeBytes: Int64(data.count),
-            sha256: digest
+            sha256: digest,
         )
         try await row.save(on: fluent.db())
 
@@ -381,10 +384,10 @@ actor MemoGeneratorService {
             parameters: ParameterSchema(
                 properties: [
                     "query": PropertySchema(type: "string", description: "Natural-language search query."),
-                    "limit": PropertySchema(type: "integer", description: "Maximum memories (1-20, default 5).")
+                    "limit": PropertySchema(type: "integer", description: "Maximum memories (1-20, default 5)."),
                 ],
-                required: ["query"]
-            )
+                required: ["query"],
+            ),
         ))
     }
 
@@ -403,7 +406,9 @@ actor MemoGeneratorService {
                 }
             }
         }
-        while s.last == "-" { s.removeLast() }
+        while s.last == "-" {
+            s.removeLast()
+        }
         if s.isEmpty { s = "memo" }
         if s.count > 64 { s = String(s.prefix(64)) }
         return s

@@ -47,17 +47,17 @@ struct DefaultAuthService: AuthService {
     let hermesProfileService: HermesProfileService
     let soulService: SOULService
 
-    let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
-    let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
+    let accessTokenLifetime: TimeInterval = 60 * 60 // 1 hour
+    let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30 // 30 days
     let maxFailedLogins: Int = 5
-    let lockoutDuration: TimeInterval = 60 * 15                      // 15 min
+    let lockoutDuration: TimeInterval = 60 * 15 // 15 min
     let minPasswordLength: Int = 12
-    let resetCodeLifetime: TimeInterval = 60 * 15                    // 15 min
+    let resetCodeLifetime: TimeInterval = 60 * 15 // 15 min
     let maxResetFailures: Int = 5
-    let resetLockoutDuration: TimeInterval = 60 * 30                 // 30 min
-    let verifyCodeLifetime: TimeInterval = 60 * 60 * 24              // 24 hours
+    let resetLockoutDuration: TimeInterval = 60 * 30 // 30 min
+    let verifyCodeLifetime: TimeInterval = 60 * 60 * 24 // 24 hours
     let maxVerifyFailures: Int = 5
-    let verifyLockoutDuration: TimeInterval = 60 * 30                // 30 min
+    let verifyLockoutDuration: TimeInterval = 60 * 30 // 30 min
 
     func register(email: String, username rawUsername: String, password: String) async throws -> AuthResponse {
         guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
@@ -90,11 +90,11 @@ struct DefaultAuthService: AuthService {
         to user: User,
         on db: any Database,
         trialDays: Int = 14,
-        now: Date = Date()
+        now: Date = Date(),
     ) async throws {
         user.tier = "trial"
         if user.tierExpiresAt == nil {
-            user.tierExpiresAt = now.addingTimeInterval(TimeInterval(trialDays) * 86_400)
+            user.tierExpiresAt = now.addingTimeInterval(TimeInterval(trialDays) * 86400)
         }
         try await user.save(on: db)
     }
@@ -141,7 +141,7 @@ struct DefaultAuthService: AuthService {
     }
 
     func forgotPassword(email: String) async throws {
-        guard let user = try await repo.findUser(byEmail: email) else { return }   // no-op (don't leak existence)
+        guard let user = try await repo.findUser(byEmail: email) else { return } // no-op (don't leak existence)
         try await issueResetCode(for: user)
     }
 
@@ -193,8 +193,8 @@ struct DefaultAuthService: AuthService {
     }
 
     func sendVerification(email: String) async throws {
-        guard let user = try await repo.findUser(byEmail: email) else { return }   // no-op (don't leak existence)
-        if user.isVerified { return }                                              // idempotent: nothing to do
+        guard let user = try await repo.findUser(byEmail: email) else { return } // no-op (don't leak existence)
+        if user.isVerified { return } // idempotent: nothing to do
         try await issueVerificationCode(for: user)
     }
 
@@ -203,7 +203,7 @@ struct DefaultAuthService: AuthService {
             throw AuthError.verifyCodeInvalid
         }
         let userID = try user.requireID()
-        if user.isVerified { return }                                              // idempotent
+        if user.isVerified { return } // idempotent
 
         guard let row = try await EmailVerificationToken.query(on: fluent.db(), tenantID: userID)
             .filter(\.$usedAt == nil)
@@ -235,7 +235,7 @@ struct DefaultAuthService: AuthService {
         let row = EmailVerificationToken(
             tenantID: userID,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(verifyCodeLifetime)
+            expiresAt: Date().addingTimeInterval(verifyCodeLifetime),
         )
         try await row.save(on: fluent.db())
         try await verificationCodeSender.send(code: code, to: user.email, purpose: "verify")
@@ -247,7 +247,7 @@ struct DefaultAuthService: AuthService {
         let row = PasswordResetToken(
             tenantID: userID,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(resetCodeLifetime)
+            expiresAt: Date().addingTimeInterval(resetCodeLifetime),
         )
         try await row.save(on: fluent.db())
         try await resetCodeSender.send(code: code, to: user.email, purpose: "reset")
@@ -259,7 +259,7 @@ struct DefaultAuthService: AuthService {
             provider: provider.name,
             providerUserID: info.providerUserID,
             email: info.email,
-            emailVerified: info.emailVerified
+            emailVerified: info.emailVerified,
         )
         return try await issueTokens(for: user)
     }
@@ -274,26 +274,26 @@ struct DefaultAuthService: AuthService {
         provider: String,
         providerUserID: String,
         email: String,
-        emailVerified: Bool
+        emailVerified: Bool,
     ) async throws -> User {
         // 1) Existing identity for this (provider, providerUserID) → login.
         if let identity = try await OAuthIdentity.query(on: fluent.db())
             .filter(\.$provider == provider)
             .filter(\.$providerUserID == providerUserID)
             .first(),
-           let user = try await repo.findUser(byID: identity.tenantID)
+            let user = try await repo.findUser(byID: identity.tenantID)
         {
             return user
         }
 
         // 2) User exists with this email → link new identity.
         if let user = try await repo.findUser(byEmail: email) {
-            let identity = OAuthIdentity(
-                tenantID: try user.requireID(),
+            let identity = try OAuthIdentity(
+                tenantID: user.requireID(),
                 provider: provider,
                 providerUserID: providerUserID,
                 email: email,
-                emailVerified: emailVerified
+                emailVerified: emailVerified,
             )
             try await identity.save(on: fluent.db())
             return user
@@ -304,12 +304,12 @@ struct DefaultAuthService: AuthService {
         let username = try await uniquePlaceholderUsername()
         let user = try await repo.createUser(email: email, username: username, passwordHash: randomHash)
         try await Self.applyTrialDefaults(to: user, on: fluent.db())
-        let identity = OAuthIdentity(
-            tenantID: try user.requireID(),
+        let identity = try OAuthIdentity(
+            tenantID: user.requireID(),
             provider: provider,
             providerUserID: providerUserID,
             email: email,
-            emailVerified: emailVerified
+            emailVerified: emailVerified,
         )
         try await identity.save(on: fluent.db())
         do {
@@ -331,7 +331,7 @@ struct DefaultAuthService: AuthService {
     /// vanishingly rare uniqueness collision. After 5 failures we give up
     /// rather than spin forever.
     private func uniquePlaceholderUsername(maxAttempts: Int = 5) async throws -> String {
-        for _ in 0..<maxAttempts {
+        for _ in 0 ..< maxAttempts {
             let candidate = UsernamePolicy.placeholder()
             if try await repo.findUser(byUsername: candidate) == nil {
                 return candidate
@@ -374,14 +374,14 @@ struct DefaultAuthService: AuthService {
             userID: userID,
             expiration: now.addingTimeInterval(accessTokenLifetime),
             issuedAt: now,
-            hpid: hpid
+            hpid: hpid,
         )
         let signed = try await jwtKeys.sign(access, kid: jwtKID)
         let refreshRaw = randomToken()
         let refreshRow = RefreshToken(
             tenantID: userID,
             tokenHash: sha256Hex(refreshRaw),
-            expiresAt: Date().addingTimeInterval(refreshTokenLifetime)
+            expiresAt: Date().addingTimeInterval(refreshTokenLifetime),
         )
         try await refreshRow.save(on: fluent.db())
         return AuthResponse(
@@ -391,21 +391,21 @@ struct DefaultAuthService: AuthService {
             refreshToken: refreshRaw,
             expiresIn: Int(accessTokenLifetime),
             mfaRequired: nil,
-            mfaChallengeId: nil
+            mfaChallengeId: nil,
         )
     }
 
     /// Issues an "MFA pending" placeholder response: no tokens, just the challengeId.
     /// Call after creating an MFAChallenge.
     func mfaPendingResponse(for user: User, challengeID: UUID) throws -> AuthResponse {
-        AuthResponse(
-            userId: try user.requireID(),
+        try AuthResponse(
+            userId: user.requireID(),
             email: user.email,
             accessToken: "",
             refreshToken: "",
             expiresIn: 0,
             mfaRequired: true,
-            mfaChallengeId: challengeID
+            mfaChallengeId: challengeID,
         )
     }
 
@@ -414,7 +414,9 @@ struct DefaultAuthService: AuthService {
     private func randomToken() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         var rng = SystemRandomNumberGenerator()
-        for i in 0..<bytes.count { bytes[i] = UInt8.random(in: 0...255, using: &rng) }
+        for i in 0 ..< bytes.count {
+            bytes[i] = UInt8.random(in: 0 ... 255, using: &rng)
+        }
         return Data(bytes).base64URLEncodedString()
     }
 
@@ -423,8 +425,8 @@ struct DefaultAuthService: AuthService {
     }
 }
 
-extension Data {
-    fileprivate func base64URLEncodedString() -> String {
+private extension Data {
+    func base64URLEncodedString() -> String {
         base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")

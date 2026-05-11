@@ -3,7 +3,7 @@ import Logging
 import Testing
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 @testable import App
@@ -18,11 +18,10 @@ import FoundationNetworking
 /// in parallel would let one test's response satisfy another test's request.
 @Suite(.serialized)
 struct SMSSenderTests {
-
     // MARK: - LoggingSMSSender
 
     @Test
-    func loggingSenderDoesNotThrow() async throws {
+    func `logging sender does not throw`() async throws {
         let sender = LoggingSMSSender(logger: Logger(label: "test.sms.logging"))
         // No expectations beyond "doesn't blow up" — the impl just logs.
         try await sender.send(code: "123456", to: "+15555550100", purpose: "login")
@@ -31,7 +30,7 @@ struct SMSSenderTests {
     // MARK: - RecordingSMSSender (also re-usable from other suites)
 
     @Test
-    func recordingSenderCapturesEveryCall() async throws {
+    func `recording sender captures every call`() async throws {
         let recorder = RecordingSMSSender()
         try await recorder.send(code: "111111", to: "+15555550101", purpose: "login")
         try await recorder.send(code: "222222", to: "+15555550102", purpose: "verify")
@@ -48,12 +47,12 @@ struct SMSSenderTests {
     // MARK: - TwilioSMSSender
 
     @Test
-    func twilioSenderPostsCorrectRequest() async throws {
+    func `twilio sender posts correct request`() async throws {
         let captured = CapturedRequest()
         StubURLProtocol.handler = { req in
             await captured.set(req)
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 201, httpVersion: "HTTP/1.1", headerFields: nil
+                url: req.url!, statusCode: 201, httpVersion: "HTTP/1.1", headerFields: nil,
             )!
             return (resp, Data())
         }
@@ -64,7 +63,7 @@ struct SMSSenderTests {
             authToken: "secret",
             fromNumber: "+15555550000",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio")
+            logger: Logger(label: "test.twilio"),
         )
         try await sender.send(code: "424242", to: "+15555550199", purpose: "login")
 
@@ -88,13 +87,13 @@ struct SMSSenderTests {
     }
 
     @Test
-    func twilioSenderThrowsWhenUnconfigured() async throws {
+    func `twilio sender throws when unconfigured`() async throws {
         let sender = TwilioSMSSender(
             accountSID: "",
             authToken: "",
             fromNumber: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio")
+            logger: Logger(label: "test.twilio"),
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "+15555550000", purpose: "login")
@@ -102,10 +101,10 @@ struct SMSSenderTests {
     }
 
     @Test
-    func twilioSenderThrowsOnNon2xx() async throws {
+    func `twilio sender throws on non 2 xx`() async throws {
         StubURLProtocol.handler = { req in
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+                url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil,
             )!
             return (resp, Data(#"{"message":"bad creds"}"#.utf8))
         }
@@ -116,7 +115,7 @@ struct SMSSenderTests {
             authToken: "wrong",
             fromNumber: "+15555550000",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio")
+            logger: Logger(label: "test.twilio"),
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "+15555550199", purpose: "login")
@@ -137,14 +136,16 @@ struct SMSSenderTests {
 /// Captures every `send(...)` call so suites that drive Phone-OTP / verify
 /// flows can assert what reached the SMS layer.
 actor RecordingSMSSender: SMSSender {
-    struct Sent: Equatable, Sendable {
+    struct Sent: Equatable {
         let code: String
         let to: String
         let purpose: String
     }
 
     private(set) var history: [Sent] = []
-    var last: Sent? { history.last }
+    var last: Sent? {
+        history.last
+    }
 
     func send(code: String, to phone: String, purpose: String) async throws {
         history.append(Sent(code: code, to: phone, purpose: purpose))
@@ -154,7 +155,9 @@ actor RecordingSMSSender: SMSSender {
 /// Stores the `URLRequest` the system under test handed to URLSession.
 actor CapturedRequest {
     private(set) var value: URLRequest?
-    func set(_ req: URLRequest) { self.value = req }
+    func set(_ req: URLRequest) {
+        value = req
+    }
 }
 
 /// URLProtocol stub that lets a test inject a custom response for any
@@ -162,16 +165,21 @@ actor CapturedRequest {
 final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var handler: (@Sendable (URLRequest) async throws -> (HTTPURLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         guard let handler = Self.handler else {
             client?.urlProtocol(self, didFailWithError: NSError(domain: "StubURLProtocol", code: -1))
             return
         }
-        nonisolated(unsafe) let request = self.request
-        nonisolated(unsafe) let client = self.client
+        nonisolated(unsafe) let request = request
+        nonisolated(unsafe) let client = client
         nonisolated(unsafe) let proto = self
         Task {
             do {

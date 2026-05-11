@@ -15,17 +15,17 @@ struct AdminController {
     }
 
     @Sendable
-    func health(_ req: Request, ctx: AppRequestContext) async throws -> HermesProfileHealth {
+    func health(_: Request, ctx _: AppRequestContext) async throws -> HermesProfileHealth {
         try await reconciler.health()
     }
 
     @Sendable
-    func reconcile(_ req: Request, ctx: AppRequestContext) async throws -> HermesProfileReconcileSummary {
+    func reconcile(_: Request, ctx _: AppRequestContext) async throws -> HermesProfileReconcileSummary {
         try await reconciler.reconcile()
     }
 
     @Sendable
-    func reapOrphans(_ req: Request, ctx: AppRequestContext) async throws -> HermesProfileReapSummary {
+    func reapOrphans(_: Request, ctx _: AppRequestContext) async throws -> HermesProfileReapSummary {
         try await reconciler.reapOrphans()
     }
 }

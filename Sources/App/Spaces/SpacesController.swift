@@ -1,7 +1,7 @@
 import Foundation
 import Hummingbird
 
-struct CreateSpaceRequest: Codable, Sendable {
+struct CreateSpaceRequest: Codable {
     let name: String
     let slug: String
     let description: String?
@@ -9,14 +9,14 @@ struct CreateSpaceRequest: Codable, Sendable {
     let icon: String?
 }
 
-struct UpdateSpaceRequest: Codable, Sendable {
+struct UpdateSpaceRequest: Codable {
     let name: String?
     let description: String?
     let color: String?
     let icon: String?
 }
 
-struct SpaceDTO: Codable, ResponseEncodable, Sendable {
+struct SpaceDTO: Codable, ResponseEncodable {
     let id: UUID
     let name: String
     let slug: String
@@ -27,18 +27,18 @@ struct SpaceDTO: Codable, ResponseEncodable, Sendable {
     let updatedAt: Date?
 
     init(_ space: Space) throws {
-        self.id = try space.requireID()
-        self.name = space.name
-        self.slug = space.slug
-        self.description = space.spaceDescription
-        self.color = space.color
-        self.icon = space.icon
-        self.createdAt = space.createdAt
-        self.updatedAt = space.updatedAt
+        id = try space.requireID()
+        name = space.name
+        slug = space.slug
+        description = space.spaceDescription
+        color = space.color
+        icon = space.icon
+        createdAt = space.createdAt
+        updatedAt = space.updatedAt
     }
 }
 
-struct SpaceListResponse: Codable, ResponseEncodable, Sendable {
+struct SpaceListResponse: Codable, ResponseEncodable {
     let spaces: [SpaceDTO]
 }
 
@@ -54,9 +54,9 @@ struct SpacesController {
     }
 
     @Sendable
-    func list(_ req: Request, ctx: AppRequestContext) async throws -> SpaceListResponse {
+    func list(_: Request, ctx: AppRequestContext) async throws -> SpaceListResponse {
         let user = try ctx.requireIdentity()
-        let spaces = try await service.list(tenantID: try user.requireID())
+        let spaces = try await service.list(tenantID: user.requireID())
         return try SpaceListResponse(spaces: spaces.map(SpaceDTO.init))
     }
 
@@ -65,21 +65,21 @@ struct SpacesController {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: CreateSpaceRequest.self, context: ctx)
         let space = try await service.create(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             name: body.name,
             slugRaw: body.slug,
             description: body.description,
             color: body.color,
-            icon: body.icon
+            icon: body.icon,
         )
         return try SpaceDTO(space)
     }
 
     @Sendable
-    func getOne(_ req: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
+    func getOne(_: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
-        let space = try await service.get(tenantID: try user.requireID(), id: id)
+        let space = try await service.get(tenantID: user.requireID(), id: id)
         return try SpaceDTO(space)
     }
 
@@ -89,21 +89,21 @@ struct SpacesController {
         let id = try Self.parseID(ctx)
         let body = try await req.decode(as: UpdateSpaceRequest.self, context: ctx)
         let space = try await service.update(
-            tenantID: try user.requireID(),
+            tenantID: user.requireID(),
             id: id,
             name: body.name,
             description: body.description,
             color: body.color,
-            icon: body.icon
+            icon: body.icon,
         )
         return try SpaceDTO(space)
     }
 
     @Sendable
-    func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
-        try await service.delete(tenantID: try user.requireID(), id: id)
+        try await service.delete(tenantID: user.requireID(), id: id)
         return Response(status: .noContent)
     }
 

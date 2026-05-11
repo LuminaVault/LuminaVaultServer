@@ -26,7 +26,7 @@ struct LoggingHermesGateway: HermesGateway {
     }
 }
 
-struct HermesProfileService: Sendable {
+struct HermesProfileService {
     let fluent: Fluent
     let gateway: any HermesGateway
     let vaultPaths: VaultPathService
@@ -57,7 +57,7 @@ struct HermesProfileService: Sendable {
     }
 
     func find(for user: User) async throws -> HermesProfile? {
-        try await find(tenantID: try user.requireID())
+        try await find(tenantID: user.requireID())
     }
 
     private func find(tenantID: UUID) async throws -> HermesProfile? {

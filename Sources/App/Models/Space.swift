@@ -26,13 +26,13 @@ final class Space: Model, TenantModel, @unchecked Sendable {
         slug: String,
         description: String? = nil,
         color: String? = nil,
-        icon: String? = nil
+        icon: String? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID
         self.name = name
         self.slug = slug
-        self.spaceDescription = description
+        spaceDescription = description
         self.color = color
         self.icon = icon
     }

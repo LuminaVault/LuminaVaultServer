@@ -1,13 +1,11 @@
+@testable import App
 import Foundation
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-85: SOUL.md service unit tests. Filesystem-only — no DB required.
 @Suite(.serialized)
 struct SOULServiceTests {
-
     private struct Harness {
         let service: SOULService
         let user: User
@@ -23,26 +21,26 @@ struct SOULServiceTests {
         let service = SOULService(
             vaultPaths: VaultPathService(rootPath: vaultRoot.path),
             hermesDataRoot: hermesRoot.path,
-            logger: Logger(label: "test.soul")
+            logger: Logger(label: "test.soul"),
         )
         let user = User(
             id: UUID(),
             email: "soul-\(UUID().uuidString.prefix(6))@test.luminavault",
             username: "soul-\(UUID().uuidString.prefix(8).lowercased())",
-            passwordHash: "x"
+            passwordHash: "x",
         )
         return Harness(service: service, user: user, vaultRoot: vaultRoot, hermesRoot: hermesRoot)
     }
 
     @Test
-    func readReturnsDefaultTemplateWhenFileAbsent() throws {
+    func `read returns default template when file absent`() throws {
         let h = Self.makeHarness()
         let body = try h.service.read(for: h.user)
         #expect(body.contains("# SOUL.md"))
     }
 
     @Test
-    func writeRoundTripsThroughRead() throws {
+    func `write round trips through read`() throws {
         let h = Self.makeHarness()
         let payload = "# Personal SOUL\n\nHello, world.\n"
         try h.service.write(for: h.user, body: payload)
@@ -51,7 +49,7 @@ struct SOULServiceTests {
     }
 
     @Test
-    func writeMirrorsToBothVaultAndHermesProfilePaths() throws {
+    func `write mirrors to both vault and hermes profile paths`() throws {
         let h = Self.makeHarness()
         let payload = "# Mirror Test\n"
         try h.service.write(for: h.user, body: payload)
@@ -71,20 +69,20 @@ struct SOULServiceTests {
     }
 
     @Test
-    func writeRejectsBodyAbove64KiB() throws {
+    func `write rejects body above 64 ki B`() throws {
         let h = Self.makeHarness()
         let oversized = String(repeating: "x", count: SOULService.maxSizeBytes + 1)
         do {
             try h.service.write(for: h.user, body: oversized)
             Issue.record("expected SOULServiceError.tooLarge")
-        } catch SOULServiceError.tooLarge(let bytes, let limit) {
+        } catch let SOULServiceError.tooLarge(bytes, limit) {
             #expect(bytes == SOULService.maxSizeBytes + 1)
             #expect(limit == SOULService.maxSizeBytes)
         }
     }
 
     @Test
-    func writeAcceptsBodyAtExactly64KiB() throws {
+    func `write accepts body at exactly 64 ki B`() throws {
         let h = Self.makeHarness()
         let atLimit = String(repeating: "x", count: SOULService.maxSizeBytes)
         try h.service.write(for: h.user, body: atLimit)
@@ -93,7 +91,7 @@ struct SOULServiceTests {
     }
 
     @Test
-    func resetWritesDefaultTemplateAndOverwritesPriorContent() throws {
+    func `reset writes default template and overwrites prior content`() throws {
         let h = Self.makeHarness()
         try h.service.write(for: h.user, body: "# Custom\n")
         let reset = try h.service.reset(for: h.user)
@@ -103,7 +101,7 @@ struct SOULServiceTests {
     }
 
     @Test
-    func writeIsAtomicNoTmpFilesLeftBehind() throws {
+    func `write is atomic no tmp files left behind`() throws {
         let h = Self.makeHarness()
         try h.service.write(for: h.user, body: "first\n")
         try h.service.write(for: h.user, body: "second\n")
@@ -117,7 +115,7 @@ struct SOULServiceTests {
     }
 
     @Test
-    func initIfMissingDoesNotOverwriteExistingFile() throws {
+    func `init if missing does not overwrite existing file`() throws {
         let h = Self.makeHarness()
         try h.service.write(for: h.user, body: "# Custom\n")
         let wrote = try h.service.initIfMissing(for: h.user)

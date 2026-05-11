@@ -1,10 +1,9 @@
+@testable import App
 import Foundation
 import JWTKit
 import Testing
 
-@testable import App
-
-@Suite struct SessionTokenTests {
+struct SessionTokenTests {
     private static func makeKeys() async -> (JWTKeyCollection, JWKIdentifier) {
         let keys = JWTKeyCollection()
         let kid = JWKIdentifier(string: "test")
@@ -13,7 +12,7 @@ import Testing
         return (keys, kid)
     }
 
-    @Test func roundTripsThroughHMAC() async throws {
+    @Test func `round trips through HMAC`() async throws {
         let (keys, kid) = await Self.makeKeys()
         let userID = UUID()
         let token = SessionToken(userID: userID, expiration: Date().addingTimeInterval(3600))
@@ -25,7 +24,7 @@ import Testing
         #expect(decoded.hpid == nil)
     }
 
-    @Test func rejectsExpiredToken() async throws {
+    @Test func `rejects expired token`() async throws {
         let (keys, kid) = await Self.makeKeys()
         let token = SessionToken(userID: UUID(), expiration: Date().addingTimeInterval(-1))
         let signed = try await keys.sign(token, kid: kid)
@@ -34,13 +33,13 @@ import Testing
         }
     }
 
-    @Test func hpidClaimRoundTrips() async throws {
+    @Test func `hpid claim round trips`() async throws {
         let (keys, kid) = await Self.makeKeys()
         let userID = UUID()
         let token = SessionToken(
             userID: userID,
             expiration: Date().addingTimeInterval(3600),
-            hpid: "hermes-alice"
+            hpid: "hermes-alice",
         )
         let signed = try await keys.sign(token, kid: kid)
         let decoded = try await keys.verify(signed, as: SessionToken.self)

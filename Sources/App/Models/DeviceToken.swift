@@ -9,7 +9,7 @@ final class DeviceToken: Model, TenantModel, @unchecked Sendable {
     @ID(key: .id) var id: UUID?
     @Field(key: "tenant_id") var tenantID: UUID
     @Field(key: "token") var token: String
-    @Field(key: "platform") var platform: String          // "ios" | "android" | future
+    @Field(key: "platform") var platform: String // "ios" | "android" | future
     @OptionalField(key: "last_seen_at") var lastSeenAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
@@ -20,6 +20,6 @@ final class DeviceToken: Model, TenantModel, @unchecked Sendable {
         self.tenantID = tenantID
         self.token = token
         self.platform = platform
-        self.lastSeenAt = Date()
+        lastSeenAt = Date()
     }
 }

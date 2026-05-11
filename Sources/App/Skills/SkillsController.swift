@@ -19,7 +19,7 @@ struct SkillsController {
     }
 
     @Sendable
-    func runSkill(_ req: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+    func runSkill(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
         _ = try ctx.requireIdentity()
         guard let _ = ctx.parameters.get("name") else {
             throw HTTPError(.badRequest, message: "skill name required")

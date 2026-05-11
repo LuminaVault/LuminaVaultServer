@@ -3,19 +3,19 @@ import Hummingbird
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 /// Shape of `/2/users/me` response we care about. X returns a `data`
 /// envelope; nested fields are the user record.
-struct XUserResponse: Decodable, Sendable {
+struct XUserResponse: Decodable {
     let data: XUserData
 
-    struct XUserData: Decodable, Sendable {
+    struct XUserData: Decodable {
         let id: String
         let name: String
         let username: String
-        let email: String?     // requires `email` scope; may be missing
+        let email: String? // requires `email` scope; may be missing
         let verified: Bool?
     }
 }
@@ -47,7 +47,7 @@ struct DefaultXAPIClient: XAPIClient {
         guard let http = response as? HTTPURLResponse else {
             throw HTTPError(.badGateway, message: "x: no http response")
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             let preview = String(data: data.prefix(512), encoding: .utf8) ?? "<binary>"
             logger.error("x users/me \(http.statusCode): \(preview)")
             throw HTTPError(.unauthorized, message: "x access_token rejected")

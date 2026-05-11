@@ -13,7 +13,7 @@ struct AdminTokenMiddleware<Context: RequestContext>: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         guard !expectedToken.isEmpty else {
             throw HTTPError(.notFound, message: "admin disabled")
@@ -33,7 +33,7 @@ struct AdminTokenMiddleware<Context: RequestContext>: RouterMiddleware {
         let bb = Array(b.utf8)
         guard ab.count == bb.count else { return false }
         var diff: UInt8 = 0
-        for i in 0..<ab.count {
+        for i in 0 ..< ab.count {
             diff |= ab[i] ^ bb[i]
         }
         return diff == 0

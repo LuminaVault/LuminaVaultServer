@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 import Logging
 
-struct SoulResponse: Codable, ResponseEncodable, Sendable {
+struct SoulResponse: Codable, ResponseEncodable {
     let content: String
     let sizeBytes: Int
 }
@@ -26,7 +26,7 @@ struct SoulController {
     }
 
     @Sendable
-    func get(_ req: Request, ctx: AppRequestContext) async throws -> SoulResponse {
+    func get(_: Request, ctx: AppRequestContext) async throws -> SoulResponse {
         let user = try ctx.requireIdentity()
         return try await telemetry.observe("soul.get") {
             let body = try service.read(for: user)
@@ -46,7 +46,7 @@ struct SoulController {
         return try await telemetry.observe("soul.put") {
             do {
                 try service.write(for: user, body: body)
-            } catch SOULServiceError.tooLarge(let bytes, let limit) {
+            } catch let SOULServiceError.tooLarge(bytes, limit) {
                 throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
             }
             return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
@@ -54,7 +54,7 @@ struct SoulController {
     }
 
     @Sendable
-    func delete(_ req: Request, ctx: AppRequestContext) async throws -> SoulResponse {
+    func delete(_: Request, ctx: AppRequestContext) async throws -> SoulResponse {
         let user = try ctx.requireIdentity()
         return try await telemetry.observe("soul.delete") {
             let body = try service.reset(for: user)

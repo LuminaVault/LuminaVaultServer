@@ -7,7 +7,7 @@ import Logging
 /// HER-146 sweep summary. Same shape as
 /// `HermesProfileReconcileSummary` so the admin response format is
 /// consistent across nightly jobs.
-struct HealthCorrelationSweepSummary: Codable, Sendable {
+struct HealthCorrelationSweepSummary: Codable {
     let usersScanned: Int
     let memoriesCreated: Int
     let skippedInsufficientHistory: Int
@@ -25,7 +25,7 @@ struct HealthCorrelationSweepSummary: Codable, Sendable {
 ///
 /// Per-user errors are caught and accumulated into `failures`; one bad
 /// tenant does not abort the sweep.
-struct HealthCorrelationJob: Sendable {
+struct HealthCorrelationJob {
     let fluent: Fluent
     let service: HealthCorrelationService
     let logger: Logger
@@ -63,7 +63,7 @@ struct HealthCorrelationJob: Sendable {
             skippedAlreadyRan: skippedAlready,
             skippedNoEvents: skippedNoEvents,
             skippedNoSynthesis: skippedNoSynth,
-            failures: failures
+            failures: failures,
         )
     }
 

@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -6,16 +7,13 @@ import JWTKit
 import Logging
 import Testing
 
-@testable import App
-
 /// End-to-end auth flow tests — register/login/MFA/refresh/logout/reset.
 /// Each test creates ephemeral users with random usernames and emails so
 /// there's no cross-test contamination on a shared schema.
 /// Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct AuthFlowTests {
-
-    fileprivate struct Harness: Sendable {
+    fileprivate struct Harness {
         let service: DefaultAuthService
         let fluent: Fluent
         let recorder: MFAChallengeRecorder
@@ -24,7 +22,7 @@ struct AuthFlowTests {
     /// Setup + guaranteed Fluent shutdown so the AsyncKit ConnectionPool
     /// deinit assertion doesn't crash the runner.
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T
+        _ body: @Sendable (Harness) async throws -> T,
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -42,7 +40,7 @@ struct AuthFlowTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -75,7 +73,7 @@ struct AuthFlowTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: recorder,
-            generator: FixedOTPCodeGenerator(code: "123456")
+            generator: FixedOTPCodeGenerator(code: "123456"),
         )
         let resetRecorder = MFAChallengeRecorder()
         let verifyRecorder = MFAChallengeRecorder()
@@ -96,13 +94,13 @@ struct AuthFlowTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: vaultPaths
+                vaultPaths: vaultPaths,
             ),
             soulService: SOULService(
                 vaultPaths: vaultPaths,
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger
-            )
+                logger: logger,
+            ),
         )
         return Harness(service: service, fluent: fluent, recorder: recorder)
     }
@@ -116,7 +114,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func registerHappyPathCreatesUserAndHermesProfile() async throws {
+    func `register happy path creates user and hermes profile`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             let username = Self.randomUsername()
@@ -131,7 +129,7 @@ struct AuthFlowTests {
             #expect(user?.username == username)
 
             let profile = try await HermesProfile
-                .query(on: h.fluent.db(), tenantID: try user!.requireID())
+                .query(on: h.fluent.db(), tenantID: user!.requireID())
                 .first()
             #expect(profile != nil)
             #expect(profile?.hermesProfileID == "hermes-\(username)")
@@ -140,7 +138,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func registerStampsTrialFor14Days() async throws {
+    func `register stamps trial for 14 days`() async throws {
         try await Self.withHarness { h in
             let username = Self.randomUsername()
             let before = Date()
@@ -148,21 +146,21 @@ struct AuthFlowTests {
             let after = Date()
 
             let user = try #require(
-                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first(),
             )
             #expect(user.tier == "trial")
             #expect(user.tierOverride == "none")
             #expect(user.revenuecatUserID == nil)
             let expires = try #require(user.tierExpiresAt)
-            let earliest = before.addingTimeInterval(14 * 86_400)
-            let latest   = after.addingTimeInterval(14 * 86_400)
+            let earliest = before.addingTimeInterval(14 * 86400)
+            let latest = after.addingTimeInterval(14 * 86400)
             #expect(expires >= earliest && expires <= latest,
                     "trial expiry \(expires) outside expected window [\(earliest), \(latest)]")
         }
     }
 
     @Test
-    func registerRejectsDuplicateUsername() async throws {
+    func `register rejects duplicate username`() async throws {
         try await Self.withHarness { h in
             let username = Self.randomUsername()
             _ = try await h.service.register(email: Self.randomEmail(), username: username, password: "CorrectHorseBatteryStaple1!")
@@ -173,7 +171,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func registerRejectsDuplicateEmail() async throws {
+    func `register rejects duplicate email`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -184,7 +182,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func registerRejectsReservedUsername() async throws {
+    func `register rejects reserved username`() async throws {
         try await Self.withHarness { h in
             await #expect(throws: (any Error).self) {
                 _ = try await h.service.register(email: Self.randomEmail(), username: "admin", password: "CorrectHorseBatteryStaple1!")
@@ -193,7 +191,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func registerRejectsWeakPassword() async throws {
+    func `register rejects weak password`() async throws {
         try await Self.withHarness { h in
             await #expect(throws: (any Error).self) {
                 _ = try await h.service.register(email: Self.randomEmail(), username: Self.randomUsername(), password: "short")
@@ -202,7 +200,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func loginHappyPath() async throws {
+    func `login happy path`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -213,7 +211,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func loginRejectsWrongPassword() async throws {
+    func `login rejects wrong password`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -224,7 +222,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func loginWithMFAReturnsChallengeNotTokens() async throws {
+    func `login with MFA returns challenge not tokens`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -237,7 +235,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func mfaVerifyIssuesTokens() async throws {
+    func `mfa verify issues tokens`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -250,7 +248,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func refreshRotatesTokenAndRevokesOld() async throws {
+    func `refresh rotates token and revokes old`() async throws {
         try await Self.withHarness { h in
             let registered = try await h.service.register(email: Self.randomEmail(), username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
             let original = registered.refreshToken
@@ -266,7 +264,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func logoutRevokesRefreshToken() async throws {
+    func `logout revokes refresh token`() async throws {
         try await Self.withHarness { h in
             let registered = try await h.service.register(email: Self.randomEmail(), username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
             try await h.service.revokeRefresh(refreshToken: registered.refreshToken)
@@ -277,7 +275,7 @@ struct AuthFlowTests {
     }
 
     @Test
-    func resetPasswordEndToEnd() async throws {
+    func `reset password end to end`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -301,9 +299,8 @@ struct AuthFlowTests {
 actor MFAChallengeRecorder: EmailOTPSender {
     var lastCode: String?
     var lastDestination: String?
-    func send(code: String, to email: String, purpose: String) async throws {
-        self.lastCode = code
-        self.lastDestination = email
+    func send(code: String, to email: String, purpose _: String) async throws {
+        lastCode = code
+        lastDestination = email
     }
 }
-

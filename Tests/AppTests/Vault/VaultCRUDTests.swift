@@ -1,15 +1,13 @@
+@testable import App
 import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Testing
 
-@testable import App
-
 /// HER-88 end-to-end tests for vault list / delete / move endpoints.
 /// Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct VaultCRUDTests {
-
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
@@ -42,7 +40,7 @@ struct VaultCRUDTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword)
+            body: registerBody(email: email, username: username, password: testPassword),
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -53,16 +51,16 @@ struct VaultCRUDTests {
         client: some TestClientProtocol,
         token: String,
         path: String,
-        body: String = "# hello"
+        body: String = "# hello",
     ) async throws -> String {
         let resp = try await client.execute(
             uri: "/v1/vault/files?path=\(path)",
             method: .post,
             headers: [
                 .authorization: "Bearer \(token)",
-                .contentType: "text/markdown"
+                .contentType: "text/markdown",
             ],
-            body: ByteBuffer(string: body)
+            body: ByteBuffer(string: body),
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try JSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
@@ -71,7 +69,7 @@ struct VaultCRUDTests {
     }
 
     @Test
-    func listReturnsUploadedFiles() async throws {
+    func `list returns uploaded files`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -81,7 +79,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -93,17 +91,17 @@ struct VaultCRUDTests {
     }
 
     @Test
-    func listLimitClampsAndPaginates() async throws {
+    func `list limit clamps and paginates`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            for i in 0..<3 {
+            for i in 0 ..< 3 {
                 _ = try await Self.upload(client: client, token: token, path: "page-\(i).md")
             }
             try await client.execute(
                 uri: "/v1/vault/files?limit=2",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -115,7 +113,7 @@ struct VaultCRUDTests {
     }
 
     @Test
-    func deleteRemovesRowAndIsTenantScoped() async throws {
+    func `delete removes row and is tenant scoped`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let alice = try await Self.registerAndAuth(client: client)
@@ -127,25 +125,25 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(mallory)"]
+                headers: [.authorization: "Bearer \(mallory)"],
             ) { #expect($0.status == .notFound) }
 
             // Alice can delete her own. Idempotent: second call returns 404.
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(alice)"]
+                headers: [.authorization: "Bearer \(alice)"],
             ) { #expect($0.status == .noContent) }
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(alice)"]
+                headers: [.authorization: "Bearer \(alice)"],
             ) { #expect($0.status == .notFound) }
         }
     }
 
     @Test
-    func moveRenamesFileAndUpdatesRow() async throws {
+    func `move renames file and updates row`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -156,7 +154,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeFile(response.body)
@@ -167,7 +165,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 let list = try Self.decodeList(response.body)
                 #expect(list.files.contains(where: { $0.path == "new.md" }))
@@ -177,7 +175,7 @@ struct VaultCRUDTests {
     }
 
     @Test
-    func moveRejectsConflict() async throws {
+    func `move rejects conflict`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -188,13 +186,13 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { #expect($0.status == .conflict) }
         }
     }
 
     @Test
-    func moveRejectsTraversal() async throws {
+    func `move rejects traversal`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -204,13 +202,13 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { #expect($0.status == .badRequest) }
         }
     }
 
     @Test
-    func moveRejectsIdenticalPath() async throws {
+    func `move rejects identical path`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -220,13 +218,13 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { #expect($0.status == .badRequest) }
         }
     }
 
     @Test
-    func tenantIsolationListDoesNotLeak() async throws {
+    func `tenant isolation list does not leak`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let alice = try await Self.registerAndAuth(client: client)
@@ -236,7 +234,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(mallory)"]
+                headers: [.authorization: "Bearer \(mallory)"],
             ) { response in
                 let list = try Self.decodeList(response.body)
                 #expect(!list.files.contains(where: { $0.path == "alice-only.md" }))
@@ -245,20 +243,20 @@ struct VaultCRUDTests {
     }
 
     @Test
-    func listFilterByUnknownSpaceReturns404() async throws {
+    func `list filter by unknown space returns 404`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
             try await client.execute(
                 uri: "/v1/vault/files?space=does-not-exist",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { #expect($0.status == .notFound) }
         }
     }
 
     @Test
-    func unauthenticatedReturns401() async throws {
+    func `unauthenticated returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(uri: "/v1/vault/files", method: .get) { #expect($0.status == .unauthorized) }
@@ -267,7 +265,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: #"{"path":"a.md","newPath":"b.md"}"#)
+                body: ByteBuffer(string: #"{"path":"a.md","newPath":"b.md"}"#),
             ) { #expect($0.status == .unauthorized) }
         }
     }

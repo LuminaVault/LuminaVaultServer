@@ -17,7 +17,7 @@ struct M00_EnableExtensions: AsyncMigration {
         // changes (see docs/integration.md "Extension matrix" section).
     }
 
-    func revert(on database: any Database) async throws {
+    func revert(on _: any Database) async throws {
         // extensions left in place (other databases may use them)
     }
 }

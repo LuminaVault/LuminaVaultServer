@@ -1,4 +1,5 @@
 import APNSCore
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -6,18 +7,15 @@ import HummingbirdFluent
 import Logging
 import Testing
 
-@testable import App
-
 /// Drives `APNSNotificationService` through the new `APNSPushSender` test
 /// seam. Verifies fan-out to multiple device tokens, dead-token reaping,
 /// no-op when service disabled, and category routing.
 @Suite(.serialized)
 struct APNSNotificationServiceTests {
-
     // MARK: - Fixtures
 
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T
+        _ body: @Sendable (Fluent) async throws -> T,
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -34,7 +32,7 @@ struct APNSNotificationServiceTests {
         let fluent = Fluent(logger: Logger(label: "test.apns"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -60,7 +58,7 @@ struct APNSNotificationServiceTests {
         let user = User(
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)"
+            passwordHash: "stub-\(slug)",
         )
         try await user.save(on: db)
         return user
@@ -69,7 +67,7 @@ struct APNSNotificationServiceTests {
     // MARK: - Tests
 
     @Test
-    func notifyLLMReplyFansOutToEveryRegisteredToken() async throws {
+    func `notify LLM reply fans out to every registered token`() async throws {
         try await Self.withFluent { fluent in
             let slug = "apns1\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
@@ -84,12 +82,12 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns")
+                logger: Logger(label: "test.apns"),
             )
             let response = ChatResponse(
                 id: "test", model: "test",
                 message: ChatMessage(role: "assistant", content: "Hello there"),
-                raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil)
+                raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
             )
             try await service.notifyLLMReply(userID: userID, username: slug, response: response)
 
@@ -101,7 +99,7 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
-    func deadTokensAreReapedOnBadDeviceTokenError() async throws {
+    func `dead tokens are reaped on bad device token error`() async throws {
         try await Self.withFluent { fluent in
             let slug = "apns2\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
@@ -119,7 +117,7 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns")
+                logger: Logger(label: "test.apns"),
             )
             try await service.notifyNudge(userID: userID, username: slug, body: "test nudge")
 
@@ -133,7 +131,7 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
-    func transientErrorsDoNotReapTheToken() async throws {
+    func `transient errors do not reap the token`() async throws {
         try await Self.withFluent { fluent in
             let slug = "apns3\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
@@ -148,7 +146,7 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns")
+                logger: Logger(label: "test.apns"),
             )
             try await service.notifyDigest(userID: userID, username: slug, body: "today")
 
@@ -160,7 +158,7 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
-    func disabledServiceIsNoOp() async throws {
+    func `disabled service is no op`() async throws {
         try await Self.withFluent { fluent in
             let slug = "apns4\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
@@ -176,7 +174,7 @@ struct APNSNotificationServiceTests {
                 privateKeyPath: "",
                 environment: "development",
                 fluent: fluent,
-                logger: Logger(label: "test.apns")
+                logger: Logger(label: "test.apns"),
             )
             try await service.notifyLLMReply(
                 userID: userID,
@@ -184,8 +182,8 @@ struct APNSNotificationServiceTests {
                 response: ChatResponse(
                     id: "test", model: "test",
                     message: ChatMessage(role: "assistant", content: "x"),
-                    raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil)
-                )
+                    raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
+                ),
             )
             // No throw, no crash. Token row untouched.
             let remaining = try await DeviceToken.query(on: fluent.db(), tenantID: userID).all()
@@ -194,7 +192,7 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
-    func shouldReapClassifiesEveryDeadReason() throws {
+    func `should reap classifies every dead reason`() throws {
         for raw in APNSNotificationService.deadTokenReasons {
             let err = try Self.makeAPNSError(reason: raw)
             #expect(APNSNotificationService.shouldReap(err))
@@ -217,7 +215,7 @@ struct APNSNotificationServiceTests {
 // MARK: - Stub push sender
 
 actor RecordingPushSender: APNSPushSender {
-    struct Send: Sendable {
+    struct Send {
         let token: String
         let title: String
         let subtitle: String?
@@ -227,7 +225,7 @@ actor RecordingPushSender: APNSPushSender {
     }
 
     private(set) var sends: [Send] = []
-    private var failures: [String: String] = [:]   // token -> APNS reason string
+    private var failures: [String: String] = [:] // token -> APNS reason string
 
     func failOn(token: String, with reason: String) {
         failures[token] = reason
@@ -239,7 +237,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String
+        topic: String,
     ) async throws {
         try await record(
             deviceToken: deviceToken,
@@ -247,7 +245,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
-            topic: topic
+            topic: topic,
         )
     }
 
@@ -257,7 +255,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String
+        topic: String,
     ) throws {
         sends.append(Send(
             token: deviceToken,
@@ -265,7 +263,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
-            topic: topic
+            topic: topic,
         ))
         if let reason = failures[deviceToken] {
             throw try APNSNotificationServiceTests.makeAPNSError(reason: reason)

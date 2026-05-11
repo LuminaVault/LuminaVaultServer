@@ -31,7 +31,7 @@ struct ContextRouterMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         // HER-172: read user.context_routing, select 1 skill via low-cap model,
         // mutate request body to prepend skill.body to system prompt.

@@ -5,7 +5,7 @@ import Foundation
 /// Subscription tier. Persisted on `users.tier` as a TEXT column with
 /// CHECK constraint (M15_AddTierFields). String-backed so the raw value
 /// hits the DB unchanged.
-enum UserTier: String, Sendable, Codable, CaseIterable {
+enum UserTier: String, Codable, CaseIterable {
     case trial
     case pro
     case ultimate
@@ -16,7 +16,7 @@ enum UserTier: String, Sendable, Codable, CaseIterable {
 /// Ops-set override that lets us grant entitlement bypassing RevenueCat
 /// (TestFlight users, internal team, support cases). Always wins over
 /// the RC-driven `tier`. `.none` means "respect tier as-is".
-enum TierOverride: String, Sendable, Codable, CaseIterable {
+enum TierOverride: String, Codable, CaseIterable {
     case none
     case pro
     case ultimate
@@ -27,7 +27,7 @@ enum TierOverride: String, Sendable, Codable, CaseIterable {
 /// Every gate-able server capability. New protected endpoint = new case
 /// here + a row in `EntitlementChecker.matchEntitlement`. Strings are stable
 /// — kept in sync with the gating matrix in `docs/superpowers/specs/2026-05-10-billing-tiers-revenuecat-design.md`.
-enum Capability: String, Sendable, CaseIterable {
+enum Capability: String, CaseIterable {
     case vaultRead
     case vaultExport
     case capture
@@ -51,13 +51,13 @@ enum Capability: String, Sendable, CaseIterable {
 /// isolation. `EntitlementMiddleware` (HER-187) is the only consumer in
 /// production; tests in `EntitlementCheckerTests` exhaustively cover the
 /// matrix.
-struct EntitlementChecker {
+enum EntitlementChecker {
     /// True if a user with the given `tier` (post-`override` application)
     /// is entitled to invoke `capability`.
     static func entitled(
         tier: UserTier,
         override: TierOverride,
-        for capability: Capability
+        for capability: Capability,
     ) -> Bool {
         let effective = effectiveTier(tier: tier, override: override)
         return matchEntitlement(effective: effective, for: capability)
@@ -70,16 +70,16 @@ struct EntitlementChecker {
     static func effectiveTier(tier: UserTier, override: TierOverride) -> UserTier {
         switch override {
         case .none:
-            return tier
+            tier
         case .pro:
             // Override to Pro only if current tier is below Pro.
             switch tier {
-            case .ultimate: return .ultimate                   // never downgrade
-            case .pro: return .pro
-            case .trial, .lapsed, .archived: return .pro
+            case .ultimate: .ultimate // never downgrade
+            case .pro: .pro
+            case .trial, .lapsed, .archived: .pro
             }
         case .ultimate:
-            return .ultimate
+            .ultimate
         }
     }
 
@@ -95,18 +95,18 @@ struct EntitlementChecker {
     private static func matchEntitlement(effective: UserTier, for cap: Capability) -> Bool {
         switch cap {
         case .vaultRead, .vaultExport:
-            return effective != .archived
+            effective != .archived
 
         case .capture, .healthIngest, .chat,
              .memoryQuery, .memoGenerator,
              .skillBuiltinRun, .kbCompile:
             switch effective {
-            case .trial, .pro, .ultimate: return true
-            case .lapsed, .archived: return false
+            case .trial, .pro, .ultimate: true
+            case .lapsed, .archived: false
             }
 
         case .skillVaultRun, .privacyBYOKey, .privacyContextRouter, .mlxOnDevice:
-            return effective == .ultimate
+            effective == .ultimate
         }
     }
 }
@@ -116,10 +116,14 @@ struct EntitlementChecker {
 extension User {
     /// Decoded tier. Falls back to `.lapsed` if the DB row holds an
     /// unrecognized value — fail-safe rather than crash on schema drift.
-    var tierEnum: UserTier { UserTier(rawValue: tier) ?? .lapsed }
+    var tierEnum: UserTier {
+        UserTier(rawValue: tier) ?? .lapsed
+    }
 
     /// Decoded override. Falls back to `.none` on unrecognized value.
-    var tierOverrideEnum: TierOverride { TierOverride(rawValue: tierOverride) ?? .none }
+    var tierOverrideEnum: TierOverride {
+        TierOverride(rawValue: tierOverride) ?? .none
+    }
 
     /// True if the user is currently entitled to `capability`. Reads the
     /// `tier` + `tier_override` columns; no DB round-trip.
@@ -127,7 +131,7 @@ extension User {
         EntitlementChecker.entitled(
             tier: tierEnum,
             override: tierOverrideEnum,
-            for: capability
+            for: capability,
         )
     }
 }

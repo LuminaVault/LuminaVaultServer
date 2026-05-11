@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -6,22 +7,19 @@ import JWTKit
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-87: Email verification flow tests.
 /// Mirrors AuthFlowTests harness — service-layer integration against real Postgres at :5433.
 /// Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct EmailVerificationTests {
-
-    fileprivate struct Harness: Sendable {
+    fileprivate struct Harness {
         let service: DefaultAuthService
         let fluent: Fluent
         let verifyRecorder: MFAChallengeRecorder
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T
+        _ body: @Sendable (Harness) async throws -> T,
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -39,7 +37,7 @@ struct EmailVerificationTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -68,7 +66,7 @@ struct EmailVerificationTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "111111")
+            generator: FixedOTPCodeGenerator(code: "111111"),
         )
         let verifyRecorder = MFAChallengeRecorder()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -87,13 +85,13 @@ struct EmailVerificationTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
             ),
             soulService: SOULService(
                 vaultPaths: VaultPathService(rootPath: tmpRoot.path),
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger
-            )
+                logger: logger,
+            ),
         )
         return Harness(service: service, fluent: fluent, verifyRecorder: verifyRecorder)
     }
@@ -107,7 +105,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func newUserStartsUnverified() async throws {
+    func `new user starts unverified`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -117,7 +115,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func sendVerificationDeliversCodeToEmail() async throws {
+    func `send verification delivers code to email`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -128,7 +126,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func sendVerificationIsSilentOnUnknownEmail() async throws {
+    func `send verification is silent on unknown email`() async throws {
         try await Self.withHarness { h in
             try await h.service.sendVerification(email: "nobody-\(UUID().uuidString)@test.luminavault")
             #expect(await h.verifyRecorder.lastCode == nil)
@@ -136,7 +134,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func confirmEmailFlipsIsVerifiedAndIsIdempotent() async throws {
+    func `confirm email flips is verified and is idempotent`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -152,7 +150,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func confirmEmailRejectsWrongCode() async throws {
+    func `confirm email rejects wrong code`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -167,7 +165,7 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func confirmEmailRejectsWhenNoTokenIssued() async throws {
+    func `confirm email rejects when no token issued`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
@@ -178,13 +176,13 @@ struct EmailVerificationTests {
     }
 
     @Test
-    func confirmEmailLocksAfterRepeatedFailures() async throws {
+    func `confirm email locks after repeated failures`() async throws {
         try await Self.withHarness { h in
             let email = Self.randomEmail()
             _ = try await h.service.register(email: email, username: Self.randomUsername(), password: "CorrectHorseBatteryStaple1!")
             try await h.service.sendVerification(email: email)
 
-            for _ in 0..<5 {
+            for _ in 0 ..< 5 {
                 try? await h.service.confirmEmail(email: email, code: "000000")
             }
             // 6th attempt — token now locked, even with the correct code.

@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import Foundation
 import Hummingbird
@@ -6,8 +7,6 @@ import HummingbirdTesting
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-138 E2E tests for `POST /v1/auth/email/start` + `/email/verify`.
 ///
 /// `dbTestReader` pins `magic.fixedOtp = "313131"` so verify is
@@ -15,7 +14,6 @@ import Testing
 /// email is sent. Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct EmailMagicLinkFlowTests {
-
     private static let fixedOTP = "313131"
 
     private static func randomEmail() -> String {
@@ -54,7 +52,7 @@ struct EmailMagicLinkFlowTests {
     }
 
     @Test
-    func startThenVerifyCreatesUserWithEmailMagicLinkIdentity() async throws {
+    func `start then verify creates user with email magic link identity`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let email = Self.randomEmail()
@@ -63,7 +61,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email)
+                body: Self.startBody(email: email),
             ) { response in
                 #expect(response.status == .ok)
                 let start = try Self.decodeStart(response.body)
@@ -74,7 +72,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
             ) { response -> AuthResponse in
                 #expect(response.status == .ok)
                 return try Self.decodeAuth(response.body)
@@ -96,7 +94,7 @@ struct EmailMagicLinkFlowTests {
     }
 
     @Test
-    func verifyWithBadCodeReturns401() async throws {
+    func `verify with bad code returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let email = Self.randomEmail()
@@ -105,14 +103,14 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email)
+                body: Self.startBody(email: email),
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: "000000")
+                body: Self.verifyJSON(email: email, code: "000000"),
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -120,7 +118,7 @@ struct EmailMagicLinkFlowTests {
     }
 
     @Test
-    func verifyWithoutStartReturns401() async throws {
+    func `verify without start returns 401`() async throws {
         // No prior /email/start → no challenge in store → consume returns nil →
         // controller throws AuthError.otpInvalid (401). 410 Gone is reserved
         // for the expired-lifetime case (not covered by current controller
@@ -131,7 +129,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: Self.randomEmail(), code: Self.fixedOTP)
+                body: Self.verifyJSON(email: Self.randomEmail(), code: Self.fixedOTP),
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -139,14 +137,14 @@ struct EmailMagicLinkFlowTests {
     }
 
     @Test
-    func startRejectsInvalidEmail() async throws {
+    func `start rejects invalid email`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: "no-at-sign")
+                body: Self.startBody(email: "no-at-sign"),
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -154,7 +152,7 @@ struct EmailMagicLinkFlowTests {
     }
 
     @Test
-    func secondStartIssuesFreshChallengeAndBurnsOldCode() async throws {
+    func `second start issues fresh challenge and burns old code`() async throws {
         // Mirrors PhoneAuthFlowTests' reissue test: a re-issued challenge
         // wins (latest send), then burns on the first successful verify,
         // and a replay of that same code yields 401.
@@ -166,28 +164,28 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email)
+                body: Self.startBody(email: email),
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email)
+                body: Self.startBody(email: email),
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
             ) { #expect($0.status == .unauthorized) }
         }
     }
@@ -198,7 +196,7 @@ struct EmailMagicLinkFlowTests {
         let fluent = Fluent(logger: Logger(label: "test.magic.fluent"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         return fluent
     }

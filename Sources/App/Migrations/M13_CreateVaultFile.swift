@@ -27,13 +27,13 @@ struct M13_CreateVaultFile: AsyncMigration {
         // seqscan gracefully if pg_trgm isn't available (it is — see M00).
         if let sql = database as? any SQLDatabase {
             try await sql.raw("""
-                CREATE INDEX IF NOT EXISTS idx_vault_files_path_trgm
-                ON vault_files USING gin (path gin_trgm_ops)
-                """).run()
+            CREATE INDEX IF NOT EXISTS idx_vault_files_path_trgm
+            ON vault_files USING gin (path gin_trgm_ops)
+            """).run()
             try await sql.raw("""
-                CREATE INDEX IF NOT EXISTS idx_vault_files_tenant_created
-                ON vault_files (tenant_id, created_at DESC)
-                """).run()
+            CREATE INDEX IF NOT EXISTS idx_vault_files_tenant_created
+            ON vault_files (tenant_id, created_at DESC)
+            """).run()
         }
     }
 

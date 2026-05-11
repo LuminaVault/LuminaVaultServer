@@ -24,12 +24,12 @@ struct LLMController {
             // Capture only what the detached task needs to be Sendable.
             let userID = try user.requireID()
             let username = user.username
-            let pushService = self.notificationService
+            let pushService = notificationService
             Task.detached {
                 try? await pushService.notifyLLMReply(
                     userID: userID,
                     username: username,
-                    response: response
+                    response: response,
                 )
             }
             return response

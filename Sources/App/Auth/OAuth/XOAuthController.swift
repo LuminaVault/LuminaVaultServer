@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 import Logging
 
-struct XExchangeRequest: Codable, Sendable {
+struct XExchangeRequest: Codable {
     let accessToken: String
 }
 
@@ -34,7 +34,7 @@ struct XOAuthController {
             provider: "x",
             providerUserID: xUser.id,
             email: email,
-            emailVerified: xUser.email != nil
+            emailVerified: xUser.email != nil,
         )
         logger.info("x oauth: linked id=\(xUser.id) username=\(xUser.username)")
         return try await authService.issueTokens(for: user)

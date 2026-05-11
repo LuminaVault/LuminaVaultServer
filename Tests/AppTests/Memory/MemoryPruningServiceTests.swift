@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -7,14 +8,11 @@ import Logging
 import SQLKit
 import Testing
 
-@testable import App
-
 /// HER-147 DB-touching tests for `MemoryScoringService` + `MemoryPruningService`.
 /// Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct MemoryPruningServiceTests {
-
-    fileprivate struct Harness: Sendable {
+    fileprivate struct Harness {
         let fluent: Fluent
         let scoring: MemoryScoringService
         let pruning: MemoryPruningService
@@ -24,13 +22,13 @@ struct MemoryPruningServiceTests {
     private static func withHarness<T: Sendable>(
         scoringConfig: MemoryScoringConfig = .default,
         pruningConfig: MemoryPruningConfig = .default,
-        _ body: @Sendable (Harness) async throws -> T
+        _ body: @Sendable (Harness) async throws -> T,
     ) async throws -> T {
         let logger = Logger(label: "test.memory-prune")
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         let scoring = MemoryScoringService(fluent: fluent, config: scoringConfig, logger: logger)
         let pruning = MemoryPruningService(fluent: fluent, config: pruningConfig, logger: logger)
@@ -60,44 +58,44 @@ struct MemoryPruningServiceTests {
         content: String,
         createdAt: Date,
         accessCount: Int = 0,
-        queryHitCount: Int = 0
+        queryHitCount: Int = 0,
     ) async throws -> UUID {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "need SQL")
         }
         let id = UUID()
         try await sql.raw("""
-            INSERT INTO memories
-                (id, tenant_id, content, created_at, access_count, query_hit_count, score)
-            VALUES
-                (\(bind: id), \(bind: tenantID), \(bind: content),
-                 \(bind: createdAt), \(bind: accessCount), \(bind: queryHitCount), 0)
-            """).run()
+        INSERT INTO memories
+            (id, tenant_id, content, created_at, access_count, query_hit_count, score)
+        VALUES
+            (\(bind: id), \(bind: tenantID), \(bind: content),
+             \(bind: createdAt), \(bind: accessCount), \(bind: queryHitCount), 0)
+        """).run()
         return id
     }
 
     @Test
-    func recomputeUpdatesScoreToFormula() async throws {
+    func `recompute updates score to formula`() async throws {
         try await Self.withHarness { h in
             let tenantID = try h.user.requireID()
             let now = Date()
-            let day = 86_400.0
+            let day = 86400.0
 
             // Three rows with varied access patterns.
             let fresh = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "fresh", createdAt: now
+                content: "fresh", createdAt: now,
             )
             let oldQuiet = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "old quiet", createdAt: now.addingTimeInterval(-180 * day)
+                content: "old quiet", createdAt: now.addingTimeInterval(-180 * day),
             )
             let oldPopular = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
                 content: "old popular",
                 createdAt: now.addingTimeInterval(-180 * day),
                 accessCount: 100,
-                queryHitCount: 30
+                queryHitCount: 30,
             )
 
             let updated = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
@@ -116,21 +114,21 @@ struct MemoryPruningServiceTests {
     }
 
     @Test
-    func pruneArchivesLowScoreOldRowsOnly() async throws {
+    func `prune archives low score old rows only`() async throws {
         try await Self.withHarness { h in
             let tenantID = try h.user.requireID()
             let now = Date()
-            let day = 86_400.0
+            let day = 86400.0
 
             // (a) Fresh, low score → kept (under min-age).
             let recent = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "recent low-score", createdAt: now
+                content: "recent low-score", createdAt: now,
             )
             // (b) Old, low score → archived.
             let oldLow = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "old & quiet", createdAt: now.addingTimeInterval(-180 * day)
+                content: "old & quiet", createdAt: now.addingTimeInterval(-180 * day),
             )
             // (c) Old, high score → kept (above threshold even though old).
             let oldHigh = try await Self.insertMemory(
@@ -138,7 +136,7 @@ struct MemoryPruningServiceTests {
                 content: "old & loved",
                 createdAt: now.addingTimeInterval(-180 * day),
                 accessCount: 100,
-                queryHitCount: 30
+                queryHitCount: 30,
             )
 
             _ = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
@@ -160,13 +158,13 @@ struct MemoryPruningServiceTests {
     }
 
     @Test
-    func pruneIsIdempotent() async throws {
+    func `prune is idempotent`() async throws {
         try await Self.withHarness { h in
             let tenantID = try h.user.requireID()
             let now = Date()
             _ = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "drop me", createdAt: now.addingTimeInterval(-180 * 86_400)
+                content: "drop me", createdAt: now.addingTimeInterval(-180 * 86400),
             )
             _ = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
 
@@ -179,7 +177,7 @@ struct MemoryPruningServiceTests {
     }
 
     @Test
-    func tenantIsolationDuringPrune() async throws {
+    func `tenant isolation during prune`() async throws {
         try await Self.withHarness { h in
             // Second ephemeral user.
             let mallory = User(email: "m-\(UUID()).local", username: "m-\(UUID().uuidString.prefix(6).lowercased())", passwordHash: "x")
@@ -187,16 +185,16 @@ struct MemoryPruningServiceTests {
             let aliceID = try h.user.requireID()
             let malloryID = try mallory.requireID()
             let now = Date()
-            let oldDate = now.addingTimeInterval(-180 * 86_400)
+            let oldDate = now.addingTimeInterval(-180 * 86400)
 
             // Both users get an old, low-score row.
             let aliceMem = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: aliceID,
-                content: "alice old", createdAt: oldDate
+                content: "alice old", createdAt: oldDate,
             )
             let malloryMem = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: malloryID,
-                content: "mallory old", createdAt: oldDate
+                content: "mallory old", createdAt: oldDate,
             )
 
             _ = try await h.scoring.recomputeAll(now: now)

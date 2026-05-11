@@ -20,14 +20,14 @@ struct M14_CreateHealthEvent: AsyncMigration {
         if let sql = database as? any SQLDatabase {
             // Hot path: "last N <event_type> for tenant ordered by time".
             try await sql.raw("""
-                CREATE INDEX IF NOT EXISTS idx_health_events_tenant_type_recorded
-                ON health_events (tenant_id, event_type, recorded_at DESC)
-                """).run()
+            CREATE INDEX IF NOT EXISTS idx_health_events_tenant_type_recorded
+            ON health_events (tenant_id, event_type, recorded_at DESC)
+            """).run()
             // Range scans by date alone (cohort-level analytics, ops queries).
             try await sql.raw("""
-                CREATE INDEX IF NOT EXISTS idx_health_events_tenant_recorded
-                ON health_events (tenant_id, recorded_at DESC)
-                """).run()
+            CREATE INDEX IF NOT EXISTS idx_health_events_tenant_recorded
+            ON health_events (tenant_id, recorded_at DESC)
+            """).run()
         }
     }
 

@@ -29,7 +29,7 @@ actor CronScheduler: Service {
         catalog: SkillCatalog,
         runner: SkillRunner,
         fluent: Fluent,
-        logger: Logger
+        logger: Logger,
     ) {
         self.catalog = catalog
         self.runner = runner
@@ -42,6 +42,6 @@ actor CronScheduler: Service {
         // HER-170: per-minute tick → query enabled skills_state rows →
         // evaluate cron expr in users.timezone against last_run_at →
         // dispatch due skills to SkillRunner via bounded TaskGroup.
-        for await _ in AsyncStream<Void>.makeStream().stream { }
+        for await _ in AsyncStream<Void>.makeStream().stream {}
     }
 }

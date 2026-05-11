@@ -22,7 +22,7 @@ import Logging
 ///   4. Audit log — `tenantID` only. NEVER log the deleted user's email,
 ///      username, or any payload field (GDPR right-to-erasure includes audit
 ///      trails that re-leak the data).
-struct AccountDeletionService: Sendable {
+struct AccountDeletionService {
     let fluent: Fluent
     let hasher: any PasswordHasher
     let vaultPaths: VaultPathService
@@ -38,12 +38,12 @@ struct AccountDeletionService: Sendable {
         user: User,
         password: String?,
         tokenIssuedAt: Date?,
-        now: Date = Date()
+        now: Date = Date(),
     ) async throws {
         let tenantID = try user.requireID()
 
         try await verifyReAuth(
-            user: user, password: password, tokenIssuedAt: tokenIssuedAt, now: now
+            user: user, password: password, tokenIssuedAt: tokenIssuedAt, now: now,
         )
 
         // Capture Hermes profile id BEFORE the cascade wipes the row.
@@ -71,7 +71,7 @@ struct AccountDeletionService: Sendable {
         user: User,
         password: String?,
         tokenIssuedAt: Date?,
-        now: Date
+        now: Date,
     ) async throws {
         if let password, !password.isEmpty {
             guard await hasher.verify(password, hash: user.passwordHash) else {
@@ -99,7 +99,7 @@ struct AccountDeletionService: Sendable {
             // the operator cron will catch orphan dirs separately.
             logger.error(
                 "account.deletion.rename_failed",
-                metadata: ["path": .string(url.path), "error": .string("\(error)")]
+                metadata: ["path": .string(url.path), "error": .string("\(error)")],
             )
         }
     }

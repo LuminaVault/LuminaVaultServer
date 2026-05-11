@@ -1,16 +1,14 @@
+@testable import App
 import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Testing
-
-@testable import App
 
 /// End-to-end tests for HER-89 memory CRUD endpoints
 /// (`GET /v1/memory`, `GET /v1/memory/:id`, `DELETE /v1/memory/:id`,
 /// `PATCH /v1/memory/:id`). Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct MemoryCRUDTests {
-
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
         ByteBuffer(string: """
         {"email":"\(email)","username":"\(username)","password":"\(password)"}
@@ -44,7 +42,7 @@ struct MemoryCRUDTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -55,12 +53,12 @@ struct MemoryCRUDTests {
             uri: "/v1/memory/upsert",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: body
+            body: body,
         ) { try decodeUpsert($0.body).memoryId }
     }
 
     @Test
-    func listReturnsAllMemoriesForTenant() async throws {
+    func `list returns all memories for tenant`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -70,7 +68,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -82,17 +80,17 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func listSupportsLimitAndOffset() async throws {
+    func `list supports limit and offset`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            for i in 0..<3 {
+            for i in 0 ..< 3 {
                 _ = try await Self.upsertMemory(client: client, token: token, content: "memo \(i)")
             }
             try await client.execute(
                 uri: "/v1/memory?limit=2&offset=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -104,14 +102,14 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func listRejectsSpaceFilterUntilHER105() async throws {
+    func `list rejects space filter until HER 105`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
             try await client.execute(
                 uri: "/v1/memory?space=stocks",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .notImplemented)
             }
@@ -119,7 +117,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func patchUpdatesContentAndReembeds() async throws {
+    func `patch updates content and reembeds`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -130,7 +128,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeOne(response.body)
@@ -141,7 +139,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func patchTagsRoundTrips() async throws {
+    func `patch tags round trips`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -151,7 +149,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body
+                body: body,
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeOne(response.body)
@@ -160,7 +158,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory?tag=ai",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -170,7 +168,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func patchEmptyBodyReturns400() async throws {
+    func `patch empty body returns 400`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -179,7 +177,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: "{}")
+                body: ByteBuffer(string: "{}"),
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -187,7 +185,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func deleteRemovesMemoryAndIsIdempotent() async throws {
+    func `delete removes memory and is idempotent`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -195,14 +193,14 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .noContent)
             }
             try await client.execute(
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -210,7 +208,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func tenantIsolationDeleteIsScoped() async throws {
+    func `tenant isolation delete is scoped`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let alice = try await Self.registerAndAuth(client: client)
@@ -221,7 +219,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(aliceMem.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(mallory)"]
+                headers: [.authorization: "Bearer \(mallory)"],
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -229,7 +227,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(aliceMem.uuidString)",
                 method: .get,
-                headers: [.authorization: "Bearer \(alice)"]
+                headers: [.authorization: "Bearer \(alice)"],
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -237,7 +235,7 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func unauthenticatedReturns401() async throws {
+    func `unauthenticated returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(uri: "/v1/memory", method: .get) { response in

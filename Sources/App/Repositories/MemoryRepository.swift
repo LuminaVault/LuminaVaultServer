@@ -4,7 +4,7 @@ import Hummingbird
 import HummingbirdFluent
 import SQLKit
 
-struct MemoryRepository: Sendable {
+struct MemoryRepository {
     let fluent: Fluent
 
     func create(content: String, context: AppRequestContext) async throws -> Memory {
@@ -23,9 +23,9 @@ struct MemoryRepository: Sendable {
         let id = UUID()
         let vec = MemoryRepository.formatVector(embedding)
         try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, created_at)
-            VALUES (\(bind: id), \(bind: tenantID), \(bind: content), \(unsafeRaw: "'\(vec)'::vector"), NOW())
-            """).run()
+        INSERT INTO memories (id, tenant_id, content, embedding, created_at)
+        VALUES (\(bind: id), \(bind: tenantID), \(bind: content), \(unsafeRaw: "'\(vec)'::vector"), NOW())
+        """).run()
         guard let m = try await Memory.find(id, on: fluent.db()) else {
             throw HTTPError(.internalServerError, message: "memory vanished after insert")
         }
@@ -43,7 +43,7 @@ struct MemoryRepository: Sendable {
     func semanticSearch(
         queryEmbedding: [Float],
         limit: Int,
-        context: AppRequestContext
+        context: AppRequestContext,
     ) async throws -> [MemorySearchResult] {
         let tenantID = try context.requireTenantID()
         guard let sql = fluent.db() as? any SQLDatabase else {
@@ -51,20 +51,20 @@ struct MemoryRepository: Sendable {
         }
         let vec = MemoryRepository.formatVector(queryEmbedding)
         let rows = try await sql.raw("""
-            SELECT id, tenant_id, content, created_at,
-                   embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
-            FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-            ORDER BY distance ASC
-            LIMIT \(bind: limit)
-            """).all(decoding: MemorySearchRow.self)
+        SELECT id, tenant_id, content, created_at,
+               embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+        ORDER BY distance ASC
+        LIMIT \(bind: limit)
+        """).all(decoding: MemorySearchRow.self)
         return rows.map {
             MemorySearchResult(
                 id: $0.id,
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance
+                distance: $0.distance,
             )
         }
     }
@@ -80,7 +80,7 @@ struct MemoryRepository: Sendable {
         content: String,
         embedding: [Float],
         tags: [String]? = nil,
-        sourceVaultFileID: UUID? = nil
+        sourceVaultFileID: UUID? = nil,
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
@@ -95,21 +95,21 @@ struct MemoryRepository: Sendable {
             // `nil` UUIDs as SQL NULL, so the optional FK is safe to thread
             // through unconditionally.
             try await sql.raw("""
-                INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, created_at)
-                VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
-                        \(unsafeRaw: "'\(vec)'::vector"),
-                        \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
-                        \(bind: sourceVaultFileID),
-                        NOW())
-                """).run()
+            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, created_at)
+            VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
+                    \(unsafeRaw: "'\(vec)'::vector"),
+                    \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
+                    \(bind: sourceVaultFileID),
+                    NOW())
+            """).run()
         } else {
             try await sql.raw("""
-                INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, created_at)
-                VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
-                        \(unsafeRaw: "'\(vec)'::vector"),
-                        \(bind: sourceVaultFileID),
-                        NOW())
-                """).run()
+            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, created_at)
+            VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
+                    \(unsafeRaw: "'\(vec)'::vector"),
+                    \(bind: sourceVaultFileID),
+                    NOW())
+            """).run()
         }
         guard let m = try await Memory.find(id, on: fluent.db()) else {
             throw HTTPError(.internalServerError, message: "memory vanished after insert")
@@ -136,24 +136,24 @@ struct MemoryRepository: Sendable {
     func semanticSearch(
         tenantID: UUID,
         queryEmbedding: [Float],
-        limit: Int
+        limit: Int,
     ) async throws -> [MemorySearchResult] {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector query")
         }
         let vec = MemoryRepository.formatVector(queryEmbedding)
         let rows = try await sql.raw("""
-            SELECT id, tenant_id, content, created_at,
-                   embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
-            FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-            ORDER BY distance ASC
-            LIMIT \(bind: limit)
-            """).all(decoding: MemorySearchRow.self)
+        SELECT id, tenant_id, content, created_at,
+               embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+        ORDER BY distance ASC
+        LIMIT \(bind: limit)
+        """).all(decoding: MemorySearchRow.self)
 
         let hitIDs = rows.map(\.id)
         if !hitIDs.isEmpty {
-            let fluent = self.fluent
+            let fluent = fluent
             Task.detached { [hitIDs] in
                 try? await MemoryRepository.bumpQueryHits(fluent: fluent, ids: hitIDs)
             }
@@ -165,7 +165,7 @@ struct MemoryRepository: Sendable {
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance
+                distance: $0.distance,
             )
         }
     }
@@ -179,11 +179,11 @@ struct MemoryRepository: Sendable {
         // `= ANY` array; SQLKit auto-handles UUID encoding via `bind:`.
         let literal = "ARRAY[" + ids.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"
         try await sql.raw("""
-            UPDATE memories
-            SET query_hit_count = query_hit_count + 1,
-                last_accessed_at = NOW()
-            WHERE id = ANY(\(unsafeRaw: literal))
-            """).run()
+        UPDATE memories
+        SET query_hit_count = query_hit_count + 1,
+            last_accessed_at = NOW()
+        WHERE id = ANY(\(unsafeRaw: literal))
+        """).run()
     }
 
     /// Tenant-scoped paginated list with optional tag filter.
@@ -194,7 +194,7 @@ struct MemoryRepository: Sendable {
         tenantID: UUID,
         tag: String?,
         limit: Int,
-        offset: Int
+        offset: Int,
     ) async throws -> [Memory] {
         let q = Memory.query(on: fluent.db(), tenantID: tenantID)
             .sort(\.$createdAt, .descending)
@@ -205,12 +205,12 @@ struct MemoryRepository: Sendable {
                 throw HTTPError(.internalServerError, message: "SQL driver required for tag filter")
             }
             let rows = try await sql.raw("""
-                SELECT id, tenant_id, content, tags, created_at
-                FROM memories
-                WHERE tenant_id = \(bind: tenantID) AND \(bind: tag) = ANY(tags)
-                ORDER BY created_at DESC, id DESC
-                LIMIT \(bind: limit) OFFSET \(bind: offset)
-                """).all(decoding: MemoryListRow.self)
+            SELECT id, tenant_id, content, tags, created_at
+            FROM memories
+            WHERE tenant_id = \(bind: tenantID) AND \(bind: tag) = ANY(tags)
+            ORDER BY created_at DESC, id DESC
+            LIMIT \(bind: limit) OFFSET \(bind: offset)
+            """).all(decoding: MemoryListRow.self)
             return rows.map { row in
                 let m = Memory(id: row.id, tenantID: row.tenant_id, content: row.content, tags: row.tags)
                 m.$id.exists = true
@@ -234,10 +234,10 @@ struct MemoryRepository: Sendable {
             throw HTTPError(.internalServerError, message: "SQL driver required for delete")
         }
         let result = try await sql.raw("""
-            DELETE FROM memories
-            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
-            RETURNING id
-            """).all(decoding: DeletedIDRow.self)
+        DELETE FROM memories
+        WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+        RETURNING id
+        """).all(decoding: DeletedIDRow.self)
         return !result.isEmpty
     }
 
@@ -249,12 +249,12 @@ struct MemoryRepository: Sendable {
         }
         let vec = MemoryRepository.formatVector(embedding)
         let rows = try await sql.raw("""
-            UPDATE memories
-            SET content = \(bind: content),
-                embedding = \(unsafeRaw: "'\(vec)'::vector")
-            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
-            RETURNING id
-            """).all(decoding: DeletedIDRow.self)
+        UPDATE memories
+        SET content = \(bind: content),
+            embedding = \(unsafeRaw: "'\(vec)'::vector")
+        WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+        RETURNING id
+        """).all(decoding: DeletedIDRow.self)
         return !rows.isEmpty
     }
 
@@ -279,7 +279,7 @@ struct MemoryRepository: Sendable {
     /// the memory has no `source_vault_file_id` set, or when the referenced
     /// vault file has been hard-deleted (FK was already SET NULL on soft
     /// delete; this guards against direct row removal).
-    struct LineageRow: Sendable {
+    struct LineageRow {
         let memoryID: UUID
         let memoryContent: String
         let memoryCreatedAt: Date?
@@ -298,19 +298,19 @@ struct MemoryRepository: Sendable {
             throw HTTPError(.internalServerError, message: "SQL driver required for lineage join")
         }
         let rows = try await sql.raw("""
-            SELECT m.id AS memory_id,
-                   m.content AS memory_content,
-                   m.created_at AS memory_created_at,
-                   m.source_vault_file_id AS source_vault_file_id,
-                   v.path AS source_path,
-                   v.created_at AS source_created_at
-            FROM memories m
-            LEFT JOIN vault_files v
-                ON v.id = m.source_vault_file_id
-               AND v.tenant_id = m.tenant_id
-            WHERE m.tenant_id = \(bind: tenantID) AND m.id = \(bind: memoryID)
-            LIMIT 1
-            """).all(decoding: LineageJoinRow.self)
+        SELECT m.id AS memory_id,
+               m.content AS memory_content,
+               m.created_at AS memory_created_at,
+               m.source_vault_file_id AS source_vault_file_id,
+               v.path AS source_path,
+               v.created_at AS source_created_at
+        FROM memories m
+        LEFT JOIN vault_files v
+            ON v.id = m.source_vault_file_id
+           AND v.tenant_id = m.tenant_id
+        WHERE m.tenant_id = \(bind: tenantID) AND m.id = \(bind: memoryID)
+        LIMIT 1
+        """).all(decoding: LineageJoinRow.self)
         guard let row = rows.first else { return nil }
         return LineageRow(
             memoryID: row.memory_id,
@@ -318,7 +318,7 @@ struct MemoryRepository: Sendable {
             memoryCreatedAt: row.memory_created_at,
             sourceVaultFileID: row.source_vault_file_id,
             sourcePath: row.source_path,
-            sourceCreatedAt: row.source_created_at
+            sourceCreatedAt: row.source_created_at,
         )
     }
 }
@@ -344,7 +344,7 @@ private struct DeletedIDRow: Decodable {
     let id: UUID
 }
 
-struct MemorySearchResult: Sendable {
+struct MemorySearchResult {
     let id: UUID
     let tenantID: UUID
     let content: String

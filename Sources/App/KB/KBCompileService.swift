@@ -4,12 +4,12 @@ import Hummingbird
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 // MARK: - DTOs
 
-struct KBCompileFile: Codable, Sendable {
+struct KBCompileFile: Codable {
     let path: String
     let contentType: String
     /// Plain text payload — use for markdown / .txt. Mutually exclusive with `base64`.
@@ -18,25 +18,25 @@ struct KBCompileFile: Codable, Sendable {
     let base64: String?
 }
 
-struct KBCompileWrittenFile: Codable, Sendable {
+struct KBCompileWrittenFile: Codable {
     let path: String
     let size: Int
     let contentType: String
     let sha256: String
 }
 
-struct KBCompileMemoryRef: Codable, Sendable {
+struct KBCompileMemoryRef: Codable {
     let id: UUID
     let content: String
 }
 
-struct KBCompileResult: Sendable {
+struct KBCompileResult {
     let writtenFiles: [KBCompileWrittenFile]
     let memories: [KBCompileMemoryRef]
     let summary: String
 }
 
-enum KBCompileError: Error, Sendable {
+enum KBCompileError: Error {
     case missingPayload
     case bothPayloadsSet
     case invalidBase64
@@ -72,7 +72,7 @@ actor KBCompileService {
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
-        maxToolIterations: Int = 12
+        maxToolIterations: Int = 12,
     ) {
         self.vaultPaths = vaultPaths
         self.transport = transport
@@ -89,7 +89,7 @@ actor KBCompileService {
         tenantID: UUID,
         profileUsername: String,
         files: [KBCompileFile],
-        hint: String?
+        hint: String?,
     ) async throws -> KBCompileResult {
         guard !files.isEmpty else { throw KBCompileError.noFiles }
 
@@ -106,7 +106,7 @@ actor KBCompileService {
             let safeRelative = try VaultController.sanitizePath(file.path)
             try VaultController.validateContentType(
                 file.contentType,
-                againstExtension: (safeRelative as NSString).pathExtension.lowercased()
+                againstExtension: (safeRelative as NSString).pathExtension.lowercased(),
             )
             let payload = try Self.decodePayload(file)
             guard payload.count <= maxFileSize else {
@@ -123,7 +123,7 @@ actor KBCompileService {
             }
             try FileManager.default.createDirectory(
                 at: target.deletingLastPathComponent(),
-                withIntermediateDirectories: true
+                withIntermediateDirectories: true,
             )
             let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
             try payload.write(to: tmp, options: .atomic)
@@ -137,7 +137,7 @@ actor KBCompileService {
                 path: safeRelative,
                 size: payload.count,
                 contentType: file.contentType,
-                sha256: digest
+                sha256: digest,
             ))
 
             // Only feed text-shaped files into the chat. Images go to disk
@@ -154,7 +154,7 @@ actor KBCompileService {
             tenantID: tenantID,
             profileUsername: profileUsername,
             blocks: compiledTextBlocks,
-            hint: hint
+            hint: hint,
         )
 
         // 3. Reload memories created during the loop. We can't trivially
@@ -163,7 +163,7 @@ actor KBCompileService {
         return KBCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
-            summary: summary.text
+            summary: summary.text,
         )
     }
 
@@ -199,6 +199,7 @@ actor KBCompileService {
             case toolCalls = "tool_calls"
             case toolCallId = "tool_call_id"
         }
+
         init(role: String, content: String? = nil, toolCalls: [ToolCall]? = nil, toolCallId: String? = nil, name: String? = nil) {
             self.role = role
             self.content = content
@@ -249,6 +250,7 @@ actor KBCompileService {
                 case finishReason = "finish_reason"
             }
         }
+
         let id: String
         let model: String
         let choices: [Choice]
@@ -262,45 +264,44 @@ actor KBCompileService {
         tenantID: UUID,
         profileUsername: String,
         blocks: [(path: String, content: String, contentType: String)],
-        hint: String?
+        hint: String?,
     ) async throws -> CompileSummary {
         let systemPrompt = """
-            You are Hermes' kb-compile agent. The user just dropped a batch of \
-            files into their vault. Your job is to (a) extract the durable, \
-            high-signal memories from those files (preferences, decisions, \
-            facts, TODOs, recurring patterns) and (b) call the `memory_upsert` \
-            tool once for each distinct memory you want to persist. After all \
-            useful memories are saved, reply with a short summary covering: \
-            how many memories you stored, which themes you saw, anything you \
-            deliberately skipped. Never invent — only extract what's in the \
-            files.
-            \(hint.map { "User hint: \($0)" } ?? "")
-            """
+        You are Hermes' kb-compile agent. The user just dropped a batch of \
+        files into their vault. Your job is to (a) extract the durable, \
+        high-signal memories from those files (preferences, decisions, \
+        facts, TODOs, recurring patterns) and (b) call the `memory_upsert` \
+        tool once for each distinct memory you want to persist. After all \
+        useful memories are saved, reply with a short summary covering: \
+        how many memories you stored, which themes you saw, anything you \
+        deliberately skipped. Never invent — only extract what's in the \
+        files.
+        \(hint.map { "User hint: \($0)" } ?? "")
+        """
 
-        let bundled: String
-        if blocks.isEmpty {
-            bundled = "(No text-shaped files in this batch — only binary assets were written.)"
+        let bundled: String = if blocks.isEmpty {
+            "(No text-shaped files in this batch — only binary assets were written.)"
         } else {
-            bundled = blocks.map { block in
+            blocks.map { block in
                 "----- FILE: \(block.path) (\(block.contentType)) -----\n\(block.content)"
             }.joined(separator: "\n\n")
         }
 
         var conversation: [AgentMessage] = [
             .init(role: "system", content: systemPrompt),
-            .init(role: "user", content: bundled)
+            .init(role: "user", content: bundled),
         ]
         let tools = [Self.memoryUpsertTool()]
         var collectedMemories: [KBCompileMemoryRef] = []
 
-        for _ in 0..<maxToolIterations {
+        for _ in 0 ..< maxToolIterations {
             let body = ChatPayload(
                 model: defaultModel,
                 messages: conversation,
                 tools: tools,
                 toolChoice: "auto",
                 temperature: 0.2,
-                stream: false
+                stream: false,
             )
             let payload = try JSONEncoder().encode(body)
             let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
@@ -316,13 +317,13 @@ actor KBCompileService {
                     let result = try await dispatch(
                         tenantID: tenantID,
                         toolCall: call,
-                        memories: &collectedMemories
+                        memories: &collectedMemories,
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name
+                        name: call.function.name,
                     ))
                 }
                 continue
@@ -338,7 +339,7 @@ actor KBCompileService {
     private func dispatch(
         tenantID: UUID,
         toolCall: ToolCall,
-        memories: inout [KBCompileMemoryRef]
+        memories: inout [KBCompileMemoryRef],
     ) async throws -> String {
         guard toolCall.function.name == "memory_upsert" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -352,7 +353,7 @@ actor KBCompileService {
             let saved = try await self.memories.create(
                 tenantID: tenantID,
                 content: args.content,
-                embedding: embedding
+                embedding: embedding,
             )
             let id = try saved.requireID()
             memories.append(KBCompileMemoryRef(id: id, content: saved.content))
@@ -368,18 +369,18 @@ actor KBCompileService {
         ToolDefinition(function: .init(
             name: "memory_upsert",
             description: """
-                Persist a single distilled memory from the kb-compile batch. The \
-                content is embedded server-side and stored under the user's tenant.
-                """,
+            Persist a single distilled memory from the kb-compile batch. The \
+            content is embedded server-side and stored under the user's tenant.
+            """,
             parameters: ParameterSchema(
                 properties: [
                     "content": PropertySchema(
                         type: "string",
-                        description: "The memory text to persist verbatim. Should be self-contained."
-                    )
+                        description: "The memory text to persist verbatim. Should be self-contained.",
+                    ),
                 ],
-                required: ["content"]
-            )
+                required: ["content"],
+            ),
         ))
     }
 
@@ -389,7 +390,7 @@ actor KBCompileService {
         switch (file.text, file.base64) {
         case (.some(let text), nil):
             return Data(text.utf8)
-        case (nil, .some(let b64)):
+        case (nil, let .some(b64)):
             guard let data = Data(base64Encoded: b64) else {
                 throw KBCompileError.invalidBase64
             }

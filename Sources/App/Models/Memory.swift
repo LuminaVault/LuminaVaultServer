@@ -16,16 +16,16 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @Field(key: "query_hit_count") var queryHitCount: Int64
     @OptionalField(key: "last_accessed_at") var lastAccessedAt: Date?
 
-    // HER-150 lineage. NULL when the upsert path didn't declare a source
-    // (older rows, direct API writes without context). FK is ON DELETE SET
-    // NULL so a soft-deleted source file doesn't cascade-delete memories
-    // it spawned — the trace just degrades to "source unknown".
+    /// HER-150 lineage. NULL when the upsert path didn't declare a source
+    /// (older rows, direct API writes without context). FK is ON DELETE SET
+    /// NULL so a soft-deleted source file doesn't cascade-delete memories
+    /// it spawned — the trace just degrades to "source unknown".
     @OptionalField(key: "source_vault_file_id") var sourceVaultFileID: UUID?
 
     init() {
-        self.score = 0
-        self.accessCount = 0
-        self.queryHitCount = 0
+        score = 0
+        accessCount = 0
+        queryHitCount = 0
     }
 
     init(
@@ -33,15 +33,15 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         tenantID: UUID,
         content: String,
         tags: [String]? = nil,
-        sourceVaultFileID: UUID? = nil
+        sourceVaultFileID: UUID? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID
         self.content = content
         self.tags = tags
         self.sourceVaultFileID = sourceVaultFileID
-        self.score = 0
-        self.accessCount = 0
-        self.queryHitCount = 0
+        score = 0
+        accessCount = 0
+        queryHitCount = 0
     }
 }

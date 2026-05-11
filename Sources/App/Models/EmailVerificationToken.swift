@@ -20,6 +20,6 @@ final class EmailVerificationToken: Model, TenantModel, @unchecked Sendable {
         self.tenantID = tenantID
         self.codeHash = codeHash
         self.expiresAt = expiresAt
-        self.failedAttempts = 0
+        failedAttempts = 0
     }
 }

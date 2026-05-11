@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 /// Calls the Twilio Messages API. Auth is HTTP Basic with the account SID
@@ -41,7 +41,7 @@ struct TwilioSMSSender: SMSSender {
         let body = Self.urlEncode([
             "To": phone,
             "From": fromNumber,
-            "Body": "Your LuminaVault code is \(code). Expires in 5 min."
+            "Body": "Your LuminaVault code is \(code). Expires in 5 min.",
         ])
         req.httpBody = body.data(using: .utf8)
 
@@ -49,7 +49,7 @@ struct TwilioSMSSender: SMSSender {
         guard let http = response as? HTTPURLResponse else {
             throw HTTPError(.badGateway, message: "twilio: no http response")
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             let preview = String(data: data.prefix(512), encoding: .utf8) ?? "<binary>"
             logger.error("twilio \(http.statusCode): \(preview)")
             throw HTTPError(.badGateway, message: "twilio sms failed (\(http.statusCode))")

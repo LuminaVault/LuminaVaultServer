@@ -36,7 +36,7 @@ final class HealthEvent: Model, TenantModel, @unchecked Sendable {
         unit: String? = nil,
         recordedAt: Date,
         source: String? = nil,
-        metadata: [String: String]? = nil
+        metadata: [String: String]? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID

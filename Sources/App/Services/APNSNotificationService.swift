@@ -12,10 +12,10 @@ import NIOPosix
 /// Mirrors iOS-side `UNNotificationCategory` identifiers. Add new cases
 /// here when adding a new notification surface so iOS can group / style
 /// them consistently.
-enum APNSPushCategory: String, Sendable {
-    case chat = "chat"
-    case nudge = "nudge"
-    case digest = "digest"
+enum APNSPushCategory: String {
+    case chat
+    case nudge
+    case digest
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -29,7 +29,7 @@ protocol APNSPushSender: Sendable {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String
+        topic: String,
     ) async throws
 }
 
@@ -45,21 +45,21 @@ struct LiveAPNSPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String
+        topic: String,
     ) async throws {
         let content = APNSAlertNotificationContent(
             title: .raw(title),
             subtitle: subtitle.map { .raw($0) },
             body: .raw(body),
             launchImage: nil,
-            sound: APNSAlertNotificationSound.default
+            sound: APNSAlertNotificationSound.default,
         )
         let notification = APNSAlertNotification(
             alert: content,
             expiration: APNSNotificationExpiration.none,
             priority: .immediately,
             topic: topic,
-            payload: ["category": category.rawValue]
+            payload: ["category": category.rawValue],
         )
         let request = APNSRequest(
             message: notification,
@@ -69,7 +69,7 @@ struct LiveAPNSPushSender: APNSPushSender {
             priority: .immediately,
             apnsID: nil,
             topic: topic,
-            collapseID: nil
+            collapseID: nil,
         )
         _ = try await client.send(request)
     }
@@ -83,7 +83,7 @@ struct LiveAPNSPushSender: APNSPushSender {
 /// is dead forever" (`BadDeviceToken`, `Unregistered`,
 /// `DeviceTokenNotForTopic`, `MissingDeviceToken`) trigger a hard-delete
 /// of the row so we stop pushing to ghost devices.
-struct APNSNotificationService: Sendable {
+struct APNSNotificationService {
     let enabled: Bool
     let bundleID: String
     let fluent: Fluent
@@ -96,7 +96,7 @@ struct APNSNotificationService: Sendable {
         "BadDeviceToken",
         "Unregistered",
         "DeviceTokenNotForTopic",
-        "MissingDeviceToken"
+        "MissingDeviceToken",
     ]
 
     /// Production-ish constructor. When `apns.enabled=false` or the `.p8`
@@ -110,7 +110,7 @@ struct APNSNotificationService: Sendable {
         privateKeyPath: String,
         environment: String,
         fluent: Fluent,
-        logger: Logger
+        logger: Logger,
     ) {
         self.enabled = enabled
         self.bundleID = bundleID
@@ -123,15 +123,15 @@ struct APNSNotificationService: Sendable {
                     privateKeyPath: privateKeyPath,
                     environment: environment,
                     keyID: keyID,
-                    teamID: teamID
+                    teamID: teamID,
                 )
-                self.pushSender = LiveAPNSPushSender(client: client)
+                pushSender = LiveAPNSPushSender(client: client)
             } catch {
                 logger.error("APNS client init failed: \(error)")
-                self.pushSender = nil
+                pushSender = nil
             }
         } else {
-            self.pushSender = nil
+            pushSender = nil
         }
     }
 
@@ -141,9 +141,9 @@ struct APNSNotificationService: Sendable {
         bundleID: String,
         fluent: Fluent,
         pushSender: any APNSPushSender,
-        logger: Logger
+        logger: Logger,
     ) {
-        self.enabled = true
+        enabled = true
         self.bundleID = bundleID
         self.fluent = fluent
         self.logger = logger
@@ -159,7 +159,7 @@ struct APNSNotificationService: Sendable {
             title: "LuminaVault reply ready",
             subtitle: username,
             body: preview,
-            category: .chat
+            category: .chat,
         )
     }
 
@@ -169,7 +169,7 @@ struct APNSNotificationService: Sendable {
             title: "Hermes noticed something",
             subtitle: username,
             body: body,
-            category: .nudge
+            category: .nudge,
         )
     }
 
@@ -179,7 +179,7 @@ struct APNSNotificationService: Sendable {
             title: "Your daily brief",
             subtitle: username,
             body: body,
-            category: .digest
+            category: .digest,
         )
     }
 
@@ -190,7 +190,7 @@ struct APNSNotificationService: Sendable {
         title: String,
         subtitle: String?,
         body: String,
-        category: APNSPushCategory
+        category: APNSPushCategory,
     ) async throws {
         guard enabled, let pushSender, !bundleID.isEmpty else { return }
 
@@ -209,7 +209,7 @@ struct APNSNotificationService: Sendable {
                     subtitle: subtitle,
                     body: body,
                     category: category,
-                    topic: bundleID
+                    topic: bundleID,
                 )
                 row.lastSeenAt = Date()
                 try await row.save(on: db)
@@ -242,20 +242,20 @@ struct APNSNotificationService: Sendable {
         privateKeyPath: String,
         environment: String,
         keyID: String,
-        teamID: String
+        teamID: String,
     ) throws -> APNSClient<JSONDecoder, JSONEncoder> {
         let privateKeyPEM = try String(contentsOfFile: privateKeyPath, encoding: .utf8)
         let privateKey = try P256.Signing.PrivateKey(pemRepresentation: privateKeyPEM)
         let apnsEnvironment: APNSEnvironment = environment.lowercased() == "production" ? .production : .development
         let configuration = APNSClientConfiguration(
             authenticationMethod: .jwt(privateKey: privateKey, keyIdentifier: keyID, teamIdentifier: teamID),
-            environment: apnsEnvironment
+            environment: apnsEnvironment,
         )
         return APNSClient(
             configuration: configuration,
             eventLoopGroupProvider: .shared(MultiThreadedEventLoopGroup.singleton),
             responseDecoder: JSONDecoder(),
-            requestEncoder: JSONEncoder()
+            requestEncoder: JSONEncoder(),
         )
     }
 }

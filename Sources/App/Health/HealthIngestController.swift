@@ -7,27 +7,27 @@ import Logging
 /// One sample as POSTed by the iOS client (HealthKit export, manual entry,
 /// Apple Watch sync, etc.). Generic enough to carry sleep stages, recovery
 /// scores, steps, heart-rate samples, weight, mindful minutes, and so on.
-struct HealthEventInput: Codable, Sendable {
-    let type: String                  // "sleep_session", "hr_bpm", "steps", "hrv_ms", "weight_kg", ...
-    let recordedAt: Date              // sample timestamp (start, for intervals)
+struct HealthEventInput: Codable {
+    let type: String // "sleep_session", "hr_bpm", "steps", "hrv_ms", "weight_kg", ...
+    let recordedAt: Date // sample timestamp (start, for intervals)
     let valueNumeric: Double?
     let valueText: String?
-    let unit: String?                 // "minutes", "bpm", "ms", "kg", ...
-    let source: String?               // "apple_health", "google_fit", "manual", "withings", ...
-    let metadata: [String: String]?   // free-form (sleep stage, app source, end time, etc.)
+    let unit: String? // "minutes", "bpm", "ms", "kg", ...
+    let source: String? // "apple_health", "google_fit", "manual", "withings", ...
+    let metadata: [String: String]? // free-form (sleep stage, app source, end time, etc.)
 }
 
-struct HealthIngestRequest: Codable, Sendable {
+struct HealthIngestRequest: Codable {
     let events: [HealthEventInput]
 }
 
-struct HealthIngestedRef: Codable, Sendable {
+struct HealthIngestedRef: Codable {
     let id: UUID
     let type: String
     let recordedAt: Date
 }
 
-struct HealthIngestResponse: Codable, ResponseEncodable, Sendable {
+struct HealthIngestResponse: Codable, ResponseEncodable {
     let inserted: Int
     let skipped: Int
     let events: [HealthIngestedRef]
@@ -86,13 +86,13 @@ struct HealthIngestController {
                 unit: input.unit,
                 recordedAt: input.recordedAt,
                 source: input.source,
-                metadata: input.metadata
+                metadata: input.metadata,
             )
             try await row.save(on: db)
-            refs.append(HealthIngestedRef(
-                id: try row.requireID(),
+            try refs.append(HealthIngestedRef(
+                id: row.requireID(),
                 type: row.eventType,
-                recordedAt: row.recordedAt
+                recordedAt: row.recordedAt,
             ))
         }
 
@@ -100,7 +100,7 @@ struct HealthIngestController {
         return HealthIngestResponse(
             inserted: refs.count,
             skipped: skipped,
-            events: refs
+            events: refs,
         )
     }
 }

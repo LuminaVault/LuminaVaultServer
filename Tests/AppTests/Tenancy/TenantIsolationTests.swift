@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import FluentPostgresDriver
 import Foundation
@@ -5,18 +6,15 @@ import HummingbirdFluent
 import Logging
 import Testing
 
-@testable import App
-
 /// Cross-tenant data isolation. Each test creates two distinct tenant UUIDs
 /// and verifies that `TenantModel.query(on: db, tenantID:)` strictly partitions
 /// rows. Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct TenantIsolationTests {
-
     /// Wraps each test with Fluent setup and guaranteed shutdown so the
     /// AsyncKit ConnectionPool deinit assertion can't crash the runner.
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T
+        _ body: @Sendable (Fluent) async throws -> T,
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -34,7 +32,7 @@ struct TenantIsolationTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -61,7 +59,7 @@ struct TenantIsolationTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-hash-\(slug)"
+            passwordHash: "stub-hash-\(slug)",
         )
     }
 
@@ -70,7 +68,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func refreshTokenQueryFiltersByTenant() async throws {
+    func `refresh token query filters by tenant`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -88,7 +86,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func memoryQueryFiltersByTenant() async throws {
+    func `memory query filters by tenant`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -106,7 +104,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func oauthIdentityQueryFiltersByTenant() async throws {
+    func `oauth identity query filters by tenant`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -124,7 +122,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func mfaChallengeQueryFiltersByTenant() async throws {
+    func `mfa challenge query filters by tenant`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -133,11 +131,11 @@ struct TenantIsolationTests {
 
             try await MFAChallenge(
                 tenantID: t1, purpose: "login", channel: "email", destination: "a@x.io",
-                codeHash: "h1", expiresAt: Date().addingTimeInterval(600)
+                codeHash: "h1", expiresAt: Date().addingTimeInterval(600),
             ).save(on: db)
             try await MFAChallenge(
                 tenantID: t2, purpose: "login", channel: "email", destination: "b@y.io",
-                codeHash: "h2", expiresAt: Date().addingTimeInterval(600)
+                codeHash: "h2", expiresAt: Date().addingTimeInterval(600),
             ).save(on: db)
 
             let t1Ch = try await MFAChallenge.query(on: db, tenantID: t1).all()
@@ -148,7 +146,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func crossTenantDeleteOnlyAffectsOwner() async throws {
+    func `cross tenant delete only affects owner`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -168,7 +166,7 @@ struct TenantIsolationTests {
     }
 
     @Test
-    func hermesProfileServiceEnsureScopesByTenant() async throws {
+    func `hermes profile service ensure scopes by tenant`() async throws {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
@@ -184,7 +182,7 @@ struct TenantIsolationTests {
             let service = HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: Logger(label: "test.hermes")),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
             )
 
             let p1 = try await service.ensure(for: u1)

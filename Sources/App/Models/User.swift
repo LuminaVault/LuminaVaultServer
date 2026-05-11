@@ -31,7 +31,7 @@ final class User: Model, @unchecked Sendable {
         tier: String = "trial",
         tierExpiresAt: Date? = nil,
         tierOverride: String = "none",
-        revenuecatUserID: String? = nil
+        revenuecatUserID: String? = nil,
     ) {
         self.id = id
         self.email = email.lowercased()

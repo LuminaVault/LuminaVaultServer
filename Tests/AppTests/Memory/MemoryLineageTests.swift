@@ -1,3 +1,4 @@
+@testable import App
 import FluentKit
 import Foundation
 import Hummingbird
@@ -6,8 +7,6 @@ import HummingbirdTesting
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-150 E2E tests for memory lineage: `GET /v1/memory/{id}/lineage`.
 ///
 /// Drives the repository write path directly (bypassing the Hermes agent
@@ -15,7 +14,6 @@ import Testing
 /// independently. Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct MemoryLineageTests {
-
     private static func decodeAuth(_ buf: ByteBuffer) throws -> AuthResponse {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
@@ -40,7 +38,7 @@ struct MemoryLineageTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
         ) { try decodeAuth($0.body) }
         return (resp.accessToken, resp.userId)
     }
@@ -48,15 +46,8 @@ struct MemoryLineageTests {
     private static func openFluent() async throws -> Fluent {
         let fluent = Fluent(logger: Logger(label: "test.lineage.fluent"))
         fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: "127.0.0.1",
-                port: 5433,
-                username: "hermes",
-                password: "luminavault",
-                database: "hermes_db",
-                tls: .disable
-            )),
-            as: .psql
+            .postgres(configuration: TestPostgres.configuration()),
+            as: .psql,
         )
         return fluent
     }
@@ -71,14 +62,14 @@ struct MemoryLineageTests {
             path: path,
             contentType: "text/markdown",
             sizeBytes: 0,
-            sha256: String(repeating: "0", count: 64)
+            sha256: String(repeating: "0", count: 64),
         )
         try await row.save(on: fluent.db())
         return try row.requireID()
     }
 
     @Test
-    func lineageReturnsSourceWhenLinked() async throws {
+    func `lineage returns source when linked`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let (token, tenantID) = try await Self.registerAndAuth(client: client)
@@ -90,7 +81,7 @@ struct MemoryLineageTests {
             let vaultFileID = try await Self.insertVaultFile(
                 fluent: fluent,
                 tenantID: tenantID,
-                path: "notes/2026-05-11-standup.md"
+                path: "notes/2026-05-11-standup.md",
             )
 
             // Embed-less write so we don't need the real embedding service.
@@ -99,14 +90,14 @@ struct MemoryLineageTests {
                 tenantID: tenantID,
                 content: "Met with infra team about migrations.",
                 embedding: Array(repeating: Float(0), count: 1536),
-                sourceVaultFileID: vaultFileID
+                sourceVaultFileID: vaultFileID,
             )
             let memoryID = try memory.requireID()
 
             try await client.execute(
                 uri: "/v1/memory/\(memoryID)/lineage",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeLineage(response.body)
@@ -120,7 +111,7 @@ struct MemoryLineageTests {
     }
 
     @Test
-    func lineageReturnsNullSourceForUnlinkedMemory() async throws {
+    func `lineage returns null source for unlinked memory`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let (token, tenantID) = try await Self.registerAndAuth(client: client)
@@ -132,14 +123,14 @@ struct MemoryLineageTests {
             let memory = try await repo.create(
                 tenantID: tenantID,
                 content: "Random thought, no source.",
-                embedding: Array(repeating: Float(0), count: 1536)
+                embedding: Array(repeating: Float(0), count: 1536),
             )
             let memoryID = try memory.requireID()
 
             try await client.execute(
                 uri: "/v1/memory/\(memoryID)/lineage",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeLineage(response.body)
@@ -151,14 +142,14 @@ struct MemoryLineageTests {
     }
 
     @Test
-    func lineage404ForUnknownMemory() async throws {
+    func `lineage 404 for unknown memory`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let (token, _) = try await Self.registerAndAuth(client: client)
             try await client.execute(
                 uri: "/v1/memory/\(UUID())/lineage",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"]
+                headers: [.authorization: "Bearer \(token)"],
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -166,7 +157,7 @@ struct MemoryLineageTests {
     }
 
     @Test
-    func lineage404ForCrossTenantMemory() async throws {
+    func `lineage 404 for cross tenant memory`() async throws {
         // Insert a memory under tenant A, request lineage as tenant B.
         // Tenancy isolation must produce 404, not 200-with-payload.
         let app = try await buildApplication(reader: dbTestReader)
@@ -181,14 +172,14 @@ struct MemoryLineageTests {
             let memory = try await repo.create(
                 tenantID: tenantA,
                 content: "Tenant A secret.",
-                embedding: Array(repeating: Float(0), count: 1536)
+                embedding: Array(repeating: Float(0), count: 1536),
             )
             let memoryID = try memory.requireID()
 
             try await client.execute(
                 uri: "/v1/memory/\(memoryID)/lineage",
                 method: .get,
-                headers: [.authorization: "Bearer \(tokenB)"]
+                headers: [.authorization: "Bearer \(tokenB)"],
             ) { response in
                 #expect(response.status == .notFound)
             }

@@ -6,7 +6,7 @@ protocol OTPCodeGenerator: Sendable {
 
 struct DefaultOTPCodeGenerator: OTPCodeGenerator {
     func generate() -> String {
-        String(format: "%06d", Int.random(in: 0..<1_000_000))
+        String(format: "%06d", Int.random(in: 0 ..< 1_000_000))
     }
 }
 
@@ -16,5 +16,7 @@ struct DefaultOTPCodeGenerator: OTPCodeGenerator {
 /// (which itself is a security hole — never set in prod).
 struct FixedOTPCodeGenerator: OTPCodeGenerator {
     let code: String
-    func generate() -> String { code }
+    func generate() -> String {
+        code
+    }
 }

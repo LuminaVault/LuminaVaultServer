@@ -12,15 +12,15 @@ struct M23_AddMemorySourceLineage: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw("""
-            ALTER TABLE memories
-            ADD COLUMN IF NOT EXISTS source_vault_file_id UUID
-            REFERENCES vault_files(id) ON DELETE SET NULL
-            """).run()
+        ALTER TABLE memories
+        ADD COLUMN IF NOT EXISTS source_vault_file_id UUID
+        REFERENCES vault_files(id) ON DELETE SET NULL
+        """).run()
         try await sql.raw("""
-            CREATE INDEX IF NOT EXISTS idx_memories_source_vault_file
-            ON memories (source_vault_file_id)
-            WHERE source_vault_file_id IS NOT NULL
-            """).run()
+        CREATE INDEX IF NOT EXISTS idx_memories_source_vault_file
+        ON memories (source_vault_file_id)
+        WHERE source_vault_file_id IS NOT NULL
+        """).run()
     }
 
     func revert(on database: any Database) async throws {

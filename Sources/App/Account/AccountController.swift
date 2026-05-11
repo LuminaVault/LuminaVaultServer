@@ -3,7 +3,7 @@ import Hummingbird
 import JWTKit
 import Logging
 
-struct AccountDeleteRequest: Codable, Sendable {
+struct AccountDeleteRequest: Codable {
     let password: String?
 }
 
@@ -26,7 +26,7 @@ struct AccountController {
         try await service.deleteAccount(
             user: user,
             password: body.password,
-            tokenIssuedAt: tokenIat
+            tokenIssuedAt: tokenIat,
         )
         return Response(status: .noContent)
     }
@@ -34,7 +34,7 @@ struct AccountController {
     /// Body is optional — `password` may be omitted when the JWT is fresh.
     /// Treat a missing/empty body as `AccountDeleteRequest(password: nil)`.
     private static func decodeBodyAllowingEmpty(
-        req: Request, ctx: AppRequestContext
+        req: Request, ctx: AppRequestContext,
     ) async throws -> AccountDeleteRequest {
         do {
             return try await req.decode(as: AccountDeleteRequest.self, context: ctx)

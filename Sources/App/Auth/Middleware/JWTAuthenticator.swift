@@ -14,7 +14,7 @@ struct JWTAuthenticator: AuthenticatorMiddleware {
     let jwtKeys: JWTKeyCollection
     let fluent: Fluent
 
-    func authenticate(request: Request, context: Context) async throws -> User? {
+    func authenticate(request: Request, context _: Context) async throws -> User? {
         guard let header = request.headers[.authorization] else { return nil }
         let prefix = "Bearer "
         guard header.hasPrefix(prefix) else { return nil }

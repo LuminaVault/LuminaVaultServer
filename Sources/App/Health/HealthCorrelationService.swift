@@ -6,7 +6,7 @@ import Logging
 import SQLKit
 
 /// HER-146 outcome of a single per-user correlation run.
-enum HealthCorrelationOutcome: Sendable, Equatable {
+enum HealthCorrelationOutcome: Equatable {
     /// Synthesis succeeded; the new memory row was saved.
     case saved(memoryID: UUID)
     /// User has <30 days of `health_events` — too little signal for correlation.
@@ -63,7 +63,7 @@ actor HealthCorrelationService {
         logger: Logger,
         minHealthHistoryDays: Int = 30,
         lookbackDays: Int = 7,
-        runIntervalDays: Int = 7
+        runIntervalDays: Int = 7,
     ) {
         self.transport = transport
         self.fluent = fluent
@@ -86,7 +86,7 @@ actor HealthCorrelationService {
         }
 
         // 2) Skip users with <minHealthHistoryDays of HealthKit data.
-        let historyCutoff = now.addingTimeInterval(-TimeInterval(minHealthHistoryDays) * 86_400)
+        let historyCutoff = now.addingTimeInterval(-TimeInterval(minHealthHistoryDays) * 86400)
         let oldestEvent = try await HealthEvent.query(on: db, tenantID: tenantID)
             .sort(\.$recordedAt, .ascending)
             .first()
@@ -95,7 +95,7 @@ actor HealthCorrelationService {
         }
 
         // 3) Pull the rolling window.
-        let windowStart = now.addingTimeInterval(-TimeInterval(lookbackDays) * 86_400)
+        let windowStart = now.addingTimeInterval(-TimeInterval(lookbackDays) * 86400)
         let events = try await HealthEvent.query(on: db, tenantID: tenantID)
             .filter(\.$recordedAt >= windowStart)
             .sort(\.$recordedAt, .ascending)
@@ -122,7 +122,7 @@ actor HealthCorrelationService {
             tenantID: tenantID,
             content: trimmed,
             embedding: embedding,
-            tags: ["correlation", "weekly"]
+            tags: ["correlation", "weekly"],
         )
         let id = try memory.requireID()
         logger.info("health correlation saved tenant=\(tenantID) memory=\(id) eventCount=\(events.count) memoryCount=\(recentMemories.count)")
@@ -139,15 +139,15 @@ actor HealthCorrelationService {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for tag probe")
         }
-        let cutoff = now.addingTimeInterval(-TimeInterval(runIntervalDays) * 86_400)
+        let cutoff = now.addingTimeInterval(-TimeInterval(runIntervalDays) * 86400)
         struct Row: Decodable { let id: UUID }
         let rows = try await sql.raw("""
-            SELECT id FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-              AND created_at >= \(bind: cutoff)
-              AND 'correlation' = ANY(tags)
-            LIMIT 1
-            """).all(decoding: Row.self)
+        SELECT id FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+          AND created_at >= \(bind: cutoff)
+          AND 'correlation' = ANY(tags)
+        LIMIT 1
+        """).all(decoding: Row.self)
         return !rows.isEmpty
     }
 
@@ -160,11 +160,13 @@ actor HealthCorrelationService {
         let temperature: Double
         let stream: Bool
     }
+
     private struct OAIChatResponseBody: Decodable {
         struct Choice: Decodable {
             struct Message: Decodable { let role: String; let content: String? }
             let message: Message
         }
+
         let choices: [Choice]
     }
 
@@ -173,10 +175,10 @@ actor HealthCorrelationService {
             model: defaultModel,
             messages: [
                 OAIChatMessage(role: "system", content: Self.systemPrompt),
-                OAIChatMessage(role: "user", content: prompt)
+                OAIChatMessage(role: "user", content: prompt),
             ],
             temperature: 0.3,
-            stream: false
+            stream: false,
         )
         let payload = try JSONEncoder().encode(body)
         let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
@@ -187,21 +189,21 @@ actor HealthCorrelationService {
     // MARK: - Prompt construction
 
     private static let systemPrompt = """
-        You are Hermes, a private second brain. Your job is to find concrete
-        correlations between the user's last 7 days of health metrics and
-        their captured notes / thoughts.
+    You are Hermes, a private second brain. Your job is to find concrete
+    correlations between the user's last 7 days of health metrics and
+    their captured notes / thoughts.
 
-        Output rules:
-        * Single tight paragraph followed by a `- ` bullet list of 2-5
-          concrete correlations. No headers, no preamble, no apologies.
-        * Each bullet pairs a health observation with a note observation
-          using the format: `When X happened in the metrics, Y appeared in
-          the notes.`
-        * Only assert a correlation if both sides actually appear in the
-          input data. Do NOT invent metrics or notes.
-        * If there is no plausible correlation, respond with EXACTLY the
-          single line `NO_CORRELATION` — the caller treats it as a skip.
-        """
+    Output rules:
+    * Single tight paragraph followed by a `- ` bullet list of 2-5
+      concrete correlations. No headers, no preamble, no apologies.
+    * Each bullet pairs a health observation with a note observation
+      using the format: `When X happened in the metrics, Y appeared in
+      the notes.`
+    * Only assert a correlation if both sides actually appear in the
+      input data. Do NOT invent metrics or notes.
+    * If there is no plausible correlation, respond with EXACTLY the
+      single line `NO_CORRELATION` — the caller treats it as a skip.
+    """
 
     static func buildUserPrompt(events: [HealthEvent], memories: [Memory], now: Date) -> String {
         let iso = ISO8601DateFormatter()
@@ -210,13 +212,12 @@ actor HealthCorrelationService {
         s += "## Health events (\(events.count))\n"
         for ev in events {
             let recorded = iso.string(from: ev.recordedAt)
-            let value: String
-            if let n = ev.valueNumeric {
-                value = ev.unit.map { "\(n) \($0)" } ?? String(n)
+            let value: String = if let n = ev.valueNumeric {
+                ev.unit.map { "\(n) \($0)" } ?? String(n)
             } else if let t = ev.valueText {
-                value = t
+                t
             } else {
-                value = "?"
+                "?"
             }
             s += "- [\(recorded)] \(ev.eventType): \(value)\n"
         }

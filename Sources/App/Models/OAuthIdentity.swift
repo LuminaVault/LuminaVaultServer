@@ -20,7 +20,7 @@ final class OAuthIdentity: Model, TenantModel, @unchecked Sendable {
         provider: String,
         providerUserID: String,
         email: String,
-        emailVerified: Bool
+        emailVerified: Bool,
     ) {
         self.id = id
         self.tenantID = tenantID

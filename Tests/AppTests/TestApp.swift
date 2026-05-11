@@ -1,10 +1,9 @@
+@testable import App
 import Configuration
 import Hummingbird
 import HummingbirdTesting
 import Logging
 import Testing
-
-@testable import App
 
 /// Minimal config for tests that don't touch the database.
 /// `fluent.enabled=false` skips Fluent service registration entirely so tests
@@ -16,26 +15,29 @@ let noDBTestReader = ConfigReader(providers: [
         "log.level": "warning",
         "fluent.enabled": "false",
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
-        "jwt.kid": "test-kid"
-    ])
+        "jwt.kid": "test-kid",
+    ]),
 ])
 
 /// Config for tests that need the database. Requires `docker compose up -d postgres`.
-/// Credentials match the current docker-compose.yml mapping (host 5433 →
-/// container 5432, user hermes, password from POSTGRES_PASSWORD env).
+/// Credentials read via `TestPostgres` (env-overridable) so the same suite
+/// runs locally and on CI without source edits.
 /// Note: `postgres.port` and `http.port` are passed as integer literals;
 /// `reader.int(forKey:)` does NOT parse string values, so quoting these
 /// silently falls back to the default and lands you on the wrong server.
+/// `cfg(...)` helper lives in `TestPostgres.swift` — it wraps non-literal
+/// values into `ConfigValue` since Swift's `ExpressibleByLiteral` only fires
+/// for literal expressions, not computed properties.
 let dbTestReader = ConfigReader(providers: [
     InMemoryProvider(values: [
         "http.host": "127.0.0.1",
         "http.port": 0,
         "log.level": "warning",
-        "postgres.host": "127.0.0.1",
-        "postgres.port": 5433,
-        "postgres.database": "hermes_db",
-        "postgres.user": "hermes",
-        "postgres.password": "luminavault",
+        "postgres.host": cfg(TestPostgres.host),
+        "postgres.port": cfg(TestPostgres.port),
+        "postgres.database": cfg(TestPostgres.database),
+        "postgres.user": cfg(TestPostgres.username),
+        "postgres.password": cfg(TestPostgres.password),
         "fluent.autoMigrate": "true",
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
         "jwt.kid": "test-kid",
@@ -54,6 +56,6 @@ let dbTestReader = ConfigReader(providers: [
         // HER-138: same fixed-OTP pin for the email magic-link generator
         // so `/v1/auth/email/verify` tests can drive a known code. MUST
         // stay empty in prod for the same reason as `phone.fixedOtp`.
-        "magic.fixedOtp": "313131"
-    ])
+        "magic.fixedOtp": "313131",
+    ]),
 ])

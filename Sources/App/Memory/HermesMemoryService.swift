@@ -3,18 +3,18 @@ import Hummingbird
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 // MARK: - Public surface
 
-struct MemoryUpsertResult: Sendable {
+struct MemoryUpsertResult {
     let memory: Memory
     /// Hermes' final assistant message (acknowledgement / synthesis).
     let summary: String
 }
 
-struct MemorySearchAnswer: Sendable {
+struct MemorySearchAnswer {
     let hits: [MemorySearchResult]
     /// Hermes' synthesized answer over the retrieved hits.
     let summary: String
@@ -42,7 +42,7 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
         req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
         req.httpBody = payload
         let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             let preview = String(data: data.prefix(512), encoding: .utf8) ?? "<binary>"
             logger.error("hermes upstream chat failed: \(preview)")
             throw HTTPError(.badGateway, message: "hermes upstream error")
@@ -53,18 +53,18 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
 
 // MARK: - Internal chat-completion types (tool-calling extension)
 
-private struct ToolFunctionCall: Codable, Sendable {
+private struct ToolFunctionCall: Codable {
     let name: String
     let arguments: String
 }
 
-private struct ToolCall: Codable, Sendable {
+private struct ToolCall: Codable {
     let id: String
     let type: String
     let function: ToolFunctionCall
 }
 
-private struct AgentMessage: Codable, Sendable {
+private struct AgentMessage: Codable {
     let role: String
     let content: String?
     let toolCalls: [ToolCall]?
@@ -86,24 +86,24 @@ private struct AgentMessage: Codable, Sendable {
     }
 }
 
-private struct ToolDefinition: Encodable, Sendable {
+private struct ToolDefinition: Encodable {
     let type = "function"
     let function: Function
 
-    struct Function: Encodable, Sendable {
+    struct Function: Encodable {
         let name: String
         let description: String
         let parameters: ParameterSchema
     }
 }
 
-private struct ParameterSchema: Encodable, Sendable {
+private struct ParameterSchema: Encodable {
     let type = "object"
     let properties: [String: PropertySchema]
     let required: [String]
 }
 
-private struct PropertySchema: Encodable, Sendable {
+private struct PropertySchema: Encodable {
     let type: String
     let description: String?
     let additionalProperties: Bool?
@@ -116,7 +116,7 @@ private struct PropertySchema: Encodable, Sendable {
         type: String,
         description: String? = nil,
         additionalProperties: Bool? = nil,
-        items: ItemsSchema? = nil
+        items: ItemsSchema? = nil,
     ) {
         self.type = type
         self.description = description
@@ -125,11 +125,11 @@ private struct PropertySchema: Encodable, Sendable {
     }
 }
 
-private struct ItemsSchema: Encodable, Sendable {
+private struct ItemsSchema: Encodable {
     let type: String
 }
 
-private struct ChatRequestBody: Encodable, Sendable {
+private struct ChatRequestBody: Encodable {
     let model: String
     let messages: [AgentMessage]
     let tools: [ToolDefinition]
@@ -143,7 +143,7 @@ private struct ChatRequestBody: Encodable, Sendable {
     }
 }
 
-private struct ChatResponseChoice: Decodable, Sendable {
+private struct ChatResponseChoice: Decodable {
     let index: Int?
     let message: AgentMessage
     let finishReason: String?
@@ -154,7 +154,7 @@ private struct ChatResponseChoice: Decodable, Sendable {
     }
 }
 
-private struct ChatResponseBody: Decodable, Sendable {
+private struct ChatResponseBody: Decodable {
     let id: String
     let model: String
     let choices: [ChatResponseChoice]
@@ -162,7 +162,7 @@ private struct ChatResponseBody: Decodable, Sendable {
 
 // MARK: - Tool argument types
 
-private struct MemoryUpsertArgs: Decodable, Sendable {
+private struct MemoryUpsertArgs: Decodable {
     let content: String
     /// HER-150: optional vault file ID the memory was derived from. The
     /// model is told to pass this whenever the upsert is grounded in a
@@ -171,12 +171,12 @@ private struct MemoryUpsertArgs: Decodable, Sendable {
     let sourceVaultFileId: UUID?
 }
 
-private struct SessionSearchArgs: Decodable, Sendable {
+private struct SessionSearchArgs: Decodable {
     let query: String
     let limit: Int?
 }
 
-private struct TagExtractArgs: Decodable, Sendable {
+private struct TagExtractArgs: Decodable {
     let tags: [String]
 }
 
@@ -210,7 +210,7 @@ actor HermesMemoryService {
         embeddings: any EmbeddingService,
         defaultModel: String,
         logger: Logger,
-        maxToolIterations: Int = 5
+        maxToolIterations: Int = 5,
     ) {
         self.transport = transport
         self.memories = memories
@@ -224,27 +224,27 @@ actor HermesMemoryService {
         tenantID: UUID,
         profileUsername: String,
         content: String,
-        metadata: [String: String]? = nil
+        metadata _: [String: String]? = nil,
     ) async throws -> MemoryUpsertResult {
         let messages: [AgentMessage] = [
             .init(role: "system", content: """
-                You are Hermes, a per-user memory agent. The user wants to record a new memory.
-                Workflow — do BOTH steps before replying:
-                  1. Call `memory_upsert` exactly once with the content provided.
-                  2. Call `tag_extract` exactly once with 1–5 short topical tags
-                     summarizing the memory's subject. Tags must be lowercase,
-                     1–2 words each, no punctuation. Examples: "running",
-                     "work-meeting", "swift", "ios-bug".
-                After both tools return, reply with a one-sentence acknowledgement
-                summarizing what was stored.
-                """),
-            .init(role: "user", content: content)
+            You are Hermes, a per-user memory agent. The user wants to record a new memory.
+            Workflow — do BOTH steps before replying:
+              1. Call `memory_upsert` exactly once with the content provided.
+              2. Call `tag_extract` exactly once with 1–5 short topical tags
+                 summarizing the memory's subject. Tags must be lowercase,
+                 1–2 words each, no punctuation. Examples: "running",
+                 "work-meeting", "swift", "ios-bug".
+            After both tools return, reply with a one-sentence acknowledgement
+            summarizing what was stored.
+            """),
+            .init(role: "user", content: content),
         ]
         let outcome = try await runAgent(
             tenantID: tenantID,
             profileUsername: profileUsername,
             messages: messages,
-            allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract]
+            allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract],
         )
         guard let saved = outcome.memoriesUpserted.first else {
             throw HTTPError(.badGateway, message: "hermes did not call memory_upsert")
@@ -256,23 +256,23 @@ actor HermesMemoryService {
         tenantID: UUID,
         profileUsername: String,
         query: String,
-        limit: Int = 5
+        limit: Int = 5,
     ) async throws -> MemorySearchAnswer {
         let messages: [AgentMessage] = [
             .init(role: "system", content: """
-                You are Hermes, a per-user memory agent. The user is asking you to recall.
-                Call the `session_search` tool with the user's query and a sensible `limit`
-                (default \(limit)). After the tool returns, synthesize a concise answer
-                that cites the relevant memories you saw. If the search returns nothing,
-                say so plainly.
-                """),
-            .init(role: "user", content: query)
+            You are Hermes, a per-user memory agent. The user is asking you to recall.
+            Call the `session_search` tool with the user's query and a sensible `limit`
+            (default \(limit)). After the tool returns, synthesize a concise answer
+            that cites the relevant memories you saw. If the search returns nothing,
+            say so plainly.
+            """),
+            .init(role: "user", content: query),
         ]
         let outcome = try await runAgent(
             tenantID: tenantID,
             profileUsername: profileUsername,
             messages: messages,
-            allowedTools: [.sessionSearch]
+            allowedTools: [.sessionSearch],
         )
         return MemorySearchAnswer(hits: outcome.searchHits, summary: outcome.summary)
     }
@@ -311,19 +311,19 @@ actor HermesMemoryService {
         tenantID: UUID,
         profileUsername: String,
         messages initial: [AgentMessage],
-        allowedTools: [AvailableTool]
+        allowedTools: [AvailableTool],
     ) async throws -> AgentOutcome {
         var conversation = initial
         var outcome = AgentOutcome()
 
-        for _ in 0..<maxToolIterations {
+        for _ in 0 ..< maxToolIterations {
             let body = ChatRequestBody(
                 model: defaultModel,
                 messages: conversation,
                 tools: allowedTools.map { Self.definition(for: $0) },
                 toolChoice: "auto",
                 temperature: 0.2,
-                stream: false
+                stream: false,
             )
             let payload = try JSONEncoder().encode(body)
             let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
@@ -341,13 +341,13 @@ actor HermesMemoryService {
                     let result = try await dispatch(
                         tenantID: tenantID,
                         toolCall: call,
-                        outcome: &outcome
+                        outcome: &outcome,
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name
+                        name: call.function.name,
                     ))
                 }
                 continue
@@ -363,7 +363,7 @@ actor HermesMemoryService {
     private func dispatch(
         tenantID: UUID,
         toolCall: ToolCall,
-        outcome: inout AgentOutcome
+        outcome: inout AgentOutcome,
     ) async throws -> String {
         guard let argsData = toolCall.function.arguments.data(using: .utf8) else {
             return Self.toolErrorJSON("invalid arguments encoding")
@@ -378,12 +378,12 @@ actor HermesMemoryService {
                     tenantID: tenantID,
                     content: args.content,
                     embedding: embedding,
-                    sourceVaultFileID: args.sourceVaultFileId
+                    sourceVaultFileID: args.sourceVaultFileId,
                 )
                 outcome.memoriesUpserted.append(saved)
                 let payload: [String: String] = [
                     "status": "ok",
-                    "id": (try? saved.requireID().uuidString) ?? ""
+                    "id": (try? saved.requireID().uuidString) ?? "",
                 ]
                 return Self.encodeJSON(payload)
             } catch {
@@ -397,14 +397,14 @@ actor HermesMemoryService {
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,
-                    limit: max(1, min(args.limit ?? 5, 20))
+                    limit: max(1, min(args.limit ?? 5, 20)),
                 )
                 outcome.searchHits = hits
                 let serializable = hits.map { hit -> [String: String] in
                     [
                         "id": hit.id.uuidString,
                         "content": hit.content,
-                        "distance": String(hit.distance)
+                        "distance": String(hit.distance),
                     ]
                 }
                 return Self.encodeJSON(["status": "ok", "results": serializable])
@@ -423,14 +423,14 @@ actor HermesMemoryService {
                 let updated = try await memories.updateTags(
                     tenantID: tenantID,
                     id: memoryID,
-                    tags: normalized
+                    tags: normalized,
                 )
                 if updated {
                     target.tags = normalized.isEmpty ? nil : normalized
                 }
                 return Self.encodeJSON([
                     "status": "ok",
-                    "tags_count": String(normalized.count)
+                    "tags_count": String(normalized.count),
                 ])
             } catch {
                 return Self.toolErrorJSON("tag_extract failed: \(error)")
@@ -446,75 +446,75 @@ actor HermesMemoryService {
     private static func definition(for tool: AvailableTool) -> ToolDefinition {
         switch tool {
         case .memoryUpsert:
-            return ToolDefinition(function: .init(
+            ToolDefinition(function: .init(
                 name: "memory_upsert",
                 description: """
-                    Persist a memory for the current user's tenant. The memory content is embedded \
-                    server-side and stored in the `memories` table with the user's tenant_id. \
-                    Call this when the user wants to remember, save, or note something.
-                    """,
+                Persist a memory for the current user's tenant. The memory content is embedded \
+                server-side and stored in the `memories` table with the user's tenant_id. \
+                Call this when the user wants to remember, save, or note something.
+                """,
                 parameters: ParameterSchema(
                     properties: [
                         "content": PropertySchema(
                             type: "string",
-                            description: "The memory text to persist verbatim."
+                            description: "The memory text to persist verbatim.",
                         ),
                         "source_vault_file_id": PropertySchema(
                             type: "string",
                             description: """
-                                Optional UUID of the vault file this memory was derived from. \
-                                Pass this when the memory is grounded in a specific note or \
-                                document the user just captured or that you read via vault_read \
-                                so the system can build a "Hermes learned X from your <date> note" \
-                                lineage trace. Omit when the memory is volunteered by the user \
-                                with no anchor file.
-                                """
-                        )
+                            Optional UUID of the vault file this memory was derived from. \
+                            Pass this when the memory is grounded in a specific note or \
+                            document the user just captured or that you read via vault_read \
+                            so the system can build a "Hermes learned X from your <date> note" \
+                            lineage trace. Omit when the memory is volunteered by the user \
+                            with no anchor file.
+                            """,
+                        ),
                     ],
-                    required: ["content"]
-                )
+                    required: ["content"],
+                ),
             ))
         case .sessionSearch:
-            return ToolDefinition(function: .init(
+            ToolDefinition(function: .init(
                 name: "session_search",
                 description: """
-                    Semantic-search the current user's memories via pgvector cosine similarity. \
-                    Returns up to `limit` memories ordered by relevance, scoped strictly to the \
-                    authenticated tenant.
-                    """,
+                Semantic-search the current user's memories via pgvector cosine similarity. \
+                Returns up to `limit` memories ordered by relevance, scoped strictly to the \
+                authenticated tenant.
+                """,
                 parameters: ParameterSchema(
                     properties: [
                         "query": PropertySchema(
                             type: "string",
-                            description: "The natural-language search query."
+                            description: "The natural-language search query.",
                         ),
                         "limit": PropertySchema(
                             type: "integer",
-                            description: "Maximum number of memories to return (1-20, default 5)."
-                        )
+                            description: "Maximum number of memories to return (1-20, default 5).",
+                        ),
                     ],
-                    required: ["query"]
-                )
+                    required: ["query"],
+                ),
             ))
         case .tagExtract:
-            return ToolDefinition(function: .init(
+            ToolDefinition(function: .init(
                 name: "tag_extract",
                 description: """
-                    Attach 1–5 short topical tags to the most recently upserted memory. \
-                    Tags MUST be lowercase, 1–2 words each, no punctuation. Used by the UI's \
-                    filter list and the spaced-repetition picker, so prefer stable, reusable \
-                    tags ("running", "swift", "work-meeting") over one-off labels.
-                    """,
+                Attach 1–5 short topical tags to the most recently upserted memory. \
+                Tags MUST be lowercase, 1–2 words each, no punctuation. Used by the UI's \
+                filter list and the spaced-repetition picker, so prefer stable, reusable \
+                tags ("running", "swift", "work-meeting") over one-off labels.
+                """,
                 parameters: ParameterSchema(
                     properties: [
                         "tags": PropertySchema(
                             type: "array",
                             description: "1–5 lowercase tag strings.",
-                            items: ItemsSchema(type: "string")
-                        )
+                            items: ItemsSchema(type: "string"),
+                        ),
                     ],
-                    required: ["tags"]
-                )
+                    required: ["tags"],
+                ),
             ))
         }
     }

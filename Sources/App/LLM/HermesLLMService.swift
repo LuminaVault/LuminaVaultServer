@@ -5,7 +5,7 @@ import Metrics
 import Tracing
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 protocol HermesLLMService: Sendable {
@@ -48,7 +48,7 @@ struct DefaultHermesLLMService: HermesLLMService {
                 model: request.model ?? defaultModel,
                 messages: request.messages,
                 temperature: request.temperature,
-                stream: false
+                stream: false,
             )
             urlReq.httpBody = try JSONEncoder().encode(payload)
 
@@ -57,7 +57,7 @@ struct DefaultHermesLLMService: HermesLLMService {
                 failureCounter.increment()
                 throw HTTPError(.badGateway, message: "hermes upstream returned no http response")
             }
-            guard (200..<300).contains(http.statusCode) else {
+            guard (200 ..< 300).contains(http.statusCode) else {
                 let preview = String(data: data.prefix(512), encoding: .utf8) ?? "<binary>"
                 logger.error("hermes upstream \(http.statusCode): \(preview)")
                 failureCounter.increment()

@@ -8,18 +8,18 @@ import SQLKit
 /// HER-147 pruning thresholds. Default keeps anything younger than
 /// 90 days regardless of score; older rows must clear `scoreThreshold`
 /// to survive.
-struct MemoryPruningConfig: Sendable {
+struct MemoryPruningConfig {
     let scoreThreshold: Double
     let minAgeMonths: Int
 
     static let `default` = MemoryPruningConfig(
         scoreThreshold: 0.2,
-        minAgeMonths: 3
+        minAgeMonths: 3,
     )
 }
 
 /// Per-tenant prune outcome. The job summary collects these.
-struct MemoryPruneResult: Codable, Sendable {
+struct MemoryPruneResult: Codable {
     let tenantID: UUID
     let candidatesScanned: Int
     let archived: Int
@@ -60,18 +60,18 @@ actor MemoryPruningService {
         // approximation; we'd use Calendar.date(byAdding:) for true
         // calendar arithmetic, but the round-trip via Postgres `INTERVAL`
         // is enough for archive cadence.
-        let cutoff = now.addingTimeInterval(-Double(config.minAgeMonths) * 30 * 86_400)
+        let cutoff = now.addingTimeInterval(-Double(config.minAgeMonths) * 30 * 86400)
 
         // Snapshot the candidate count up-front for the summary. Same
         // predicate as the INSERT/DELETE pair; this is index-served.
         struct CountRow: Decodable { let n: Int }
         let candidates = try await sql.raw("""
-            SELECT COUNT(*)::int AS n
-            FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-              AND score < \(bind: config.scoreThreshold)
-              AND COALESCE(created_at, NOW()) < \(bind: cutoff)
-            """).all(decoding: CountRow.self)
+        SELECT COUNT(*)::int AS n
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+          AND score < \(bind: config.scoreThreshold)
+          AND COALESCE(created_at, NOW()) < \(bind: cutoff)
+        """).all(decoding: CountRow.self)
         let candidateCount = candidates.first?.n ?? 0
         guard candidateCount > 0 else {
             return MemoryPruneResult(tenantID: tenantID, candidatesScanned: 0, archived: 0)
@@ -85,31 +85,31 @@ actor MemoryPruningService {
         // bump would set last_accessed_at but score wouldn't recompute
         // until the next sweep — acceptable loss for batch correctness).
         try await sql.raw("""
-            INSERT INTO memories_archive (
-                id, tenant_id, content, tags, embedding,
-                score, access_count, query_hit_count, last_accessed_at,
-                created_at, archived_at
-            )
-            SELECT id, tenant_id, content, tags, embedding,
-                   score, access_count, query_hit_count, last_accessed_at,
-                   created_at, NOW()
-            FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-              AND score < \(bind: config.scoreThreshold)
-              AND COALESCE(created_at, NOW()) < \(bind: cutoff)
-            ON CONFLICT (id) DO NOTHING
-            """).run()
+        INSERT INTO memories_archive (
+            id, tenant_id, content, tags, embedding,
+            score, access_count, query_hit_count, last_accessed_at,
+            created_at, archived_at
+        )
+        SELECT id, tenant_id, content, tags, embedding,
+               score, access_count, query_hit_count, last_accessed_at,
+               created_at, NOW()
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+          AND score < \(bind: config.scoreThreshold)
+          AND COALESCE(created_at, NOW()) < \(bind: cutoff)
+        ON CONFLICT (id) DO NOTHING
+        """).run()
         let archived = try await sql.raw("""
-            DELETE FROM memories
-            WHERE tenant_id = \(bind: tenantID)
-              AND score < \(bind: config.scoreThreshold)
-              AND COALESCE(created_at, NOW()) < \(bind: cutoff)
-            RETURNING id
-            """).all()
+        DELETE FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+          AND score < \(bind: config.scoreThreshold)
+          AND COALESCE(created_at, NOW()) < \(bind: cutoff)
+        RETURNING id
+        """).all()
         return MemoryPruneResult(
             tenantID: tenantID,
             candidatesScanned: candidateCount,
-            archived: archived.count
+            archived: archived.count,
         )
     }
 }

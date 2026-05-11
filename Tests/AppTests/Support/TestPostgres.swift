@@ -1,6 +1,19 @@
+import Configuration
 import FluentPostgresDriver
 import Foundation
 import HummingbirdFluent
+
+/// Wraps a String into a `ConfigValue` for use in `InMemoryProvider` literals.
+/// Variable references can't use the dictionary-literal type inference that
+/// makes `"key": "value"` work, so test-config dictionaries needing dynamic
+/// values pass them through `cfg(...)` for both clarity and type-correctness.
+func cfg(_ value: String) -> ConfigValue {
+    .init(.string(value), isSecret: false)
+}
+
+func cfg(_ value: Int) -> ConfigValue {
+    .init(.int(value), isSecret: false)
+}
 
 /// Centralized Postgres test config. Reads env so the same test suite runs
 /// in two environments:
@@ -17,15 +30,19 @@ enum TestPostgres {
     static var host: String {
         ProcessInfo.processInfo.environment["POSTGRES_HOST"] ?? "127.0.0.1"
     }
+
     static var port: Int {
         Int(ProcessInfo.processInfo.environment["POSTGRES_PORT"] ?? "") ?? 5433
     }
+
     static var username: String {
         ProcessInfo.processInfo.environment["POSTGRES_USER"] ?? "hermes"
     }
+
     static var password: String {
         ProcessInfo.processInfo.environment["POSTGRES_PASSWORD"] ?? "luminavault"
     }
+
     static var database: String {
         ProcessInfo.processInfo.environment["POSTGRES_DATABASE"] ?? "hermes_db"
     }
@@ -37,7 +54,7 @@ enum TestPostgres {
             username: username,
             password: password,
             database: database,
-            tls: .disable
+            tls: .disable,
         )
     }
 }

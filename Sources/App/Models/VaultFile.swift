@@ -27,7 +27,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         path: String,
         contentType: String,
         sizeBytes: Int64,
-        sha256: String
+        sha256: String,
     ) {
         self.id = id
         self.tenantID = tenantID

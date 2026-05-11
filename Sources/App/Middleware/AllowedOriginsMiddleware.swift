@@ -14,7 +14,7 @@ struct AllowedOriginsMiddleware<Context: RequestContext>: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         if let origin = request.headers[.origin], !allowed.contains(origin) {
             throw HTTPError(.forbidden, message: "origin not allowed")

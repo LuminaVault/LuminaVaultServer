@@ -1,17 +1,15 @@
+@testable import App
 import Foundation
 import Hummingbird
 import HummingbirdTesting
 import JWTKit
 import Testing
 
-@testable import App
-
 /// Drives the full middleware chain through `app.test(.router)` so a real
 /// JWT travels in `Authorization: Bearer ...` and JWTAuthenticator hydrates
 /// `AppRequestContext.identity`. Run with `docker compose up -d postgres`.
 @Suite(.serialized)
 struct JWTAuthenticatorE2ETests {
-
     private static let jwtSecret = "test-secret-do-not-use-in-prod-32chars"
     private static let jwtKid = "test-kid"
 
@@ -46,7 +44,7 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func validBearerAuthorizesProtectedRoute() async throws {
+    func `valid bearer authorizes protected route`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let (email, username) = Self.randomUser()
@@ -54,7 +52,7 @@ struct JWTAuthenticatorE2ETests {
                 uri: "/v1/auth/register",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
+                body: Self.registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
             ) { try Self.decodeAuthResponse($0.body) }
 
             #expect(!registerResp.accessToken.isEmpty)
@@ -62,7 +60,7 @@ struct JWTAuthenticatorE2ETests {
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(registerResp.accessToken)"]
+                headers: [.authorization: "Bearer \(registerResp.accessToken)"],
             ) { response in
                 #expect(response.status == .ok)
                 let me = try Self.decodeMeResponse(response.body)
@@ -74,7 +72,7 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func missingAuthorizationHeaderReturns401() async throws {
+    func `missing authorization header returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(uri: "/v1/auth/me", method: .get) { response in
@@ -84,14 +82,14 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func malformedAuthorizationHeaderReturns401() async throws {
+    func `malformed authorization header returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             // No "Bearer " prefix
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "garbage"]
+                headers: [.authorization: "garbage"],
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -99,7 +97,7 @@ struct JWTAuthenticatorE2ETests {
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer not-a-jwt"]
+                headers: [.authorization: "Bearer not-a-jwt"],
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -107,18 +105,18 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func expiredTokenReturns401() async throws {
+    func `expired token returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let expired = SessionToken(
                 userID: UUID(),
-                expiration: Date().addingTimeInterval(-3600)
+                expiration: Date().addingTimeInterval(-3600),
             )
             let signed = try await Self.sign(expired)
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(signed)"]
+                headers: [.authorization: "Bearer \(signed)"],
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -126,7 +124,7 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func wrongSignatureReturns401() async throws {
+    func `wrong signature returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             // Sign with a DIFFERENT secret; the app's verifier must reject it.
@@ -134,14 +132,14 @@ struct JWTAuthenticatorE2ETests {
             let kid = JWKIdentifier(string: Self.jwtKid)
             await otherKeys.add(
                 hmac: HMACKey(stringLiteral: "different-secret-different-different-x"),
-                digestAlgorithm: .sha256, kid: kid
+                digestAlgorithm: .sha256, kid: kid,
             )
             let token = SessionToken(userID: UUID(), expiration: Date().addingTimeInterval(3600))
             let signed = try await otherKeys.sign(token, kid: kid)
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(signed)"]
+                headers: [.authorization: "Bearer \(signed)"],
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -149,19 +147,19 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func tokenForUnknownUserReturns401() async throws {
+    func `token for unknown user returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             // Validly signed but the user UUID was never persisted.
             let orphan = SessionToken(
                 userID: UUID(),
-                expiration: Date().addingTimeInterval(3600)
+                expiration: Date().addingTimeInterval(3600),
             )
             let signed = try await Self.sign(orphan)
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(signed)"]
+                headers: [.authorization: "Bearer \(signed)"],
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -169,7 +167,7 @@ struct JWTAuthenticatorE2ETests {
     }
 
     @Test
-    func issuedTokenCarriesHpidClaim() async throws {
+    func `issued token carries hpid claim`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let (email, username) = Self.randomUser()
@@ -177,7 +175,7 @@ struct JWTAuthenticatorE2ETests {
                 uri: "/v1/auth/register",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
+                body: Self.registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
             ) { try Self.decodeAuthResponse($0.body) }
 
             let keys = JWTKeyCollection()

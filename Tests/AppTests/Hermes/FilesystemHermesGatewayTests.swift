@@ -1,10 +1,8 @@
+@testable import App
 import Foundation
 import Logging
 import Testing
 
-@testable import App
-
-@Suite
 struct FilesystemHermesGatewayTests {
     private func makeGateway() -> (FilesystemHermesGateway, URL) {
         let tmp = FileManager.default.temporaryDirectory
@@ -14,7 +12,7 @@ struct FilesystemHermesGatewayTests {
     }
 
     @Test
-    func provisionsProfileDirectoryAndConfig() async throws {
+    func `provisions profile directory and config`() async throws {
         let (gw, root) = makeGateway()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -25,14 +23,14 @@ struct FilesystemHermesGatewayTests {
         let configURL = root.appendingPathComponent("profiles/alice/profile.json")
         #expect(FileManager.default.fileExists(atPath: configURL.path))
 
-        let json = try JSONSerialization.jsonObject(with: try Data(contentsOf: configURL)) as? [String: Any]
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: configURL)) as? [String: Any]
         #expect(json?["username"] as? String == "alice")
         #expect(json?["tenantID"] as? String == tenant.uuidString)
         #expect(json?["schemaVersion"] as? Int == 1)
     }
 
     @Test
-    func sameTenantSameUsernameIsIdempotent() async throws {
+    func `same tenant same username is idempotent`() async throws {
         let (gw, root) = makeGateway()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -43,7 +41,7 @@ struct FilesystemHermesGatewayTests {
     }
 
     @Test
-    func differentTenantSameUsernameThrows() async throws {
+    func `different tenant same username throws`() async throws {
         let (gw, root) = makeGateway()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -54,7 +52,7 @@ struct FilesystemHermesGatewayTests {
     }
 
     @Test
-    func deleteRenamesDir() async throws {
+    func `delete renames dir`() async throws {
         let (gw, root) = makeGateway()
         defer { try? FileManager.default.removeItem(at: root) }
 

@@ -5,7 +5,7 @@ extension HealthCorrelationSweepSummary: ResponseEncodable {}
 
 /// HER-146 single-user correlation response. Flat-serialised so a cron
 /// driver can grep the JSON for `status` without enum-case walking.
-struct HealthCorrelationRunResponse: Codable, ResponseEncodable, Sendable {
+struct HealthCorrelationRunResponse: Codable, ResponseEncodable {
     /// `"saved"` | `"skipped_insufficient_history"` | `"skipped_already_ran"` |
     /// `"skipped_no_recent_events"` | `"skipped_no_synthesis"`
     let status: String
@@ -13,21 +13,21 @@ struct HealthCorrelationRunResponse: Codable, ResponseEncodable, Sendable {
 
     init(_ outcome: HealthCorrelationOutcome) {
         switch outcome {
-        case .saved(let id):
-            self.status = "saved"
-            self.memoryId = id
+        case let .saved(id):
+            status = "saved"
+            memoryId = id
         case .skippedInsufficientHistory:
-            self.status = "skipped_insufficient_history"
-            self.memoryId = nil
+            status = "skipped_insufficient_history"
+            memoryId = nil
         case .skippedAlreadyRanThisWeek:
-            self.status = "skipped_already_ran"
-            self.memoryId = nil
+            status = "skipped_already_ran"
+            memoryId = nil
         case .skippedNoRecentEvents:
-            self.status = "skipped_no_recent_events"
-            self.memoryId = nil
+            status = "skipped_no_recent_events"
+            memoryId = nil
         case .skippedNoSynthesis:
-            self.status = "skipped_no_synthesis"
-            self.memoryId = nil
+            status = "skipped_no_synthesis"
+            memoryId = nil
         }
     }
 }
@@ -49,12 +49,12 @@ struct HealthAdminController {
     }
 
     @Sendable
-    func correlateAll(_ req: Request, ctx: AppRequestContext) async throws -> HealthCorrelationSweepSummary {
+    func correlateAll(_: Request, ctx _: AppRequestContext) async throws -> HealthCorrelationSweepSummary {
         try await job.runForAllUsers()
     }
 
     @Sendable
-    func correlateOne(_ req: Request, ctx: AppRequestContext) async throws -> HealthCorrelationRunResponse {
+    func correlateOne(_: Request, ctx: AppRequestContext) async throws -> HealthCorrelationRunResponse {
         guard let raw = ctx.parameters.get("userID"), let userID = UUID(uuidString: raw) else {
             throw HTTPError(.badRequest, message: "invalid userID")
         }

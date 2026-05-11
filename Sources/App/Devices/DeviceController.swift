@@ -3,12 +3,12 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 
-struct DeviceRegistrationRequest: Codable, Sendable {
+struct DeviceRegistrationRequest: Codable {
     let token: String
     let platform: String
 }
 
-struct DeviceRegistrationResponse: Codable, ResponseEncodable, Sendable {
+struct DeviceRegistrationResponse: Codable, ResponseEncodable {
     let id: UUID
     let token: String
     let platform: String
@@ -41,24 +41,24 @@ struct DeviceController {
             existing.platform = platform
             existing.lastSeenAt = Date()
             try await existing.save(on: db)
-            return DeviceRegistrationResponse(
-                id: try existing.requireID(),
+            return try DeviceRegistrationResponse(
+                id: existing.requireID(),
                 token: existing.token,
-                platform: existing.platform
+                platform: existing.platform,
             )
         }
 
         let row = DeviceToken(tenantID: tenantID, token: body.token, platform: platform)
         try await row.save(on: db)
-        return DeviceRegistrationResponse(
-            id: try row.requireID(),
+        return try DeviceRegistrationResponse(
+            id: row.requireID(),
             token: row.token,
-            platform: row.platform
+            platform: row.platform,
         )
     }
 
     @Sendable
-    func unregister(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    func unregister(_: Request, ctx: AppRequestContext) async throws -> Response {
         let user = try ctx.requireIdentity()
         guard let token = ctx.parameters.get("token") else {
             throw HTTPError(.badRequest, message: "missing token")

@@ -10,9 +10,9 @@ struct AppRequestContext: AuthRequestContext, RequestContext, WebSocketRequestCo
     let webSocket: WebSocketHandlerReference<Self>
 
     init(source: ApplicationRequestContextSource) {
-        self.coreContext = .init(source: source)
-        self.identity = nil
-        self.webSocket = .init()
+        coreContext = .init(source: source)
+        identity = nil
+        webSocket = .init()
     }
 
     func requireTenantID() throws -> UUID {
@@ -20,4 +20,3 @@ struct AppRequestContext: AuthRequestContext, RequestContext, WebSocketRequestCo
         return try user.requireID()
     }
 }
-
