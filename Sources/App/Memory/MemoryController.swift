@@ -57,6 +57,23 @@ struct MemoryPatchRequest: Codable, Sendable {
     let tags: [String]?
 }
 
+/// HER-150: response for `GET /v1/memory/{id}/lineage`. `source` is nil
+/// when the memory has no `source_vault_file_id` (older rows, direct
+/// API writes without context) or when the source file row has been
+/// hard-deleted. `trace` is a human-readable string the client can
+/// surface verbatim ("Hermes learned this from your <date> note at …").
+struct MemoryLineageSourceDTO: Codable, Sendable {
+    let vaultFileId: UUID
+    let path: String
+    let createdAt: Date?
+}
+
+struct MemoryLineageResponse: Codable, ResponseEncodable, Sendable {
+    let memoryId: UUID
+    let source: MemoryLineageSourceDTO?
+    let trace: String
+}
+
 /// Routes the user's authenticated requests through the Hermes tool-calling
 /// agent (`HermesMemoryService`). Profile name == username; tenancy comes
 /// from the JWT subject claim via `AppRequestContext.requireIdentity`.
@@ -77,6 +94,7 @@ struct MemoryController {
         router.post("/search", use: search)
         router.get("", use: list)
         router.get("/:id", use: getOne)
+        router.get("/:id/lineage", use: lineage)
         router.delete("/:id", use: delete)
         router.patch("/:id", use: patch)
     }
@@ -200,6 +218,45 @@ struct MemoryController {
             throw HTTPError(.notFound, message: "memory not found")
         }
         return try MemoryDTO(row)
+    }
+
+    /// HER-150: Returns the source vault file (when known) the memory was
+    /// derived from, plus a human-readable trace string. 404 when the
+    /// memory doesn't exist or isn't owned by the caller.
+    @Sendable
+    func lineage(_ req: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
+        let user = try ctx.requireIdentity()
+        let id = try Self.parseID(ctx)
+        guard let row = try await repository.findLineage(
+            tenantID: try user.requireID(),
+            memoryID: id
+        ) else {
+            throw HTTPError(.notFound, message: "memory not found")
+        }
+        let source: MemoryLineageSourceDTO?
+        let trace: String
+        if let sid = row.sourceVaultFileID, let path = row.sourcePath {
+            source = MemoryLineageSourceDTO(
+                vaultFileId: sid,
+                path: path,
+                createdAt: row.sourceCreatedAt
+            )
+            let dateLabel = Self.formatTraceDate(row.sourceCreatedAt)
+            trace = "Hermes learned this from your \(dateLabel) note at \(path)."
+        } else {
+            source = nil
+            trace = "Hermes learned this directly — no source file recorded."
+        }
+        return MemoryLineageResponse(memoryId: row.memoryID, source: source, trace: trace)
+    }
+
+    /// Renders a source date as "YYYY-MM-DD" UTC. Keeps the trace string
+    /// stable across client locales — UI can re-format as it pleases.
+    private static func formatTraceDate(_ date: Date?) -> String {
+        guard let date else { return "earlier" }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.string(from: date)
     }
 
     private static func parseID(_ ctx: AppRequestContext) throws -> UUID {
