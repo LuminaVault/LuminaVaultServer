@@ -1,0 +1,30 @@
+meta {
+  name: Put Hermes Config
+  type: http
+  seq: 2
+}
+
+put {
+  url: {{base_url}}/v1/settings/hermes
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "baseUrl": "https://hermes.example.com",
+    "authHeader": "Bearer hermes-token-xyz"
+  }
+}
+
+docs {
+  HER-197 — set (or replace) the per-user Hermes endpoint override.
+
+  `authHeader` is optional. When supplied it is AES-GCM-sealed via
+  `SecretBox` (per-tenant HKDF key) before persisting; never stored
+  plaintext. Every PUT resets `verified_at` to null.
+}

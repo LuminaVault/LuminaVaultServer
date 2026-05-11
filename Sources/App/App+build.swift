@@ -80,6 +80,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
         await fluent.migrations.add(M27_AddUserTimezone())
         await fluent.migrations.add(M28_CreateAchievementProgress())
+        await fluent.migrations.add(M29_CreateUserHermesConfig())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
