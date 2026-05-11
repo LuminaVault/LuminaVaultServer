@@ -18,6 +18,7 @@ struct SkillManifestTests {
         "health-correlate",
         "capture-enrich",
         "belief-evolution",
+        "pattern-detector",
     ]
 
     @Test
