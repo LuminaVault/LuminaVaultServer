@@ -1,0 +1,23 @@
+meta {
+  name: Get Hermes Config
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/v1/settings/hermes
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  HER-197 — returns the per-user Hermes endpoint override.
+
+  Response: { baseUrl, hasAuthHeader, verifiedAt }
+  The auth header itself is never echoed (only `hasAuthHeader`).
+  Returns 404 when no override is configured (managed default in use).
+}

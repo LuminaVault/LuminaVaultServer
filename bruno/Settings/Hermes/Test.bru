@@ -1,0 +1,23 @@
+meta {
+  name: Test Hermes Config
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/v1/settings/hermes/test
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+docs {
+  HER-197 — probe the user's configured Hermes endpoint. Server-side
+  this issues `GET <baseUrl>/v1/models` (falling back to `/healthz`)
+  through the same SSRF-guarded transport stack as real traffic.
+  Sets `verified_at = NOW()` on 2xx and returns it. Returns 4xx if
+  the probe fails (with the upstream status code).
+}
