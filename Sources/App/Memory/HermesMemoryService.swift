@@ -107,12 +107,26 @@ private struct PropertySchema: Encodable, Sendable {
     let type: String
     let description: String?
     let additionalProperties: Bool?
+    /// JSONSchema `items` for `type: "array"` properties. Hermes / OpenAI
+    /// tool-calling models behave erratically with bare arrays, so any
+    /// array property should declare its element type here.
+    let items: ItemsSchema?
 
-    init(type: String, description: String? = nil, additionalProperties: Bool? = nil) {
+    init(
+        type: String,
+        description: String? = nil,
+        additionalProperties: Bool? = nil,
+        items: ItemsSchema? = nil
+    ) {
         self.type = type
         self.description = description
         self.additionalProperties = additionalProperties
+        self.items = items
     }
+}
+
+private struct ItemsSchema: Encodable, Sendable {
+    let type: String
 }
 
 private struct ChatRequestBody: Encodable, Sendable {
@@ -160,6 +174,10 @@ private struct MemoryUpsertArgs: Decodable, Sendable {
 private struct SessionSearchArgs: Decodable, Sendable {
     let query: String
     let limit: Int?
+}
+
+private struct TagExtractArgs: Decodable, Sendable {
+    let tags: [String]
 }
 
 // MARK: - Service
@@ -211,8 +229,14 @@ actor HermesMemoryService {
         let messages: [AgentMessage] = [
             .init(role: "system", content: """
                 You are Hermes, a per-user memory agent. The user wants to record a new memory.
-                Call the `memory_upsert` tool exactly once with the content provided. After the
-                tool returns, reply with a one-sentence acknowledgement summarizing what was stored.
+                Workflow — do BOTH steps before replying:
+                  1. Call `memory_upsert` exactly once with the content provided.
+                  2. Call `tag_extract` exactly once with 1–5 short topical tags
+                     summarizing the memory's subject. Tags must be lowercase,
+                     1–2 words each, no punctuation. Examples: "running",
+                     "work-meeting", "swift", "ios-bug".
+                After both tools return, reply with a one-sentence acknowledgement
+                summarizing what was stored.
                 """),
             .init(role: "user", content: content)
         ]
@@ -220,7 +244,7 @@ actor HermesMemoryService {
             tenantID: tenantID,
             profileUsername: profileUsername,
             messages: messages,
-            allowedTools: [.memoryUpsert, .sessionSearch]
+            allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract]
         )
         guard let saved = outcome.memoriesUpserted.first else {
             throw HTTPError(.badGateway, message: "hermes did not call memory_upsert")
@@ -262,7 +286,25 @@ actor HermesMemoryService {
     }
 
     private enum AvailableTool: CaseIterable {
-        case memoryUpsert, sessionSearch
+        case memoryUpsert, sessionSearch, tagExtract
+    }
+
+    /// HER-151: cap + normalize Hermes-supplied tags. Lowercase + trim,
+    /// drop empties, dedupe (preserves first-occurrence order), max 5.
+    static func normalizeTags(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for value in raw {
+            let cleaned = value
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleaned.isEmpty { continue }
+            if seen.insert(cleaned).inserted {
+                out.append(cleaned)
+                if out.count == 5 { break }
+            }
+        }
+        return out
     }
 
     private func runAgent(
@@ -370,6 +412,30 @@ actor HermesMemoryService {
                 return Self.toolErrorJSON("session_search failed: \(error)")
             }
 
+        case "tag_extract":
+            do {
+                let args = try decoder.decode(TagExtractArgs.self, from: argsData)
+                let normalized = Self.normalizeTags(args.tags)
+                guard let target = outcome.memoriesUpserted.last else {
+                    return Self.toolErrorJSON("tag_extract called before memory_upsert")
+                }
+                let memoryID = try target.requireID()
+                let updated = try await memories.updateTags(
+                    tenantID: tenantID,
+                    id: memoryID,
+                    tags: normalized
+                )
+                if updated {
+                    target.tags = normalized.isEmpty ? nil : normalized
+                }
+                return Self.encodeJSON([
+                    "status": "ok",
+                    "tags_count": String(normalized.count)
+                ])
+            } catch {
+                return Self.toolErrorJSON("tag_extract failed: \(error)")
+            }
+
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -428,6 +494,26 @@ actor HermesMemoryService {
                         )
                     ],
                     required: ["query"]
+                )
+            ))
+        case .tagExtract:
+            return ToolDefinition(function: .init(
+                name: "tag_extract",
+                description: """
+                    Attach 1–5 short topical tags to the most recently upserted memory. \
+                    Tags MUST be lowercase, 1–2 words each, no punctuation. Used by the UI's \
+                    filter list and the spaced-repetition picker, so prefer stable, reusable \
+                    tags ("running", "swift", "work-meeting") over one-off labels.
+                    """,
+                parameters: ParameterSchema(
+                    properties: [
+                        "tags": PropertySchema(
+                            type: "array",
+                            description: "1–5 lowercase tag strings.",
+                            items: ItemsSchema(type: "string")
+                        )
+                    ],
+                    required: ["tags"]
                 )
             ))
         }

@@ -51,6 +51,9 @@ struct HermesMemoryServiceTests {
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
         await fluent.migrations.add(M15_AddTierFields())
+        await fluent.migrations.add(M16_CreateEmailVerificationToken())
+        await fluent.migrations.add(M17_CreateOnboardingState())
+        await fluent.migrations.add(M18_AddMemoryTags())
         try await fluent.migrate()
         return fluent
     }
@@ -181,6 +184,121 @@ struct HermesMemoryServiceTests {
             let rows = try await Memory.query(on: fluent.db(), tenantID: tenantID).all()
             #expect(rows.isEmpty)
         }
+    }
+
+    // MARK: - HER-151 auto-tagging
+
+    @Test
+    func upsertWritesTagsAfterTagExtractToolCall() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = try await Self.createTenant(on: fluent)
+            let transport = ScriptedTransport(steps: [
+                .toolCall(
+                    name: "memory_upsert",
+                    arguments: #"{"content":"finished a 5k run, felt great"}"#
+                ),
+                .toolCall(
+                    name: "tag_extract",
+                    arguments: #"{"tags":["running","fitness","5k"]}"#
+                ),
+                .plainContent("Stored your 5k run note.")
+            ])
+            let service = HermesMemoryService(
+                transport: transport,
+                memories: MemoryRepository(fluent: fluent),
+                embeddings: DeterministicEmbeddingService(),
+                defaultModel: "test",
+                logger: Logger(label: "test.memory")
+            )
+
+            let result = try await service.upsert(
+                tenantID: tenantID,
+                profileUsername: "alice",
+                content: "I finished a 5k run."
+            )
+
+            #expect(result.summary == "Stored your 5k run note.")
+
+            let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
+            let tags = try #require(stored?.tags)
+            #expect(tags == ["running", "fitness", "5k"])
+        }
+    }
+
+    @Test
+    func tagExtractNormalizesAndCapsAtFive() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = try await Self.createTenant(on: fluent)
+            let transport = ScriptedTransport(steps: [
+                .toolCall(
+                    name: "memory_upsert",
+                    arguments: #"{"content":"work meeting about Q3 goals"}"#
+                ),
+                // 7 tags with mixed-case + dupes + whitespace + empty.
+                // Expect: lowercased, deduped, capped at 5 in declared order.
+                .toolCall(
+                    name: "tag_extract",
+                    arguments: #"{"tags":["  Work ","WORK","meeting","Q3","goals","planning","quarterly"]}"#
+                ),
+                .plainContent("Stored the meeting note.")
+            ])
+            let service = HermesMemoryService(
+                transport: transport,
+                memories: MemoryRepository(fluent: fluent),
+                embeddings: DeterministicEmbeddingService(),
+                defaultModel: "test",
+                logger: Logger(label: "test.memory")
+            )
+
+            _ = try await service.upsert(
+                tenantID: tenantID,
+                profileUsername: "alice",
+                content: "Meeting about Q3."
+            )
+            let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
+            let tags = try #require(stored?.tags)
+            #expect(tags == ["work", "meeting", "q3", "goals", "planning"])
+        }
+    }
+
+    @Test
+    func upsertSucceedsEvenIfTagExtractIsSkipped() async throws {
+        // The model isn't always reliable — must not fail the upsert
+        // just because the model forgot the second tool call.
+        try await Self.withFluent { fluent in
+            let tenantID = try await Self.createTenant(on: fluent)
+            let transport = ScriptedTransport(steps: [
+                .toolCall(
+                    name: "memory_upsert",
+                    arguments: #"{"content":"call mom on sunday"}"#
+                ),
+                .plainContent("Saved.")
+            ])
+            let service = HermesMemoryService(
+                transport: transport,
+                memories: MemoryRepository(fluent: fluent),
+                embeddings: DeterministicEmbeddingService(),
+                defaultModel: "test",
+                logger: Logger(label: "test.memory")
+            )
+
+            let result = try await service.upsert(
+                tenantID: tenantID,
+                profileUsername: "alice",
+                content: "Call mom Sunday."
+            )
+            #expect(result.summary == "Saved.")
+            let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
+            #expect(stored?.tags == nil)
+        }
+    }
+
+    @Test
+    func normalizeTagsHelper() {
+        #expect(HermesMemoryService.normalizeTags(["A", "b", "A"]) == ["a", "b"])
+        #expect(HermesMemoryService.normalizeTags(["", "  ", " hi "]) == ["hi"])
+        #expect(HermesMemoryService.normalizeTags(["1","2","3","4","5","6","7"]) == ["1","2","3","4","5"])
+        #expect(HermesMemoryService.normalizeTags([]) == [])
     }
 
     @Test
