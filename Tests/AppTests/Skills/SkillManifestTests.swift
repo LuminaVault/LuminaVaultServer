@@ -19,6 +19,7 @@ struct SkillManifestTests {
         "capture-enrich",
         "belief-evolution",
         "pattern-detector",
+        "contradiction-detector",
     ]
 
     @Test
