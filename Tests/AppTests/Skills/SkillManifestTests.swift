@@ -17,6 +17,7 @@ struct SkillManifestTests {
         "weekly-memo",
         "health-correlate",
         "capture-enrich",
+        "belief-evolution",
     ]
 
     @Test
