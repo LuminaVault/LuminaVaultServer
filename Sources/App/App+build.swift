@@ -221,6 +221,15 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         fluent: services.fluent,
         logger: Logger(label: "lv.apns"),
     )
+    // HER-196 — usage-driven achievement progress + per-unlock APNS push.
+    // Constructed once and threaded into every controller hot-path (Memory,
+    // LLM, KBCompile, Query, Vault, SOUL) plus the read-only catalog
+    // endpoints under /v1/achievements.
+    let achievementsService = AchievementsService(
+        fluent: services.fluent,
+        pushService: pushService,
+        logger: Logger(label: "lv.achievements"),
+    )
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
@@ -368,6 +377,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         service: llmService,
         telemetry: llmTelemetry,
         notificationService: pushService,
+        achievements: achievementsService,
     )
     // HER-172 ContextRouter — feature-gated by `users.context_routing`.
     // Constructed unconditionally; the middleware short-circuits when the
@@ -413,6 +423,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         service: memoryService,
         repository: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
+        achievements: achievementsService,
     )
     // captureByUser covers /upsert (write capture) and /search (read agent loop);
     // both are tenant-scoped Hermes calls so the per-user budget is shared.
@@ -422,7 +433,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     memoryController.addRoutes(to: memoryGroup)
 
     // Query (natural-language semantic search) — protected.
-    let queryController = QueryController(service: memoryService)
+    let queryController = QueryController(service: memoryService, achievements: achievementsService)
     let queryGroup = router.group("/v1/query").add(middleware: jwtAuthenticator)
     queryController.addRoutes(to: queryGroup)
 
@@ -445,6 +456,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         eventBus: eventBus,
+        achievements: achievementsService,
         logger: Logger(label: "lv.vault"),
     )
     let vaultGroup = router.group("/v1/vault")
@@ -469,7 +481,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.kb-compile"),
     )
-    let kbCompileController = KBCompileController(service: kbCompileService)
+    let kbCompileController = KBCompileController(service: kbCompileService, achievements: achievementsService)
     let kbCompileGroup = router.group("/v1/kb-compile")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
@@ -486,11 +498,23 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     spacesController.addRoutes(to: spacesGroup)
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
-    let soulController = SoulController(service: soulService, telemetry: soulTelemetry)
+    let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsService)
     let soulGroup = router.group("/v1/soul")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .soulByUser, storage: rateLimitStorage))
     soulController.addRoutes(to: soulGroup)
+
+    // HER-196 — achievements read surface. Catalog (code-defined) joined to
+    // per-tenant progress rows. Writes happen fire-and-forget from the
+    // hot-paths above; this group is GET-only.
+    let achievementsController = AchievementsController(
+        service: achievementsService,
+        logger: Logger(label: "lv.achievements"),
+    )
+    let achievementsGroup = router.group("/v1/achievements")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .achievementsByUser, storage: rateLimitStorage))
+    achievementsController.addRoutes(to: achievementsGroup)
 
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     let healthController = HealthIngestController(

@@ -15,6 +15,7 @@ struct KBCompileResponse: Codable, ResponseEncodable {
 
 struct KBCompileController {
     let service: KBCompileService
+    let achievements: AchievementsService?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: compile)
@@ -27,12 +28,16 @@ struct KBCompileController {
         guard !body.files.isEmpty else {
             throw HTTPError(.badRequest, message: "files array required")
         }
+        let tenantID = try user.requireID()
         let result = try await service.compile(
-            tenantID: user.requireID(),
+            tenantID: tenantID,
             profileUsername: user.username,
             files: body.files,
             hint: body.hint,
         )
+        if let achievements {
+            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .kbCompiled) }
+        }
         return KBCompileResponse(
             writtenFiles: result.writtenFiles,
             memories: result.memories,

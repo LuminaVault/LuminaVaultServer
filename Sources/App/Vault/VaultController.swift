@@ -67,6 +67,7 @@ struct VaultController {
     let vaultPaths: VaultPathService
     let fluent: Fluent
     let eventBus: EventBus?
+    let achievements: AchievementsService?
     let logger: Logger
     let maxFileSize: Int
 
@@ -77,12 +78,14 @@ struct VaultController {
         vaultPaths: VaultPathService,
         fluent: Fluent,
         eventBus: EventBus? = nil,
+        achievements: AchievementsService? = nil,
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
         self.eventBus = eventBus
+        self.achievements = achievements
         self.logger = logger
         self.maxFileSize = maxFileSize
     }
@@ -149,6 +152,10 @@ struct VaultController {
             sha256: digest,
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
+
+        if let achievements {
+            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .vaultUploaded) }
+        }
 
         // HER-171: notify the skills runtime so capture-driven skills
         // (e.g. capture-enrich) can fire on new vault writes. Fire-and-
