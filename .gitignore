@@ -11,3 +11,5 @@ xcuserdata/
 .env.worktrees/
 .env
 data
+.build
+.build*
