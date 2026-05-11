@@ -1,0 +1,31 @@
+meta {
+  name: POST vault move
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/vault/files/move
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "path": "notes/old.md",
+    "newPath": "notes/new.md"
+  }
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("path updated", function() {
+    expect(res.body.path).to.equal("notes/new.md");
+  });
+}

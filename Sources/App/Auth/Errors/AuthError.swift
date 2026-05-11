@@ -12,4 +12,6 @@ enum AuthError {
     static let invalidRefresh = HTTPError(.unauthorized, message: "invalid refresh token")
     static let resetCodeInvalid = HTTPError(.unauthorized, message: "reset code invalid or expired")
     static let resetLocked = HTTPError(.tooManyRequests, message: "reset locked, try later")
+    static let verifyCodeInvalid = HTTPError(.unauthorized, message: "verification code invalid or expired")
+    static let verifyLocked = HTTPError(.tooManyRequests, message: "verification locked, try later")
 }

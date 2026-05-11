@@ -27,6 +27,10 @@ protocol AuthService: Sendable {
     func forgotPassword(email: String) async throws
     func resendReset(email: String) async throws
     func resetPassword(email: String, code: String, newPassword: String) async throws -> AuthResponse
+    /// Email verification (HER-87): issue OTP that flips `users.is_verified` on confirm.
+    /// `sendVerification` is silent on unknown email (no enumeration leak).
+    func sendVerification(email: String) async throws
+    func confirmEmail(email: String, code: String) async throws
 }
 
 struct DefaultAuthService: AuthService {
@@ -38,7 +42,10 @@ struct DefaultAuthService: AuthService {
     let mfaService: any MFAService
     let resetCodeSender: any EmailOTPSender
     let resetCodeGenerator: any OTPCodeGenerator
+    let verificationCodeSender: any EmailOTPSender
+    let verificationCodeGenerator: any OTPCodeGenerator
     let hermesProfileService: HermesProfileService
+    let soulService: SOULService
 
     let accessTokenLifetime: TimeInterval = 60 * 60                  // 1 hour
     let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30       // 30 days
@@ -48,6 +55,9 @@ struct DefaultAuthService: AuthService {
     let resetCodeLifetime: TimeInterval = 60 * 15                    // 15 min
     let maxResetFailures: Int = 5
     let resetLockoutDuration: TimeInterval = 60 * 30                 // 30 min
+    let verifyCodeLifetime: TimeInterval = 60 * 60 * 24              // 24 hours
+    let maxVerifyFailures: Int = 5
+    let verifyLockoutDuration: TimeInterval = 60 * 30                // 30 min
 
     func register(email: String, username rawUsername: String, password: String) async throws -> AuthResponse {
         guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
@@ -62,6 +72,14 @@ struct DefaultAuthService: AuthService {
         } catch {
             try? await user.delete(force: true, on: fluent.db())
             throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
+        }
+        do {
+            try soulService.initIfMissing(for: user)
+        } catch {
+            // SOUL.md is load-bearing for Hermes voice; the user should not
+            // exist without it. Roll back so a retry produces a clean state.
+            try? await user.delete(force: true, on: fluent.db())
+            throw HTTPError(.serviceUnavailable, message: "could not initialize SOUL.md")
         }
         return try await issueTokens(for: user)
     }
@@ -174,6 +192,55 @@ struct DefaultAuthService: AuthService {
         }
     }
 
+    func sendVerification(email: String) async throws {
+        guard let user = try await repo.findUser(byEmail: email) else { return }   // no-op (don't leak existence)
+        if user.isVerified { return }                                              // idempotent: nothing to do
+        try await issueVerificationCode(for: user)
+    }
+
+    func confirmEmail(email: String, code: String) async throws {
+        guard let user = try await repo.findUser(byEmail: email) else {
+            throw AuthError.verifyCodeInvalid
+        }
+        let userID = try user.requireID()
+        if user.isVerified { return }                                              // idempotent
+
+        guard let row = try await EmailVerificationToken.query(on: fluent.db(), tenantID: userID)
+            .filter(\.$usedAt == nil)
+            .sort(\.$createdAt, .descending)
+            .first()
+        else { throw AuthError.verifyCodeInvalid }
+
+        if let lock = row.lockedUntil, lock > Date() { throw AuthError.verifyLocked }
+        if row.expiresAt < Date() { throw AuthError.verifyCodeInvalid }
+
+        if row.codeHash == sha256Hex(code) {
+            row.usedAt = Date()
+            try await row.save(on: fluent.db())
+            user.isVerified = true
+            try await user.save(on: fluent.db())
+        } else {
+            row.failedAttempts += 1
+            if row.failedAttempts >= maxVerifyFailures {
+                row.lockedUntil = Date().addingTimeInterval(verifyLockoutDuration)
+            }
+            try await row.save(on: fluent.db())
+            throw AuthError.verifyCodeInvalid
+        }
+    }
+
+    private func issueVerificationCode(for user: User) async throws {
+        let userID = try user.requireID()
+        let code = verificationCodeGenerator.generate()
+        let row = EmailVerificationToken(
+            tenantID: userID,
+            codeHash: sha256Hex(code),
+            expiresAt: Date().addingTimeInterval(verifyCodeLifetime)
+        )
+        try await row.save(on: fluent.db())
+        try await verificationCodeSender.send(code: code, to: user.email, purpose: "verify")
+    }
+
     private func issueResetCode(for user: User) async throws {
         let userID = try user.requireID()
         let code = resetCodeGenerator.generate()
@@ -251,6 +318,12 @@ struct DefaultAuthService: AuthService {
             try? await user.delete(force: true, on: fluent.db())
             throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
         }
+        do {
+            try soulService.initIfMissing(for: user)
+        } catch {
+            try? await user.delete(force: true, on: fluent.db())
+            throw HTTPError(.serviceUnavailable, message: "could not initialize SOUL.md")
+        }
         return user
     }
 
@@ -296,9 +369,11 @@ struct DefaultAuthService: AuthService {
     func issueTokens(for user: User) async throws -> AuthResponse {
         let userID = try user.requireID()
         let hpid = try await hermesProfileService.find(for: user)?.hermesProfileID
+        let now = Date()
         let access = SessionToken(
             userID: userID,
-            expiration: Date().addingTimeInterval(accessTokenLifetime),
+            expiration: now.addingTimeInterval(accessTokenLifetime),
+            issuedAt: now,
             hpid: hpid
         )
         let signed = try await jwtKeys.sign(access, kid: jwtKID)

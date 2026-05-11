@@ -50,6 +50,15 @@ struct ResetPasswordRequest: Codable, Sendable {
 	let newPassword: String
 }
 
+struct SendVerificationRequest: Codable, Sendable {
+	let email: String
+}
+
+struct ConfirmEmailRequest: Codable, Sendable {
+	let email: String
+	let code: String
+}
+
 struct MeResponse: Codable, ResponseEncodable, Sendable {
 	let userId: UUID
 	let email: String

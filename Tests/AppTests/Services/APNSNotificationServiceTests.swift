@@ -55,6 +55,7 @@ struct APNSNotificationServiceTests {
         await fluent.migrations.add(M12_CreateSpace())
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
+        await fluent.migrations.add(M15_AddTierFields())
         try await fluent.migrate()
         return fluent
     }

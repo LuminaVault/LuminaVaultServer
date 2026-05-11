@@ -7,22 +7,34 @@ import JWTKit
 /// the current gateway), so request handlers can route to Hermes without a
 /// DB round-trip. Optional for forward-compat with tokens minted before
 /// the claim landed.
+/// `iat` is the standard issued-at claim, used by destructive endpoints
+/// (HER-92 account deletion) to gate on a "fresh re-auth" window without
+/// requiring the password body on every call.
 struct SessionToken: JWTPayload, Sendable {
     var subject: SubjectClaim
     var expiration: ExpirationClaim
+    var issuedAt: IssuedAtClaim?
     var jti: String
     var hpid: String?
 
     enum CodingKeys: String, CodingKey {
         case subject = "sub"
         case expiration = "exp"
+        case issuedAt = "iat"
         case jti
         case hpid
     }
 
-    init(userID: UUID, expiration: Date, jti: String = UUID().uuidString, hpid: String? = nil) {
+    init(
+        userID: UUID,
+        expiration: Date,
+        issuedAt: Date? = nil,
+        jti: String = UUID().uuidString,
+        hpid: String? = nil
+    ) {
         self.subject = .init(value: userID.uuidString)
         self.expiration = .init(value: expiration)
+        self.issuedAt = issuedAt.map { IssuedAtClaim(value: $0) }
         self.jti = jti
         self.hpid = hpid
     }

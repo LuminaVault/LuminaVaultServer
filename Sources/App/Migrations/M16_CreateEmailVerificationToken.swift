@@ -1,7 +1,7 @@
 import FluentKit
 import SQLKit
 
-struct M15_CreateEmailVerificationToken: AsyncMigration {
+struct M16_CreateEmailVerificationToken: AsyncMigration {
     func prepare(on database: any Database) async throws {
         try await database.schema(EmailVerificationToken.schema)
             .id()

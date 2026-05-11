@@ -26,6 +26,8 @@ struct AuthController {
         router.group("/v1/auth").add(middleware: rl(.forgotPasswordByIP)).post("/forgot-password", use: forgotPassword)
         router.group("/v1/auth").add(middleware: rl(.resendResetByIP)).post("/resend-reset", use: resendReset)
         router.group("/v1/auth").add(middleware: rl(.resetPasswordByIP)).post("/reset-password", use: resetPassword)
+        router.group("/v1/auth").add(middleware: rl(.sendVerifyByIP)).post("/email/send-verify", use: sendVerification)
+        router.group("/v1/auth").add(middleware: rl(.confirmEmailByIP)).post("/email/confirm", use: confirmEmail)
 
         // Routes without rate limiting share their own group.
         let unlimitedGroup = router.group("/v1/auth")
@@ -117,6 +119,24 @@ struct AuthController {
                 newPassword: body.newPassword
             )
         }
+    }
+
+    @Sendable
+    func sendVerification(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        let body = try await req.decode(as: SendVerificationRequest.self, context: ctx)
+        try await telemetry.observe("auth.send_verification") {
+            try await service.sendVerification(email: body.email)
+        }
+        return Response(status: .accepted)
+    }
+
+    @Sendable
+    func confirmEmail(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        let body = try await req.decode(as: ConfirmEmailRequest.self, context: ctx)
+        try await telemetry.observe("auth.confirm_email") {
+            try await service.confirmEmail(email: body.email, code: body.code)
+        }
+        return Response(status: .noContent)
     }
 
     @Sendable

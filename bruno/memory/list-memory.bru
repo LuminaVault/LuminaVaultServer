@@ -1,0 +1,33 @@
+meta {
+  name: GET memory (list)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/v1/memory?limit=20&offset=0
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 20
+  offset: 0
+  ~tag: work
+  ~space: stocks
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("paginated envelope", function() {
+    expect(res.body).to.have.property("memories");
+    expect(res.body).to.have.property("limit");
+    expect(res.body).to.have.property("offset");
+  });
+}

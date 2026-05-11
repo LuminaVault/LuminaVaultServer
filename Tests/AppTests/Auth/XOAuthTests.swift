@@ -260,6 +260,7 @@ struct XOAuthTests {
         await fluent.migrations.add(M12_CreateSpace())
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
+        await fluent.migrations.add(M15_AddTierFields())
         try await fluent.migrate()
 
         let jwtKeys = JWTKeyCollection()
@@ -284,10 +285,17 @@ struct XOAuthTests {
             mfaService: mfaService,
             resetCodeSender: MFAChallengeRecorder(),
             resetCodeGenerator: FixedOTPCodeGenerator(code: "654321"),
+            verificationCodeSender: MFAChallengeRecorder(),
+            verificationCodeGenerator: FixedOTPCodeGenerator(code: "789012"),
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
                 vaultPaths: VaultPathService(rootPath: tmpRoot.path)
+            ),
+            soulService: SOULService(
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
+                hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
+                logger: logger
             )
         )
         return Harness(service: service, fluent: fluent)

@@ -40,6 +40,10 @@ let dbTestReader = ConfigReader(providers: [
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
         "jwt.kid": "test-kid",
         "hermes.gatewayKind": "logging",
-        "vault.rootPath": "/tmp/luminavault-test"
+        "vault.rootPath": "/tmp/luminavault-test",
+        // HER-137: pin the phone OTP generator to a fixed code so
+        // `/v1/auth/phone/verify` tests are deterministic. Production must
+        // never set this — non-empty value disables randomness.
+        "phone.fixedOtp": "424242"
     ])
 ])

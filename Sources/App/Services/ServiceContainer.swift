@@ -54,4 +54,9 @@ struct ServiceContainer: Sendable {
     let twilioAccountSID: String
     let twilioAuthToken: String
     let twilioFromNumber: String
+    /// HER-137: when non-empty, the phone OTP generator emits this code every
+    /// time instead of a random one. Tests pin this to `424242` so they can
+    /// drive `/v1/auth/phone/verify` deterministically. Leave empty in prod —
+    /// a non-empty value is a security hole (predictable OTP).
+    let phoneFixedOTP: String
 }

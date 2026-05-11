@@ -1,0 +1,36 @@
+meta {
+  name: Phone Start
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/auth/phone/start
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "phone": "{{phone}}"
+  }
+}
+
+docs {
+  POST /v1/auth/phone/start
+  Issues an SMS OTP for the given E.164 phone number.
+
+  Rate-limited per IP: 3/min and 10/day (stacked) for toll-fraud protection.
+
+  Response: { "challengeId": "uuid", "expiresAt": "iso8601" }
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("returns challengeId + expiresAt", function() {
+    expect(res.body).to.have.property("challengeId");
+    expect(res.body).to.have.property("expiresAt");
+  });
+}

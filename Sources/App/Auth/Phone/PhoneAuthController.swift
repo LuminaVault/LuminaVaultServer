@@ -23,6 +23,19 @@ struct PhoneVerifyRequest: Codable, Sendable {
 
 // MARK: - Pre-auth challenge store
 
+/// Outcome of `PreAuthChallengeStore.consumeTyped` so the caller can
+/// distinguish a code that was wrong (`.wrongCode`/`.lockedOut` → 401)
+/// from a challenge whose lifetime ran out (`.expired` → 410 Gone).
+/// HER-137 requires the 410 distinction so the iOS client knows to
+/// re-issue rather than re-prompt.
+enum ConsumeOutcome: Sendable {
+    case ok(destination: String, purpose: String)
+    case notFound
+    case expired
+    case lockedOut
+    case wrongCode
+}
+
 /// Single-instance in-memory store for OTP challenges issued BEFORE a User
 /// row exists. Multi-replica deployments must move this onto a shared
 /// `PersistDriver` (Redis). Fine for the current single-VPS MVP.
@@ -40,8 +53,16 @@ actor PreAuthChallengeStore {
     private var byID: [UUID: Entry] = [:]
     private var latestByDestination: [String: UUID] = [:]   // dedup-by-recipient
 
-    private let lifetime: TimeInterval = 60 * 5
-    private let maxAttempts: Int = 5
+    private let lifetime: TimeInterval
+    private let maxAttempts: Int
+
+    /// `lifetime` is overridable so unit tests can drive the `.expired` path
+    /// without sleeping for 5 minutes. Negative values yield an already-expired
+    /// challenge on first call to `consumeTyped`.
+    init(lifetime: TimeInterval = 60 * 5, maxAttempts: Int = 5) {
+        self.lifetime = lifetime
+        self.maxAttempts = maxAttempts
+    }
 
     func issue(channel: String, destination: String, purpose: String, code: String) -> (id: UUID, expiresAt: Date) {
         // Burn any prior outstanding challenge for the same destination so
@@ -66,17 +87,30 @@ actor PreAuthChallengeStore {
 
     /// Returns the destination + purpose if the code matches an active
     /// challenge. Atomic on the entry: increments attempts + burns on max.
+    /// Legacy optional-returning API retained for `EmailMagicLinkController`
+    /// which doesn't need the 410-vs-401 distinction yet.
     func consume(destination: String, code: String) -> (destination: String, purpose: String)? {
+        if case let .ok(dest, purpose) = consumeTyped(destination: destination, code: code) {
+            return (dest, purpose)
+        }
+        return nil
+    }
+
+    /// Typed variant used by `PhoneAuthController` so it can return
+    /// 410 Gone for `.expired` and 401 for any other failure.
+    func consumeTyped(destination: String, code: String) -> ConsumeOutcome {
         guard let id = latestByDestination[destination], var entry = byID[id] else {
-            return nil
+            return .notFound
         }
         if entry.expiresAt < Date() {
             byID[id] = nil
-            return nil
+            latestByDestination[destination] = nil
+            return .expired
         }
         if entry.attempts >= maxAttempts {
             byID[id] = nil
-            return nil
+            latestByDestination[destination] = nil
+            return .lockedOut
         }
         guard entry.codeHash == Self.sha256(code) else {
             entry.attempts += 1
@@ -84,13 +118,14 @@ actor PreAuthChallengeStore {
             if entry.attempts >= maxAttempts {
                 byID[id] = nil
                 latestByDestination[destination] = nil
+                return .lockedOut
             }
-            return nil
+            return .wrongCode
         }
         // Burn-on-success.
         byID[id] = nil
         latestByDestination[destination] = nil
-        return (entry.destination, entry.purpose)
+        return .ok(destination: entry.destination, purpose: entry.purpose)
     }
 
     static func sha256(_ s: String) -> String {
@@ -103,6 +138,7 @@ actor PreAuthChallengeStore {
 extension AuthError {
     static let invalidPhone = HTTPError(.badRequest, message: "phone must be E.164 (^\\+[1-9]\\d{6,14}$)")
     static let otpInvalid  = HTTPError(.unauthorized, message: "invalid or expired code")
+    static let otpExpired  = HTTPError(.gone, message: "challenge expired; request a new code")
 }
 
 // MARK: - Controller
@@ -110,16 +146,28 @@ extension AuthError {
 /// Phone signup/login via SMS OTP. Reuses `AuthService.upsertOAuthUser`
 /// with `provider="phone"`, `providerUserID=<E.164>`. Net-new users get
 /// a placeholder email + auto-generated username.
+///
+/// Routing:
+///   * `POST /v1/auth/phone/start`  — stacked rate-limit (3/min + 10/day per IP)
+///   * `POST /v1/auth/phone/verify` — unlimited (controller-burns on bad code)
 struct PhoneAuthController {
     let authService: any AuthService
     let smsSender: any SMSSender
     let generator: any OTPCodeGenerator
     let challengeStore: PreAuthChallengeStore
+    let rateLimitStorage: any PersistDriver
     let logger: Logger
 
-    func addRoutes(to group: RouterGroup<AppRequestContext>) {
-        group.post("/phone/start", use: start)
-        group.post("/phone/verify", use: verify)
+    /// Attaches `/phone/start` and `/phone/verify` to `router` under `basePath`.
+    /// Uses fresh `router.group(basePath)` per route so the stacked rate-limit
+    /// middlewares on `/phone/start` do not leak onto `/phone/verify` —
+    /// `RouterGroup.add(middleware:)` mutates and the leak is silent.
+    func addRoutes(to router: Router<AppRequestContext>, basePath: RouterPath = "/v1/auth") {
+        router.group(basePath)
+            .add(middleware: RateLimitMiddleware(policy: .phoneStartByIPPerMinute, storage: rateLimitStorage))
+            .add(middleware: RateLimitMiddleware(policy: .phoneStartByIPDaily, storage: rateLimitStorage))
+            .post("/phone/start", use: start)
+        router.group(basePath).post("/phone/verify", use: verify)
     }
 
     @Sendable
@@ -142,7 +190,12 @@ struct PhoneAuthController {
     func verify(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
         let body = try await req.decode(as: PhoneVerifyRequest.self, context: ctx)
         let phone = try Self.validateE164(body.phone)
-        guard let _ = await challengeStore.consume(destination: phone, code: body.code) else {
+        switch await challengeStore.consumeTyped(destination: phone, code: body.code) {
+        case .ok:
+            break
+        case .expired:
+            throw AuthError.otpExpired
+        case .notFound, .wrongCode, .lockedOut:
             throw AuthError.otpInvalid
         }
         let placeholderEmail = "\(phone.dropFirst())@phone.luminavault.local"

@@ -116,9 +116,104 @@ struct MemoryRepository: Sendable {
         }
     }
 
+    /// Tenant-scoped paginated list with optional tag filter.
+    /// Stable order by `(created_at DESC, id DESC)` so cursor-like clients can
+    /// compare runs. Tag filter uses `= ANY(tags)` so the GIN index on
+    /// `tags` (idx_memories_tags) is index-served.
+    func listPaginated(
+        tenantID: UUID,
+        tag: String?,
+        limit: Int,
+        offset: Int
+    ) async throws -> [Memory] {
+        let q = Memory.query(on: fluent.db(), tenantID: tenantID)
+            .sort(\.$createdAt, .descending)
+            .sort(\.$id, .descending)
+            .range(lower: offset, upper: offset + limit)
+        if let tag, !tag.isEmpty {
+            guard let sql = fluent.db() as? any SQLDatabase else {
+                throw HTTPError(.internalServerError, message: "SQL driver required for tag filter")
+            }
+            let rows = try await sql.raw("""
+                SELECT id, tenant_id, content, tags, created_at
+                FROM memories
+                WHERE tenant_id = \(bind: tenantID) AND \(bind: tag) = ANY(tags)
+                ORDER BY created_at DESC, id DESC
+                LIMIT \(bind: limit) OFFSET \(bind: offset)
+                """).all(decoding: MemoryListRow.self)
+            return rows.map { row in
+                let m = Memory(id: row.id, tenantID: row.tenant_id, content: row.content, tags: row.tags)
+                m.$id.exists = true
+                m.createdAt = row.created_at
+                return m
+            }
+        }
+        return try await q.all()
+    }
+
+    /// Tenant-scoped fetch. Returns nil if not found (caller maps to 404).
+    func find(tenantID: UUID, id: UUID) async throws -> Memory? {
+        try await Memory.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == id)
+            .first()
+    }
+
+    /// Tenant-scoped delete. Returns `true` if a row was removed.
+    func delete(tenantID: UUID, id: UUID) async throws -> Bool {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for delete")
+        }
+        let result = try await sql.raw("""
+            DELETE FROM memories
+            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+            RETURNING id
+            """).all(decoding: DeletedIDRow.self)
+        return !result.isEmpty
+    }
+
+    /// Updates content + embedding atomically. Used when a user edits a memory
+    /// — content drift invalidates the existing vector, so we re-embed.
+    func updateContent(tenantID: UUID, id: UUID, content: String, embedding: [Float]) async throws -> Bool {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for vector update")
+        }
+        let vec = MemoryRepository.formatVector(embedding)
+        let rows = try await sql.raw("""
+            UPDATE memories
+            SET content = \(bind: content),
+                embedding = \(unsafeRaw: "'\(vec)'::vector")
+            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+            RETURNING id
+            """).all(decoding: DeletedIDRow.self)
+        return !rows.isEmpty
+    }
+
+    /// Updates tags only. `nil` clears all tags; empty array clears too.
+    func updateTags(tenantID: UUID, id: UUID, tags: [String]?) async throws -> Bool {
+        let row = try await Memory.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == id)
+            .first()
+        guard let row else { return false }
+        row.tags = (tags?.isEmpty == true) ? nil : tags
+        try await row.save(on: fluent.db())
+        return true
+    }
+
     static func formatVector(_ v: [Float]) -> String {
         "[" + v.map { String($0) }.joined(separator: ",") + "]"
     }
+}
+
+private struct MemoryListRow: Decodable {
+    let id: UUID
+    let tenant_id: UUID
+    let content: String
+    let tags: [String]?
+    let created_at: Date?
+}
+
+private struct DeletedIDRow: Decodable {
+    let id: UUID
 }
 
 struct MemorySearchResult: Sendable {

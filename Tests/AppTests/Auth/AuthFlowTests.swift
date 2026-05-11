@@ -66,6 +66,10 @@ struct AuthFlowTests {
         await fluent.migrations.add(M12_CreateSpace())
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
+        await fluent.migrations.add(M15_AddTierFields())
+        await fluent.migrations.add(M16_CreateEmailVerificationToken())
+        await fluent.migrations.add(M17_CreateOnboardingState())
+        await fluent.migrations.add(M18_AddMemoryTags())
         try await fluent.migrate()
 
         let jwtKeys = JWTKeyCollection()
@@ -79,8 +83,10 @@ struct AuthFlowTests {
             generator: FixedOTPCodeGenerator(code: "123456")
         )
         let resetRecorder = MFAChallengeRecorder()
+        let verifyRecorder = MFAChallengeRecorder()
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-auth-test-\(UUID().uuidString)", isDirectory: true)
+        let vaultPaths = VaultPathService(rootPath: tmpRoot.path)
         let service = DefaultAuthService(
             repo: DatabaseAuthRepository(fluent: fluent),
             hasher: BcryptPasswordHasher(),
@@ -90,10 +96,17 @@ struct AuthFlowTests {
             mfaService: mfaService,
             resetCodeSender: resetRecorder,
             resetCodeGenerator: FixedOTPCodeGenerator(code: "654321"),
+            verificationCodeSender: verifyRecorder,
+            verificationCodeGenerator: FixedOTPCodeGenerator(code: "789012"),
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
+                vaultPaths: vaultPaths
+            ),
+            soulService: SOULService(
+                vaultPaths: vaultPaths,
+                hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
+                logger: logger
             )
         )
         return Harness(service: service, fluent: fluent, recorder: recorder)
@@ -128,6 +141,28 @@ struct AuthFlowTests {
             #expect(profile != nil)
             #expect(profile?.hermesProfileID == "hermes-\(username)")
             #expect(profile?.status == "ready")
+        }
+    }
+
+    @Test
+    func registerStampsTrialFor14Days() async throws {
+        try await Self.withHarness { h in
+            let username = Self.randomUsername()
+            let before = Date()
+            _ = try await h.service.register(email: Self.randomEmail(), username: username, password: "CorrectHorseBatteryStaple1!")
+            let after = Date()
+
+            let user = try #require(
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
+            )
+            #expect(user.tier == "trial")
+            #expect(user.tierOverride == "none")
+            #expect(user.revenuecatUserID == nil)
+            let expires = try #require(user.tierExpiresAt)
+            let earliest = before.addingTimeInterval(14 * 86_400)
+            let latest   = after.addingTimeInterval(14 * 86_400)
+            #expect(expires >= earliest && expires <= latest,
+                    "trial expiry \(expires) outside expected window [\(earliest), \(latest)]")
         }
     }
 
@@ -277,7 +312,3 @@ actor MFAChallengeRecorder: EmailOTPSender {
     }
 }
 
-struct FixedOTPCodeGenerator: OTPCodeGenerator {
-    let code: String
-    func generate() -> String { code }
-}

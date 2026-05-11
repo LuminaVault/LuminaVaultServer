@@ -55,6 +55,62 @@ import Testing
         #expect(await store.consume(destination: "+1", code: "AAA") != nil)
         #expect(await store.consume(destination: "+2", code: "BBB") != nil)
     }
+
+    // MARK: - HER-137 typed outcomes
+
+    @Test func consumeTypedReturnsOkOnHappyPath() async throws {
+        let store = PreAuthChallengeStore()
+        _ = await store.issue(channel: "sms", destination: "+15551234567", purpose: "phone_signin", code: "111111")
+        switch await store.consumeTyped(destination: "+15551234567", code: "111111") {
+        case .ok(let dest, let purpose):
+            #expect(dest == "+15551234567")
+            #expect(purpose == "phone_signin")
+        default:
+            Issue.record("expected .ok")
+        }
+    }
+
+    @Test func consumeTypedReturnsExpired() async throws {
+        // Negative lifetime → challenge is born already past `expiresAt`.
+        let store = PreAuthChallengeStore(lifetime: -1)
+        _ = await store.issue(channel: "sms", destination: "+15551234567", purpose: "phone_signin", code: "111111")
+        switch await store.consumeTyped(destination: "+15551234567", code: "111111") {
+        case .expired:
+            break
+        default:
+            Issue.record("expected .expired")
+        }
+    }
+
+    @Test func consumeTypedReturnsWrongCodeThenLockedOut() async throws {
+        let store = PreAuthChallengeStore()
+        _ = await store.issue(channel: "sms", destination: "+15551234567", purpose: "phone_signin", code: "111111")
+        // First 4 wrong attempts → .wrongCode each time.
+        for _ in 0..<4 {
+            switch await store.consumeTyped(destination: "+15551234567", code: "wrong") {
+            case .wrongCode: break
+            default: Issue.record("expected .wrongCode")
+            }
+        }
+        // 5th wrong attempt → .lockedOut and burns the entry.
+        switch await store.consumeTyped(destination: "+15551234567", code: "wrong") {
+        case .lockedOut: break
+        default: Issue.record("expected .lockedOut")
+        }
+        // Right code now returns .notFound (entry was burned).
+        switch await store.consumeTyped(destination: "+15551234567", code: "111111") {
+        case .notFound: break
+        default: Issue.record("expected .notFound after lockout")
+        }
+    }
+
+    @Test func consumeTypedReturnsNotFoundForUnknownDestination() async throws {
+        let store = PreAuthChallengeStore()
+        switch await store.consumeTyped(destination: "+15551234567", code: "111111") {
+        case .notFound: break
+        default: Issue.record("expected .notFound")
+        }
+    }
 }
 
 @Suite struct PhoneE164ValidatorTests {

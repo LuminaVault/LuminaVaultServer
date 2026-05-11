@@ -88,6 +88,8 @@ extension RateLimitPolicy {
     static let refreshByIP = RateLimitPolicy(max: 30, window: 60) { req, _ in ipKey(req) }
     static let mfaVerifyByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
     static let mfaResendByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
+    static let sendVerifyByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
+    static let confirmEmailByIP = RateLimitPolicy(max: 10, window: 300) { req, _ in ipKey(req) }
 
     /// HER-94: Per-user policies for protected, capacity-sensitive routes.
     /// Keyed via `userOrIPKey` so a single bad actor with one account cannot
@@ -97,4 +99,17 @@ extension RateLimitPolicy {
     static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
     static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
     static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// HER-91: vault export streams the entire tenant tree. Expensive on
+    /// disk + bandwidth, so cap at a handful per 5-minute window per user.
+    static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, keyBuilder: userOrIPKey)
+    /// HER-85: SOUL.md is small but writes hit two filesystem paths and could
+    /// be abused to spam Hermes profile dirs. Cheap per-user bucket.
+    static let soulByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+
+    /// HER-137: phone OTP start. Each call burns an SMS, which costs real
+    /// money — toll-fraud bots target this surface. Stacked policies:
+    /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.
+    /// Apply BOTH on the `/v1/auth/phone/start` route.
+    static let phoneStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
+    static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86_400) { req, _ in ipKey(req) }
 }

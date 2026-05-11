@@ -66,6 +66,10 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M12_CreateSpace())
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
+        await fluent.migrations.add(M15_AddTierFields())
+        await fluent.migrations.add(M16_CreateEmailVerificationToken())
+        await fluent.migrations.add(M17_CreateOnboardingState())
+        await fluent.migrations.add(M18_AddMemoryTags())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -112,7 +116,8 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         smsKind: reader.string(forKey: "sms.kind", default: "logging"),
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
         twilioAuthToken: reader.string(forKey: "twilio.authToken", default: ""),
-        twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: "")
+        twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: ""),
+        phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: "")
     )
 
     let router = try buildRouter(services: services)
@@ -173,6 +178,8 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     )
     let resetSender = LoggingEmailOTPSender(logger: Logger(label: "lv.reset"))
     let resetGen = DefaultOTPCodeGenerator()
+    let verifySender = LoggingEmailOTPSender(logger: Logger(label: "lv.verify"))
+    let verifyGen = DefaultOTPCodeGenerator()
     let vaultPaths = VaultPathService(rootPath: services.vaultRootPath)
     let hermesLogger = Logger(label: "lv.hermes")
     let hermesGateway: any HermesGateway = makeHermesGateway(
@@ -187,6 +194,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     )
     let authTelemetry = RouteTelemetry(labelPrefix: "auth", logger: Logger(label: "lv.auth"))
     let llmTelemetry = RouteTelemetry(labelPrefix: "llm", logger: Logger(label: "lv.llm"))
+    let soulTelemetry = RouteTelemetry(labelPrefix: "soul", logger: Logger(label: "lv.soul"))
     let pushService = APNSNotificationService(
         enabled: services.apnsEnabled,
         bundleID: services.apnsBundleID,
@@ -198,6 +206,11 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         logger: Logger(label: "lv.apns")
     )
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
+    let soulService = SOULService(
+        vaultPaths: vaultPaths,
+        hermesDataRoot: services.hermesDataRoot,
+        logger: Logger(label: "lv.soul")
+    )
     let authService = DefaultAuthService(
         repo: authRepo,
         hasher: BcryptPasswordHasher(),
@@ -207,7 +220,10 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         mfaService: mfaService,
         resetCodeSender: resetSender,
         resetCodeGenerator: resetGen,
-        hermesProfileService: hermesProfileService
+        verificationCodeSender: verifySender,
+        verificationCodeGenerator: verifyGen,
+        hermesProfileService: hermesProfileService,
+        soulService: soulService
     )
     let webAuthnService = WebAuthnService(
         enabled: services.webAuthnEnabled,
@@ -248,13 +264,19 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         logger: Logger(label: "lv.sms")
     )
     let multiProviderGroup = router.group("/v1/auth")
+    // PhoneAuthController owns its own group wiring (per-route rate-limit
+    // middlewares would otherwise leak onto sibling routes in multiProviderGroup).
+    let phoneOTPGenerator: any OTPCodeGenerator = services.phoneFixedOTP.isEmpty
+        ? DefaultOTPCodeGenerator()
+        : FixedOTPCodeGenerator(code: services.phoneFixedOTP)
     PhoneAuthController(
         authService: authService,
         smsSender: smsSender,
-        generator: DefaultOTPCodeGenerator(),
+        generator: phoneOTPGenerator,
         challengeStore: preAuthStore,
+        rateLimitStorage: rateLimitStorage,
         logger: Logger(label: "lv.auth.phone")
-    ).addRoutes(to: multiProviderGroup)
+    ).addRoutes(to: router)
     EmailMagicLinkController(
         authService: authService,
         emailSender: LoggingEmailOTPSender(logger: Logger(label: "lv.auth.magic")),
@@ -306,7 +328,11 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memory")
     )
-    let memoryController = MemoryController(service: memoryService)
+    let memoryController = MemoryController(
+        service: memoryService,
+        repository: MemoryRepository(fluent: services.fluent),
+        embeddings: DeterministicEmbeddingService()
+    )
     // captureByUser covers /upsert (write capture) and /search (read agent loop);
     // both are tenant-scoped Hermes calls so the per-user budget is shared.
     let memoryGroup = router.group("/v1/memory")
@@ -340,12 +366,21 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // Vault file upload (markdown + images) — protected.
     let vaultController = VaultController(
         vaultPaths: vaultPaths,
+        fluent: services.fluent,
         logger: Logger(label: "lv.vault")
     )
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
     vaultController.addRoutes(to: vaultGroup)
+
+    // HER-91: vault export — separate group so the heavier per-user limit
+    // doesn't fight the upload limiter, and so exports never burn the
+    // upload bucket.
+    let vaultExportGroup = router.group("/v1/vault")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .vaultExportByUser, storage: rateLimitStorage))
+    vaultController.addExportRoute(to: vaultExportGroup)
 
     // kb-compile (write batch + Hermes learning loop) — protected.
     let kbCompileService = KBCompileService(
@@ -376,6 +411,13 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
 
+    // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
+    let soulController = SoulController(service: soulService, telemetry: soulTelemetry)
+    let soulGroup = router.group("/v1/soul")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .soulByUser, storage: rateLimitStorage))
+    soulController.addRoutes(to: soulGroup)
+
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     let healthController = HealthIngestController(
         fluent: services.fluent,
@@ -402,6 +444,26 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     let deviceController = DeviceController(fluent: services.fluent)
     let deviceGroup = router.group("/v1/devices").add(middleware: jwtAuthenticator)
     deviceController.addRoutes(to: deviceGroup)
+
+    // Onboarding state (HER-93) — server-tracked resumable onboarding.
+    let onboardingController = OnboardingController(fluent: services.fluent)
+    let onboardingGroup = router.group("/v1/onboarding").add(middleware: jwtAuthenticator)
+    onboardingController.addRoutes(to: onboardingGroup)
+
+    // Account management (HER-92) — DELETE /v1/account (GDPR data wipe).
+    let accountDeletionService = AccountDeletionService(
+        fluent: services.fluent,
+        hasher: BcryptPasswordHasher(),
+        vaultPaths: vaultPaths,
+        hermesDataRoot: services.hermesDataRoot,
+        logger: Logger(label: "lv.account")
+    )
+    let accountController = AccountController(
+        service: accountDeletionService,
+        jwtKeys: services.jwtKeys
+    )
+    let accountGroup = router.group("/v1/account").add(middleware: jwtAuthenticator)
+    accountController.addRoutes(to: accountGroup)
 
     let websocketGroup = router.group("/v1/ws").add(middleware: jwtAuthenticator)
     websocketGroup.ws("") { _, context in

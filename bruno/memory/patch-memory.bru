@@ -1,0 +1,33 @@
+meta {
+  name: PATCH memory
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/v1/memory/{{memoryId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "content": "updated memory body",
+    "tags": ["work", "ai"]
+  }
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("content + tags echoed", function() {
+    expect(res.body.content).to.equal("updated memory body");
+    expect(res.body.tags).to.include("work");
+    expect(res.body.tags).to.include("ai");
+  });
+}
