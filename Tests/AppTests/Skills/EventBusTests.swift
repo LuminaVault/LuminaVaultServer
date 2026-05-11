@@ -108,8 +108,14 @@ struct EventBusTests {
     func subscriberRemovedOnStreamTermination() async throws {
         let bus = Self.makeBus()
         do {
-            _ = bus.subscribe(eventType: .vaultFileCreated)
+            // The stream must be held in a named local so it lives for the
+            // duration of the `do` block. `_ = bus.subscribe(...)` drops the
+            // stream immediately (the wildcard pattern is a discard, not a
+            // bind), which causes onTermination to fire before the actor's
+            // registration Task has had a chance to run.
+            let stream = bus.subscribe(eventType: .vaultFileCreated)
             try await Self.waitForSubscriberCount(bus, type: .vaultFileCreated, expected: 1)
+            _ = stream // suppress "never used" — the side effect is liveness
         }
         // Stream was dropped at scope exit. onTermination fires asynchronously
         // via a Task hop onto the actor, so wait for the cleanup.
