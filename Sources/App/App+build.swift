@@ -75,6 +75,9 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M21_AddMemoryScore())
         await fluent.migrations.add(M22_CreateMemoryArchive())
         await fluent.migrations.add(M23_AddMemorySourceLineage())
+        await fluent.migrations.add(M24_AddUserContextRouting())
+        await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
+        await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -306,9 +309,17 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
 
     // Protected (JWT-required) routes
     let jwtAuthenticator = JWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent)
-    router.group("/v1/auth")
+    let meGroup = router.group("/v1/auth")
         .add(middleware: jwtAuthenticator)
-        .get("/me", use: meHandler)
+    meGroup.get("/me", use: meHandler)
+    meGroup.put("/me/privacy", use: updatePrivacyHandler(fluent: services.fluent))
+
+    // HER-172 — SkillCatalog needs to be in scope for the ContextRouter
+    // middleware on `/v1/llm` below; the full Skills runtime (runner,
+    // event bus, cron) is constructed further down. SkillCatalog itself
+    // has no dependencies on those, so hoisting it is safe.
+    let skillsLogger = Logger(label: "lv.skills")
+    let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
 
     // LLM (Hermes-backed) routes — protected.
     guard let hermesURL = URL(string: services.hermesGatewayURL) else {
@@ -325,9 +336,39 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         telemetry: llmTelemetry,
         notificationService: pushService,
     )
+    // HER-172 ContextRouter — feature-gated by `users.context_routing`.
+    // Constructed unconditionally; the middleware short-circuits when the
+    // flag is false OR the entitlement check fails, so wiring it here
+    // does not affect Free/Trial users in any way.
+    let contextRouterSelectorFactory: @Sendable (UUID, String) -> any ContextRouterSelector = { _, username in
+        DefaultContextRouterSelector(
+            transport: URLSessionHermesChatTransport(
+                baseURL: hermesURL,
+                session: .shared,
+                logger: Logger(label: "lv.context-router")
+            ),
+            model: services.hermesDefaultModel,
+            profileUsername: username,
+            logger: Logger(label: "lv.context-router")
+        )
+    }
+    let contextRouterMiddleware = ContextRouterMiddleware(
+        catalog: skillCatalog,
+        selectorFactory: contextRouterSelectorFactory,
+        entitlement: { user in
+            EntitlementChecker.entitled(
+                tier: UserTier(rawValue: user.tier) ?? .trial,
+                override: TierOverride(rawValue: user.tierOverride) ?? .none,
+                for: .privacyContextRouter
+            )
+        },
+        logger: Logger(label: "lv.context-router")
+    )
+
     let llmGroup = router.group("/v1/llm")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
+        .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
@@ -532,12 +573,19 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // is constructed but NOT added to appServices yet (no-op run() means
     // the rest of the surface won't ship a half-baked tick loop). See the
     // TODO: in `buildApplication` for the lifecycle wiring follow-up.
-    let skillsLogger = Logger(label: "lv.skills")
-    let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
+    // HER-193 — per-skill daily run cap guard. Reads cap values from
+    // each manifest's `metadata.daily_run_cap`; SkillRunner calls
+    // checkAndIncrement before LLM dispatch and recordFailure on error
+    // so failed runs don't burn quota.
+    let skillRunCapGuard = SkillRunCapGuard(
+        fluent: services.fluent,
+        logger: skillsLogger,
+    )
     let skillRunner = SkillRunner(
         catalog: skillCatalog,
         fluent: services.fluent,
         vaultPaths: vaultPaths,
+        capGuard: skillRunCapGuard,
         logger: skillsLogger,
     )
     let eventBus = EventBus(logger: skillsLogger)
@@ -711,5 +759,36 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         email: user.email,
         username: user.username,
         isVerified: user.isVerified,
+        privacyNoCNOrigin: user.privacyNoCNOrigin,
+        contextRouting: user.contextRouting
     )
+}
+
+/// HER-176 / HER-172: `PUT /v1/me/privacy`. Flips
+/// `users.privacy_no_cn_origin` and/or `users.context_routing`. Both
+/// fields optional; only the ones present in the body are mutated.
+/// Takes effect on the next inbound request — ModelRouter + ContextRouter
+/// read from `User` on each request, no caching to invalidate.
+private func updatePrivacyHandler(
+    fluent: Fluent
+) -> @Sendable (Request, AppRequestContext) async throws -> MeResponse {
+    { req, ctx in
+        let user = try ctx.requireIdentity()
+        let body = try await req.decode(as: UpdatePrivacyRequest.self, context: ctx)
+        if let noCN = body.privacyNoCNOrigin {
+            user.privacyNoCNOrigin = noCN
+        }
+        if let routing = body.contextRouting {
+            user.contextRouting = routing
+        }
+        try await user.save(on: fluent.db())
+        return try MeResponse(
+            userId: user.requireID(),
+            email: user.email,
+            username: user.username,
+            isVerified: user.isVerified,
+            privacyNoCNOrigin: user.privacyNoCNOrigin,
+            contextRouting: user.contextRouting
+        )
+    }
 }

@@ -64,4 +64,19 @@ struct MeResponse: Codable, ResponseEncodable {
     let email: String
     let username: String
     let isVerified: Bool
+    /// HER-176: surface so iOS Settings can render the toggle without an
+    /// extra round-trip. Mirrors `users.privacy_no_cn_origin`.
+    let privacyNoCNOrigin: Bool
+    /// HER-172: ContextRouter opt-in. Pro/Ultimate only — Free/Trial
+    /// users see this as always-false even if the row says otherwise
+    /// (entitlement gate handled server-side in `EntitlementChecker`).
+    let contextRouting: Bool
+}
+
+/// HER-176 / HER-172: `PUT /v1/me/privacy` request body. Both toggles
+/// optional — only the fields present in the payload are mutated, so a
+/// client can flip one without overwriting the other.
+struct UpdatePrivacyRequest: Codable {
+    let privacyNoCNOrigin: Bool?
+    let contextRouting: Bool?
 }
