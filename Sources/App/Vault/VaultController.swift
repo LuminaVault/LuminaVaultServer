@@ -66,6 +66,7 @@ struct VaultMoveRequest: Codable {
 struct VaultController {
     let vaultPaths: VaultPathService
     let fluent: Fluent
+    let eventBus: EventBus?
     let logger: Logger
     let maxFileSize: Int
 
@@ -75,11 +76,13 @@ struct VaultController {
     init(
         vaultPaths: VaultPathService,
         fluent: Fluent,
+        eventBus: EventBus? = nil,
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
+        self.eventBus = eventBus
         self.logger = logger
         self.maxFileSize = maxFileSize
     }
@@ -138,7 +141,7 @@ struct VaultController {
         try fm.moveItem(at: tmp, to: target)
 
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        try await upsertVaultFileRow(
+        let savedID = try await upsertVaultFileRow(
             tenantID: tenantID,
             path: safeRelative,
             contentType: contentType,
@@ -146,6 +149,21 @@ struct VaultController {
             sha256: digest,
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
+
+        // HER-171: notify the skills runtime so capture-driven skills
+        // (e.g. capture-enrich) can fire on new vault writes. Fire-and-
+        // forget — the bus is in-process and never throws.
+        if let eventBus {
+            let event = SkillEvent(
+                type: .vaultFileCreated,
+                tenantID: tenantID,
+                payload: [
+                    SkillEvent.PayloadKey.vaultFileID: savedID.uuidString,
+                    SkillEvent.PayloadKey.vaultPath: safeRelative,
+                ],
+            )
+            await eventBus.publish(event)
+        }
 
         return VaultUploadResponse(
             path: safeRelative,
@@ -325,13 +343,15 @@ struct VaultController {
 
     // MARK: - DB helpers
 
+    /// Returns the row id of the upserted vault file so the upload handler
+    /// can include it in the `vault_file_created` event payload (HER-171).
     private func upsertVaultFileRow(
         tenantID: UUID,
         path: String,
         contentType: String,
         sizeBytes: Int64,
         sha256: String,
-    ) async throws {
+    ) async throws -> UUID {
         let db = fluent.db()
         if let existing = try await VaultFile.query(on: db, tenantID: tenantID)
             .filter(\.$path == path)
@@ -341,7 +361,7 @@ struct VaultController {
             existing.sizeBytes = sizeBytes
             existing.sha256 = sha256
             try await existing.save(on: db)
-            return
+            return try existing.requireID()
         }
         let row = VaultFile(
             tenantID: tenantID,
@@ -351,6 +371,7 @@ struct VaultController {
             sha256: sha256,
         )
         try await row.save(on: db)
+        return try row.requireID()
     }
 
     // MARK: - Path resolution

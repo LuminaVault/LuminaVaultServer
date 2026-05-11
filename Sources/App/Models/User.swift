@@ -24,12 +24,18 @@ final class User: Model, @unchecked Sendable {
     /// routing onto more expensive US/EU-origin models — documented trade-off
     /// surfaced in iOS Settings.
     @Field(key: "privacy_no_cn_origin") var privacyNoCNOrigin: Bool
+    /// HER-170 — IANA timezone name (e.g. "Europe/Lisbon"). CronScheduler
+    /// resolves each user's skill schedules in this zone so `0 7 * * *`
+    /// fires at 07:00 LOCAL, not 07:00 UTC. Defaults to "UTC" when iOS
+    /// hasn't sent one yet (older clients).
+    @Field(key: "timezone") var timezone: String
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {
         self.contextRouting = false
         self.privacyNoCNOrigin = false
+        self.timezone = "UTC"
     }
 
     init(
@@ -58,5 +64,6 @@ final class User: Model, @unchecked Sendable {
         self.revenuecatUserID = revenuecatUserID
         self.contextRouting = false
         self.privacyNoCNOrigin = false
+        self.timezone = "UTC"
     }
 }

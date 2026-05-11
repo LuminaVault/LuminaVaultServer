@@ -40,11 +40,13 @@ struct HealthIngestResponse: Codable, ResponseEncodable {
 /// rather than failing the whole batch.
 struct HealthIngestController {
     let fluent: Fluent
+    let eventBus: EventBus?
     let logger: Logger
     let maxBatchSize: Int
 
-    init(fluent: Fluent, logger: Logger, maxBatchSize: Int = 1000) {
+    init(fluent: Fluent, eventBus: EventBus? = nil, logger: Logger, maxBatchSize: Int = 1000) {
         self.fluent = fluent
+        self.eventBus = eventBus
         self.logger = logger
         self.maxBatchSize = maxBatchSize
     }
@@ -97,10 +99,38 @@ struct HealthIngestController {
         }
 
         logger.info("health ingest tenant=\(tenantID) inserted=\(refs.count) skipped=\(skipped)")
+
+        // HER-171: emit a single aggregate `health_event_synced` event per
+        // batch (not per sample — high-frequency HK pushes would otherwise
+        // flood the bus and burn the bounded buffer). Payload carries the
+        // dominant sample type + count so subscribers can decide whether
+        // to dispatch the correlator skill yet.
+        if let eventBus, !refs.isEmpty {
+            let dominantType = Self.dominantSampleType(refs)
+            let event = SkillEvent(
+                type: .healthEventSynced,
+                tenantID: tenantID,
+                payload: [
+                    SkillEvent.PayloadKey.healthSampleType: dominantType,
+                    SkillEvent.PayloadKey.healthSampleCount: String(refs.count),
+                ],
+            )
+            await eventBus.publish(event)
+        }
+
         return HealthIngestResponse(
             inserted: refs.count,
             skipped: skipped,
             events: refs,
         )
+    }
+
+    /// Most-common event type in the batch. Used purely for the
+    /// `health_event_synced` payload hint so subscribers can short-circuit
+    /// without inspecting the database.
+    private static func dominantSampleType(_ refs: [HealthIngestedRef]) -> String {
+        var counts: [String: Int] = [:]
+        for ref in refs { counts[ref.type, default: 0] += 1 }
+        return counts.max(by: { $0.value < $1.value })?.key ?? "unknown"
     }
 }

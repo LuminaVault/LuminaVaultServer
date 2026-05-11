@@ -78,6 +78,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M24_AddUserContextRouting())
         await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
         await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
+        await fluent.migrations.add(M27_AddUserTimezone())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -320,11 +321,41 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // has no dependencies on those, so hoisting it is safe.
     let skillsLogger = Logger(label: "lv.skills")
     let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
+    // HER-171 — EventBus is constructed up here (alongside SkillCatalog) so
+    // every publisher (vault, health, memory) and the SkillRunner subscriber
+    // share the same instance. Publishers fire-and-forget; the bus is an
+    // in-process actor with a bounded per-subscriber buffer.
+    let eventBus = EventBus(logger: skillsLogger)
 
     // LLM (Hermes-backed) routes — protected.
     guard let hermesURL = URL(string: services.hermesGatewayURL) else {
         fatalError("invalid hermes.gatewayUrl: \(services.hermesGatewayURL)")
     }
+
+    // HER-165 routing — single shared registry + router + transport
+    // injected into every chat-using service. Today the registry holds
+    // only the Hermes adapter and the router always picks `hermesGateway`,
+    // so the runtime behaviour is identical to the previous direct path;
+    // adding `together` / `groq` / `openRouter` etc. is a registration
+    // line each (HER-162..HER-164).
+    let routingLogger = Logger(label: "lv.routing")
+    let providerRegistry = ProviderRegistry(
+        adapters: [
+            HermesGatewayAdapter(
+                baseURL: hermesURL,
+                session: .shared,
+                logger: routingLogger
+            )
+        ],
+        logger: routingLogger
+    )
+    let modelRouter: any ModelRouter = SingleGatewayModelRouter()
+    let routedTransport = RoutedLLMTransport(
+        registry: providerRegistry,
+        router: modelRouter,
+        logger: routingLogger
+    )
+
     let llmService = DefaultHermesLLMService(
         baseURL: hermesURL,
         session: .shared,
@@ -342,11 +373,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // does not affect Free/Trial users in any way.
     let contextRouterSelectorFactory: @Sendable (UUID, String) -> any ContextRouterSelector = { _, username in
         DefaultContextRouterSelector(
-            transport: URLSessionHermesChatTransport(
-                baseURL: hermesURL,
-                session: .shared,
-                logger: Logger(label: "lv.context-router")
-            ),
+            transport: routedTransport,
             model: services.hermesDefaultModel,
             profileUsername: username,
             logger: Logger(label: "lv.context-router")
@@ -373,14 +400,11 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
-        transport: URLSessionHermesChatTransport(
-            baseURL: hermesURL,
-            session: .shared,
-            logger: Logger(label: "lv.memory"),
-        ),
+        transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
+        eventBus: eventBus,
         logger: Logger(label: "lv.memory"),
     )
     let memoryController = MemoryController(
@@ -402,11 +426,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
-        transport: URLSessionHermesChatTransport(
-            baseURL: hermesURL,
-            session: .shared,
-            logger: Logger(label: "lv.memo"),
-        ),
+        transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         vaultPaths: vaultPaths,
@@ -422,6 +442,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     let vaultController = VaultController(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
+        eventBus: eventBus,
         logger: Logger(label: "lv.vault"),
     )
     let vaultGroup = router.group("/v1/vault")
@@ -440,11 +461,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // kb-compile (write batch + Hermes learning loop) — protected.
     let kbCompileService = KBCompileService(
         vaultPaths: vaultPaths,
-        transport: URLSessionHermesChatTransport(
-            baseURL: hermesURL,
-            session: .shared,
-            logger: Logger(label: "lv.kb-compile"),
-        ),
+        transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
@@ -476,6 +493,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     let healthController = HealthIngestController(
         fluent: services.fluent,
+        eventBus: eventBus,
         logger: Logger(label: "lv.health"),
     )
     let healthGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
@@ -498,11 +516,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // Admin: HER-146 Apple Health correlation engine. Shared-secret gated.
     // Host cron drives this nightly via `POST /v1/admin/health/correlate`.
     let healthCorrelationService = HealthCorrelationService(
-        transport: URLSessionHermesChatTransport(
-            baseURL: hermesURL,
-            session: .shared,
-            logger: Logger(label: "lv.health-correlate"),
-        ),
+        transport: routedTransport,
         fluent: services.fluent,
         embeddings: DeterministicEmbeddingService(),
         memories: MemoryRepository(fluent: services.fluent),
@@ -586,16 +600,18 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         fluent: services.fluent,
         vaultPaths: vaultPaths,
         capGuard: skillRunCapGuard,
+        eventBus: eventBus,
         logger: skillsLogger,
     )
-    let eventBus = EventBus(logger: skillsLogger)
+    // HER-171 — fire-and-forget; the actor stores the subscription Tasks
+    // internally so they stay alive for the lifetime of the application.
+    Task { await skillRunner.startEventSubscriptions() }
     let cronScheduler = CronScheduler(
         catalog: skillCatalog,
         runner: skillRunner,
         fluent: services.fluent,
         logger: skillsLogger,
     )
-    _ = eventBus // HER-171 — wired to capture/health/memory publishers
     _ = cronScheduler // HER-170 — surface to appServices for ServiceGroup lifecycle
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)

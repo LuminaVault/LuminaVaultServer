@@ -201,6 +201,7 @@ actor HermesMemoryService {
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
     let defaultModel: String
+    let eventBus: EventBus?
     let logger: Logger
     let maxToolIterations: Int
 
@@ -209,6 +210,7 @@ actor HermesMemoryService {
         memories: MemoryRepository,
         embeddings: any EmbeddingService,
         defaultModel: String,
+        eventBus: EventBus? = nil,
         logger: Logger,
         maxToolIterations: Int = 5,
     ) {
@@ -216,6 +218,7 @@ actor HermesMemoryService {
         self.memories = memories
         self.embeddings = embeddings
         self.defaultModel = defaultModel
+        self.eventBus = eventBus
         self.logger = logger
         self.maxToolIterations = maxToolIterations
     }
@@ -381,6 +384,23 @@ actor HermesMemoryService {
                     sourceVaultFileID: args.sourceVaultFileId,
                 )
                 outcome.memoriesUpserted.append(saved)
+                // HER-171: notify the skills runtime that a memory landed.
+                // Carries the optional source vault file ID (HER-150) so a
+                // subscriber can correlate without re-querying the DB.
+                if let eventBus, let memoryID = try? saved.requireID() {
+                    var payload: [String: String] = [
+                        SkillEvent.PayloadKey.memoryID: memoryID.uuidString,
+                    ]
+                    if let sourceID = args.sourceVaultFileId {
+                        payload[SkillEvent.PayloadKey.sourceVaultFileID] = sourceID.uuidString
+                    }
+                    let event = SkillEvent(
+                        type: .memoryUpserted,
+                        tenantID: tenantID,
+                        payload: payload,
+                    )
+                    await eventBus.publish(event)
+                }
                 let payload: [String: String] = [
                     "status": "ok",
                     "id": (try? saved.requireID().uuidString) ?? "",

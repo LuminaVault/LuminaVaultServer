@@ -40,20 +40,56 @@ actor SkillRunner {
     private let fluent: Fluent
     private let vaultPaths: VaultPathService
     private let capGuard: SkillRunCapGuard
+    private let eventBus: EventBus
     private let logger: Logger
+    private var eventSubscriptions: [Task<Void, Never>] = []
 
     init(
         catalog: SkillCatalog,
         fluent: Fluent,
         vaultPaths: VaultPathService,
         capGuard: SkillRunCapGuard,
+        eventBus: EventBus,
         logger: Logger,
     ) {
         self.catalog = catalog
         self.fluent = fluent
         self.vaultPaths = vaultPaths
         self.capGuard = capGuard
+        self.eventBus = eventBus
         self.logger = logger
+    }
+
+    /// HER-171: subscribe to every event type the runner cares about.
+    /// Idempotent — repeated calls are no-ops. Cancels prior subscriptions
+    /// first so a hot-reload path doesn't double-subscribe.
+    ///
+    /// HER-171 scope: log receipt only. HER-169 replaces these loops with
+    /// real on_event skill dispatch (catalog lookup by tenant → manifests
+    /// whose `metadata.on_event` includes the event type → run()).
+    func startEventSubscriptions() {
+        for task in eventSubscriptions { task.cancel() }
+        eventSubscriptions.removeAll()
+        for type in SkillEventType.allCases {
+            let stream = eventBus.subscribe(eventType: type)
+            let log = logger
+            let task = Task<Void, Never> {
+                for await event in stream {
+                    log.info("skills.runner received event=\(event.type.rawValue) tenant=\(event.tenantID.uuidString) payloadKeys=\(event.payload.keys.sorted().joined(separator: ","))")
+                    // HER-169: load tenant's catalog → filter by on_event →
+                    // dispatch each matching skill via run(skill:tenantID:...).
+                }
+            }
+            eventSubscriptions.append(task)
+        }
+        logger.info("skills.runner event subscriptions started: \(SkillEventType.allCases.count) streams")
+    }
+
+    /// Cancels every active subscription Task. Safe to call multiple times.
+    /// Wired from the App lifecycle on shutdown so streams don't leak.
+    func stopEventSubscriptions() {
+        for task in eventSubscriptions { task.cancel() }
+        eventSubscriptions.removeAll()
     }
 
     /// Runs the skill and returns the result. Persists to `skill_run_log`

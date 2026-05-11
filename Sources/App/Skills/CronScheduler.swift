@@ -1,3 +1,4 @@
+import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
@@ -5,21 +6,23 @@ import ServiceLifecycle
 
 /// `ServiceLifecycle.Service` that wakes once per minute and dispatches
 /// any `(tenant, enabled skill)` pair whose cron expression — resolved
-/// against the user's timezone and `last_run_at` — is due. Concurrency
-/// is bounded by an internal `TaskGroup` cap (HER-170: max 4 in flight
-/// across all tenants).
+/// against the user's timezone — matches THIS minute. Concurrency is
+/// bounded by `maxConcurrent` (HER-170 default 4) so 100 users firing the
+/// same minute don't melt the agent loop.
 ///
 /// ## Constraints
 /// - **In-process, single-replica.** Multi-replica = double-fire. When
 ///   we scale out, add Postgres-advisory-lock leader election (out of
-///   scope for HER-170).
+///   scope for HER-170; tracked in docs/jobs.md).
 /// - **Next-occurrence semantics**, not catch-up. Downtime spanning a
-///   scheduled minute does NOT replay the missed run on restart.
-///
-/// HER-148 scaffold: `Service` conformance + no-op `run()`. Real ticker
-/// + cron evaluator land in HER-170. Not yet added to `appServices` in
-/// `App+build.swift` — see TODO there.
+///   scheduled minute does NOT replay the missed run on restart — we only
+///   ever evaluate the CURRENT minute. `last_run_at` advances even on
+///   failures so a broken skill can't block subsequent windows.
 actor CronScheduler: Service {
+    /// Minimum time between ticks in production. `tick(at:)` is exposed
+    /// so tests can drive deterministically.
+    private let tickInterval: Duration
+    private let maxConcurrent: Int
     private let catalog: SkillCatalog
     private let runner: SkillRunner
     private let fluent: Fluent
@@ -30,18 +33,225 @@ actor CronScheduler: Service {
         runner: SkillRunner,
         fluent: Fluent,
         logger: Logger,
+        tickInterval: Duration = .seconds(60),
+        maxConcurrent: Int = 4,
     ) {
         self.catalog = catalog
         self.runner = runner
         self.fluent = fluent
         self.logger = logger
+        self.tickInterval = tickInterval
+        self.maxConcurrent = maxConcurrent
     }
 
     func run() async throws {
-        logger.info("skills.cron.scheduler started (no-op scaffold — HER-170)")
-        // HER-170: per-minute tick → query enabled skills_state rows →
-        // evaluate cron expr in users.timezone against last_run_at →
-        // dispatch due skills to SkillRunner via bounded TaskGroup.
-        for await _ in AsyncStream<Void>.makeStream().stream {}
+        logger.info("skills.cron.scheduler started (tick=\(tickInterval), max=\(maxConcurrent))")
+        // Align first tick to next minute boundary so a restart at HH:MM:42
+        // doesn't shift every per-minute tick by 42 seconds for the rest of
+        // the process lifetime.
+        try? await Task.sleep(for: .seconds(secondsUntilNextMinute(now: Date())))
+        while !Task.isCancelled {
+            let now = Date()
+            do {
+                let dispatched = try await tick(at: now)
+                if dispatched > 0 {
+                    logger.info("skills.cron.tick dispatched=\(dispatched) at=\(now)")
+                }
+            } catch {
+                logger.warning("skills.cron.tick error \(error)")
+            }
+            try? await Task.sleep(for: tickInterval)
+        }
+    }
+
+    /// Single tick — returns the number of skills dispatched. Pure-ish:
+    /// reads from Fluent, calls `runner.run`, persists `last_*` columns.
+    /// Exposed so tests can drive ticks at specific instants without
+    /// waiting for the real clock.
+    @discardableResult
+    func tick(at now: Date) async throws -> Int {
+        let pairs = try await loadEnabledPairs()
+        var due: [DuePair] = []
+        for pair in pairs {
+            guard let scheduleRaw = pair.schedule else { continue }
+            guard let expression = try? CronExpression(scheduleRaw) else {
+                logger.warning("skills.cron skipping bad schedule \(scheduleRaw) tenant=\(pair.tenantID)")
+                continue
+            }
+            let timeZone = TimeZone(identifier: pair.timezone) ?? .gmt
+            guard expression.matches(now, in: timeZone) else { continue }
+            // Single-fire-per-minute: if last_run_at is already in this
+            // same wall-clock minute (in user TZ), skip — defends against
+            // tick-jitter or a manual run that just happened.
+            if let last = pair.lastRunAt,
+               sameMinute(last, now, in: timeZone)
+            {
+                continue
+            }
+            due.append(pair)
+        }
+        guard !due.isEmpty else { return 0 }
+        await dispatchBounded(due, now: now)
+        return due.count
+    }
+
+    // MARK: - Bounded dispatch
+
+    private func dispatchBounded(_ pairs: [DuePair], now: Date) async {
+        await withTaskGroup(of: Void.self) { group in
+            var queue = pairs.makeIterator()
+            var inFlight = 0
+
+            func spawnNext() {
+                guard let next = queue.next() else { return }
+                inFlight += 1
+                group.addTask { [self] in
+                    await dispatch(pair: next, now: now)
+                }
+            }
+            // Fill up to maxConcurrent slots.
+            for _ in 0..<min(maxConcurrent, pairs.count) {
+                spawnNext()
+            }
+            // Drain + refill — keeps at most `maxConcurrent` running.
+            while inFlight > 0 {
+                _ = await group.next()
+                inFlight -= 1
+                spawnNext()
+            }
+        }
+    }
+
+    /// Runs a single skill; persists outcome to `skills_state.last_*`.
+    /// Failures NEVER throw out — next-occurrence semantics demand the
+    /// row's `last_run_at` advance regardless, otherwise a broken skill
+    /// would block its own future runs forever.
+    private func dispatch(pair: DuePair, now: Date) async {
+        let label = "skill=\(pair.skillName) tenant=\(pair.tenantID)"
+        var status = "ok"
+        var errorString: String?
+        do {
+            // SkillRunner.run is the HER-169 hand-off point; it currently
+            // throws .notImplemented but the scheduler doesn't care — we
+            // just log + persist the failure and advance last_run_at.
+            _ = try await runner.run(
+                skill: pair.manifest,
+                tenantID: pair.tenantID,
+                tier: pair.tier,
+                profileUsername: pair.username,
+                trigger: .cron,
+            )
+        } catch {
+            status = "error"
+            errorString = String(describing: error)
+            logger.warning("skills.cron \(label) failed: \(error)")
+        }
+        do {
+            try await persistRunState(pair: pair, at: now, status: status, error: errorString)
+        } catch {
+            logger.warning("skills.cron \(label) state persist failed: \(error)")
+        }
+    }
+
+    // MARK: - Fluent IO
+
+    /// Pair returned by the loader — a denormalized join of
+    /// `users` + `skills_state` + the in-memory `SkillManifest`.
+    struct DuePair: Sendable, Equatable {
+        let tenantID: UUID
+        let username: String
+        let timezone: String
+        let tier: String
+        let skillName: String
+        let source: String // "builtin" | "vault"
+        let schedule: String?
+        let lastRunAt: Date?
+        let manifest: SkillManifest
+
+        static func == (lhs: DuePair, rhs: DuePair) -> Bool {
+            lhs.tenantID == rhs.tenantID
+                && lhs.skillName == rhs.skillName
+                && lhs.source == rhs.source
+        }
+    }
+
+    /// Load every (user, enabled skill) pair. The catalog merges builtin
+    /// + vault manifests; we filter to enabled rows only and join with
+    /// the user's timezone + tier.
+    private func loadEnabledPairs() async throws -> [DuePair] {
+        let users = try await User.query(on: fluent.db()).all()
+        var pairs: [DuePair] = []
+        for user in users {
+            let tenantID = try user.requireID()
+            let manifests = (try? await catalog.manifests(for: tenantID)) ?? []
+            guard !manifests.isEmpty else { continue }
+            let states = try await SkillsState.query(on: fluent.db())
+                .filter(\.$tenantID == tenantID)
+                .filter(\.$enabled == true)
+                .all()
+            let stateByKey: [String: SkillsState] = Dictionary(
+                uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
+            )
+            for manifest in manifests {
+                let key = "\(manifest.source.rawValue):\(manifest.name)"
+                let state = stateByKey[key]
+                // No row at all → treat as enabled with manifest defaults
+                // (user hasn't customized; the catalog says it's available).
+                let enabled = state?.enabled ?? true
+                guard enabled else { continue }
+                let schedule = state?.scheduleOverride ?? manifest.schedule
+                guard schedule != nil else { continue }
+                pairs.append(DuePair(
+                    tenantID: tenantID,
+                    username: user.username,
+                    timezone: user.timezone,
+                    tier: user.tier,
+                    skillName: manifest.name,
+                    source: manifest.source.rawValue,
+                    schedule: schedule,
+                    lastRunAt: state?.lastRunAt,
+                    manifest: manifest,
+                ))
+            }
+        }
+        return pairs
+    }
+
+    private func persistRunState(
+        pair: DuePair,
+        at now: Date,
+        status: String,
+        error: String?,
+    ) async throws {
+        let row = try await SkillsState.query(on: fluent.db())
+            .filter(\.$tenantID == pair.tenantID)
+            .filter(\.$source == pair.source)
+            .filter(\.$name == pair.skillName)
+            .first() ?? SkillsState(
+                tenantID: pair.tenantID,
+                source: pair.source,
+                name: pair.skillName,
+            )
+        row.lastRunAt = now
+        row.lastStatus = status
+        row.lastError = error
+        try await row.save(on: fluent.db())
+    }
+
+    // MARK: - Helpers
+
+    private func sameMinute(_ a: Date, _ b: Date, in timeZone: TimeZone) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let aComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: a)
+        let bComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: b)
+        return aComponents == bComponents
+    }
+
+    private func secondsUntilNextMinute(now: Date) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let seconds = calendar.dateComponents([.second], from: now).second ?? 0
+        return max(1, 60 - seconds)
     }
 }
