@@ -1,0 +1,43 @@
+import FluentPostgresDriver
+import Foundation
+import HummingbirdFluent
+
+/// Centralized Postgres test config. Reads env so the same test suite runs
+/// in two environments:
+///
+///   * Local dev:   `docker compose up -d postgres` exposes pg on
+///                  127.0.0.1:5433 with password `luminavault`.
+///   * GitHub CI:   the runner's `services.postgres` is reachable as
+///                  `postgres:5432` with password `hermes_password`. CI sets
+///                  POSTGRES_HOST/PORT/USER/PASSWORD/DATABASE to override.
+///
+/// All Postgres-backed tests should pull config from here instead of
+/// hardcoding host/port/credentials.
+enum TestPostgres {
+    static var host: String {
+        ProcessInfo.processInfo.environment["POSTGRES_HOST"] ?? "127.0.0.1"
+    }
+    static var port: Int {
+        Int(ProcessInfo.processInfo.environment["POSTGRES_PORT"] ?? "") ?? 5433
+    }
+    static var username: String {
+        ProcessInfo.processInfo.environment["POSTGRES_USER"] ?? "hermes"
+    }
+    static var password: String {
+        ProcessInfo.processInfo.environment["POSTGRES_PASSWORD"] ?? "luminavault"
+    }
+    static var database: String {
+        ProcessInfo.processInfo.environment["POSTGRES_DATABASE"] ?? "hermes_db"
+    }
+
+    static func configuration() -> SQLPostgresConfiguration {
+        .init(
+            hostname: host,
+            port: port,
+            username: username,
+            password: password,
+            database: database,
+            tls: .disable
+        )
+    }
+}

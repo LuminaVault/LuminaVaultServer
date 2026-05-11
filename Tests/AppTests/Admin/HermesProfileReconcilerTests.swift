@@ -51,11 +51,7 @@ struct HermesProfileReconcilerTests {
     private static func makeFluent() async throws -> Fluent {
         let fluent = Fluent(logger: Logger(label: "test.recon"))
         fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: "127.0.0.1", port: 5433,
-                username: "hermes", password: "luminavault",
-                database: "hermes_db", tls: .disable
-            )),
+            .postgres(configuration: TestPostgres.configuration()),
             as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())

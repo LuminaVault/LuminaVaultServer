@@ -41,14 +41,7 @@ struct AuthFlowTests {
         let logger = Logger(label: "test.auth")
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: "127.0.0.1",
-                port: 5433,
-                username: "hermes",
-                password: "luminavault",
-                database: "hermes_db",
-                tls: .disable
-            )),
+            .postgres(configuration: TestPostgres.configuration()),
             as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
@@ -70,6 +63,8 @@ struct AuthFlowTests {
         await fluent.migrations.add(M16_CreateEmailVerificationToken())
         await fluent.migrations.add(M17_CreateOnboardingState())
         await fluent.migrations.add(M18_AddMemoryTags())
+        await fluent.migrations.add(M21_AddMemoryScore())
+        await fluent.migrations.add(M22_CreateMemoryArchive())
         try await fluent.migrate()
 
         let jwtKeys = JWTKeyCollection()

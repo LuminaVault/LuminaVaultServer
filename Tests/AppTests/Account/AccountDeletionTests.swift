@@ -246,14 +246,7 @@ struct AccountDeletionTests {
     private static func openTestFluent() async throws -> Fluent {
         let fluent = Fluent(logger: Logger(label: "test.account.delete"))
         fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: "127.0.0.1",
-                port: 5433,
-                username: "hermes",
-                password: "luminavault",
-                database: "hermes_db",
-                tls: .disable
-            )),
+            .postgres(configuration: TestPostgres.configuration()),
             as: .psql
         )
         return fluent

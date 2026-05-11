@@ -80,6 +80,12 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgres://hermes:hermes_password@postgres:5432/hermes_test
+          # Test harness reads these via TestPostgres.configuration().
+          POSTGRES_HOST: postgres
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: hermes
+          POSTGRES_PASSWORD: hermes_password
+          POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
         run: swift test --parallel
