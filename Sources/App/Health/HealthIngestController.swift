@@ -130,7 +130,9 @@ struct HealthIngestController {
     /// without inspecting the database.
     private static func dominantSampleType(_ refs: [HealthIngestedRef]) -> String {
         var counts: [String: Int] = [:]
-        for ref in refs { counts[ref.type, default: 0] += 1 }
+        for ref in refs {
+            counts[ref.type, default: 0] += 1
+        }
         return counts.max(by: { $0.value < $1.value })?.key ?? "unknown"
     }
 }

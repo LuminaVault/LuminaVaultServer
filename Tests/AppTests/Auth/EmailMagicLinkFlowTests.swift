@@ -82,14 +82,14 @@ struct EmailMagicLinkFlowTests {
             #expect(!auth.refreshToken.isEmpty)
 
             // Verify the OAuthIdentity row landed with provider="email_magic_link".
-            let fluent = try await Self.openFluent()
-            defer { Task { try? await fluent.shutdown() } }
-            let identity = try await OAuthIdentity.query(on: fluent.db())
-                .filter(\.$tenantID == auth.userId)
-                .filter(\.$provider == "email_magic_link")
-                .first()
-            #expect(identity != nil, "expected OAuthIdentity(provider: email_magic_link) for tenant \(auth.userId)")
-            #expect(identity?.providerUserID == email)
+            try await withTestFluent(label: "test.magic.fluent") { fluent in
+                let identity = try await OAuthIdentity.query(on: fluent.db())
+                    .filter(\.$tenantID == auth.userId)
+                    .filter(\.$provider == "email_magic_link")
+                    .first()
+                #expect(identity != nil, "expected OAuthIdentity(provider: email_magic_link) for tenant \(auth.userId)")
+                #expect(identity?.providerUserID == email)
+            }
         }
     }
 
@@ -190,14 +190,4 @@ struct EmailMagicLinkFlowTests {
         }
     }
 
-    // MARK: - Helpers
-
-    private static func openFluent() async throws -> Fluent {
-        let fluent = Fluent(logger: Logger(label: "test.magic.fluent"))
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        return fluent
-    }
 }

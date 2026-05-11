@@ -32,9 +32,9 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         scheduleOverride: String? = nil,
         lastRunAt: Date? = nil,
         lastStatus: String? = nil,
-        lastError: String? = nil
+        lastError: String? = nil,
     ) {
-        self.id = tenantID
+        id = tenantID
         self.tenantID = tenantID
         self.source = source
         self.name = name

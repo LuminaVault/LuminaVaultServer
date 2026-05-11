@@ -12,7 +12,7 @@ struct M24_AddUserContextRouting: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS context_routing BOOLEAN NOT NULL DEFAULT FALSE"#
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS context_routing BOOLEAN NOT NULL DEFAULT FALSE"#,
         ).run()
     }
 

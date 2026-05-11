@@ -46,7 +46,7 @@ struct ContextRouterMiddleware: RouterMiddleware {
         selectorFactory: @escaping @Sendable (UUID, String) -> any ContextRouterSelector,
         entitlement: @escaping @Sendable (User) -> Bool = { _ in true },
         maxBodyBytes: Int = 256 * 1024,
-        logger: Logger
+        logger: Logger,
     ) {
         self.manifestProvider = manifestProvider
         self.selectorFactory = selectorFactory
@@ -61,21 +61,21 @@ struct ContextRouterMiddleware: RouterMiddleware {
         selectorFactory: @escaping @Sendable (UUID, String) -> any ContextRouterSelector,
         entitlement: @escaping @Sendable (User) -> Bool = { _ in true },
         maxBodyBytes: Int = 256 * 1024,
-        logger: Logger
+        logger: Logger,
     ) {
         self.init(
             manifestProvider: { tenantID in try await catalog.manifests(for: tenantID) },
             selectorFactory: selectorFactory,
             entitlement: entitlement,
             maxBodyBytes: maxBodyBytes,
-            logger: logger
+            logger: logger,
         )
     }
 
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         // No identity = no opinion. The downstream JWT-required route
         // surfaces 401; we just pass through.
@@ -136,7 +136,7 @@ struct ContextRouterMiddleware: RouterMiddleware {
         guard let chosen = await selector.selectSkill(
             for: userMessage,
             manifests: manifests,
-            timeout: .milliseconds(300)
+            timeout: .milliseconds(300),
         ) else {
             return try await next(rewritable, context)
         }
@@ -156,8 +156,8 @@ struct ContextRouterMiddleware: RouterMiddleware {
 /// middleware needs to touch. Permissive — extra fields on the wire are
 /// preserved via the catch-all `extra` dictionary so the downstream
 /// handler still sees them unchanged.
-struct ChatRoutingBody: Codable, Sendable {
-    struct Message: Codable, Sendable {
+struct ChatRoutingBody: Codable {
+    struct Message: Codable {
         let role: String
         let content: String
     }

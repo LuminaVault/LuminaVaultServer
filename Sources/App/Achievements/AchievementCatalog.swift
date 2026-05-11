@@ -57,7 +57,7 @@ struct AchievementArchetype: Hashable, Codable {
 ///
 /// Catalog content needs a product pass before launch but the scaffold
 /// gives a sensible default that exercises every `AchievementEvent`.
-struct AchievementCatalog: Sendable {
+struct AchievementCatalog {
     /// Bump on any content edit so iOS clients can flag new entries.
     let catalogVersion: Int
     let archetypes: [AchievementArchetype]

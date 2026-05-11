@@ -9,7 +9,7 @@ import Foundation
 /// - `.network`    → try next candidate (DNS, TLS, connection reset)
 /// - `.permanent`  → stop. Bubble up. 4xx (except 429) means our payload
 ///   is wrong and another provider won't fix it.
-enum ProviderError: Error, Sendable {
+enum ProviderError: Error {
     case transient(provider: ProviderKind, status: Int, body: String?)
     case permanent(provider: ProviderKind, status: Int, body: String?)
     case network(provider: ProviderKind, underlying: any Error)
@@ -17,16 +17,16 @@ enum ProviderError: Error, Sendable {
     /// True when the dispatcher should try the next fallback candidate.
     var isRecoverable: Bool {
         switch self {
-        case .transient, .network: return true
-        case .permanent: return false
+        case .transient, .network: true
+        case .permanent: false
         }
     }
 
     var provider: ProviderKind {
         switch self {
-        case .transient(let p, _, _): return p
-        case .permanent(let p, _, _): return p
-        case .network(let p, _): return p
+        case let .transient(p, _, _): p
+        case let .permanent(p, _, _): p
+        case let .network(p, _): p
         }
     }
 }

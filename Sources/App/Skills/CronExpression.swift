@@ -17,7 +17,7 @@ import Foundation
 /// restricted field matches (POSIX cron OR-semantics — different from
 /// some spec readings, but matches what every real cron implementation
 /// does in practice).
-struct CronExpression: Equatable, Sendable {
+struct CronExpression: Equatable {
     let minute: FieldSet
     let hour: FieldSet
     let dayOfMonth: FieldSet
@@ -25,7 +25,7 @@ struct CronExpression: Equatable, Sendable {
     let dayOfWeek: FieldSet
 
     /// Set of permitted integer values for one cron field.
-    struct FieldSet: Equatable, Sendable {
+    struct FieldSet: Equatable {
         let values: Set<Int>
         /// `true` when the source token was a bare `*` — used by the
         /// dom/dow OR-semantics resolver.
@@ -45,7 +45,7 @@ struct CronExpression: Equatable, Sendable {
         calendar.timeZone = timeZone
         let components = calendar.dateComponents(
             [.minute, .hour, .day, .month, .weekday],
-            from: date
+            from: date,
         )
         guard
             let minuteValue = components.minute,
@@ -89,18 +89,18 @@ extension CronExpression {
         guard tokens.count == 5 else {
             throw ParseError.wrongFieldCount(expected: 5, actual: tokens.count)
         }
-        self.minute = try Self.parseField(tokens[0], name: "minute", lo: 0, hi: 59)
-        self.hour = try Self.parseField(tokens[1], name: "hour", lo: 0, hi: 23)
-        self.dayOfMonth = try Self.parseField(tokens[2], name: "dom", lo: 1, hi: 31)
-        self.month = try Self.parseField(tokens[3], name: "mon", lo: 1, hi: 12)
-        self.dayOfWeek = try Self.parseField(tokens[4], name: "dow", lo: 0, hi: 6)
+        minute = try Self.parseField(tokens[0], name: "minute", lo: 0, hi: 59)
+        hour = try Self.parseField(tokens[1], name: "hour", lo: 0, hi: 23)
+        dayOfMonth = try Self.parseField(tokens[2], name: "dom", lo: 1, hi: 31)
+        month = try Self.parseField(tokens[3], name: "mon", lo: 1, hi: 12)
+        dayOfWeek = try Self.parseField(tokens[4], name: "dow", lo: 0, hi: 6)
     }
 
     private static func parseField(
         _ raw: String,
         name: String,
         lo: Int,
-        hi: Int
+        hi: Int,
     ) throws -> FieldSet {
         if raw == "*" {
             return FieldSet(values: Set(lo ... hi), isWildcard: true)

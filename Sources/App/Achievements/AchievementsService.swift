@@ -24,7 +24,7 @@ import Logging
 /// per second per user and is acceptable for the scaffold. Harden with
 /// a Postgres `INSERT ... ON CONFLICT DO UPDATE` upsert if it ever
 /// becomes load-bearing.
-struct AchievementsService: Sendable {
+struct AchievementsService {
     let fluent: Fluent
     let catalog: AchievementCatalog
     let pushService: APNSNotificationService?

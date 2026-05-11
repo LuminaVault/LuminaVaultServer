@@ -23,7 +23,7 @@ protocol ContextRouterSelector: Sendable {
     func selectSkill(
         for userMessage: String,
         manifests: [SkillManifest],
-        timeout: Duration
+        timeout: Duration,
     ) async -> SkillManifest?
 }
 
@@ -37,22 +37,10 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
     let profileUsername: String
     let logger: Logger
 
-    init(
-        transport: any HermesChatTransport,
-        model: String,
-        profileUsername: String,
-        logger: Logger
-    ) {
-        self.transport = transport
-        self.model = model
-        self.profileUsername = profileUsername
-        self.logger = logger
-    }
-
     func selectSkill(
         for userMessage: String,
         manifests: [SkillManifest],
-        timeout: Duration = .milliseconds(300)
+        timeout: Duration = .milliseconds(300),
     ) async -> SkillManifest? {
         guard !manifests.isEmpty else { return nil }
         guard !userMessage.isEmpty else { return nil }
@@ -63,29 +51,29 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
             .joined(separator: "\n")
 
         let systemPrompt = """
-            You route an incoming chat message to ONE of the user's skills,
-            or NONE. Respond with EXACTLY one token: the skill name from the
-            catalog below, or the literal word NONE. No prose, no
-            punctuation, no explanation.
-            """
+        You route an incoming chat message to ONE of the user's skills,
+        or NONE. Respond with EXACTLY one token: the skill name from the
+        catalog below, or the literal word NONE. No prose, no
+        punctuation, no explanation.
+        """
         let userPrompt = """
-            Catalog:
-            \(catalog)
+        Catalog:
+        \(catalog)
 
-            Message:
-            \(userMessage)
+        Message:
+        \(userMessage)
 
-            Reply with one of: \(manifests.map(\.name).joined(separator: ", ")), NONE.
-            """
+        Reply with one of: \(manifests.map(\.name).joined(separator: ", ")), NONE.
+        """
 
         let body = OAIRequest(
             model: model,
             messages: [
                 .init(role: "system", content: systemPrompt),
-                .init(role: "user", content: userPrompt)
+                .init(role: "user", content: userPrompt),
             ],
             temperature: 0,
-            stream: false
+            stream: false,
         )
         let payload: Data
         do {
@@ -141,16 +129,19 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
         let role: String
         let content: String
     }
+
     private struct OAIRequest: Codable {
         let model: String
         let messages: [OAIMessage]
         let temperature: Double
         let stream: Bool
     }
+
     private struct OAIChoice: Codable {
         struct Message: Codable { let role: String; let content: String? }
         let message: Message
     }
+
     private struct OAIResponse: Codable {
         let choices: [OAIChoice]
     }

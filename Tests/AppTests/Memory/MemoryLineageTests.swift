@@ -43,15 +43,6 @@ struct MemoryLineageTests {
         return (resp.accessToken, resp.userId)
     }
 
-    private static func openFluent() async throws -> Fluent {
-        let fluent = Fluent(logger: Logger(label: "test.lineage.fluent"))
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        return fluent
-    }
-
     /// Inserts a `vault_files` row directly so the lineage test doesn't have
     /// to drive the upload endpoint (which depends on the on-disk vault and
     /// is covered by VaultCRUDTests). SHA-256 + size are placeholders — the
@@ -74,38 +65,38 @@ struct MemoryLineageTests {
         try await app.test(.router) { client in
             let (token, tenantID) = try await Self.registerAndAuth(client: client)
 
-            let fluent = try await Self.openFluent()
-            defer { Task { try? await fluent.shutdown() } }
-            let repo = MemoryRepository(fluent: fluent)
+            try await withTestFluent(label: "test.lineage.fluent") { fluent in
+                let repo = MemoryRepository(fluent: fluent)
 
-            let vaultFileID = try await Self.insertVaultFile(
-                fluent: fluent,
-                tenantID: tenantID,
-                path: "notes/2026-05-11-standup.md",
-            )
+                let vaultFileID = try await Self.insertVaultFile(
+                    fluent: fluent,
+                    tenantID: tenantID,
+                    path: "notes/2026-05-11-standup.md",
+                )
 
-            // Embed-less write so we don't need the real embedding service.
-            // 1536 zeros matches the configured pgvector dim.
-            let memory = try await repo.create(
-                tenantID: tenantID,
-                content: "Met with infra team about migrations.",
-                embedding: Array(repeating: Float(0), count: 1536),
-                sourceVaultFileID: vaultFileID,
-            )
-            let memoryID = try memory.requireID()
+                // Embed-less write so we don't need the real embedding service.
+                // 1536 zeros matches the configured pgvector dim.
+                let memory = try await repo.create(
+                    tenantID: tenantID,
+                    content: "Met with infra team about migrations.",
+                    embedding: Array(repeating: Float(0), count: 1536),
+                    sourceVaultFileID: vaultFileID,
+                )
+                let memoryID = try memory.requireID()
 
-            try await client.execute(
-                uri: "/v1/memory/\(memoryID)/lineage",
-                method: .get,
-                headers: [.authorization: "Bearer \(token)"],
-            ) { response in
-                #expect(response.status == .ok)
-                let body = try Self.decodeLineage(response.body)
-                #expect(body.memoryId == memoryID)
-                #expect(body.source?.vaultFileId == vaultFileID)
-                #expect(body.source?.path == "notes/2026-05-11-standup.md")
-                #expect(body.trace.contains("notes/2026-05-11-standup.md"))
-                #expect(body.trace.contains("Hermes learned"))
+                try await client.execute(
+                    uri: "/v1/memory/\(memoryID)/lineage",
+                    method: .get,
+                    headers: [.authorization: "Bearer \(token)"],
+                ) { response in
+                    #expect(response.status == .ok)
+                    let body = try Self.decodeLineage(response.body)
+                    #expect(body.memoryId == memoryID)
+                    #expect(body.source?.vaultFileId == vaultFileID)
+                    #expect(body.source?.path == "notes/2026-05-11-standup.md")
+                    #expect(body.trace.contains("notes/2026-05-11-standup.md"))
+                    #expect(body.trace.contains("Hermes learned"))
+                }
             }
         }
     }
@@ -116,27 +107,27 @@ struct MemoryLineageTests {
         try await app.test(.router) { client in
             let (token, tenantID) = try await Self.registerAndAuth(client: client)
 
-            let fluent = try await Self.openFluent()
-            defer { Task { try? await fluent.shutdown() } }
-            let repo = MemoryRepository(fluent: fluent)
+            try await withTestFluent(label: "test.lineage.fluent") { fluent in
+                let repo = MemoryRepository(fluent: fluent)
 
-            let memory = try await repo.create(
-                tenantID: tenantID,
-                content: "Random thought, no source.",
-                embedding: Array(repeating: Float(0), count: 1536),
-            )
-            let memoryID = try memory.requireID()
+                let memory = try await repo.create(
+                    tenantID: tenantID,
+                    content: "Random thought, no source.",
+                    embedding: Array(repeating: Float(0), count: 1536),
+                )
+                let memoryID = try memory.requireID()
 
-            try await client.execute(
-                uri: "/v1/memory/\(memoryID)/lineage",
-                method: .get,
-                headers: [.authorization: "Bearer \(token)"],
-            ) { response in
-                #expect(response.status == .ok)
-                let body = try Self.decodeLineage(response.body)
-                #expect(body.memoryId == memoryID)
-                #expect(body.source == nil)
-                #expect(body.trace.contains("no source file"))
+                try await client.execute(
+                    uri: "/v1/memory/\(memoryID)/lineage",
+                    method: .get,
+                    headers: [.authorization: "Bearer \(token)"],
+                ) { response in
+                    #expect(response.status == .ok)
+                    let body = try Self.decodeLineage(response.body)
+                    #expect(body.memoryId == memoryID)
+                    #expect(body.source == nil)
+                    #expect(body.trace.contains("no source file"))
+                }
             }
         }
     }
@@ -165,23 +156,23 @@ struct MemoryLineageTests {
             let (_, tenantA) = try await Self.registerAndAuth(client: client)
             let (tokenB, _) = try await Self.registerAndAuth(client: client)
 
-            let fluent = try await Self.openFluent()
-            defer { Task { try? await fluent.shutdown() } }
-            let repo = MemoryRepository(fluent: fluent)
+            try await withTestFluent(label: "test.lineage.fluent") { fluent in
+                let repo = MemoryRepository(fluent: fluent)
 
-            let memory = try await repo.create(
-                tenantID: tenantA,
-                content: "Tenant A secret.",
-                embedding: Array(repeating: Float(0), count: 1536),
-            )
-            let memoryID = try memory.requireID()
+                let memory = try await repo.create(
+                    tenantID: tenantA,
+                    content: "Tenant A secret.",
+                    embedding: Array(repeating: Float(0), count: 1536),
+                )
+                let memoryID = try memory.requireID()
 
-            try await client.execute(
-                uri: "/v1/memory/\(memoryID)/lineage",
-                method: .get,
-                headers: [.authorization: "Bearer \(tokenB)"],
-            ) { response in
-                #expect(response.status == .notFound)
+                try await client.execute(
+                    uri: "/v1/memory/\(memoryID)/lineage",
+                    method: .get,
+                    headers: [.authorization: "Bearer \(tokenB)"],
+                ) { response in
+                    #expect(response.status == .notFound)
+                }
             }
         }
     }

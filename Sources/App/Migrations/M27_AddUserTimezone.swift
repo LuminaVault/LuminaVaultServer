@@ -11,7 +11,7 @@ struct M27_AddUserTimezone: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'"#
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'"#,
         ).run()
     }
 

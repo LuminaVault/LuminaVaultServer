@@ -7,7 +7,7 @@ import Foundation
 /// is reserved for HER-161..HER-164 adapter tickets. Cases are stable on
 /// the wire (the `rawValue` is used in logs + metrics labels), so do NOT
 /// rename — add new cases instead.
-enum ProviderKind: String, Sendable, Hashable, CaseIterable, Codable {
+enum ProviderKind: String, Hashable, CaseIterable, Codable {
     case hermesGateway
     case together
     case groq

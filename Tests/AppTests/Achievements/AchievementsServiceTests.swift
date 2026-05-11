@@ -97,7 +97,7 @@ struct AchievementsServiceTests {
         let catalog = AchievementCatalog.current
         #expect(catalog.archetypes.count == 4)
         #expect(catalog.catalogVersion >= 1)
-        let archetypeKeys = catalog.archetypes.map { $0.key.rawValue }.sorted()
+        let archetypeKeys = catalog.archetypes.map(\.key.rawValue).sorted()
         #expect(archetypeKeys == ["lightbringer", "reignmaker", "shadowlord", "soulseeker"])
         for archetype in catalog.archetypes {
             #expect((3 ... 5).contains(archetype.subs.count), "\(archetype.key) sub count must be 3-5")
@@ -109,7 +109,7 @@ struct AchievementsServiceTests {
 
         // Every AchievementEvent must be reachable from at least one sub —
         // otherwise the controller-hook fires would land in a dead drop.
-        let coveredEvents = Set(catalog.archetypes.flatMap { $0.subs }.map(\.event))
+        let coveredEvents = Set(catalog.archetypes.flatMap(\.subs).map(\.event))
         #expect(coveredEvents == Set(AchievementEvent.allCases))
     }
 

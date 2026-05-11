@@ -23,7 +23,7 @@ actor HermesEndpointResolver {
     /// Cached resolution. Construct once per request, pass into every
     /// downstream service. The auth header is plaintext here — never
     /// log it, never include it in tracing spans.
-    struct Resolution: Sendable {
+    struct Resolution {
         let baseURL: URL
         let authHeader: String?
         let isUserOverride: Bool

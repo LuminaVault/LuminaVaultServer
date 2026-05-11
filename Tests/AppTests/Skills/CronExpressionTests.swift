@@ -5,7 +5,6 @@ import Testing
 /// HER-170: pure-function tests for CronExpression. No DB, no clocks —
 /// every test pins explicit `Date` + `TimeZone` so semantics are
 /// reproducible across machines.
-@Suite
 struct CronExpressionTests {
     private static func date(
         _ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int,

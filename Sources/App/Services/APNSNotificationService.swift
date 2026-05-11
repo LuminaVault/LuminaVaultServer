@@ -188,7 +188,7 @@ struct APNSNotificationService {
     /// unlocked sub-achievement returned by `AchievementsService.record`.
     /// Best-effort: never blocks the originating request (the caller wraps
     /// this in a detached Task per the `notifyLLMReply` precedent).
-    func notifyAchievement(userID: UUID, key: String, label: String) async throws {
+    func notifyAchievement(userID: UUID, key _: String, label: String) async throws {
         try await notify(
             userID: userID,
             title: "Achievement unlocked",

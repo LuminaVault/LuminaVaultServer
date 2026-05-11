@@ -122,8 +122,8 @@ struct BeliefEvolutionTests {
 
         // First and last must straddle ≥ 3 calendar months to give the
         // runner enough temporal spread to detect a shift.
-        let firstYearMonth = String(Self.fixtureMemories.first!.createdAt.prefix(7))
-        let lastYearMonth = String(Self.fixtureMemories.last!.createdAt.prefix(7))
+        let firstYearMonth = try String(#require(Self.fixtureMemories.first?.createdAt.prefix(7)))
+        let lastYearMonth = try String(#require(Self.fixtureMemories.last?.createdAt.prefix(7)))
         #expect(firstYearMonth == "2026-01")
         #expect(lastYearMonth == "2026-04")
 

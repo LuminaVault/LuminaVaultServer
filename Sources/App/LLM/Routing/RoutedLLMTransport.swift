@@ -28,7 +28,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         registry: ProviderRegistry,
         router: any ModelRouter,
         currentUser: @escaping @Sendable () async -> User? = { nil },
-        logger: Logger
+        logger: Logger,
     ) {
         self.registry = registry
         self.router = router
@@ -58,7 +58,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 logger.error("provider \(candidate.rawValue) permanent: \(providerError)")
                 throw HTTPError(
                     .badGateway,
-                    message: "llm upstream rejected request (\(candidate.rawValue))"
+                    message: "llm upstream rejected request (\(candidate.rawValue))",
                 )
             } catch {
                 // Something we don't classify — treat as recoverable so a

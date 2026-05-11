@@ -43,7 +43,7 @@ import SQLKit
 actor SkillRunCapGuard {
     /// Decision returned by `checkAndIncrement`. The caller surfaces
     /// `.deny` as `HTTP 429 + Retry-After`.
-    enum Decision: Hashable, Sendable {
+    enum Decision: Hashable {
         case allow
         case deny(retryAfter: TimeInterval)
     }

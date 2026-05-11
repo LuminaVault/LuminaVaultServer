@@ -2,7 +2,7 @@ import Foundation
 import Logging
 
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 /// HER-165 — `ProviderAdapter` wrapping the in-VPS Hermes gateway. Same
@@ -39,14 +39,14 @@ struct HermesGatewayAdapter: ProviderAdapter {
             throw ProviderError.transient(provider: kind, status: 0, body: nil)
         }
         let status = http.statusCode
-        if (200..<300).contains(status) {
+        if (200 ..< 300).contains(status) {
             return data
         }
         let preview = String(data: data.prefix(512), encoding: .utf8)
         // 429 = rate-limited, retryable. 5xx = upstream broken, retryable.
         // Everything else is permanent — our payload is bad and another
         // provider won't fix it.
-        if status == 429 || (500..<600).contains(status) {
+        if status == 429 || (500 ..< 600).contains(status) {
             logger.error("hermes upstream transient \(status): \(preview ?? "<binary>")")
             throw ProviderError.transient(provider: kind, status: status, body: preview)
         }

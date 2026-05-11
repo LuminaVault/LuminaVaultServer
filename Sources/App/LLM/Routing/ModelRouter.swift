@@ -7,7 +7,7 @@ import Foundation
 /// `fallbacks` should be ordered by cost-then-quality so a brief outage
 /// upgrades the user to a slightly more expensive route rather than
 /// downgrading to a worse model.
-struct ModelDecision: Sendable, Hashable {
+struct ModelDecision: Hashable {
     let primary: ProviderKind
     let fallbacks: [ProviderKind]
 

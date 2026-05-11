@@ -61,7 +61,7 @@ struct SkillRunCapGuardTests {
             let guardrail = SkillRunCapGuard(fluent: h.fluent, logger: Logger(label: "t"))
             let manifest = Self.makeManifest(cap: .init(trial: 3, pro: 3, ultimate: 0))
             let decision = try await guardrail.checkAndIncrement(
-                tenantID: try h.user.requireID(),
+                tenantID: h.user.requireID(),
                 tier: "ultimate",
                 manifest: manifest,
             )
@@ -76,7 +76,7 @@ struct SkillRunCapGuardTests {
             let manifest = Self.makeManifest(cap: .init(trial: 3, pro: 3, ultimate: 0))
             let tenantID = try h.user.requireID()
 
-            for _ in 0..<3 {
+            for _ in 0 ..< 3 {
                 let decision = try await guardrail.checkAndIncrement(
                     tenantID: tenantID, tier: "pro", manifest: manifest,
                 )
@@ -86,7 +86,7 @@ struct SkillRunCapGuardTests {
                 tenantID: tenantID, tier: "pro", manifest: manifest,
             )
             switch fourth {
-            case .deny(let retryAfter):
+            case let .deny(retryAfter):
                 #expect(retryAfter > 0)
                 #expect(retryAfter <= 86400 + 1)
             case .allow:
@@ -102,7 +102,7 @@ struct SkillRunCapGuardTests {
             let manifest = Self.makeManifest(cap: .init(trial: 3, pro: 3, ultimate: 0))
             let tenantID = try h.user.requireID()
 
-            for _ in 0..<3 {
+            for _ in 0 ..< 3 {
                 _ = try await guardrail.checkAndIncrement(
                     tenantID: tenantID, tier: "pro", manifest: manifest,
                 )

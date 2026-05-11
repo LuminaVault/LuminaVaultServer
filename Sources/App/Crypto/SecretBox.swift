@@ -41,7 +41,7 @@ struct SecretBox {
     /// Boot-time loader. Throws `Error.masterKeyMissing` if the env var
     /// is empty, `Error.masterKeyMalformed` if the base64 decodes to
     /// anything other than exactly 32 bytes.
-    init(masterKeyBase64: String) throws {
+    init(masterKeyBase64 _: String) throws {
         // HER-197 — implementation in follow-up commit. Scaffold rejects
         // every input so callers wire the failure path correctly first.
         throw Error.masterKeyMissing

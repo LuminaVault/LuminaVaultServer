@@ -110,7 +110,7 @@ actor CronScheduler: Service {
                 }
             }
             // Fill up to maxConcurrent slots.
-            for _ in 0..<min(maxConcurrent, pairs.count) {
+            for _ in 0 ..< min(maxConcurrent, pairs.count) {
                 spawnNext()
             }
             // Drain + refill — keeps at most `maxConcurrent` running.
@@ -157,7 +157,7 @@ actor CronScheduler: Service {
 
     /// Pair returned by the loader — a denormalized join of
     /// `users` + `skills_state` + the in-memory `SkillManifest`.
-    struct DuePair: Sendable, Equatable {
+    struct DuePair: Equatable {
         let tenantID: UUID
         let username: String
         let timezone: String
@@ -183,14 +183,14 @@ actor CronScheduler: Service {
         var pairs: [DuePair] = []
         for user in users {
             let tenantID = try user.requireID()
-            let manifests = (try? await catalog.manifests(for: tenantID)) ?? []
+            let manifests = await (try? catalog.manifests(for: tenantID)) ?? []
             guard !manifests.isEmpty else { continue }
             let states = try await SkillsState.query(on: fluent.db())
                 .filter(\.$tenantID == tenantID)
                 .filter(\.$enabled == true)
                 .all()
             let stateByKey: [String: SkillsState] = Dictionary(
-                uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
+                uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) },
             )
             for manifest in manifests {
                 let key = "\(manifest.source.rawValue):\(manifest.name)"

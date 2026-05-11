@@ -3,7 +3,6 @@ import Testing
 
 /// HER-176: pure-function tests for the CN-origin classifier + filter
 /// that `ModelRouter` (HER-161) will call. No DB, no HTTP.
-@Suite
 struct ModelOriginTests {
     @Test
     func `classifies known CN origin model identifiers`() {

@@ -33,9 +33,9 @@ final class User: Model, @unchecked Sendable {
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {
-        self.contextRouting = false
-        self.privacyNoCNOrigin = false
-        self.timezone = "UTC"
+        contextRouting = false
+        privacyNoCNOrigin = false
+        timezone = "UTC"
     }
 
     init(
@@ -62,8 +62,8 @@ final class User: Model, @unchecked Sendable {
         self.tierExpiresAt = tierExpiresAt
         self.tierOverride = tierOverride
         self.revenuecatUserID = revenuecatUserID
-        self.contextRouting = false
-        self.privacyNoCNOrigin = false
-        self.timezone = "UTC"
+        contextRouting = false
+        privacyNoCNOrigin = false
+        timezone = "UTC"
     }
 }

@@ -1,12 +1,10 @@
+@testable import App
 import Foundation
 import Logging
 import Testing
 
-@testable import App
-
 /// HER-171 unit tests for `EventBus`. In-memory only — no DB, no Hummingbird
 /// app required. The actor is the source of truth for pub/sub semantics.
-@Suite
 struct EventBusTests {
     private static func makeBus() -> EventBus {
         EventBus(logger: Logger(label: "test.eventbus"))
@@ -14,17 +12,17 @@ struct EventBusTests {
 
     private static func sampleEvent(
         _ type: SkillEventType = .vaultFileCreated,
-        tenant: UUID = UUID()
+        tenant: UUID = UUID(),
     ) -> SkillEvent {
         SkillEvent(
             type: type,
             tenantID: tenant,
-            payload: [SkillEvent.PayloadKey.vaultPath: "notes/x.md"]
+            payload: [SkillEvent.PayloadKey.vaultPath: "notes/x.md"],
         )
     }
 
     @Test
-    func subscriberReceivesPublishedEventOfMatchingType() async throws {
+    func `subscriber receives published event of matching type`() async throws {
         let bus = Self.makeBus()
         let stream = bus.subscribe(eventType: .vaultFileCreated)
         // Subscription registration is dispatched onto the actor in a Task;
@@ -40,7 +38,7 @@ struct EventBusTests {
     }
 
     @Test
-    func subscriberIgnoresEventsOfDifferentType() async throws {
+    func `subscriber ignores events of different type`() async throws {
         let bus = Self.makeBus()
         let vaultStream = bus.subscribe(eventType: .vaultFileCreated)
         try await Self.waitForSubscriberCount(bus, type: .vaultFileCreated, expected: 1)
@@ -57,7 +55,7 @@ struct EventBusTests {
     }
 
     @Test
-    func multipleSubscribersAllReceiveEvent() async throws {
+    func `multiple subscribers all receive event`() async throws {
         let bus = Self.makeBus()
         let a = bus.subscribe(eventType: .memoryUpserted)
         let b = bus.subscribe(eventType: .memoryUpserted)
@@ -73,7 +71,7 @@ struct EventBusTests {
     }
 
     @Test
-    func boundedBufferDropsOldestWhenConsumerLags() async throws {
+    func `bounded buffer drops oldest when consumer lags`() async throws {
         // Buffer cap is 64. Publish 100 events without consuming; only the
         // most recent 64 should be retained. Consume all and assert we get
         // exactly 64 deliveries, with the latest being the 100th publish.
@@ -86,7 +84,7 @@ struct EventBusTests {
             await bus.publish(SkillEvent(
                 type: .vaultFileCreated,
                 tenantID: tenant,
-                payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(i).md"]
+                payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(i).md"],
             ))
         }
 
@@ -105,7 +103,7 @@ struct EventBusTests {
     }
 
     @Test
-    func subscriberRemovedOnStreamTermination() async throws {
+    func `subscriber removed on stream termination`() async throws {
         let bus = Self.makeBus()
         do {
             // The stream must be held in a named local so it lives for the
@@ -123,7 +121,7 @@ struct EventBusTests {
     }
 
     @Test
-    func publishWithNoSubscribersIsNoop() async {
+    func `publish with no subscribers is noop`() async {
         let bus = Self.makeBus()
         await bus.publish(Self.sampleEvent(.vaultFileCreated))
         let count = await bus.subscriberCount(for: .vaultFileCreated)
@@ -140,7 +138,7 @@ struct EventBusTests {
         _ bus: EventBus,
         type: SkillEventType,
         expected: Int,
-        timeoutNanos: UInt64 = 2_000_000_000
+        timeoutNanos: UInt64 = 2_000_000_000,
     ) async throws {
         let start = DispatchTime.now().uptimeNanoseconds
         while true {

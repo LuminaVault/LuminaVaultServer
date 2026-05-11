@@ -14,7 +14,7 @@ struct M25_AddUserPrivacyNoCNOrigin: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_no_cn_origin BOOLEAN NOT NULL DEFAULT FALSE"#
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_no_cn_origin BOOLEAN NOT NULL DEFAULT FALSE"#,
         ).run()
     }
 

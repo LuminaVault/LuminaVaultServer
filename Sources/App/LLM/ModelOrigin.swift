@@ -7,7 +7,7 @@ import Foundation
 /// Together / Groq / Fireworks / DeepInfra is still `.cn` because the
 /// privacy concern is the model's training pipeline, not the inference
 /// endpoint. Hosts: see `docs/llm-models.md`.
-enum ModelOrigin: String, Sendable, Codable, CaseIterable {
+enum ModelOrigin: String, Codable, CaseIterable {
     case us
     case eu
     case cn
@@ -28,7 +28,7 @@ enum ModelOriginRegistry {
         "qwen",
         "kimi",
         "moonshot", // Kimi-2 ships under the moonshot label on some hosts
-        "yi-",      // 01.AI Yi family
+        "yi-", // 01.AI Yi family
     ]
 
     /// Returns true when the given model identifier contains any CN-origin
@@ -44,7 +44,7 @@ enum ModelOriginRegistry {
     /// fallback path is selected from the surviving (non-CN) models.
     static func filter<C: Collection>(
         _ models: C,
-        privacyNoCNOrigin: Bool
+        privacyNoCNOrigin: Bool,
     ) -> [C.Element] where C.Element: ModelIdentifying {
         guard privacyNoCNOrigin else { return Array(models) }
         return models.filter { !isCNOrigin($0.modelID) }
@@ -58,5 +58,7 @@ protocol ModelIdentifying {
 }
 
 extension String: ModelIdentifying {
-    var modelID: String { self }
+    var modelID: String {
+        self
+    }
 }

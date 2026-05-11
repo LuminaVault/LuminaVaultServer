@@ -355,16 +355,16 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
             HermesGatewayAdapter(
                 baseURL: hermesURL,
                 session: .shared,
-                logger: routingLogger
-            )
+                logger: routingLogger,
+            ),
         ],
-        logger: routingLogger
+        logger: routingLogger,
     )
     let modelRouter: any ModelRouter = SingleGatewayModelRouter()
     let routedTransport = RoutedLLMTransport(
         registry: providerRegistry,
         router: modelRouter,
-        logger: routingLogger
+        logger: routingLogger,
     )
 
     let llmService = DefaultHermesLLMService(
@@ -388,7 +388,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
             transport: routedTransport,
             model: services.hermesDefaultModel,
             profileUsername: username,
-            logger: Logger(label: "lv.context-router")
+            logger: Logger(label: "lv.context-router"),
         )
     }
     let contextRouterMiddleware = ContextRouterMiddleware(
@@ -398,10 +398,10 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
             EntitlementChecker.entitled(
                 tier: UserTier(rawValue: user.tier) ?? .trial,
                 override: TierOverride(rawValue: user.tierOverride) ?? .none,
-                for: .privacyContextRouter
+                for: .privacyContextRouter,
             )
         },
-        logger: Logger(label: "lv.context-router")
+        logger: Logger(label: "lv.context-router"),
     )
 
     let llmGroup = router.group("/v1/llm")
@@ -802,7 +802,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         username: user.username,
         isVerified: user.isVerified,
         privacyNoCNOrigin: user.privacyNoCNOrigin,
-        contextRouting: user.contextRouting
+        contextRouting: user.contextRouting,
     )
 }
 
@@ -812,7 +812,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
 /// Takes effect on the next inbound request — ModelRouter + ContextRouter
 /// read from `User` on each request, no caching to invalidate.
 private func updatePrivacyHandler(
-    fluent: Fluent
+    fluent: Fluent,
 ) -> @Sendable (Request, AppRequestContext) async throws -> MeResponse {
     { req, ctx in
         let user = try ctx.requireIdentity()
@@ -830,7 +830,7 @@ private func updatePrivacyHandler(
             username: user.username,
             isVerified: user.isVerified,
             privacyNoCNOrigin: user.privacyNoCNOrigin,
-            contextRouting: user.contextRouting
+            contextRouting: user.contextRouting,
         )
     }
 }

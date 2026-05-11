@@ -178,12 +178,16 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: NSError(domain: "StubURLProtocol", code: -1))
             return
         }
-        nonisolated(unsafe) let request = request
+        // URLSession turns `URLRequest.httpBody` into `httpBodyStream` before
+        // it reaches `URLProtocol.startLoading`, so the captured request's
+        // `httpBody` is always nil for POSTs that originated as Data. Drain
+        // the stream back into Data so the test sees the body it sent.
+        let captured = Self.reconstituteBody(from: request)
         nonisolated(unsafe) let client = client
         nonisolated(unsafe) let proto = self
         Task {
             do {
-                let (response, data) = try await handler(request)
+                let (response, data) = try await handler(captured)
                 client?.urlProtocol(proto, didReceive: response, cacheStoragePolicy: .notAllowed)
                 client?.urlProtocol(proto, didLoad: data)
                 client?.urlProtocolDidFinishLoading(proto)
@@ -191,6 +195,25 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
                 client?.urlProtocol(proto, didFailWithError: error)
             }
         }
+    }
+
+    private static func reconstituteBody(from request: URLRequest) -> URLRequest {
+        if request.httpBody != nil { return request }
+        guard let stream = request.httpBodyStream else { return request }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufSize = 4096
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let read = stream.read(buffer, maxLength: bufSize)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        var copy = request
+        copy.httpBody = data
+        return copy
     }
 
     override func stopLoading() {}

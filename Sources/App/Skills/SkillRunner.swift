@@ -68,7 +68,9 @@ actor SkillRunner {
     /// real on_event skill dispatch (catalog lookup by tenant → manifests
     /// whose `metadata.on_event` includes the event type → run()).
     func startEventSubscriptions() {
-        for task in eventSubscriptions { task.cancel() }
+        for task in eventSubscriptions {
+            task.cancel()
+        }
         eventSubscriptions.removeAll()
         for type in SkillEventType.allCases {
             let stream = eventBus.subscribe(eventType: type)
@@ -88,7 +90,9 @@ actor SkillRunner {
     /// Cancels every active subscription Task. Safe to call multiple times.
     /// Wired from the App lifecycle on shutdown so streams don't leak.
     func stopEventSubscriptions() {
-        for task in eventSubscriptions { task.cancel() }
+        for task in eventSubscriptions {
+            task.cancel()
+        }
         eventSubscriptions.removeAll()
     }
 

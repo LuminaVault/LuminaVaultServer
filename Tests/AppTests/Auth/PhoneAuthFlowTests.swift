@@ -69,14 +69,14 @@ struct PhoneAuthFlowTests {
             #expect(!auth.refreshToken.isEmpty)
 
             // Verify the OAuthIdentity row landed with provider="phone".
-            let fluent = try await Self.openFluent()
-            defer { Task { try? await fluent.shutdown() } }
-            let identity = try await OAuthIdentity.query(on: fluent.db())
-                .filter(\.$tenantID == auth.userId)
-                .filter(\.$provider == "phone")
-                .first()
-            #expect(identity != nil, "expected OAuthIdentity(provider: phone) for tenant \(auth.userId)")
-            #expect(identity?.providerUserID == phone)
+            try await withTestFluent(label: "test.phone.fluent") { fluent in
+                let identity = try await OAuthIdentity.query(on: fluent.db())
+                    .filter(\.$tenantID == auth.userId)
+                    .filter(\.$provider == "phone")
+                    .first()
+                #expect(identity != nil, "expected OAuthIdentity(provider: phone) for tenant \(auth.userId)")
+                #expect(identity?.providerUserID == phone)
+            }
         }
     }
 
@@ -181,14 +181,4 @@ struct PhoneAuthFlowTests {
         }
     }
 
-    // MARK: - Helpers
-
-    private static func openFluent() async throws -> Fluent {
-        let fluent = Fluent(logger: Logger(label: "test.phone.fluent"))
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        return fluent
-    }
 }

@@ -7,14 +7,13 @@ import Testing
 /// No DB / no network. Stub adapters drive each scenario.
 @Suite(.serialized)
 struct RoutedLLMTransportTests {
-
     // MARK: - Stub adapter
 
     /// Records every chat call + plays back a programmable sequence of
     /// outcomes. Each call consumes one slot from `outcomes`; if the
     /// sequence is exhausted the test fails.
     actor StubAdapter: ProviderAdapter {
-        enum Outcome: Sendable {
+        enum Outcome {
             case success(Data)
             case transient(status: Int)
             case permanent(status: Int)
@@ -36,12 +35,12 @@ struct RoutedLLMTransportTests {
                 throw ProviderError.transient(provider: kind, status: 0, body: "stub: outcomes exhausted")
             }
             switch outcomes.removeFirst() {
-            case .success(let data): return data
-            case .transient(let status):
+            case let .success(data): return data
+            case let .transient(status):
                 throw ProviderError.transient(provider: kind, status: status, body: nil)
-            case .permanent(let status):
+            case let .permanent(status):
                 throw ProviderError.permanent(provider: kind, status: status, body: nil)
-            case .network(let err):
+            case let .network(err):
                 throw ProviderError.network(provider: kind, underlying: err)
             }
         }
@@ -52,19 +51,21 @@ struct RoutedLLMTransportTests {
     /// list it wants.
     struct FixedRouter: ModelRouter {
         let decision: ModelDecision
-        func pick(forModel _: String?, user _: User?) async -> ModelDecision { decision }
+        func pick(forModel _: String?, user _: User?) async -> ModelDecision {
+            decision
+        }
     }
 
     // MARK: - Tests
 
     @Test
-    func primarySuccessReturnsData() async throws {
+    func `primary success returns data`() async throws {
         let primary = StubAdapter(kind: .hermesGateway, outcomes: [.success(Data("OK".utf8))])
         let registry = ProviderRegistry(adapters: [primary], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .hermesGateway, fallbacks: [])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         let result = try await transport.chatCompletions(payload: Data("body".utf8), profileUsername: "alice")
         #expect(String(data: result, encoding: .utf8) == "OK")
@@ -73,14 +74,14 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
-    func transientFailoversToNext() async throws {
+    func `transient failovers to next`() async throws {
         let primary = StubAdapter(kind: .together, outcomes: [.transient(status: 429)])
         let fallback = StubAdapter(kind: .groq, outcomes: [.success(Data("FALLBACK".utf8))])
         let registry = ProviderRegistry(adapters: [primary, fallback], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         let result = try await transport.chatCompletions(payload: Data("body".utf8), profileUsername: "alice")
         #expect(String(data: result, encoding: .utf8) == "FALLBACK")
@@ -91,14 +92,14 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
-    func networkErrorFailoversToNext() async throws {
+    func `network error failovers to next`() async throws {
         let primary = StubAdapter(kind: .together, outcomes: [.network(NSError(domain: "test", code: -1))])
         let fallback = StubAdapter(kind: .groq, outcomes: [.success(Data("FALLBACK".utf8))])
         let registry = ProviderRegistry(adapters: [primary, fallback], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         _ = try await transport.chatCompletions(payload: Data("x".utf8), profileUsername: "alice")
         let primaryCalls = await primary.calls.count
@@ -108,14 +109,14 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
-    func permanentDoesNotFailover() async throws {
+    func `permanent does not failover`() async throws {
         let primary = StubAdapter(kind: .together, outcomes: [.permanent(status: 400)])
         let fallback = StubAdapter(kind: .groq, outcomes: [.success(Data("WRONG".utf8))])
         let registry = ProviderRegistry(adapters: [primary, fallback], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         await #expect(throws: (any Error).self) {
             _ = try await transport.chatCompletions(payload: Data("x".utf8), profileUsername: "alice")
@@ -125,14 +126,14 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
-    func allCandidatesExhaustedThrows() async throws {
+    func `all candidates exhausted throws`() async throws {
         let primary = StubAdapter(kind: .together, outcomes: [.transient(status: 503)])
         let fallback = StubAdapter(kind: .groq, outcomes: [.transient(status: 502)])
         let registry = ProviderRegistry(adapters: [primary, fallback], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         await #expect(throws: (any Error).self) {
             _ = try await transport.chatCompletions(payload: Data("x".utf8), profileUsername: "alice")
@@ -144,14 +145,14 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
-    func unregisteredProviderIsSkipped() async throws {
+    func `unregistered provider is skipped`() async throws {
         // Decision references `together` (not registered) → skip → fall to `groq`.
         let groq = StubAdapter(kind: .groq, outcomes: [.success(Data("OK".utf8))])
         let registry = ProviderRegistry(adapters: [groq], logger: Logger(label: "test"))
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: ModelDecision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test")
+            logger: Logger(label: "test"),
         )
         let result = try await transport.chatCompletions(payload: Data("x".utf8), profileUsername: "alice")
         #expect(String(data: result, encoding: .utf8) == "OK")
