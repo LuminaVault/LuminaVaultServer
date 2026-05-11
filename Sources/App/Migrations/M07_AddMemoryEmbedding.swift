@@ -7,11 +7,11 @@ struct M07_AddMemoryEmbedding: AsyncMigration {
         // 1536 dims = OpenAI text-embedding-3-small. Adjust if model changes.
         try await sql.raw("ALTER TABLE memories ADD COLUMN IF NOT EXISTS embedding vector(1536)").run()
         try await sql.raw("""
-            CREATE INDEX IF NOT EXISTS idx_memories_embedding
-            ON memories
-            USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
-            """).run()
+        CREATE INDEX IF NOT EXISTS idx_memories_embedding
+        ON memories
+        USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+        """).run()
         try await sql.raw("CREATE INDEX IF NOT EXISTS idx_memories_tenant_created ON memories (tenant_id, created_at DESC)").run()
     }
 

@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 
 /// Per-route rate-limit policy.
-struct RateLimitPolicy: Sendable {
+struct RateLimitPolicy {
     let max: Int
     let window: TimeInterval
     /// Builds the bucket key from the request + context. Use IP, tenantID,
@@ -22,12 +22,12 @@ struct RateLimitMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response
+        next: (Request, Context) async throws -> Response,
     ) async throws -> Response {
         let key = "rl:" + policy.keyBuilder(request, context)
         let now = Date().timeIntervalSince1970
 
-        let current: BucketState = (try? await storage.get(key: key, as: BucketState.self))
+        let current: BucketState = await (try? storage.get(key: key, as: BucketState.self))
             ?? BucketState(start: now, count: 0)
         var bucket = current
         if now - bucket.start > policy.window {
@@ -43,28 +43,41 @@ struct RateLimitMiddleware: RouterMiddleware {
             throw HTTPError(
                 .tooManyRequests,
                 headers: [.retryAfter: String(retryAfter)],
-                message: "rate limit exceeded"
+                message: "rate limit exceeded",
             )
         }
         return try await next(request, context)
     }
 }
 
-private struct BucketState: Codable, Sendable {
+private struct BucketState: Codable {
     var start: TimeInterval
     var count: Int
 }
 
 extension RateLimitPolicy {
-    /// Best-effort client IP from common proxy headers.
+    /// Best-effort client IP from common proxy headers. Internal so the
+    /// `userOrIP` keyer below (and tests) can reuse it.
     @Sendable
-    private static func ipKey(_ req: Request) -> String {
+    static func ipKey(_ req: Request) -> String {
         if let xff = req.headers[.init("x-forwarded-for")!] {
             return String(xff.split(separator: ",").first ?? "anon")
                 .trimmingCharacters(in: .whitespaces)
         }
         if let real = req.headers[.init("x-real-ip")!] { return real }
         return "anon"
+    }
+
+    /// Per-tenant key for authenticated routes; falls back to per-IP when
+    /// no identity is attached so the same policy works on auth-optional
+    /// surfaces. Bucket prefixes (`u:` / `ip:`) keep the two namespaces
+    /// disjoint so a UUID never collides with an IP literal.
+    @Sendable
+    static func userOrIPKey(_ req: Request, _ ctx: AppRequestContext) -> String {
+        if let id = ctx.identity?.id?.uuidString {
+            return "u:" + id
+        }
+        return "ip:" + ipKey(req)
     }
 
     static let registerByIP = RateLimitPolicy(max: 5, window: 60) { req, _ in ipKey(req) }
@@ -75,4 +88,43 @@ extension RateLimitPolicy {
     static let refreshByIP = RateLimitPolicy(max: 30, window: 60) { req, _ in ipKey(req) }
     static let mfaVerifyByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
     static let mfaResendByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
+    static let sendVerifyByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
+    static let confirmEmailByIP = RateLimitPolicy(max: 10, window: 300) { req, _ in ipKey(req) }
+
+    /// HER-94: Per-user policies for protected, capacity-sensitive routes.
+    /// Keyed via `userOrIPKey` so a single bad actor with one account cannot
+    /// burn the shared per-IP bucket for everyone behind the same NAT, while
+    /// still degrading gracefully if the route is ever called unauth'd.
+    static let chatByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
+    static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// HER-91: vault export streams the entire tenant tree. Expensive on
+    /// disk + bandwidth, so cap at a handful per 5-minute window per user.
+    static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, keyBuilder: userOrIPKey)
+    /// HER-85: SOUL.md is small but writes hit two filesystem paths and could
+    /// be abused to spam Hermes profile dirs. Cheap per-user bucket.
+    static let soulByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+
+    /// HER-148: each skill run can fan out to Hermes (one or more LLM calls)
+    /// plus filesystem and DB writes. Cap manual `/v1/skills/:name/run`
+    /// invocations so a user can't burn their daily Mtok budget by hammering
+    /// the endpoint. Cron-/event-triggered runs bypass this middleware.
+    /// Final window/max numbers to be tuned in HER-148 sub-tickets.
+    static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+
+    /// HER-137: phone OTP start. Each call burns an SMS, which costs real
+    /// money — toll-fraud bots target this surface. Stacked policies:
+    /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.
+    /// Apply BOTH on the `/v1/auth/phone/start` route.
+    static let phoneStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
+    static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
+
+    /// HER-138: email magic-link start. SES/Mailgun spend is equally toll-
+    /// fraud-able as SMS; abusers can also weaponize the endpoint to spam
+    /// arbitrary inboxes with OTPs. Mirror the phone policy: 3/min burst
+    /// + 10/day budget, both per IP. Apply BOTH on
+    /// `/v1/auth/email/start`.
+    static let emailMagicStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
+    static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
 }

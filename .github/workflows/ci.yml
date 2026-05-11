@@ -10,6 +10,7 @@ on:
       - 'Tests/**'
       - 'Package.swift'
       - 'Package.resolved'
+      - '.github/workflows/**'
   pull_request:
     branches-ignore:
       - main
@@ -19,6 +20,7 @@ on:
       - 'Tests/**'
       - 'Package.swift'
       - 'Package.resolved'
+      - '.github/workflows/**'
 
 jobs:
   lint:
@@ -37,7 +39,7 @@ jobs:
 
     services:
       postgres:
-        image: garapadev/postgres-postgis-pgvector:16-optimized
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_USER: hermes
           POSTGRES_PASSWORD: hermes_password
@@ -57,7 +59,7 @@ jobs:
           --health-retries 5
 
     container:
-      image: swift:6.0-noble
+      image: swift:6.3-noble
 
     steps:
       - name: Checkout
@@ -74,6 +76,12 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgres://hermes:hermes_password@postgres:5432/hermes_test
+          # Test harness reads these via TestPostgres.configuration().
+          POSTGRES_HOST: postgres
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: hermes
+          POSTGRES_PASSWORD: hermes_password
+          POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
         run: swift test --parallel

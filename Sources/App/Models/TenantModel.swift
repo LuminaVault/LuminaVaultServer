@@ -9,7 +9,9 @@ protocol TenantModel: Model {
 }
 
 extension TenantModel {
-    static var tenantIDFieldKey: FieldKey { "tenant_id" }
+    static var tenantIDFieldKey: FieldKey {
+        "tenant_id"
+    }
 
     /// Tenant-scoped query — apply BEFORE any other filter.
     static func query(on database: any Database, tenantID: UUID) -> QueryBuilder<Self> {

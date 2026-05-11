@@ -1,6 +1,6 @@
 import Foundation
 
-struct VaultPathService: Sendable {
+struct VaultPathService {
     let rootPath: String
 
     func tenantRoot(for tenantID: UUID) -> URL {

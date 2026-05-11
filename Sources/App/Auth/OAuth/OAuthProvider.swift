@@ -1,6 +1,6 @@
 import Foundation
 
-struct OAuthIdentityInfo: Sendable {
+struct OAuthIdentityInfo {
     let providerUserID: String
     let email: String
     let emailVerified: Bool

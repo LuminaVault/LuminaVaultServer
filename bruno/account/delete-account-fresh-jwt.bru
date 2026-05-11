@@ -1,0 +1,30 @@
+meta {
+  name: DELETE account (fresh JWT, no password)
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{baseUrl}}/v1/account
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {}
+}
+
+docs {
+  Works when the bearer JWT's `iat` is within the last 5 minutes.
+  Use this for OAuth-only users who have no remembered password.
+}
+
+tests {
+  test("204 No Content", function() {
+    expect(res.status).to.equal(204);
+  });
+}

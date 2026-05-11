@@ -1,12 +1,12 @@
 import Foundation
 import Hummingbird
 
-struct ChatMessage: Codable, Sendable {
+struct ChatMessage: Codable {
     let role: String
     let content: String
 }
 
-struct ChatRequest: Codable, Sendable {
+struct ChatRequest: Codable {
     let messages: [ChatMessage]
     let model: String?
     let temperature: Double?
@@ -15,7 +15,7 @@ struct ChatRequest: Codable, Sendable {
 /// Mirrors the OpenAI chat-completions response shape that the Hermes
 /// gateway is expected to emit. Fields beyond the ones we read into
 /// `ChatResponse.message` are still surfaced via `raw` for transparency.
-struct HermesUpstreamChoice: Codable, Sendable {
+struct HermesUpstreamChoice: Codable {
     let index: Int?
     let message: ChatMessage
     let finishReason: String?
@@ -27,7 +27,7 @@ struct HermesUpstreamChoice: Codable, Sendable {
     }
 }
 
-struct HermesUpstreamUsage: Codable, Sendable {
+struct HermesUpstreamUsage: Codable {
     let promptTokens: Int?
     let completionTokens: Int?
     let totalTokens: Int?
@@ -39,7 +39,7 @@ struct HermesUpstreamUsage: Codable, Sendable {
     }
 }
 
-struct HermesUpstreamResponse: Codable, Sendable {
+struct HermesUpstreamResponse: Codable {
     let id: String
     let object: String?
     let created: Int?
@@ -48,7 +48,7 @@ struct HermesUpstreamResponse: Codable, Sendable {
     let usage: HermesUpstreamUsage?
 }
 
-struct ChatResponse: Codable, ResponseEncodable, Sendable {
+struct ChatResponse: Codable, ResponseEncodable {
     let id: String
     let model: String
     let message: ChatMessage

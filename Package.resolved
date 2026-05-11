@@ -1,5 +1,5 @@
 {
-  "originHash" : "0f5a4320ccbb6fc598b02a0969d44928c68dadb9a86ed91e83f11c43eaa94712",
+  "originHash" : "10cfde9d152627771fc3a0f80eebf4a601905a4808fe21c89141660bc65ff52e",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -29,6 +29,15 @@
       }
     },
     {
+      "identity" : "compress-nio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/adam-fowler/compress-nio.git",
+      "state" : {
+        "revision" : "e1caa19077dda4b00441142ef57da3db02acd466",
+        "version" : "1.4.2"
+      }
+    },
+    {
       "identity" : "fluent-kit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor/fluent-kit.git",
@@ -44,6 +53,15 @@
       "state" : {
         "revision" : "59bff45a41d1ece1950bb8a6e0006d88c1fb6e69",
         "version" : "2.12.0"
+      }
+    },
+    {
+      "identity" : "grpc-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/grpc/grpc-swift.git",
+      "state" : {
+        "revision" : "6a8927df5a91710b414caba4f8a088dead4633db",
+        "version" : "1.27.5"
       }
     },
     {
@@ -65,12 +83,30 @@
       }
     },
     {
+      "identity" : "hummingbird-compression",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-compression.git",
+      "state" : {
+        "revision" : "947b17b1805f7cc1b83536261abf1e26d3bdfebd",
+        "version" : "2.0.0"
+      }
+    },
+    {
       "identity" : "hummingbird-fluent",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird-fluent.git",
       "state" : {
         "revision" : "45459ea5b541c6a96b87d1be848e384593b7dde3",
         "version" : "2.0.0"
+      }
+    },
+    {
+      "identity" : "hummingbird-websocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/hummingbird-websocket.git",
+      "state" : {
+        "revision" : "716c54294152c6d3301a6239a1d74db57cbcd6dc",
+        "version" : "2.6.0"
       }
     },
     {
@@ -88,7 +124,7 @@
       "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
       "state" : {
         "branch" : "main",
-        "revision" : "ab238776f4534e34367b6517adaaef634bda9ac5"
+        "revision" : "d777fa277a83d4b66400bdad5596bba3ac113e2d"
       }
     },
     {
@@ -344,6 +380,24 @@
       }
     },
     {
+      "identity" : "swift-otel",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/slashmo/swift-otel.git",
+      "state" : {
+        "revision" : "1e719806d05b13fe1976903ce3d468a5f11c8ed2",
+        "version" : "0.12.0"
+      }
+    },
+    {
+      "identity" : "swift-protobuf",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-protobuf.git",
+      "state" : {
+        "revision" : "81558271e243f8f47dfe8e9fdd55f3c2b5413f68",
+        "version" : "1.37.0"
+      }
+    },
+    {
       "identity" : "swift-service-context",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-service-context.git",
@@ -371,12 +425,30 @@
       }
     },
     {
+      "identity" : "swift-w3c-trace-context",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-otel/swift-w3c-trace-context.git",
+      "state" : {
+        "revision" : "3da4b79545b38cf5551f1c525d800756f38cb697",
+        "version" : "1.0.0-beta.3"
+      }
+    },
+    {
       "identity" : "swift-webauthn",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/swift-webauthn.git",
       "state" : {
         "revision" : "909cf4193cde7d64196553c4245ab647a68aaaca",
         "version" : "1.0.0-beta.1"
+      }
+    },
+    {
+      "identity" : "swift-websocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/swift-websocket.git",
+      "state" : {
+        "revision" : "ca48d46c25f8fa948d37eaa480c73172182cf90f",
+        "version" : "1.5.0"
       }
     },
     {
@@ -393,8 +465,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jpsim/Yams",
       "state" : {
-        "revision" : "deaf82e867fa2cbd3cd865978b079bfcf384ac28",
-        "version" : "6.2.1"
+        "revision" : "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
+        "version" : "5.4.0"
       }
     }
   ],

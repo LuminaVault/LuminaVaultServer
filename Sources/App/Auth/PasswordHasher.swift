@@ -8,7 +8,9 @@ protocol PasswordHasher: Sendable {
 struct BcryptPasswordHasher: PasswordHasher {
     let cost: UInt8
 
-    init(cost: UInt8 = 12) { self.cost = cost }
+    init(cost: UInt8 = 12) {
+        self.cost = cost
+    }
 
     func hash(_ password: String) async -> String {
         Bcrypt.hash(password, cost: cost)

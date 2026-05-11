@@ -21,14 +21,15 @@ private struct GoogleIDClaims: JWTPayload {
 
 struct GoogleOAuthProvider: OAuthProvider {
     let name = "google"
-    let audience: String      // your OAuth 2.0 client_id
+    let audience: String // your OAuth 2.0 client_id
     let issuers: Set<String> = ["https://accounts.google.com", "accounts.google.com"]
     let jwks: JWKSCache
 
     init(audience: String,
-         jwksURL: URL = URL(string: "https://www.googleapis.com/oauth2/v3/certs")!) {
+         jwksURL: URL = URL(string: "https://www.googleapis.com/oauth2/v3/certs")!)
+    {
         self.audience = audience
-        self.jwks = JWKSCache(url: jwksURL)
+        jwks = JWKSCache(url: jwksURL)
     }
 
     func verify(idToken: String) async throws -> OAuthIdentityInfo {
@@ -42,7 +43,7 @@ struct GoogleOAuthProvider: OAuthProvider {
         return OAuthIdentityInfo(
             providerUserID: payload.sub.value,
             email: email,
-            emailVerified: verified
+            emailVerified: verified,
         )
     }
 }

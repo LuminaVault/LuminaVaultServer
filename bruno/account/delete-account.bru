@@ -1,0 +1,27 @@
+meta {
+  name: DELETE account (GDPR)
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{baseUrl}}/v1/account
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "password": "{{password}}"
+  }
+}
+
+tests {
+  test("204 No Content", function() {
+    expect(res.status).to.equal(204);
+  });
+}

@@ -11,7 +11,7 @@ struct M08_CreateHermesProfile: AsyncMigration {
             .field("last_error", .string)
             .field("created_at", .datetime)
             .field("updated_at", .datetime)
-            .unique(on: "tenant_id")              // 1:1 with User
+            .unique(on: "tenant_id") // 1:1 with User
             .unique(on: "hermes_profile_id")
             .create()
     }

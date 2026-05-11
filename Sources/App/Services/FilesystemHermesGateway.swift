@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 
-enum HermesGatewayError: Error, Sendable {
+enum HermesGatewayError: Error {
     case usernameCollision
     case ioFailure(String)
 }
@@ -47,7 +47,7 @@ struct FilesystemHermesGateway: HermesGateway {
                 username: username,
                 tenantID: tenantID,
                 createdAt: Date(),
-                schemaVersion: 1
+                schemaVersion: 1,
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -88,7 +88,7 @@ struct FilesystemHermesGateway: HermesGateway {
     }
 }
 
-private struct HermesProfileConfig: Codable, Sendable {
+private struct HermesProfileConfig: Codable {
     let username: String
     let tenantID: UUID
     let createdAt: Date

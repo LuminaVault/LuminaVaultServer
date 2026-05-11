@@ -3,7 +3,7 @@ import Foundation
 enum UsernamePolicy {
     static let pattern = #"^[a-z0-9][a-z0-9-]{2,30}$"#
     static let reserved: Set<String> = [
-        "admin", "root", "hermes", "system", "support", "api", "www", "luminavault"
+        "admin", "root", "hermes", "system", "support", "api", "www", "luminavault",
     ]
 
     static func normalize(_ raw: String) -> String {

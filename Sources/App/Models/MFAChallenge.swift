@@ -26,7 +26,7 @@ final class MFAChallenge: Model, TenantModel, @unchecked Sendable {
         channel: String,
         destination: String,
         codeHash: String,
-        expiresAt: Date
+        expiresAt: Date,
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -35,7 +35,7 @@ final class MFAChallenge: Model, TenantModel, @unchecked Sendable {
         self.destination = destination
         self.codeHash = codeHash
         self.expiresAt = expiresAt
-        self.failedAttempts = 0
-        self.resendCount = 0
+        failedAttempts = 0
+        resendCount = 0
     }
 }

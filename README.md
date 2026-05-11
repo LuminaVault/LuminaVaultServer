@@ -58,6 +58,83 @@ docker build -t obsidian-claude-brain-server .
 docker run -p 8080:8080 obsidian-claude-brain-server
 ```
 
+Local compose uses a PostgreSQL 18 image with pgvector and stores its data in `data/postgres18/`. If you previously ran the older local stack, delete the old `data/postgres/` volume before starting the new one.
+
+## Redis in MVP
+
+**Short answer: No — you do **not** need Redis for the MVP (and probably not for the first 6–12 months).**
+
+You can safely **remove Redis entirely** right now. This simplifies your `docker-compose.yml`, reduces operational overhead, and makes the whole stack lighter without losing anything important for LuminaVault’s current scope.
+
+### Why We Originally Included Redis
+We added it for three classic reasons:
+1. **Rate limiting** (protect Hermes + Postgres from abuse)
+2. **Session / token blacklisting** (if you ever revoke JWTs)
+3. **Caching** (frequent query results, compiled wiki summaries, etc.)
+
+None of these are **must-haves** for MVP.
+
+### Current Reality for LuminaVault
+
+| Feature                  | Do you need Redis for it? | Alternative (good enough for MVP)                  | Verdict |
+|--------------------------|---------------------------|----------------------------------------------------|---------|
+| Rate limiting            | Nice-to-have             | In-memory rate limiter (Hummingbird built-in) or simple Postgres table | **No** |
+| JWT sessions             | Not needed               | Stateless JWT (what we’re already using)           | **No** |
+| Caching                  | Not critical             | Postgres materialized views or simple in-memory cache in Hummingbird | **No** |
+| Background jobs          | Future only              | Later (when you add async kb-compile queue)       | Future |
+| Real-time / pub-sub      | Future only              | WebSockets (if ever added)                         | Future |
+
+Your traffic profile for the next year will be:
+- Mostly single-user or small-team personal vaults
+- Occasional `kb-compile` and queries
+- Low concurrency
+
+A single Hetzner VPS can easily handle this without Redis.
+
+### Recommendation
+
+**Remove Redis now** (cleanest stack):
+
+Updated minimal `docker-compose.yml` services:
+```yaml
+services:
+  postgres:
+    # ... (unchanged)
+
+  hermes:
+    # ... (unchanged)
+
+  hummingbird:
+    # ... (unchanged)
+    # Remove REDIS_URL from environment
+```
+
+**What to use instead right now:**
+
+1. **Rate limiting** → Use the official Hummingbird in-memory rate limiter:
+   ```swift
+   app.add(middleware: RateLimitMiddleware(limit: 120, per: .minute))
+   ```
+   (or the Redis-backed one later if you ever need it)
+
+2. **Simple caching** → Hummingbird has a built-in `Cache` protocol with in-memory backend. You can swap to Redis-backed later with one line change.
+
+3. **Future background work** → When you need queues, add Redis (or PostgreSQL LISTEN/NOTIFY, or just a simple Swift actor queue) at that time.
+
+### When You *Should* Re-add Redis
+
+Re-introduce it only when you hit one of these milestones:
+- You have >50 concurrent active users doing frequent compiles/queries
+- You add background jobs (async kb-compile, nightly pattern analysis, etc.)
+- You implement usage-based billing that needs reliable counters
+- You add real-time WebSockets with many open connections
+
+At that point it becomes worth the extra container.
+
+**Bottom line for you right now**  
+Keep the stack as simple as possible:  
+**Postgres + Hermes + Hummingbird** (and the shared package we just set up).
+
 ## API contract
 
 The API is defined in [`Sources/AppAPI/openapi.yaml`](Sources/AppAPI/openapi.yaml).  
@@ -156,3 +233,166 @@ Required env vars:
 | `HERMES_GATEWAY_URL` | Hermes container endpoint |
 | `FLUENT_ENABLED` | Set `false` in tests to skip Fluent wiring |
 | `FLUENT_AUTOMIGRATE` | Set `false` to skip migrate() at boot |
+
+## Operations
+
+### Backup & Recovery
+
+**Automated backups** (Docker)
+
+```bash
+# Run at 2 AM daily (or via cron)
+docker exec hermes-postgres pg_dump -U hermes hermes_db \
+  --format=custom --compress=9 \
+  > backups/hermes_db_$(date +%Y%m%d).dump
+
+# Keep 30 days of rolling backups
+find backups -name 'hermes_db_*.dump' -mtime +30 -delete
+```
+
+**Restore from backup**
+
+```bash
+docker exec hermes-postgres pg_restore -U hermes -d hermes_db \
+  --format=custom --clean --if-exists backups/hermes_db_20260501.dump
+```
+
+**Point-in-time recovery**
+
+Postgres WAL archiving (in `docker-compose.yml`):
+```yaml
+postgres:
+  environment:
+    POSTGRES_INITDB_ARGS: >
+      -c wal_level=replica
+      -c archive_mode=on
+      -c archive_command='test ! -f /wal_archive/%f && cp %p /wal_archive/%f'
+  volumes:
+    - ./data/postgres18:/var/lib/postgresql
+    - ./data/wal_archive:/wal_archive  # WAL segment archive
+```
+
+Then restore to a specific timestamp:
+```bash
+docker exec hermes-postgres pg_basebackup -U hermes -D - | \
+  pg_wal_replay_timeline -t /path/to/timeline_history
+```
+
+### Monitoring & Observability
+
+**Key metrics to watch** (via Prometheus, Datadog, or NewRelic)
+
+| Metric | Alert Threshold | Meaning |
+|--------|-----------------|---------|
+| `postgres.connections.active` | > 90 | Close to connection pool limit |
+| `postgres.query.duration_ms.p95` | > 500 | Slow queries affecting UX |
+| `postgres.table_size_bytes{table="memories"}` | > 5GB | Vector table growing fast (review TTL) |
+| `hummingbird.http.requests.duration_ms.p99` | > 1000 | API latency spike |
+| `hermes.profile_provision_duration_ms` | > 5000 | Hermes container slow |
+| `app.errors.tenant_isolation` | > 0 | **CRITICAL**: cross-tenant data leak |
+| `app.errors.rate_limit_bypass` | > 0 | **CRITICAL**: rate limit broken |
+
+**Logging for tenant-scoped failures**
+
+All logs include:
+- `request_id` (UUID, propagated via middleware)
+- `tenant_id` (from JWT `sub` claim, propagated via context)
+- `user_id` (if authenticated)
+- `error_code` (structured error type)
+
+Example structured log entry:
+```json
+{
+  "level": "error",
+  "message": "hermes profile provisioning failed",
+  "request_id": "a1b2c3d4-...",
+  "tenant_id": "user-123-...",
+  "service": "HermesProfileService",
+  "error_code": "HERMES_TIMEOUT",
+  "duration_ms": 5120
+}
+```
+
+**Enable query logs** (PostgreSQL)
+
+```yaml
+postgres:
+  environment:
+    POSTGRES_INITDB_ARGS: >
+      -c log_statement=all
+      -c log_min_duration_statement=200
+```
+
+Logs go to container stdout; ship to your log aggregator (CloudWatch, Loki, Datadog).
+
+### Tenant Isolation Audit
+
+Run quarterly to verify no cross-tenant queries leak data:
+
+```sql
+-- Check that all TenantModel tables have tenant_id NOT NULL
+SELECT table_name, column_name
+  FROM information_schema.columns
+ WHERE table_name IN ('refresh_tokens', 'passwords', 'mfa_challenges', 'memories', 'hermes_profiles')
+   AND column_name = 'tenant_id'
+   AND is_nullable = 'YES'  -- should be empty!
+;
+
+-- Verify all TenantModel tables have tenant_id indexed
+SELECT indexname, indexdef FROM pg_indexes
+ WHERE tablename IN ('memories', 'refresh_tokens', 'oauth_identities')
+   AND indexdef LIKE '%tenant_id%'
+;
+```
+
+### Row-Level Security (RLS) — Future Migration
+
+LuminaVault currently relies on **application-layer tenant filtering** via `TenantModel.query(on:context:)`. This is safe for single-tenant isolation but **not sufficient** for true multi-tenancy if you ever:
+- Add on-premise deployments (customer runs entire stack)
+- Host multiple SaaS customers with strong contractual isolation
+- Hire employees who need RBAC within a tenant
+
+**Plan for RLS migration** (no code changes needed):
+
+1. **Enable RLS** on all `TenantModel` tables:
+   ```sql
+   ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
+   -- ... etc
+   ```
+
+2. **Create a policy** that mirrors your application filter:
+   ```sql
+   CREATE POLICY memories_tenant_isolation ON memories
+     USING (tenant_id = CURRENT_USER_ID)  -- or set via set_config('app.tenant_id', ...)
+     WITH CHECK (tenant_id = CURRENT_USER_ID);
+   ```
+
+3. **Pass tenant_id in transaction context** (from Fluent):
+   ```swift
+   try await db.transaction { tx in
+     try await tx.query(raw: "SET app.tenant_id = '\(tenantID.uuidString)'").run()
+     // ... all queries in this transaction now auto-filtered by RLS
+   }
+   ```
+
+4. **Test RLS bypass** (verify no SQL injection can leak rows):
+   ```bash
+   # Try to read another tenant's row
+   SELECT * FROM memories WHERE tenant_id != CURRENT_USER_ID;  -- 0 rows (RLS policy blocks it)
+   ```
+
+At that point, your application filter becomes **defense-in-depth**, and Postgres itself enforces isolation.
+
+### Deployment Checklist
+
+Before going live on a VPS:
+
+- [ ] **Backups** — test restore from full and incremental backups
+- [ ] **Monitoring** — set up alerts for connection pool, query latency, errors
+- [ ] **TLS/HTTPS** — enable in Hummingbird + reverse proxy (nginx/Caddy)
+- [ ] **Database hardening** — change default Postgres password, create read-only replica role for backups
+- [ ] **Vault filesystem** — ensure `tenants/` directory is readable only by app (mode 750)
+- [ ] **Secrets rotation** — plan for JWT key rotation (`JWT_KID` versioning + dual-key acceptance)
+- [ ] **Rate limiting** — verify per-route limits are tuned to your traffic profile
+- [ ] **Tenant isolation audit** — run the SQL checks above before launch

@@ -1,0 +1,27 @@
+meta {
+  name: DELETE vault file
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{baseUrl}}/v1/vault/files/{{vaultPath}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  Soft-delete: file is renamed to `_deleted_<ts>_<flattened-path>` inside
+  the tenant raw root and the `vault_files` row is dropped.
+  `vaultPath` is a tenant-relative path (e.g. `notes/today.md`).
+}
+
+tests {
+  test("204 No Content", function() {
+    expect(res.status).to.equal(204);
+  });
+}

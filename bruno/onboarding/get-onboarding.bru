@@ -1,0 +1,24 @@
+meta {
+  name: GET onboarding
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/v1/onboarding
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("signup latched after register", function() {
+    expect(res.body.signupCompleted).to.equal(true);
+  });
+}

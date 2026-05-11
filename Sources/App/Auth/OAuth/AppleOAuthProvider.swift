@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import JWTKit
 
 private struct AppleIDClaims: JWTPayload {
@@ -20,17 +23,18 @@ private struct AppleIDClaims: JWTPayload {
 }
 
 /// Apple emits `email_verified` as either Bool or "true"/"false" string.
-struct BoolOrStringClaim: Codable, Sendable {
+struct BoolOrStringClaim: Codable {
     let value: Bool
     init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let b = try? container.decode(Bool.self) { self.value = b; return }
+        if let b = try? container.decode(Bool.self) { value = b; return }
         if let s = try? container.decode(String.self) {
-            self.value = (s.lowercased() == "true")
+            value = (s.lowercased() == "true")
             return
         }
-        self.value = false
+        value = false
     }
+
     func encode(to encoder: any Encoder) throws {
         var c = encoder.singleValueContainer()
         try c.encode(value)
@@ -40,10 +44,12 @@ struct BoolOrStringClaim: Codable, Sendable {
 actor JWKSCache {
     private var keys: JWTKeyCollection?
     private var fetchedAt: Date?
-    private let ttl: TimeInterval = 60 * 60 * 12   // 12h
+    private let ttl: TimeInterval = 60 * 60 * 12 // 12h
     private let url: URL
 
-    init(url: URL) { self.url = url }
+    init(url: URL) {
+        self.url = url
+    }
 
     func current() async throws -> JWTKeyCollection {
         if let keys, let fetchedAt, Date().timeIntervalSince(fetchedAt) < ttl {
@@ -52,22 +58,23 @@ actor JWKSCache {
         let (data, _) = try await URLSession.shared.data(from: url)
         let collection = JWTKeyCollection()
         try await collection.add(jwksJSON: String(decoding: data, as: UTF8.self))
-        self.keys = collection
-        self.fetchedAt = Date()
+        keys = collection
+        fetchedAt = Date()
         return collection
     }
 }
 
 struct AppleOAuthProvider: OAuthProvider {
     let name = "apple"
-    let audience: String          // your Apple Sign in client_id (Service ID)
+    let audience: String // your Apple Sign in client_id (Service ID)
     let issuer: String = "https://appleid.apple.com"
     let jwks: JWKSCache
 
     init(audience: String,
-         jwksURL: URL = URL(string: "https://appleid.apple.com/auth/keys")!) {
+         jwksURL: URL = URL(string: "https://appleid.apple.com/auth/keys")!)
+    {
         self.audience = audience
-        self.jwks = JWKSCache(url: jwksURL)
+        jwks = JWKSCache(url: jwksURL)
     }
 
     func verify(idToken: String) async throws -> OAuthIdentityInfo {
@@ -81,7 +88,7 @@ struct AppleOAuthProvider: OAuthProvider {
         return OAuthIdentityInfo(
             providerUserID: payload.sub.value,
             email: email,
-            emailVerified: verified
+            emailVerified: verified,
         )
     }
 }

@@ -17,7 +17,7 @@ struct DefaultMFAService: MFAService {
     let fluent: Fluent
     let sender: any EmailOTPSender
     let generator: any OTPCodeGenerator
-    let challengeLifetime: TimeInterval = 60 * 5     // 5 min
+    let challengeLifetime: TimeInterval = 60 * 5 // 5 min
     let maxFailedAttempts: Int = 5
 
     func issue(forUser user: User, purpose: String = "login") async throws -> UUID {
@@ -29,7 +29,7 @@ struct DefaultMFAService: MFAService {
             channel: "email",
             destination: user.email,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(challengeLifetime)
+            expiresAt: Date().addingTimeInterval(challengeLifetime),
         )
         row.lastSentAt = Date()
         try await row.save(on: fluent.db())
@@ -52,7 +52,7 @@ struct DefaultMFAService: MFAService {
         } else {
             row.failedAttempts += 1
             if row.failedAttempts >= maxFailedAttempts {
-                row.consumedAt = Date()    // burn the challenge
+                row.consumedAt = Date() // burn the challenge
             }
             try await row.save(on: fluent.db())
             return false

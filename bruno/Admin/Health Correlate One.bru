@@ -1,0 +1,36 @@
+meta {
+  name: Admin — Health Correlate (single user)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/admin/health/correlate/{{userId}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+}
+
+docs {
+  HER-146 — single-user correlation re-run (ops debugging).
+
+  Response `status`:
+    - "saved"
+    - "skipped_insufficient_history"
+    - "skipped_already_ran"
+    - "skipped_no_recent_events"
+    - "skipped_no_synthesis"
+}
+
+tests {
+  test("200 OK", function() {
+    expect(res.status).to.equal(200);
+  });
+  test("status enum", function() {
+    expect(["saved","skipped_insufficient_history","skipped_already_ran","skipped_no_recent_events","skipped_no_synthesis"])
+      .to.include(res.body.status);
+  });
+}
