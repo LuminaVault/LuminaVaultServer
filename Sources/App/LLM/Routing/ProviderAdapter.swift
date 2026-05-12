@@ -18,4 +18,12 @@ protocol ProviderAdapter: Sendable {
     /// threaded through for Hermes-style per-tenant profile routing; non-
     /// Hermes providers may ignore it.
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata
+}
+
+extension ProviderAdapter {
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
+        let data = try await chatCompletions(payload: payload, profileUsername: profileUsername)
+        return HermesChatTransportMetadata(data: data, headers: [:])
+    }
 }

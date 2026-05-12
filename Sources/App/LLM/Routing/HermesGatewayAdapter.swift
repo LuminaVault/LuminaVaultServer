@@ -16,6 +16,10 @@ struct HermesGatewayAdapter: ProviderAdapter {
     let logger: Logger
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    }
+
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
         let url = baseURL
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
@@ -40,7 +44,11 @@ struct HermesGatewayAdapter: ProviderAdapter {
         }
         let status = http.statusCode
         if (200 ..< 300).contains(status) {
-            return data
+            var headers: [String: String] = [:]
+            for (key, value) in http.allHeaderFields {
+                headers[String(describing: key).lowercased()] = String(describing: value)
+            }
+            return HermesChatTransportMetadata(data: data, headers: headers)
         }
         let preview = String(data: data.prefix(512), encoding: .utf8)
         // 429 = rate-limited, retryable. 5xx = upstream broken, retryable.

@@ -623,6 +623,11 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     )
     let skillRunner = SkillRunner(
         catalog: skillCatalog,
+        transport: routedTransport,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: DeterministicEmbeddingService(),
+        apns: pushService,
+        defaultModel: services.hermesDefaultModel,
         fluent: services.fluent,
         vaultPaths: vaultPaths,
         capGuard: skillRunCapGuard,

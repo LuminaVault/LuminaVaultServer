@@ -37,6 +37,10 @@ struct RoutedLLMTransport: HermesChatTransport {
     }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    }
+
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
         let requestedModel = Self.extractModel(from: payload)
         let user = await currentUser()
         let decision = await router.pick(forModel: requestedModel, user: user)
@@ -48,7 +52,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 continue
             }
             do {
-                return try await adapter.chatCompletions(payload: payload, profileUsername: profileUsername)
+                return try await adapter.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
                 logger.warning("provider \(candidate.rawValue) failed (recoverable): \(providerError)")

@@ -24,6 +24,19 @@ struct MemorySearchAnswer {
 /// drive the agent loop without a live container.
 protocol HermesChatTransport: Sendable {
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata
+}
+
+struct HermesChatTransportMetadata: Sendable {
+    let data: Data
+    let headers: [String: String]
+}
+
+extension HermesChatTransport {
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
+        let data = try await chatCompletions(payload: payload, profileUsername: profileUsername)
+        return HermesChatTransportMetadata(data: data, headers: [:])
+    }
 }
 
 struct URLSessionHermesChatTransport: HermesChatTransport {
@@ -32,6 +45,10 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
     let logger: Logger
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    }
+
+    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
         let url = baseURL
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
@@ -47,7 +64,11 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
             logger.error("hermes upstream chat failed: \(preview)")
             throw HTTPError(.badGateway, message: "hermes upstream error")
         }
-        return data
+        var headers: [String: String] = [:]
+        for (key, value) in http.allHeaderFields {
+            headers[String(describing: key).lowercased()] = String(describing: value)
+        }
+        return HermesChatTransportMetadata(data: data, headers: headers)
     }
 }
 
