@@ -83,6 +83,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M28_CreateAchievementProgress())
         await fluent.migrations.add(M29_CreateUserHermesConfig())
         await fluent.migrations.add(M30_AddVaultFileProcessedAt())
+        await fluent.migrations.add(M31_CreateUsageMeter())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -120,6 +121,10 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         apnsKeyID: reader.string(forKey: "apns.keyId", default: ""),
         apnsPrivateKeyPath: reader.string(forKey: "apns.privateKeyPath", default: ""),
         apnsEnvironment: reader.string(forKey: "apns.environment", default: "development"),
+        revenuecatWebhookSecret: reader.string(forKey: "revenuecat.webhookSecret", default: ""),
+        usageFreeMtokDaily: reader.double(forKey: "usage.freeMtokDaily", default: 1.0),
+        usagePerSkillMtokDaily: reader.double(forKey: "usage.perSkillMtokDaily", default: 0.2),
+        usageDegradeModel: reader.string(forKey: "usage.degradeModel", default: "hermes-3-small"),
         corsAllowedOrigins: reader.string(forKey: "cors.allowedOrigins", default: "")
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -400,10 +405,19 @@ func buildRouter(
     // `gemini*` model hints to the Gemini provider and everything
     // else back to the Hermes gateway.
     let modelRouter: any ModelRouter = RoutingModelRouter()
+    let usageMeterService = UsageMeterService(
+        fluent: services.fluent,
+        freeMtokDaily: services.usageFreeMtokDaily,
+        perSkillMtokDaily: services.usagePerSkillMtokDaily,
+        degradeModel: services.usageDegradeModel,
+        logger: Logger(label: "lv.usage-meter"),
+    )
+
     let routedTransport = RoutedLLMTransport(
         registry: providerRegistry,
         router: modelRouter,
         logger: routingLogger,
+        usageMeter: usageMeterService,
     )
 
     // HER-200 — use the routed transport for the user-facing chat
@@ -418,6 +432,7 @@ func buildRouter(
         telemetry: llmTelemetry,
         notificationService: pushService,
         achievements: achievementsService,
+        usageMeter: usageMeterService,
     )
     // HER-172 ContextRouter — feature-gated by `users.context_routing`.
     // Constructed unconditionally; the middleware short-circuits when the
@@ -690,6 +705,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         capGuard: skillRunCapGuard,
         eventBus: eventBus,
+        usageMeter: usageMeterService,
         logger: skillsLogger,
     )
     // HER-171 — fire-and-forget; the actor stores the subscription Tasks
