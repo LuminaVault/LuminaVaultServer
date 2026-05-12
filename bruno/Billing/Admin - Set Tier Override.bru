@@ -1,0 +1,22 @@
+meta {
+  name: Admin - Set Tier Override
+  type: http
+  seq: 1
+}
+
+put {
+  url: {{baseUrl}}/v1/admin/users/{{userId}}/tier-override
+  body: json
+  auth: none
+}
+
+headers {
+  X-Admin-Token: {{adminToken}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "tierOverride": "ultimate"
+  }
+}

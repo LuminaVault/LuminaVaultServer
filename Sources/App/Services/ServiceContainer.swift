@@ -45,6 +45,10 @@ struct ServiceContainer {
     let corsAllowedOrigins: [String]
     /// Admin shared-secret. Empty = admin endpoints return 404.
     let adminToken: String
+    /// Billing gate. Defaults false so enforcement can ship dark.
+    let billingEnforcementEnabled: Bool
+    /// Local cold-storage root for lapsed vault archival.
+    let billingColdStoragePath: String
     /// X (Twitter) OAuth 2.0 client ID — audit/audience reference; iOS does
     /// the actual token flow client-side and forwards the access_token.
     let xClientID: String
