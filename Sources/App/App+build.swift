@@ -85,6 +85,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M30_AddVaultFileProcessedAt())
         await fluent.migrations.add(M31_CreateUsageMeter())
         await fluent.migrations.add(M32_CreateBillingEventLog())
+        await fluent.migrations.add(M33_AddVaultFileMetadata())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -503,6 +504,26 @@ func buildRouter(
     let memoryReadGroup = router.group("/v1/memory")
         .add(middleware: jwtAuthenticator)
     memoryController.addReadRoutes(to: memoryReadGroup)
+
+    // HER-149: URL capture with async enrichment (YouTube oEmbed, X scraper, GenericOG).
+    let urlEnrichmentService = URLEnrichmentService(
+        vaultPaths: vaultPaths,
+        fluent: services.fluent,
+        logger: Logger(label: "lv.capture"),
+    )
+    let captureController = CaptureController(
+        vaultPaths: vaultPaths,
+        fluent: services.fluent,
+        eventBus: eventBus,
+        achievements: achievementsService,
+        enrichmentService: urlEnrichmentService,
+        logger: Logger(label: "lv.capture"),
+    )
+    let captureGroup = router.group("/v1/capture")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
+    captureController.addRoutes(to: captureGroup)
 
     // Query (natural-language semantic search) — protected.
     let queryController = QueryController(service: memoryService, achievements: achievementsService)
