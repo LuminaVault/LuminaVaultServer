@@ -63,4 +63,8 @@ struct ServiceContainer {
     /// pin `magic.fixedOtp` to drive `/v1/auth/email/verify` deterministically.
     /// MUST stay empty in prod.
     let magicLinkFixedOTP: String
+    /// RevenueCat server-to-server webhook shared secret. The webhook
+    /// controller compares this (constant-time) against the `Authorization`
+    /// header on each inbound POST. Empty = webhook endpoint returns 503.
+    let revenuecatWebhookSecret: String
 }

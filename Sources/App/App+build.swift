@@ -81,6 +81,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M27_AddUserTimezone())
         await fluent.migrations.add(M28_CreateAchievementProgress())
         await fluent.migrations.add(M29_CreateUserHermesConfig())
+        await fluent.migrations.add(M30_CreateBillingEvents())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -130,6 +131,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: ""),
         phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: ""),
         magicLinkFixedOTP: reader.string(forKey: "magic.fixedOtp", default: ""),
+        revenuecatWebhookSecret: reader.string(forKey: "revenuecat.webhookSecret", default: ""),
     )
 
     let router = try buildRouter(services: services)
@@ -684,6 +686,20 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
             context.logger.debug("websocket closed", metadata: ["error": .string("\(error)")])
         }
     }
+
+    // RevenueCat billing webhook — NOT behind JWT. External callers
+    // authenticate via shared secret in the Authorization header.
+    let revenueCatBillingService = RevenueCatBillingService(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.billing"),
+    )
+    let revenueCatWebhookController = RevenueCatWebhookController(
+        billingService: revenueCatBillingService,
+        webhookSecret: services.revenuecatWebhookSecret,
+        logger: Logger(label: "lv.billing"),
+    )
+    let billingGroup = router.group("/v1/billing")
+    revenueCatWebhookController.addRoutes(to: billingGroup)
 
     return router
 }
