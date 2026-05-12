@@ -4,6 +4,7 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdTesting
+import LuminaVaultShared
 import Testing
 
 @Suite(.serialized)
@@ -110,7 +111,7 @@ struct EnforcementTests {
     }
 
     @Test
-    func `ultimate only capability returns upsell paywall hint`() throws {
+    func `ultimate only capability returns upsell paywall hint`() {
         #expect(EntitlementMiddleware.paywallID(for: .skillVaultRun) == "ultimate_upsell")
         #expect(EntitlementMiddleware.paywallID(for: .privacyBYOKey) == "ultimate_upsell")
         #expect(EntitlementMiddleware.paywallID(for: .healthIngest) == "default")

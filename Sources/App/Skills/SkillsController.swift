@@ -53,7 +53,9 @@ struct SkillsController {
 struct EntitlementDeniedError: HTTPResponseError {
     let capability: Capability
 
-    var status: HTTPResponse.Status { .init(code: 402, reasonPhrase: "Payment Required") }
+    var status: HTTPResponse.Status {
+        .init(code: 402, reasonPhrase: "Payment Required")
+    }
 
     func response(from _: Request, context _: some RequestContext) throws -> Response {
         try EntitlementMiddleware.paywallResponse(for: capability)

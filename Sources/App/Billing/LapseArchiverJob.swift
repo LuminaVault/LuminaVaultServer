@@ -170,7 +170,7 @@ actor LapseArchiverService: Service {
 
     func run() async throws {
         logger.info("billing.lapse_archiver.service started")
-        while !Task.isShuttingDownGracefully && !Task.isCancelled {
+        while !Task.isShuttingDownGracefully, !Task.isCancelled {
             do {
                 try await cancelWhenGracefulShutdown {
                     try await Task.sleep(for: .seconds(self.secondsUntilNextRun(now: Date())))
