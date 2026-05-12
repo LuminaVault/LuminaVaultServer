@@ -1,0 +1,21 @@
+meta {
+  name: Me - Billing Status
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/v1/me/billing
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  Returns the authenticated user's entitlement summary:
+    tier, tier_expires_at, tier_override, in_trial, days_remaining, enforcement_enabled.
+  iOS reads this instead of crossing the RC SDK + JWT separately.
+}

@@ -1,0 +1,33 @@
+meta {
+  name: RevenueCat Webhook - Renewal
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/v1/billing/revenuecat-webhook
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{revenuecatWebhookSecret}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "event": {
+      "id": "rc-evt-renewal-{{$randomUUID}}",
+      "type": "RENEWAL",
+      "app_user_id": "{{userId}}",
+      "product_id": "luminavault_pro_monthly",
+      "expiration_at_ms": 1800000000000
+    }
+  }
+}
+
+docs {
+  Sends a signed RENEWAL webhook. Server should bump tier_expires_at forward.
+  Tier remains pro/ultimate; no tier transition on renewal.
+}
