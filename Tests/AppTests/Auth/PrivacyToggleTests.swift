@@ -2,8 +2,8 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// HER-176 E2E tests for `PUT /v1/me/privacy` and the privacy field in
 /// `GET /v1/me`. Run with `docker compose up -d postgres`.

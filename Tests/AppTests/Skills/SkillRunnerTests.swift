@@ -49,7 +49,7 @@ struct SkillRunnerTests {
         do {
             let result = try await body(Harness(
                 fluent: fluent,
-                tenantID: try user.requireID(),
+                tenantID: user.requireID(),
                 username: username,
                 root: tmpRoot,
             ))
@@ -213,7 +213,7 @@ struct SkillRunnerTests {
         }
     }
 
-    private struct Harness: Sendable {
+    private struct Harness {
         let fluent: Fluent
         let tenantID: UUID
         let username: String
@@ -295,7 +295,7 @@ private actor SkillScriptedTransport: HermesChatTransport {
         case plainContent(String)
     }
 
-    struct Call: Sendable {
+    struct Call {
         let profileUsername: String
         let payload: Data
     }
@@ -338,11 +338,11 @@ private actor SkillScriptedTransport: HermesChatTransport {
     private static func encode(_ step: Step) -> Data {
         switch step {
         case let .toolCall(name, arguments):
-            return Data("""
+            Data("""
             {"id":"chatcmpl-test","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"\(name)","arguments":\(String(reflecting: arguments))}}]},"finish_reason":"tool_calls"}]}
             """.utf8)
         case let .plainContent(content):
-            return Data("""
+            Data("""
             {"id":"chatcmpl-test","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":\(String(reflecting: content))},"finish_reason":"stop"}]}
             """.utf8)
         }

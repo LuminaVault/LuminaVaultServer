@@ -2,8 +2,8 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// HER-88 end-to-end tests for vault list / delete / move endpoints.
 /// Run with `docker compose up -d postgres`.

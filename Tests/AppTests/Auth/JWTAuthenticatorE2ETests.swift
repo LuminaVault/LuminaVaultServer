@@ -3,8 +3,8 @@ import Foundation
 import Hummingbird
 import HummingbirdTesting
 import JWTKit
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// Drives the full middleware chain through `app.test(.router)` so a real
 /// JWT travels in `Authorization: Bearer ...` and JWTAuthenticator hydrates

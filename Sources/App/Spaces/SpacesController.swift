@@ -8,15 +8,15 @@ extension SpaceListResponse: ResponseEncodable {}
 /// Server-only helper to create a SpaceDTO from a Fluent model.
 extension SpaceDTO {
     static func fromSpace(_ space: Space) throws -> SpaceDTO {
-        SpaceDTO(
-            id: try space.requireID(),
+        try SpaceDTO(
+            id: space.requireID(),
             name: space.name,
             slug: space.slug,
             description: space.spaceDescription,
             color: space.color,
             icon: space.icon,
             createdAt: space.createdAt,
-            updatedAt: space.updatedAt
+            updatedAt: space.updatedAt,
         )
     }
 }

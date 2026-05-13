@@ -1,9 +1,9 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 import Metrics
 import Tracing
-import LuminaVaultShared
 
 /// HER-200 — `HermesLLMService` implementation backed by
 /// `RoutedLLMTransport`. Unlike `DefaultHermesLLMService` which hits
@@ -65,14 +65,15 @@ struct RoutedHermesLLMService: HermesLLMService {
                 }
                 successCounter.increment()
                 durationTimer.recordNanoseconds(
-                    Int64(DispatchTime.now().uptimeNanoseconds - started)
+                    Int64(DispatchTime.now().uptimeNanoseconds - started),
                 )
                 logger.info("llm reply ready model=\(decoded.model) profile=\(profileUsername)")
                 return ChatResponse(
                     id: decoded.id,
                     model: decoded.model,
                     message: assistant,
-                    raw: decoded)
+                    raw: decoded,
+                )
             } catch let httpErr as HTTPError {
                 failureCounter.increment()
                 throw httpErr

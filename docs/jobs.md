@@ -14,7 +14,7 @@ work, not server jobs at all.
 
 | # | Job | Cadence | Owner | When to wire | Recommended impl |
 |---|---|---|---|---|---|
-| 1 | **Auto kb-compile per user** — sweep users with unprocessed captures, run kb-compile on their behalf so memories are always current. | nightly 02:00 user-local | server | Day 1 of beta | swift-cron ServiceLifecycle Service iterating `vault_files WHERE processed_at IS NULL`. Requires column added to schema. |
+| 1 | **Auto kb-compile per user** — sweep users with unprocessed captures, run kb-compile on their behalf so memories are always current. | nightly 02:00 user-local | server | **Shipped** | `AutoKBCompileJob` ServiceLifecycle service iterating `vault_files WHERE processed_at IS NULL`. Uses `users.timezone`, stamps `processed_at` only after successful Hermes compile, and retries transient failures at the next scheduled run. |
 | 2 | **Daily Lumina brief push** — synthesize "yesterday's themes" + "today's nudges" into a memo, push as APNS digest. | 07:00 user-local | server → APNS | Day 7 of beta (after #1 has data) | swift-cron + `APNSNotificationService.notifyDigest`. Use the user's stored timezone. |
 | 3 | **Hermes profile reconcile** — rebuild missing profile rows / dirs, reap orphans. | 04:00 daily | ops | Already shipped reconciler — run when needed | Host cron: `curl -X POST -H "X-Admin-Token: $T" /v1/admin/hermes-profiles/reconcile`. |
 | 4 | **Orphan vault file reaper** — find `vault_files` rows whose disk file is missing (or vice versa), soft-delete the orphan. | weekly | server | Once first incident occurs | swift-cron sweeping both surfaces. Soft-rename to `_deleted_<ts>_<original>` for 30-day grace. |
@@ -82,3 +82,16 @@ Route: `POST /v1/skills/:name/run` (jwt + `skillRunByUser` rate-limit).
 Once HER-167…HER-173 land, jobs #1 (kb-compile), #2 (digest push), #6
 (weekly-memo) and #9 (capture-enrich) are superseded by the equivalent
 skills and these entries can be retired from this catalog.
+
+### Status: auto kb-compile shipped
+
+`AutoKBCompileJob` is registered in `appServices` when Fluent is enabled and
+`jobs.autoKbCompile.enabled` is not `false`.
+
+Config:
+
+- `jobs.autoKbCompile.enabled` — default `true`
+- `jobs.autoKbCompile.hour` — default `2`
+- `jobs.autoKbCompile.minute` — default `0`
+- `jobs.autoKbCompile.maxConcurrentUsers` — default `2`
+- `jobs.autoKbCompile.batchLimit` — default `50`

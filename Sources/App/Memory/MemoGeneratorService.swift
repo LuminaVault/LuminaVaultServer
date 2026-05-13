@@ -369,6 +369,7 @@ actor MemoGeneratorService {
             contentType: "text/markdown",
             sizeBytes: Int64(data.count),
             sha256: digest,
+            processedAt: nil,
         )
         try await row.save(on: fluent.db())
 

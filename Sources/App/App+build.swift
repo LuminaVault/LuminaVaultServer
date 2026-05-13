@@ -8,13 +8,13 @@ import HummingbirdFluent
 import HummingbirdWebSocket
 import JWTKit
 import Logging
+import LuminaVaultShared
 import Metrics
 import OpenAPIHummingbird
 import OTel
 import OTLPGRPC
 import ServiceLifecycle
 import Tracing
-import LuminaVaultShared
 
 ///  Build application
 /// - Parameter reader: configuration reader
@@ -82,6 +82,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M27_AddUserTimezone())
         await fluent.migrations.add(M28_CreateAchievementProgress())
         await fluent.migrations.add(M29_CreateUserHermesConfig())
+        await fluent.migrations.add(M30_AddVaultFileProcessedAt())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -134,17 +135,12 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         geminiAPIKey: reader.string(forKey: "gemini.apiKey", default: ""),
     )
 
-    let router = try buildRouter(services: services)
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
+    let router = try buildRouter(services: services, managedServices: &appServices)
     if let otelServices {
         appServices.append(otelServices.metrics)
         appServices.append(otelServices.tracer)
     }
-    // TODO: HER-170 — surface CronScheduler from buildRouter (or
-    // re-construct it here once skill catalog/runner are exposed via
-    // ServiceContainer) and append to appServices so its run() loop is
-    // managed by the ServiceGroup. Scaffold leaves it un-managed; its
-    // current run() is a no-op, so deferring is safe.
     return Application(
         router: router,
         server: .http1WebSocketUpgrade(webSocketRouter: router),
@@ -156,6 +152,16 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
 
 /// Build router
 func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext> {
+    var managedServices: [any Service] = []
+    return try buildRouter(services: services, managedServices: &managedServices)
+}
+
+/// Build router and surface any ServiceLifecycle-managed background services
+/// constructed alongside route dependencies.
+func buildRouter(
+    services: ServiceContainer,
+    managedServices _: inout [any Service],
+) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
     router.addMiddleware {
         TracingMiddleware()
@@ -625,9 +631,7 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // Skills runtime (HER-148) — generic skill runner, per-tenant catalog,
     // cron scheduler, in-process event bus, optional context router.
     // Scaffold only: handler returns 501 until HER-169 lands. CronScheduler
-    // is constructed but NOT added to appServices yet (no-op run() means
-    // the rest of the surface won't ship a half-baked tick loop). See the
-    // TODO: in `buildApplication` for the lifecycle wiring follow-up.
+    // drives the kb-compile skill on its declared cron schedule.
     // HER-193 — per-skill daily run cap guard. Reads cap values from
     // each manifest's `metadata.daily_run_cap`; SkillRunner calls
     // checkAndIncrement before LLM dispatch and recordFailure on error

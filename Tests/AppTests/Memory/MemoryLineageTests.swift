@@ -5,8 +5,8 @@ import Hummingbird
 import HummingbirdFluent
 import HummingbirdTesting
 import Logging
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// HER-150 E2E tests for memory lineage: `GET /v1/memory/{id}/lineage`.
 ///

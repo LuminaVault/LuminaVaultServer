@@ -5,8 +5,8 @@ import Hummingbird
 import HummingbirdFluent
 import HummingbirdTesting
 import Logging
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// HER-138 E2E tests for `POST /v1/auth/email/start` + `/email/verify`.
 ///
@@ -190,5 +190,4 @@ struct EmailMagicLinkFlowTests {
             ) { #expect($0.status == .unauthorized) }
         }
     }
-
 }

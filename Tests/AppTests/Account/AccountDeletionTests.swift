@@ -7,9 +7,9 @@ import HummingbirdFluent
 import HummingbirdTesting
 import JWTKit
 import Logging
+import LuminaVaultShared
 import SQLKit
 import Testing
-import LuminaVaultShared
 
 /// HER-92 end-to-end tests for `DELETE /v1/account`.
 /// Run with `docker compose up -d postgres`.

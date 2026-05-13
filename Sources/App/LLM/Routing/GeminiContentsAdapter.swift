@@ -37,12 +37,12 @@ struct GeminiContentsAdapter: ProviderAdapter {
 
     func chatCompletionsWithMetadata(
         payload: Data,
-        profileUsername: String,
+        profileUsername _: String,
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the OpenAI payload
         guard
             var openAI = try? JSONSerialization.jsonObject(with: payload)
-                as? [String: Any],
+            as? [String: Any],
             let rawMessages = openAI["messages"] as? [[String: Any]]
         else {
             throw ProviderError.permanent(
@@ -234,7 +234,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
                         "parameters": function["parameters"] ?? [:],
                     ]
                     geminiTools.append(
-                        ["function_declarations": [declaration]]
+                        ["function_declarations": [declaration]],
                     )
                 }
             }
@@ -281,14 +281,15 @@ struct GeminiContentsAdapter: ProviderAdapter {
                 var fnArgs: [String: Any] = [:]
                 if let argsStr = function["arguments"] as? String,
                    let argsData = argsStr.data(using: .utf8),
-                   let parsed = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any] {
+                   let parsed = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any]
+                {
                     fnArgs = parsed
                 }
 
                 let functionCall: [String: Any] = [
                     "name": fnName,
                     "args": fnArgs,
-                    "_callId": id,  // stored as metadata for round-trip
+                    "_callId": id, // stored as metadata for round-trip
                 ]
                 parts.append(functionCall)
             }
@@ -319,7 +320,8 @@ struct GeminiContentsAdapter: ProviderAdapter {
         // Try to parse content as JSON for rich response
         if let text = msg["content"] as? String,
            let data = text.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) {
+           let json = try? JSONSerialization.jsonObject(with: data)
+        {
             contentResponse = json as? [String: Any] ?? contentResponse
         }
 
@@ -340,7 +342,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     ) -> [String: Any] {
         guard
             let json = try? JSONSerialization.jsonObject(with: body)
-                as? [String: Any]
+            as? [String: Any]
         else {
             return fallbackErrorResponse(
                 status: 502,
@@ -366,7 +368,8 @@ struct GeminiContentsAdapter: ProviderAdapter {
                 var toolCalls: [[String: Any]] = []
 
                 if let content = candidate["content"] as? [String: Any],
-                   let parts = content["parts"] as? [[String: Any]] {
+                   let parts = content["parts"] as? [[String: Any]]
+                {
                     for part in parts {
                         if let text = part["text"] as? String {
                             messageContent += text
@@ -377,12 +380,12 @@ struct GeminiContentsAdapter: ProviderAdapter {
                             let callId = fnCall["_callId"] as? String
                                 ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
 
-                            let argsStr: String
-                            if let argsData = try? JSONSerialization.data(withJSONObject: args),
-                               let s = String(data: argsData, encoding: .utf8) {
-                                argsStr = s
+                            let argsStr: String = if let argsData = try? JSONSerialization.data(withJSONObject: args),
+                                                     let s = String(data: argsData, encoding: .utf8)
+                            {
+                                s
                             } else {
-                                argsStr = "{}"
+                                "{}"
                             }
 
                             toolCalls.append([
@@ -399,7 +402,8 @@ struct GeminiContentsAdapter: ProviderAdapter {
 
                 // Safety rating annotation (append to content if blocked)
                 if let finish = candidate["finishReason"] as? String,
-                   finish == "SAFETY" || finish == "BLOCKLIST" || finish == "PROHIBITED_CONTENT" {
+                   finish == "SAFETY" || finish == "BLOCKLIST" || finish == "PROHIBITED_CONTENT"
+                {
                     if let safetyRatings = candidate["safetyRatings"] as? [[String: Any]] {
                         let flags = safetyRatings.compactMap { rating -> String? in
                             guard let category = rating["category"] as? String,
@@ -450,7 +454,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
         }
 
         let now = Int(Date().timeIntervalSince1970)
-        let response: [String: Any] = [
+        return [
             "id": UUID().uuidString,
             "object": "chat.completion",
             "created": now,
@@ -458,29 +462,27 @@ struct GeminiContentsAdapter: ProviderAdapter {
             "choices": choices,
             "usage": usageObj,
         ]
-
-        return response
     }
 
     private static func mapFinishReason(_ geminiReason: String) -> String {
         switch geminiReason {
         case "STOP":
-            return "stop"
+            "stop"
         case "MAX_TOKENS":
-            return "length"
+            "length"
         case "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT":
-            return "content_filter"
+            "content_filter"
         case "RECITATION":
-            return "content_filter"
+            "content_filter"
         case "FINISH_REASON_UNSPECIFIED", "OTHER":
-            return "stop"
+            "stop"
         default:
-            return "stop"
+            "stop"
         }
     }
 
     private static func fallbackErrorResponse(
-        status: Int,
+        status _: Int,
         message: String,
         model: String,
     ) -> [String: Any] {

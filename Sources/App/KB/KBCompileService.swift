@@ -1,7 +1,9 @@
 import Crypto
+import FluentKit
 import Foundation
 import Hummingbird
 import Logging
+import SQLKit
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
@@ -148,6 +150,11 @@ actor KBCompileService {
         }
 
         logger.info("kb-compile wrote \(writtenFiles.count) files (\(totalBytes) bytes) for tenant \(tenantID)")
+        let processedRowIDs = try await upsertVaultFileRows(
+            tenantID: tenantID,
+            files: writtenFiles,
+            processedAt: nil,
+        )
 
         // 2. Drive Hermes through the agent loop.
         let summary = try await runCompileLoop(
@@ -156,10 +163,68 @@ actor KBCompileService {
             blocks: compiledTextBlocks,
             hint: hint,
         )
+        try await markVaultFilesProcessed(ids: processedRowIDs, at: Date())
 
         // 3. Reload memories created during the loop. We can't trivially
         // distinguish new from existing without per-call tracking; the loop
         // keeps a list itself.
+        return InternalKBCompileResult(
+            writtenFiles: writtenFiles,
+            memories: summary.memories,
+            summary: summary.text,
+        )
+    }
+
+    func compileExistingVaultFiles(
+        tenantID: UUID,
+        profileUsername: String,
+        rows: [VaultFile],
+        hint: String?,
+    ) async throws -> InternalKBCompileResult {
+        guard !rows.isEmpty else { throw KBCompileError.noFiles }
+
+        let rawRoot = vaultPaths.rawDirectory(for: tenantID)
+        var writtenFiles: [InternalKBCompileWrittenFile] = []
+        var compiledTextBlocks: [(path: String, content: String, contentType: String)] = []
+        var totalBytes = 0
+        var rowIDs: [UUID] = []
+
+        for row in rows {
+            let rowID = try row.requireID()
+            let safeRelative = try VaultController.sanitizePath(row.path)
+            let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)
+            let payload = try Data(contentsOf: target)
+            guard payload.count <= maxFileSize else {
+                throw KBCompileError.fileTooLarge(path: safeRelative, limit: maxFileSize)
+            }
+            totalBytes += payload.count
+            guard totalBytes <= maxBatchBytes else {
+                throw HTTPError(.contentTooLarge, message: "batch exceeds \(maxBatchBytes) bytes")
+            }
+
+            writtenFiles.append(InternalKBCompileWrittenFile(
+                path: safeRelative,
+                size: payload.count,
+                contentType: row.contentType,
+                sha256: row.sha256,
+            ))
+            rowIDs.append(rowID)
+
+            if Self.isTextLike(contentType: row.contentType),
+               let text = String(data: payload, encoding: .utf8)
+            {
+                compiledTextBlocks.append((safeRelative, text, row.contentType))
+            }
+        }
+
+        logger.info("kb-compile processing \(rows.count) existing files (\(totalBytes) bytes) for tenant \(tenantID)")
+        let summary = try await runCompileLoop(
+            tenantID: tenantID,
+            profileUsername: profileUsername,
+            blocks: compiledTextBlocks,
+            hint: hint,
+        )
+        try await markVaultFilesProcessed(ids: rowIDs, at: Date())
         return InternalKBCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
@@ -405,6 +470,51 @@ actor KBCompileService {
     private static func isTextLike(contentType: String) -> Bool {
         let mime = contentType.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? contentType.lowercased()
         return mime.hasPrefix("text/")
+    }
+
+    private func upsertVaultFileRows(
+        tenantID: UUID,
+        files: [InternalKBCompileWrittenFile],
+        processedAt: Date?,
+    ) async throws -> [UUID] {
+        var ids: [UUID] = []
+        for file in files {
+            let db = memories.fluent.db()
+            if let existing = try await VaultFile.query(on: db, tenantID: tenantID)
+                .filter(\.$path == file.path)
+                .first()
+            {
+                existing.contentType = file.contentType
+                existing.sizeBytes = Int64(file.size)
+                existing.sha256 = file.sha256
+                existing.processedAt = processedAt
+                try await existing.save(on: db)
+                try ids.append(existing.requireID())
+            } else {
+                let row = VaultFile(
+                    tenantID: tenantID,
+                    path: file.path,
+                    contentType: file.contentType,
+                    sizeBytes: Int64(file.size),
+                    sha256: file.sha256,
+                    processedAt: processedAt,
+                )
+                try await row.save(on: db)
+                try ids.append(row.requireID())
+            }
+        }
+        return ids
+    }
+
+    private func markVaultFilesProcessed(ids: [UUID], at date: Date) async throws {
+        guard let sql = memories.fluent.db() as? any SQLDatabase, !ids.isEmpty else { return }
+        let literal = "ARRAY[" + ids.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"
+        try await sql.raw("""
+        UPDATE vault_files
+        SET processed_at = \(bind: date),
+            updated_at = updated_at
+        WHERE id = ANY(\(unsafeRaw: literal))
+        """).run()
     }
 
     private static func encodeJSON(_ value: Any) -> String {

@@ -3,8 +3,8 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
-import SQLKit
 import LuminaVaultShared
+import SQLKit
 
 /// HER-146 outcome of a single per-user correlation run.
 enum HealthCorrelationOutcome: Equatable {

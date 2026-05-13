@@ -28,7 +28,7 @@ protocol HermesChatTransport: Sendable {
     func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata
 }
 
-struct HermesChatTransportMetadata: Sendable {
+struct HermesChatTransportMetadata {
     let data: Data
     let headers: [String: String]
 }
