@@ -2,14 +2,11 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdFluent
+import LuminaVaultShared
+
+extension DeviceRegistrationResponse: ResponseEncodable {}
 
 struct DeviceRegistrationRequest: Codable {
-    let token: String
-    let platform: String
-}
-
-struct DeviceRegistrationResponse: Codable, ResponseEncodable {
-    let id: UUID
     let token: String
     let platform: String
 }

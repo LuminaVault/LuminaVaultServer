@@ -3,6 +3,7 @@ import Hummingbird
 import Logging
 import Metrics
 import Tracing
+import LuminaVaultShared
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking

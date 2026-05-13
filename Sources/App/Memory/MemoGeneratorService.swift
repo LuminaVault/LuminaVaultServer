@@ -4,6 +4,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking

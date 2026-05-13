@@ -4,58 +4,36 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
-struct VaultUploadResponse: Codable, ResponseEncodable {
-    let path: String
-    let size: Int
-    let contentType: String
-    let sha256: String
-}
+// MARK: - Server-side conformances
 
-/// Wire DTO for a single `vault_files` row. Path is tenant-relative
-/// (matches the `path` column; on-disk location is `<rawRoot>/<path>`).
-struct VaultFileDTO: Codable, ResponseEncodable {
-    let id: UUID
-    let path: String
-    let contentType: String
-    let sizeBytes: Int64
-    let sha256: String
-    let spaceId: UUID?
-    let createdAt: Date?
-    let updatedAt: Date?
+extension VaultUploadResponse: ResponseEncodable {}
+extension VaultFileDTO: ResponseEncodable {}
+extension VaultFileListResponse: ResponseEncodable {}
 
-    init(_ row: VaultFile) throws {
-        id = try row.requireID()
-        path = row.path
-        contentType = row.contentType
-        sizeBytes = row.sizeBytes
-        sha256 = row.sha256
-        spaceId = row.spaceID
-        createdAt = row.createdAt
-        updatedAt = row.updatedAt
-    }
-}
-
-struct VaultFileListResponse: Codable, ResponseEncodable {
-    let files: [VaultFileDTO]
-    let limit: Int
-    /// `createdAt` of the oldest item in the returned page. Pass it back as
-    /// `?before=<iso>` to fetch the next (older) page. `nil` when the list
-    /// is empty or shorter than `limit`.
-    let nextBefore: Date?
-}
+// MARK: - Server-local request DTOs
 
 struct VaultMoveRequest: Codable {
     let path: String
     let newPath: String
 }
 
-/// Per-tenant file uploads to the raw vault directory.
-///
-/// Layout: `<vaultRoot>/tenants/<userID>/raw/<path>`
-///
-/// Endpoints (HER-87 upload + HER-88 browse / delete / move):
-/// - `POST   /v1/vault/files?path=notes/today.md` — upload (whitelisted MIME)
+/// Server-only: convenience init from the Fluent `VaultFile` model.
+extension VaultFileDTO {
+    static func fromRow(_ row: VaultFile) throws -> VaultFileDTO {
+        VaultFileDTO(
+            id: try row.requireID(),
+            path: row.path,
+            contentType: row.contentType,
+            sizeBytes: row.sizeBytes,
+            sha256: row.sha256,
+            spaceId: row.spaceID,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt
+        )
+    }
+}
 /// - `GET    /v1/vault/files`                     — paginated list (HER-88)
 /// - `DELETE /v1/vault/files/**`                  — soft-delete (HER-88)
 /// - `POST   /v1/vault/files/move`                — rename within tenant root (HER-88)
@@ -221,7 +199,7 @@ struct VaultController {
         }
 
         let rows = try await query.all()
-        let dtos = try rows.map(VaultFileDTO.init)
+        let dtos = try rows.map(VaultFileDTO.fromRow)
         return VaultFileListResponse(
             files: dtos,
             limit: limit,
@@ -317,7 +295,7 @@ struct VaultController {
         row.path = to
         try await row.save(on: db)
         logger.info("vault move tenant=\(tenantID) from=\(from) to=\(to)")
-        return try VaultFileDTO(row)
+        return try VaultFileDTO.fromRow(row)
     }
 
     // MARK: - Export (HER-91)

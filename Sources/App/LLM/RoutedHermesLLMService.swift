@@ -3,6 +3,7 @@ import Hummingbird
 import Logging
 import Metrics
 import Tracing
+import LuminaVaultShared
 
 /// HER-200 — `HermesLLMService` implementation backed by
 /// `RoutedLLMTransport`. Unlike `DefaultHermesLLMService` which hits

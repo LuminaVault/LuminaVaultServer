@@ -1,37 +1,10 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
-/// Catalog metadata + per-user progress joined into a single response.
-struct AchievementsListResponse: Codable, ResponseEncodable {
-    struct SubDTO: Codable {
-        let key: String
-        let label: String
-        let target: Int64
-        let progress: Int64
-        let unlockedAt: Date?
-    }
-
-    struct ArchetypeDTO: Codable {
-        let key: String
-        let label: String
-        let sub: [SubDTO]
-    }
-
-    let catalogVersion: Int
-    let archetypes: [ArchetypeDTO]
-}
-
-/// Recent-unlock history feed. Order: most-recent unlock first.
-struct AchievementsRecentResponse: Codable, ResponseEncodable {
-    struct UnlockDTO: Codable {
-        let key: String
-        let label: String
-        let unlockedAt: Date
-    }
-
-    let unlocks: [UnlockDTO]
-}
+extension AchievementsListResponse: ResponseEncodable {}
+extension AchievementsRecentResponse: ResponseEncodable {}
 
 /// `GET /v1/achievements` and `GET /v1/achievements/recent` — read-only
 /// views over `achievement_progress` for the JWT-authenticated tenant.

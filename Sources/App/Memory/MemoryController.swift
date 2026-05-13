@@ -1,15 +1,20 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
+
+// MARK: - Server-side conformances + convenience
+
+extension MemoryUpsertResponse: ResponseEncodable {}
+extension MemorySearchResponse: ResponseEncodable {}
+extension MemorySearchHitDTO: ResponseEncodable {}
+extension MemoryListResponse: ResponseEncodable {}
+extension MemoryLineageResponse: ResponseEncodable {}
+extension MemoryLineageSourceDTO: ResponseEncodable {}
+extension MemoryDTO: ResponseEncodable {}
 
 struct MemoryUpsertRequest: Codable {
     let content: String
-}
-
-struct MemoryUpsertResponse: Codable, ResponseEncodable {
-    let memoryId: UUID
-    let content: String
-    let summary: String
 }
 
 struct MemorySearchRequest: Codable {
@@ -17,37 +22,16 @@ struct MemorySearchRequest: Codable {
     let limit: Int?
 }
 
-struct MemorySearchHitDTO: Codable {
-    let id: UUID
-    let content: String
-    let distance: Float
-    let createdAt: Date?
-}
-
-struct MemorySearchResponse: Codable, ResponseEncodable {
-    let hits: [MemorySearchHitDTO]
-    let summary: String
-}
-
-/// Single-memory representation for list / get / patch responses.
-struct MemoryDTO: Codable, ResponseEncodable {
-    let id: UUID
-    let content: String
-    let tags: [String]
-    let createdAt: Date?
-
-    init(_ memory: Memory) throws {
-        id = try memory.requireID()
-        content = memory.content
-        tags = memory.tags ?? []
-        createdAt = memory.createdAt
+/// Server-only helper to create a MemoryDTO from a Fluent model.
+extension MemoryDTO {
+    static func fromMemory(_ memory: Memory) throws -> MemoryDTO {
+        MemoryDTO(
+            id: try memory.requireID(),
+            content: memory.content,
+            tags: memory.tags ?? [],
+            createdAt: memory.createdAt
+        )
     }
-}
-
-struct MemoryListResponse: Codable, ResponseEncodable {
-    let memories: [MemoryDTO]
-    let limit: Int
-    let offset: Int
 }
 
 /// PATCH body. All fields optional. `content` change triggers re-embed.
@@ -55,23 +39,6 @@ struct MemoryListResponse: Codable, ResponseEncodable {
 struct MemoryPatchRequest: Codable {
     let content: String?
     let tags: [String]?
-}
-
-/// HER-150: response for `GET /v1/memory/{id}/lineage`. `source` is nil
-/// when the memory has no `source_vault_file_id` (older rows, direct
-/// API writes without context) or when the source file row has been
-/// hard-deleted. `trace` is a human-readable string the client can
-/// surface verbatim ("Hermes learned this from your <date> note at …").
-struct MemoryLineageSourceDTO: Codable {
-    let vaultFileId: UUID
-    let path: String
-    let createdAt: Date?
-}
-
-struct MemoryLineageResponse: Codable, ResponseEncodable {
-    let memoryId: UUID
-    let source: MemoryLineageSourceDTO?
-    let trace: String
 }
 
 /// Routes the user's authenticated requests through the Hermes tool-calling
@@ -167,7 +134,7 @@ struct MemoryController {
             offset: offset,
         )
         return try MemoryListResponse(
-            memories: rows.map(MemoryDTO.init),
+            memories: rows.map(MemoryDTO.fromMemory),
             limit: limit,
             offset: offset,
         )
@@ -180,7 +147,7 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: user.requireID(), id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return try MemoryDTO(row)
+        return try MemoryDTO.fromMemory(row)
     }
 
     @Sendable
@@ -222,7 +189,7 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return try MemoryDTO(row)
+        return try MemoryDTO.fromMemory(row)
     }
 
     /// HER-150: Returns the source vault file (when known) the memory was

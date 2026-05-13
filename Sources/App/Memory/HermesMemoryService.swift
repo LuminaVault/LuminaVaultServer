@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking

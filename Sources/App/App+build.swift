@@ -14,6 +14,7 @@ import OTel
 import OTLPGRPC
 import ServiceLifecycle
 import Tracing
+import LuminaVaultShared
 
 ///  Build application
 /// - Parameter reader: configuration reader
