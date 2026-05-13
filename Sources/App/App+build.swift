@@ -130,6 +130,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: ""),
         phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: ""),
         magicLinkFixedOTP: reader.string(forKey: "magic.fixedOtp", default: ""),
+        geminiAPIKey: reader.string(forKey: "gemini.apiKey", default: ""),
     )
 
     let router = try buildRouter(services: services)
@@ -350,14 +351,23 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // adding `together` / `groq` / `openRouter` etc. is a registration
     // line each (HER-162..HER-164).
     let routingLogger = Logger(label: "lv.routing")
+    var providerAdapters: [any ProviderAdapter] = [
+        HermesGatewayAdapter(
+            baseURL: hermesURL,
+            session: .shared,
+            logger: routingLogger,
+        ),
+    ]
+    // HER-199 — register Gemini provider when API key is configured.
+    if !services.geminiAPIKey.isEmpty {
+        providerAdapters.append(GeminiContentsAdapter(
+            apiKey: services.geminiAPIKey,
+            session: .shared,
+            logger: routingLogger,
+        ))
+    }
     let providerRegistry = ProviderRegistry(
-        adapters: [
-            HermesGatewayAdapter(
-                baseURL: hermesURL,
-                session: .shared,
-                logger: routingLogger,
-            ),
-        ],
+        adapters: providerAdapters,
         logger: routingLogger,
     )
     let modelRouter: any ModelRouter = SingleGatewayModelRouter()

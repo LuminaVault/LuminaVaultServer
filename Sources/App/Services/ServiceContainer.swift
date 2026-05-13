@@ -63,4 +63,6 @@ struct ServiceContainer {
     /// pin `magic.fixedOtp` to drive `/v1/auth/email/verify` deterministically.
     /// MUST stay empty in prod.
     let magicLinkFixedOTP: String
+    /// HER-199: Google Gemini API key. Empty = Gemini provider not registered.
+    let geminiAPIKey: String
 }
