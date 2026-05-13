@@ -86,7 +86,7 @@ struct APNSNotificationServiceTests {
             )
             let response = ChatResponse(
                 id: "test", model: "test",
-                message: ChatMessage(role: "assistant", content: "Hello there"),
+                message: ChatMessage(role: "assistant", content: "Hello there", tool_calls: nil),
                 raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
             )
             try await service.notifyLLMReply(userID: userID, username: slug, response: response)

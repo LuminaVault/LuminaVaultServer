@@ -370,16 +370,20 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
         adapters: providerAdapters,
         logger: routingLogger,
     )
-    let modelRouter: any ModelRouter = SingleGatewayModelRouter()
+    // HER-200 — model-based router for user-facing chat. Routes
+    // `gemini*` model hints to the Gemini provider and everything
+    // else back to the Hermes gateway.
+    let modelRouter: any ModelRouter = RoutingModelRouter()
     let routedTransport = RoutedLLMTransport(
         registry: providerRegistry,
         router: modelRouter,
         logger: routingLogger,
     )
 
-    let llmService = DefaultHermesLLMService(
-        baseURL: hermesURL,
-        session: .shared,
+    // HER-200 — use the routed transport for the user-facing chat
+    // endpoint so model-based routing + failover apply to LLM calls.
+    let llmService = RoutedHermesLLMService(
+        transport: routedTransport,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm"),
     )
