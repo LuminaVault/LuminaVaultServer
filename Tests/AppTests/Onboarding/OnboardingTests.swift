@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Testing
+import LuminaVaultShared
 
 /// End-to-end tests for `GET /v1/onboarding` and `PATCH /v1/onboarding`
 /// (HER-93). Run with `docker compose up -d postgres`.

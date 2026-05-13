@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Testing
+import LuminaVaultShared
 
 /// HER-91 end-to-end tests for `GET /v1/vault/export`.
 /// Run with `docker compose up -d postgres`.

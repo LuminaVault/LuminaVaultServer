@@ -6,6 +6,7 @@ import HummingbirdFluent
 import HummingbirdTesting
 import Logging
 import Testing
+import LuminaVaultShared
 
 /// HER-137 E2E tests for `POST /v1/auth/phone/start` + `/phone/verify`.
 ///

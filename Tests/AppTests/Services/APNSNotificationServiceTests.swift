@@ -6,6 +6,7 @@ import Foundation
 import HummingbirdFluent
 import Logging
 import Testing
+import LuminaVaultShared
 
 /// Drives `APNSNotificationService` through the new `APNSPushSender` test
 /// seam. Verifies fan-out to multiple device tokens, dead-token reaping,
