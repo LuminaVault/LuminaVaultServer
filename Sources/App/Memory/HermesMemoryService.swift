@@ -421,7 +421,7 @@ actor HermesMemoryService {
                         tenantID: tenantID,
                         payload: payload,
                     )
-                    await eventBus.publish(event)
+                    eventBus.publish(event)
                 }
                 let payload: [String: String] = [
                     "status": "ok",

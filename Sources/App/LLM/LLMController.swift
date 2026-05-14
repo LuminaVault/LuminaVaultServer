@@ -15,6 +15,33 @@ struct LLMController {
         router.post("/chat", use: chat)
     }
 
+    /// HER-200 H2 — schedules the APNS push side-effect for a completed
+    /// chat as a structured `Task`. Errors are routed to the supplied
+    /// logger; cancellation is silent. Returns the task handle so callers
+    /// (and tests) can await completion if they need to assert behavior.
+    @discardableResult
+    static func dispatchChatPushSideEffect(
+        pushService: APNSNotificationService,
+        userID: UUID,
+        username: String,
+        response: ChatResponse,
+        logger: Logger = Logger(label: "lv.llm"),
+    ) -> Task<Void, Never> {
+        Task {
+            do {
+                try await pushService.notifyLLMReply(
+                    userID: userID,
+                    username: username,
+                    response: response,
+                )
+            } catch is CancellationError {
+                // Client disconnected before push completed; ignore.
+            } catch {
+                logger.warning("push notify failed: \(error)")
+            }
+        }
+    }
+
     @Sendable
     func chat(_ req: Request, ctx: AppRequestContext) async throws -> EditedResponse<ChatResponse> {
         let user = try ctx.requireIdentity()
@@ -55,15 +82,18 @@ struct LLMController {
             let userID = try user.requireID()
             let username = user.username
             let pushService = notificationService
-            Task.detached {
-                try? await pushService.notifyLLMReply(
-                    userID: userID,
-                    username: username,
-                    response: response,
-                )
-            }
+            // HER-200 H2 — structured `Task` so the side-effects inherit
+            // task locals + priority and errors are logged explicitly
+            // rather than swallowed by `try?`. Implementation lives in a
+            // package-scoped helper for unit tests.
+            _ = Self.dispatchChatPushSideEffect(
+                pushService: pushService,
+                userID: userID,
+                username: username,
+                response: response,
+            )
             if let achievements {
-                Task.detached { await achievements.recordAndPush(tenantID: userID, event: .chatCompleted) }
+                Task { await achievements.recordAndPush(tenantID: userID, event: .chatCompleted) }
             }
             if finalIsDegraded {
                 var headers = HTTPFields()

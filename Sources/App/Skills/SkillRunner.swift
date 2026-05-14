@@ -97,7 +97,11 @@ actor SkillRunner {
         for type in SkillEventType.allCases {
             let stream = eventBus.subscribe(eventType: type)
             let log = logger
-            let task = Task<Void, Never> {
+            // HER-200 H3 — `Task.detached` so the indefinite event loop does
+            // not inherit buildRouter's top-level task or its task-locals.
+            // Cancellation is wired explicitly via `stopEventSubscriptions()`
+            // which `.cancel()`s every task in `eventSubscriptions`.
+            let task = Task.detached(priority: .utility) {
                 for await event in stream {
                     log.info("skills.runner received event=\(event.type.rawValue) tenant=\(event.tenantID.uuidString) payloadKeys=\(event.payload.keys.sorted().joined(separator: ","))")
                     // HER-169: load tenant's catalog → filter by on_event →

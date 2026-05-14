@@ -140,6 +140,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
                 .path,
         ),
         xClientID: reader.string(forKey: "oauth.x.clientId", default: ""),
+        rateLimitStorageKind: reader.string(forKey: "rateLimit.storageKind", default: "memory"),
         smsKind: reader.string(forKey: "sms.kind", default: "logging"),
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
         twilioAuthToken: reader.string(forKey: "twilio.authToken", default: ""),
@@ -184,6 +185,9 @@ func buildRouter(services: ServiceContainer, reader: ConfigReader) throws -> Rou
 
 /// Build router and surface any ServiceLifecycle-managed background services
 /// constructed alongside route dependencies.
+/// HER-200 M2 — god function. Extract `buildAuthRoutes`, `buildSkillRoutes`,
+/// `buildMemoryRoutes`, `buildAdminRoutes`, `buildLLMRoutes`. Pure refactor,
+/// keep semantics identical. Largest maintenance liability in the repo.
 func buildRouter(
     reader: ConfigReader,
     services: ServiceContainer,
@@ -303,7 +307,12 @@ func buildRouter(
     if !services.googleClientID.isEmpty {
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
-    let rateLimitStorage = MemoryPersistDriver()
+    // HER-200 M3 — single config key controls rate-limit storage. Memory
+    // is fine for single-process; Redis seam reserved for multi-replica.
+    let rateLimitStorage = makeRateLimitStorage(
+        kind: services.rateLimitStorageKind,
+        logger: Logger(label: "lv.ratelimit"),
+    )
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
@@ -759,7 +768,10 @@ func buildRouter(
         fluent: services.fluent,
         logger: skillsLogger,
     )
-    _ = cronScheduler // HER-170 — surface to appServices for ServiceGroup lifecycle
+    // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is
+    // invoked for the application's lifetime. No-op today (catalog empty);
+    // becomes load-bearing once HER-169 lands skill dispatch.
+    managedServices.append(cronScheduler)
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))
@@ -791,10 +803,25 @@ func buildRouter(
             }
         }
 
+        // HER-200 L1 — see `WebSocketBroadcastGuard.evaluate(_:)` for the
+        // rejection rules. Logged at warning with a specific reason so
+        // misbehaving clients are diagnosable.
+        let wsLogger = Logger(label: "lv.ws")
         do {
-            for try await packet in inbound.messages(maxSize: .max) {
+            for try await packet in inbound.messages(maxSize: WebSocketBroadcastGuard.maxMessageBytes) {
                 if case let .text(message) = packet {
-                    await connectionManager.broadcast(tenantID: tenantID, message: message)
+                    switch WebSocketBroadcastGuard.evaluate(message) {
+                    case .allow:
+                        await connectionManager.broadcast(tenantID: tenantID, message: message)
+                    case .rejectEmpty:
+                        wsLogger.warning("ws.broadcast rejected empty message tenant=\(tenantID)")
+                    case let .rejectOversize(byteCount):
+                        wsLogger.warning("ws.broadcast rejected oversize tenant=\(tenantID) bytes=\(byteCount)")
+                    case .rejectInvalidJSON:
+                        wsLogger.warning("ws.broadcast rejected non-JSON tenant=\(tenantID)")
+                    case .rejectMissingType:
+                        wsLogger.warning("ws.broadcast rejected missing type field tenant=\(tenantID)")
+                    }
                 }
             }
         } catch {
