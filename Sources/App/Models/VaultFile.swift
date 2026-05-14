@@ -1,6 +1,14 @@
 import FluentKit
 import Foundation
 
+struct VaultFileMetadata: Codable {
+    var enrichmentStatus: String?
+
+    init(enrichmentStatus: String? = nil) {
+        self.enrichmentStatus = enrichmentStatus
+    }
+}
+
 /// Tracks every file persisted under `<rawRoot>/<path>` for the tenant.
 /// DB row exists alongside the on-disk blob — the row is the index, the
 /// disk file is the payload. Path is unique per tenant; updating the
@@ -16,6 +24,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
     @Field(key: "size_bytes") var sizeBytes: Int64
     @Field(key: "sha256") var sha256: String
     @OptionalField(key: "processed_at") var processedAt: Date?
+    @OptionalField(key: "metadata") var metadata: VaultFileMetadata?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -30,6 +39,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         sizeBytes: Int64,
         sha256: String,
         processedAt: Date? = nil,
+        metadata: VaultFileMetadata? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -39,5 +49,6 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         self.sizeBytes = sizeBytes
         self.sha256 = sha256
         self.processedAt = processedAt
+        self.metadata = metadata
     }
 }
