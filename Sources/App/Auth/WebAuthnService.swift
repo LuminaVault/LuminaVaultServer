@@ -4,6 +4,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import WebAuthn
+import LuminaVaultShared
 
 // MARK: - DTOs
 

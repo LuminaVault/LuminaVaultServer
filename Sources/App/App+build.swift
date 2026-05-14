@@ -14,6 +14,7 @@ import OTel
 import OTLPGRPC
 import ServiceLifecycle
 import Tracing
+import LuminaVaultShared
 
 ///  Build application
 /// - Parameter reader: configuration reader
@@ -130,6 +131,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         twilioFromNumber: reader.string(forKey: "twilio.fromNumber", default: ""),
         phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: ""),
         magicLinkFixedOTP: reader.string(forKey: "magic.fixedOtp", default: ""),
+        geminiAPIKey: reader.string(forKey: "gemini.apiKey", default: ""),
     )
 
     let router = try buildRouter(services: services)
@@ -350,26 +352,39 @@ func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext>
     // adding `together` / `groq` / `openRouter` etc. is a registration
     // line each (HER-162..HER-164).
     let routingLogger = Logger(label: "lv.routing")
+    var providerAdapters: [any ProviderAdapter] = [
+        HermesGatewayAdapter(
+            baseURL: hermesURL,
+            session: .shared,
+            logger: routingLogger,
+        ),
+    ]
+    // HER-199 — register Gemini provider when API key is configured.
+    if !services.geminiAPIKey.isEmpty {
+        providerAdapters.append(GeminiContentsAdapter(
+            apiKey: services.geminiAPIKey,
+            session: .shared,
+            logger: routingLogger,
+        ))
+    }
     let providerRegistry = ProviderRegistry(
-        adapters: [
-            HermesGatewayAdapter(
-                baseURL: hermesURL,
-                session: .shared,
-                logger: routingLogger,
-            ),
-        ],
+        adapters: providerAdapters,
         logger: routingLogger,
     )
-    let modelRouter: any ModelRouter = SingleGatewayModelRouter()
+    // HER-200 — model-based router for user-facing chat. Routes
+    // `gemini*` model hints to the Gemini provider and everything
+    // else back to the Hermes gateway.
+    let modelRouter: any ModelRouter = RoutingModelRouter()
     let routedTransport = RoutedLLMTransport(
         registry: providerRegistry,
         router: modelRouter,
         logger: routingLogger,
     )
 
-    let llmService = DefaultHermesLLMService(
-        baseURL: hermesURL,
-        session: .shared,
+    // HER-200 — use the routed transport for the user-facing chat
+    // endpoint so model-based routing + failover apply to LLM calls.
+    let llmService = RoutedHermesLLMService(
+        transport: routedTransport,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm"),
     )

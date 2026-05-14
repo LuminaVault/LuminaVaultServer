@@ -3,6 +3,11 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
+
+// MARK: - Server-side conformances
+
+extension HealthIngestResponse: ResponseEncodable {}
 
 /// One sample as POSTed by the iOS client (HealthKit export, manual entry,
 /// Apple Watch sync, etc.). Generic enough to carry sleep stages, recovery
@@ -19,18 +24,6 @@ struct HealthEventInput: Codable {
 
 struct HealthIngestRequest: Codable {
     let events: [HealthEventInput]
-}
-
-struct HealthIngestedRef: Codable {
-    let id: UUID
-    let type: String
-    let recordedAt: Date
-}
-
-struct HealthIngestResponse: Codable, ResponseEncodable {
-    let inserted: Int
-    let skipped: Int
-    let events: [HealthIngestedRef]
 }
 
 /// Bulk-inserts HealthEvent rows under the authenticated tenant. Each

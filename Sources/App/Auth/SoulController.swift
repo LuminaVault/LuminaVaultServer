@@ -1,11 +1,9 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
-struct SoulResponse: Codable, ResponseEncodable {
-    let content: String
-    let sizeBytes: Int
-}
+extension SoulResponse: ResponseEncodable {}
 
 /// HER-85: SOUL.md CRUD surface.
 ///

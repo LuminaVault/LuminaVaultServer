@@ -5,6 +5,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import SQLKit
+import LuminaVaultShared
 
 /// How a skill was triggered. Recorded on `skill_run_log` for audit.
 enum SkillTrigger: Hashable {

@@ -39,3 +39,26 @@ struct SingleGatewayModelRouter: ModelRouter {
         ModelDecision(primary: .hermesGateway, fallbacks: [])
     }
 }
+
+/// HER-200 — model-based router that routes Gemini model hints to the
+/// Gemini provider and everything else to the Hermes gateway. Supports
+/// user-facing model names like `gemini-2.5-pro`, `gemini-2.5-flash`,
+/// or any custom model — the adapter-level translation handles the rest.
+struct RoutingModelRouter: ModelRouter {
+    private let fallbacks: [ProviderKind]
+
+    init(fallbacks: [ProviderKind] = []) {
+        self.fallbacks = fallbacks
+    }
+
+    func pick(forModel model: String?, user _: User?) async -> ModelDecision {
+        guard let model, !model.isEmpty else {
+            return ModelDecision(primary: .hermesGateway, fallbacks: fallbacks)
+        }
+        let lower = model.lowercased()
+        if lower.hasPrefix("gemini") {
+            return ModelDecision(primary: .gemini, fallbacks: [.hermesGateway] + fallbacks)
+        }
+        return ModelDecision(primary: .hermesGateway, fallbacks: fallbacks)
+    }
+}

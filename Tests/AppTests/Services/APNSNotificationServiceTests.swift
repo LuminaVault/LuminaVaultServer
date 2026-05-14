@@ -6,6 +6,7 @@ import Foundation
 import HummingbirdFluent
 import Logging
 import Testing
+import LuminaVaultShared
 
 /// Drives `APNSNotificationService` through the new `APNSPushSender` test
 /// seam. Verifies fan-out to multiple device tokens, dead-token reaping,
@@ -86,7 +87,7 @@ struct APNSNotificationServiceTests {
             )
             let response = ChatResponse(
                 id: "test", model: "test",
-                message: ChatMessage(role: "assistant", content: "Hello there"),
+                message: ChatMessage(role: "assistant", content: "Hello there", tool_calls: nil),
                 raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
             )
             try await service.notifyLLMReply(userID: userID, username: slug, response: response)
@@ -181,7 +182,7 @@ struct APNSNotificationServiceTests {
                 username: slug,
                 response: ChatResponse(
                     id: "test", model: "test",
-                    message: ChatMessage(role: "assistant", content: "x"),
+message: ChatMessage(role: "assistant", content: "x", tool_calls: nil),
                     raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
                 ),
             )

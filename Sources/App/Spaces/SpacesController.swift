@@ -1,45 +1,24 @@
 import Foundation
 import Hummingbird
+import LuminaVaultShared
 
-struct CreateSpaceRequest: Codable {
-    let name: String
-    let slug: String
-    let description: String?
-    let color: String?
-    let icon: String?
-}
+extension SpaceDTO: ResponseEncodable {}
+extension SpaceListResponse: ResponseEncodable {}
 
-struct UpdateSpaceRequest: Codable {
-    let name: String?
-    let description: String?
-    let color: String?
-    let icon: String?
-}
-
-struct SpaceDTO: Codable, ResponseEncodable {
-    let id: UUID
-    let name: String
-    let slug: String
-    let description: String?
-    let color: String?
-    let icon: String?
-    let createdAt: Date?
-    let updatedAt: Date?
-
-    init(_ space: Space) throws {
-        id = try space.requireID()
-        name = space.name
-        slug = space.slug
-        description = space.spaceDescription
-        color = space.color
-        icon = space.icon
-        createdAt = space.createdAt
-        updatedAt = space.updatedAt
+/// Server-only helper to create a SpaceDTO from a Fluent model.
+extension SpaceDTO {
+    static func fromSpace(_ space: Space) throws -> SpaceDTO {
+        SpaceDTO(
+            id: try space.requireID(),
+            name: space.name,
+            slug: space.slug,
+            description: space.spaceDescription,
+            color: space.color,
+            icon: space.icon,
+            createdAt: space.createdAt,
+            updatedAt: space.updatedAt
+        )
     }
-}
-
-struct SpaceListResponse: Codable, ResponseEncodable {
-    let spaces: [SpaceDTO]
 }
 
 struct SpacesController {
@@ -57,7 +36,7 @@ struct SpacesController {
     func list(_: Request, ctx: AppRequestContext) async throws -> SpaceListResponse {
         let user = try ctx.requireIdentity()
         let spaces = try await service.list(tenantID: user.requireID())
-        return try SpaceListResponse(spaces: spaces.map(SpaceDTO.init))
+        return try SpaceListResponse(spaces: spaces.map(SpaceDTO.fromSpace))
     }
 
     @Sendable
@@ -72,7 +51,7 @@ struct SpacesController {
             color: body.color,
             icon: body.icon,
         )
-        return try SpaceDTO(space)
+        return try SpaceDTO.fromSpace(space)
     }
 
     @Sendable
@@ -80,7 +59,7 @@ struct SpacesController {
         let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
         let space = try await service.get(tenantID: user.requireID(), id: id)
-        return try SpaceDTO(space)
+        return try SpaceDTO.fromSpace(space)
     }
 
     @Sendable
@@ -96,7 +75,7 @@ struct SpacesController {
             color: body.color,
             icon: body.icon,
         )
-        return try SpaceDTO(space)
+        return try SpaceDTO.fromSpace(space)
     }
 
     @Sendable

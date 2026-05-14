@@ -4,21 +4,12 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
-// MARK: - DTOs
+// MARK: - Local DTOs
 
 struct PhoneStartRequest: Codable {
     let phone: String
-}
-
-struct PhoneStartResponse: Codable, ResponseEncodable {
-    let challengeId: UUID
-    let expiresAt: Date
-}
-
-struct PhoneVerifyRequest: Codable {
-    let phone: String
-    let code: String
 }
 
 // MARK: - Pre-auth challenge store
@@ -218,3 +209,7 @@ struct PhoneAuthController {
         return trimmed
     }
 }
+
+// MARK: - Shared conformance
+
+extension PhoneStartResponse: ResponseEncodable {}

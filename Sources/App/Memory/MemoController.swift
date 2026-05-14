@@ -1,17 +1,13 @@
 import Foundation
 import Hummingbird
+import LuminaVaultShared
+
+extension MemoResponse: ResponseEncodable {}
 
 struct MemoRequest: Codable {
     let topic: String
     let hint: String?
     let save: Bool?
-}
-
-struct MemoResponse: Codable, ResponseEncodable {
-    let memo: String
-    let path: String?
-    let sourceMemoryIds: [UUID]
-    let summary: String
 }
 
 struct MemoController {

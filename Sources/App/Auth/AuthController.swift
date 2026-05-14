@@ -1,5 +1,6 @@
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 struct AuthController {
     let service: any AuthService

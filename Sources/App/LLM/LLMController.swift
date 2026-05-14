@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 struct LLMController {
     let service: any HermesLLMService

@@ -2,37 +2,29 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdFluent
+import LuminaVaultShared
 
-/// Wire format for the onboarding state. Every step exposes both a bool
-/// (`*Completed`) and a nullable timestamp (`*CompletedAt`). Timestamps are
-/// set server-side on the transition from `false` → `true`.
-struct OnboardingStateDTO: Codable, ResponseEncodable {
-    let signupCompleted: Bool
-    let signupCompletedAt: Date?
-    let emailVerifiedCompleted: Bool
-    let emailVerifiedCompletedAt: Date?
-    let soulConfiguredCompleted: Bool
-    let soulConfiguredCompletedAt: Date?
-    let firstCaptureCompleted: Bool
-    let firstCaptureCompletedAt: Date?
-    let firstKBCompileCompleted: Bool
-    let firstKBCompileCompletedAt: Date?
-    let firstQueryCompleted: Bool
-    let firstQueryCompletedAt: Date?
+// MARK: - Server-side conformances + helpers
 
-    init(_ row: OnboardingState) {
-        signupCompleted = row.signupCompleted
-        signupCompletedAt = row.signupCompletedAt
-        emailVerifiedCompleted = row.emailVerifiedCompleted
-        emailVerifiedCompletedAt = row.emailVerifiedCompletedAt
-        soulConfiguredCompleted = row.soulConfiguredCompleted
-        soulConfiguredCompletedAt = row.soulConfiguredCompletedAt
-        firstCaptureCompleted = row.firstCaptureCompleted
-        firstCaptureCompletedAt = row.firstCaptureCompletedAt
-        firstKBCompileCompleted = row.firstKBCompileCompleted
-        firstKBCompileCompletedAt = row.firstKBCompileCompletedAt
-        firstQueryCompleted = row.firstQueryCompleted
-        firstQueryCompletedAt = row.firstQueryCompletedAt
+extension OnboardingStateDTO: ResponseEncodable {}
+
+/// Server-only helper to create an OnboardingStateDTO from a Fluent row.
+extension OnboardingStateDTO {
+    static func fromRow(_ row: OnboardingState) -> OnboardingStateDTO {
+        OnboardingStateDTO(
+            signupCompleted: row.signupCompleted,
+            signupCompletedAt: row.signupCompletedAt,
+            emailVerifiedCompleted: row.emailVerifiedCompleted,
+            emailVerifiedCompletedAt: row.emailVerifiedCompletedAt,
+            soulConfiguredCompleted: row.soulConfiguredCompleted,
+            soulConfiguredCompletedAt: row.soulConfiguredCompletedAt,
+            firstCaptureCompleted: row.firstCaptureCompleted,
+            firstCaptureCompletedAt: row.firstCaptureCompletedAt,
+            firstKBCompileCompleted: row.firstKBCompileCompleted,
+            firstKBCompileCompletedAt: row.firstKBCompileCompletedAt,
+            firstQueryCompleted: row.firstQueryCompleted,
+            firstQueryCompletedAt: row.firstQueryCompletedAt
+        )
     }
 }
 
@@ -61,7 +53,7 @@ struct OnboardingController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let row = try await loadOrCreate(tenantID: tenantID)
-        return OnboardingStateDTO(row)
+        return OnboardingStateDTO.fromRow(row)
     }
 
     @Sendable
@@ -107,7 +99,7 @@ struct OnboardingController {
         }
 
         try await row.save(on: db)
-        return OnboardingStateDTO(row)
+        return OnboardingStateDTO.fromRow(row)
     }
 
     private func rejectFalse(_ value: Bool?, field: String) throws {

@@ -9,7 +9,7 @@ import Logging
 
 // MARK: - DTOs
 
-struct KBCompileFile: Codable {
+struct InternalKBCompileFile: Codable {
     let path: String
     let contentType: String
     /// Plain text payload — use for markdown / .txt. Mutually exclusive with `base64`.
@@ -18,21 +18,21 @@ struct KBCompileFile: Codable {
     let base64: String?
 }
 
-struct KBCompileWrittenFile: Codable {
+struct InternalKBCompileWrittenFile: Codable {
     let path: String
     let size: Int
     let contentType: String
     let sha256: String
 }
 
-struct KBCompileMemoryRef: Codable {
+struct InternalKBCompileMemoryRef: Codable {
     let id: UUID
     let content: String
 }
 
-struct KBCompileResult {
-    let writtenFiles: [KBCompileWrittenFile]
-    let memories: [KBCompileMemoryRef]
+struct InternalKBCompileResult {
+    let writtenFiles: [InternalKBCompileWrittenFile]
+    let memories: [InternalKBCompileMemoryRef]
     let summary: String
 }
 
@@ -88,9 +88,9 @@ actor KBCompileService {
     func compile(
         tenantID: UUID,
         profileUsername: String,
-        files: [KBCompileFile],
+        files: [InternalKBCompileFile],
         hint: String?,
-    ) async throws -> KBCompileResult {
+    ) async throws -> InternalKBCompileResult {
         guard !files.isEmpty else { throw KBCompileError.noFiles }
 
         // 1. Write every file to the per-tenant raw vault.
@@ -98,7 +98,7 @@ actor KBCompileService {
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let rawRootPrefix = rawRoot.standardizedFileURL.path + "/"
 
-        var writtenFiles: [KBCompileWrittenFile] = []
+        var writtenFiles: [InternalKBCompileWrittenFile] = []
         var totalBytes = 0
         var compiledTextBlocks: [(path: String, content: String, contentType: String)] = []
 
@@ -133,7 +133,7 @@ actor KBCompileService {
             try FileManager.default.moveItem(at: tmp, to: target)
 
             let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
-            writtenFiles.append(KBCompileWrittenFile(
+            writtenFiles.append(InternalKBCompileWrittenFile(
                 path: safeRelative,
                 size: payload.count,
                 contentType: file.contentType,
@@ -160,7 +160,7 @@ actor KBCompileService {
         // 3. Reload memories created during the loop. We can't trivially
         // distinguish new from existing without per-call tracking; the loop
         // keeps a list itself.
-        return KBCompileResult(
+        return InternalKBCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
             summary: summary.text,
@@ -171,7 +171,7 @@ actor KBCompileService {
 
     private struct CompileSummary {
         let text: String
-        let memories: [KBCompileMemoryRef]
+        let memories: [InternalKBCompileMemoryRef]
     }
 
     private struct ChatPayload: Encodable {
@@ -292,7 +292,7 @@ actor KBCompileService {
             .init(role: "user", content: bundled),
         ]
         let tools = [Self.memoryUpsertTool()]
-        var collectedMemories: [KBCompileMemoryRef] = []
+        var collectedMemories: [InternalKBCompileMemoryRef] = []
 
         for _ in 0 ..< maxToolIterations {
             let body = ChatPayload(
@@ -339,7 +339,7 @@ actor KBCompileService {
     private func dispatch(
         tenantID: UUID,
         toolCall: ToolCall,
-        memories: inout [KBCompileMemoryRef],
+        memories: inout [InternalKBCompileMemoryRef],
     ) async throws -> String {
         guard toolCall.function.name == "memory_upsert" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -356,7 +356,7 @@ actor KBCompileService {
                 embedding: embedding,
             )
             let id = try saved.requireID()
-            memories.append(KBCompileMemoryRef(id: id, content: saved.content))
+            memories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
             return Self.encodeJSON(["status": "ok", "id": id.uuidString])
         } catch {
             return Self.toolErrorJSON("memory_upsert failed: \(error)")
@@ -386,7 +386,7 @@ actor KBCompileService {
 
     // MARK: - Helpers
 
-    private static func decodePayload(_ file: KBCompileFile) throws -> Data {
+    private static func decodePayload(_ file: InternalKBCompileFile) throws -> Data {
         switch (file.text, file.base64) {
         case (.some(let text), nil):
             return Data(text.utf8)

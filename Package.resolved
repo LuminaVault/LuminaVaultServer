@@ -1,5 +1,5 @@
 {
-  "originHash" : "10cfde9d152627771fc3a0f80eebf4a601905a4808fe21c89141660bc65ff52e",
+  "originHash" : "c68159f12616068ecef38eaaf17c6b3d4494095c3cb2b840b2e6fbcea6c828dd",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hummingbird-project/hummingbird.git",
       "state" : {
-        "revision" : "a2ed0a0294de56e18ba55344eafc801a7a385a90",
-        "version" : "2.22.0"
+        "revision" : "277e5db5b6d348270088e6ee8e8fa2539bae603d",
+        "version" : "2.23.0"
       }
     },
     {
@@ -124,7 +124,7 @@
       "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
       "state" : {
         "branch" : "main",
-        "revision" : "d777fa277a83d4b66400bdad5596bba3ac113e2d"
+        "revision" : "7fb51c744bfe71ce5f5e1e212a853139591abfc1"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattpolzin/OpenAPIKit",
       "state" : {
-        "revision" : "343b2c1793058fcc53c1bd7e2907f8e3a4d640fb",
-        "version" : "3.9.0"
+        "revision" : "c42c0ea6d62f384da4e023ab298b15a79d6899b6",
+        "version" : "6.1.0"
       }
     },
     {
@@ -357,8 +357,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-openapi-generator",
       "state" : {
-        "revision" : "83e8301d6d62c423f8e11d6fcb0c8276d4dbb032",
-        "version" : "1.12.0"
+        "revision" : "5dd0da1c7da7bac8f0c458a02a76f69031137a80",
+        "version" : "1.12.1"
       }
     },
     {

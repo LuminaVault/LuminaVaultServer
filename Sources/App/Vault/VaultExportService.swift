@@ -357,7 +357,7 @@ struct VaultExportService {
         func encodeCentralDirectoryHeader() -> [UInt8] {
             var out: [UInt8] = []
             out.reserveCapacity(46 + name.count)
-            appendUInt32(0x0214_4B50, into: &out)
+            appendUInt32(0x0201_4B50, into: &out)
             appendUInt16(20, into: &out) // version made by
             appendUInt16(20, into: &out) // version needed
             appendUInt16(useDataDescriptor ? 0x0008 : 0, into: &out) // general purpose

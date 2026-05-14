@@ -4,7 +4,8 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import JWTKit
-
+import Logging
+import LuminaVaultShared
 protocol AuthService: Sendable {
     func register(email: String, username: String, password: String) async throws -> AuthResponse
     /// `requireMFA=true` when the client advertises `mfa-auth-v1` capability —

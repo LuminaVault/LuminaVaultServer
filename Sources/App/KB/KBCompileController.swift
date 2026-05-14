@@ -1,16 +1,11 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 struct KBCompileRequest: Codable {
-    let files: [KBCompileFile]
+    let files: [InternalKBCompileFile]
     let hint: String?
-}
-
-struct KBCompileResponse: Codable, ResponseEncodable {
-    let writtenFiles: [KBCompileWrittenFile]
-    let memories: [KBCompileMemoryRef]
-    let summary: String
 }
 
 struct KBCompileController {
@@ -38,10 +33,18 @@ struct KBCompileController {
         if let achievements {
             Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .kbCompiled) }
         }
+        let mappedFiles = result.writtenFiles.map {
+            LuminaVaultShared.KBCompileWrittenFile(path: $0.path, size: $0.size)
+        }
+        let mappedMemories = result.memories.map {
+            LuminaVaultShared.KBCompileMemoryRef(id: $0.id, content: $0.content)
+        }
         return KBCompileResponse(
-            writtenFiles: result.writtenFiles,
-            memories: result.memories,
+            writtenFiles: mappedFiles,
+            memories: mappedMemories,
             summary: result.summary,
         )
     }
 }
+
+extension KBCompileResponse: ResponseEncodable {}

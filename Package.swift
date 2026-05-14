@@ -75,6 +75,7 @@ let package = Package(
         .testTarget(name: "AppTests",
                     dependencies: [
                         .byName(name: "App"),
+                        .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                         .product(name: "HummingbirdTesting", package: "hummingbird"),
                         .product(name: "HummingbirdAuthTesting", package: "hummingbird-auth"),
                     ],

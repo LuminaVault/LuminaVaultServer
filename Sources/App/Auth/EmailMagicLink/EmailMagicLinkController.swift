@@ -1,20 +1,9 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
-struct EmailMagicStartRequest: Codable {
-    let email: String
-}
-
-struct EmailMagicStartResponse: Codable, ResponseEncodable {
-    let challengeId: UUID
-    let expiresAt: Date
-}
-
-struct EmailMagicVerifyRequest: Codable {
-    let email: String
-    let code: String
-}
+extension EmailMagicStartResponse: ResponseEncodable {}
 
 extension AuthError {
     static let invalidEmail = HTTPError(.badRequest, message: "email looks invalid")

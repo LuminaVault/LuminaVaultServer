@@ -1,21 +1,12 @@
 import Foundation
 import Hummingbird
+import LuminaVaultShared
+
+extension QueryResponse: ResponseEncodable {}
 
 struct QueryRequest: Codable {
     let query: String
     let limit: Int?
-}
-
-struct QueryHitDTO: Codable {
-    let id: UUID
-    let content: String
-    let distance: Float
-    let createdAt: Date?
-}
-
-struct QueryResponse: Codable, ResponseEncodable {
-    let summary: String
-    let hits: [QueryHitDTO]
 }
 
 /// Natural-language query against the user's memories. Thin wrapper on top
