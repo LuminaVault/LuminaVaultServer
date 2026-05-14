@@ -41,6 +41,20 @@ struct ServiceContainer {
     let apnsKeyID: String
     let apnsPrivateKeyPath: String
     let apnsEnvironment: String
+    /// RevenueCat server-to-server webhook shared secret. The webhook
+    /// controller compares this (constant-time) against the `Authorization`
+    /// header on each inbound POST. Empty = webhook endpoint returns 503.
+    let revenuecatWebhookSecret: String
+    /// Daily Mtok cap for free/trial tier (in million tokens). Default 1.0.
+    /// Pro/Ultimate tiers have no cap.
+    let usageFreeMtokDaily: Double
+    /// Daily Mtok cap per individual skill execution (in million tokens).
+    /// Default 0.2. Prevents a single runaway skill from burning the
+    /// entire daily budget.
+    let usagePerSkillMtokDaily: Double
+    /// Model slug to degrade to when a free user hits the 80% soft cap.
+    /// Must match a model available on the Hermes gateway.
+    let usageDegradeModel: String
     /// CORS allowed origins. Empty list = `*` (dev). Prod must set explicitly.
     let corsAllowedOrigins: [String]
     /// Admin shared-secret. Empty = admin endpoints return 404.

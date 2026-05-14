@@ -17,6 +17,8 @@ struct RoutedLLMTransport: HermesChatTransport {
     let router: any ModelRouter
     let logger: Logger
 
+    let usageMeter: UsageMeterService?
+
     /// Optional callable that resolves a `User` from the current request
     /// scope. Today the chat path is decoupled from per-user routing —
     /// services hold a `tenantID` but not a full `User` — so this is
@@ -29,11 +31,13 @@ struct RoutedLLMTransport: HermesChatTransport {
         router: any ModelRouter,
         currentUser: @escaping @Sendable () async -> User? = { nil },
         logger: Logger,
+        usageMeter: UsageMeterService? = nil,
     ) {
         self.registry = registry
         self.router = router
         self.currentUser = currentUser
         self.logger = logger
+        self.usageMeter = usageMeter
     }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
@@ -52,7 +56,19 @@ struct RoutedLLMTransport: HermesChatTransport {
                 continue
             }
             do {
-                return try await adapter.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
+                let metadata = try await adapter.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
+                if let usageMeter, let user {
+                    // Extract usage headers; fire-and-forget recording
+                    var mtokIn = 0
+                    var mtokOut = 0
+                    Self.extractUsage(from: metadata, mtokIn: &mtokIn, mtokOut: &mtokOut)
+                    if mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() {
+                        let meter = usageMeter
+                        let modelToRecord = candidate.rawValue // Fallback, could be actual model used
+                        Task { await meter.record(tenantID: userID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
+                    }
+                }
+                return metadata
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
                 logger.warning("provider \(candidate.rawValue) failed (recoverable): \(providerError)")
@@ -95,5 +111,36 @@ struct RoutedLLMTransport: HermesChatTransport {
             return nil
         }
         return model
+    }
+
+    private static func extractUsage(
+        from metadata: HermesChatTransportMetadata,
+        mtokIn: inout Int,
+        mtokOut: inout Int,
+    ) {
+        let lower = Dictionary(uniqueKeysWithValues: metadata.headers.map { ($0.key.lowercased(), $0.value) })
+        for name in ["x-mtok-in", "x-usage-mtok-in", "x-luminavault-mtok-in"] {
+            if let raw = lower[name], let value = Int(raw) {
+                mtokIn = value
+                break
+            }
+        }
+        for name in ["x-mtok-out", "x-usage-mtok-out", "x-luminavault-mtok-out"] {
+            if let raw = lower[name], let value = Int(raw) {
+                mtokOut = value
+                break
+            }
+        }
+
+        // Also attempt to extract from the raw JSON payload since the gateway might not
+        // send headers for usage, but include it in the JSON body.
+        if mtokIn == 0, mtokOut == 0 {
+            if let responseJSON = try? JSONSerialization.jsonObject(with: metadata.data) as? [String: Any],
+               let usage = responseJSON["usage"] as? [String: Any]
+            {
+                mtokIn = (usage["prompt_tokens"] as? Int) ?? 0
+                mtokOut = (usage["completion_tokens"] as? Int) ?? 0
+            }
+        }
     }
 }

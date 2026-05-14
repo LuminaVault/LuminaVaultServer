@@ -50,6 +50,7 @@ actor SkillRunner {
     private let vaultPaths: VaultPathService
     private let capGuard: SkillRunCapGuard
     private let eventBus: EventBus
+    private let usageMeter: UsageMeterService?
     private let logger: Logger
     private var eventSubscriptions: [Task<Void, Never>] = []
 
@@ -64,6 +65,7 @@ actor SkillRunner {
         vaultPaths: VaultPathService,
         capGuard: SkillRunCapGuard,
         eventBus: EventBus,
+        usageMeter: UsageMeterService? = nil,
         logger: Logger,
     ) {
         self.catalog = catalog
@@ -76,6 +78,7 @@ actor SkillRunner {
         self.vaultPaths = vaultPaths
         self.capGuard = capGuard
         self.eventBus = eventBus
+        self.usageMeter = usageMeter
         self.logger = logger
     }
 
@@ -150,6 +153,14 @@ actor SkillRunner {
         let decision = try await capGuard.checkAndIncrement(tenantID: tenantID, tier: tier, manifest: skill)
         if case let .deny(retryAfter) = decision {
             throw SkillRunCapExceededError(retryAfter: retryAfter)
+        }
+
+        if let usageMeter {
+            let budgetDecision = await usageMeter.checkSkillBudget(tenantID: tenantID, skillName: skill.name)
+            if case let .deny(retryAfter) = budgetDecision {
+                try? await capGuard.recordFailure(tenantID: tenantID, manifest: skill)
+                throw UsageCapExceededError(retryAfter: retryAfter)
+            }
         }
 
         var modelUsed: String?
@@ -379,7 +390,17 @@ actor SkillRunner {
             let metadata = try await transport.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: metadata.data)
             modelUsed = response.model
+            let mtokInBefore = mtokIn
+            let mtokOutBefore = mtokOut
             Self.accumulateUsage(metadata: metadata, response: response, mtokIn: &mtokIn, mtokOut: &mtokOut)
+
+            let inDelta = mtokIn - mtokInBefore
+            let outDelta = mtokOut - mtokOutBefore
+            if inDelta > 0 || outDelta > 0, let meter = usageMeter {
+                let modelTag = "skill:\(skill.name)/\(modelUsed ?? defaultModel)"
+                Task { await meter.record(tenantID: tenantID, model: modelTag, tokensIn: inDelta, tokensOut: outDelta) }
+            }
+
             guard let choice = response.choices.first else {
                 throw HTTPError(.badGateway, message: "skill runner got no choices")
             }
