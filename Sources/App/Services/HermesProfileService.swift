@@ -32,6 +32,11 @@ struct HermesProfileService {
     let vaultPaths: VaultPathService
 
     /// Idempotent. Called from register, OAuth-create, and any first-touch flow.
+    ///
+    /// Gateway is called BEFORE the row is inserted so a failure leaves no
+    /// half-state row behind. Both supported gateways (`Logging`, `Filesystem`)
+    /// are idempotent, so a retry after a crash between gateway success and
+    /// DB insert is safe.
     @discardableResult
     func ensure(for user: User) async throws -> HermesProfile {
         let tenantID = try user.requireID()
@@ -40,19 +45,9 @@ struct HermesProfileService {
         }
         try vaultPaths.ensureTenantDirectories(for: tenantID)
 
-        let profile = HermesProfile(tenantID: tenantID, hermesProfileID: "", status: "provisioning")
+        let hid = try await gateway.provisionProfile(tenantID: tenantID, username: user.username)
+        let profile = HermesProfile(tenantID: tenantID, hermesProfileID: hid, status: "ready")
         try await profile.save(on: fluent.db())
-        do {
-            let hid = try await gateway.provisionProfile(tenantID: tenantID, username: user.username)
-            profile.hermesProfileID = hid
-            profile.status = "ready"
-            try await profile.save(on: fluent.db())
-        } catch {
-            profile.status = "error"
-            profile.lastError = String(describing: error)
-            try? await profile.save(on: fluent.db())
-            throw error
-        }
         return profile
     }
 
