@@ -37,10 +37,16 @@ struct SkillEvent: Hashable {
     }
 }
 
-/// Tiny in-process pub/sub actor. No Kafka, no NATS — keep it `actor`
-/// plus a `[EventType: [Subscriber]]` map. Re-platform once we hit the
+/// Tiny in-process pub/sub. No Kafka, no NATS — keep it a final class
+/// with an `NSLock`-protected dictionary. Re-platform once we hit the
 /// multi-replica scale that breaks single-process semantics (see HER-148
 /// multi-replica notes in `docs/jobs.md`).
+///
+/// HER-200 H1 — previously an `actor`; subscribe had to fire a
+/// `Task { await register(...) }` inside the stream factory which leaked
+/// a subscriber entry if the stream dropped before the Task ran. The
+/// class + lock variant registers synchronously inside the closure,
+/// eliminating that race.
 ///
 /// ## Backpressure
 /// Each subscriber gets a bounded `AsyncStream` (`bufferingPolicy:
@@ -51,7 +57,7 @@ struct SkillEvent: Hashable {
 /// ## Failure isolation
 /// A subscriber that finishes its stream (cancellation, scope exit) is
 /// removed via `onTermination`. Publishers never block on subscribers.
-actor EventBus {
+final class EventBus: @unchecked Sendable {
     /// Per-subscriber buffer cap. 64 was picked to comfortably hold a
     /// burst of vault captures during sync without growing unbounded.
     private static let bufferCapacity = 64
@@ -61,6 +67,7 @@ actor EventBus {
         let continuation: AsyncStream<SkillEvent>.Continuation
     }
 
+    private let lock = NSLock()
     private var subscribers: [SkillEventType: [Subscriber]] = [:]
     private let logger: Logger
 
@@ -72,10 +79,10 @@ actor EventBus {
     /// backed up — `bufferingNewest` causes the OLDEST queued event to
     /// be dropped instead, and we log the drop so it can be diagnosed.
     func publish(_ event: SkillEvent) {
+        lock.lock()
         let observers = subscribers[event.type] ?? []
-        guard !observers.isEmpty else {
-            return
-        }
+        lock.unlock()
+        guard !observers.isEmpty else { return }
         for observer in observers {
             switch observer.continuation.yield(event) {
             case .enqueued:
@@ -95,32 +102,27 @@ actor EventBus {
     /// Returns an `AsyncStream` that yields every published event of
     /// `eventType` until the stream is cancelled or the iterator is
     /// dropped. Subscribers are auto-removed on termination.
-    nonisolated func subscribe(eventType: SkillEventType) -> AsyncStream<SkillEvent> {
+    func subscribe(eventType: SkillEventType) -> AsyncStream<SkillEvent> {
         AsyncStream(bufferingPolicy: .bufferingNewest(Self.bufferCapacity)) { continuation in
             let id = UUID()
             let subscriber = Subscriber(id: id, continuation: continuation)
-            // HER-200 H1 — fire-and-forget register/unregister inside the stream
-            // factory leaks a subscriber entry if the stream is dropped before
-            // the Task runs. Move to nonisolated(unsafe) sync register and call
-            // directly here + in onTermination.
-            Task { await self.register(eventType: eventType, subscriber: subscriber) }
-            continuation.onTermination = { _ in
-                Task { await self.unregister(eventType: eventType, id: id) }
+            self.lock.lock()
+            self.subscribers[eventType, default: []].append(subscriber)
+            self.lock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                lock.lock()
+                subscribers[eventType]?.removeAll(where: { $0.id == id })
+                lock.unlock()
             }
         }
-    }
-
-    private func register(eventType: SkillEventType, subscriber: Subscriber) {
-        subscribers[eventType, default: []].append(subscriber)
-    }
-
-    private func unregister(eventType: SkillEventType, id: UUID) {
-        subscribers[eventType]?.removeAll(where: { $0.id == id })
     }
 
     /// Test/diagnostic helper. Returns the current subscriber count per
     /// event type. Production callers should not depend on this.
     func subscriberCount(for type: SkillEventType) -> Int {
-        subscribers[type]?.count ?? 0
+        lock.lock()
+        defer { lock.unlock() }
+        return subscribers[type]?.count ?? 0
     }
 }

@@ -22,15 +22,32 @@ struct MemorySearchRequest: Codable {
     let limit: Int?
 }
 
-/// Server-only helper to create a MemoryDTO from a Fluent model.
-/// HER-200 L2 — every DTO conversion throws because Fluent.Model.id is
-/// optional. Models from a query always have an ID; the type system
-/// doesn't enforce it. Add `extension Memory { var savedID: UUID { ... } }`
-/// for post-fetch instances so this becomes a non-throwing helper.
+/// HER-200 L2 — non-throwing accessor for a Memory row that was fetched
+/// from the DB. Fluent's `id` is structurally optional but any post-query
+/// instance always has it set; this property asserts that invariant at
+/// the type level so call sites stop wrapping every DTO mapping in `try`.
+extension Memory {
+    /// Returns the row's `id` for instances that have been persisted /
+    /// fetched. Traps with a clear message when called on a pre-save
+    /// model — that is a programmer error, not a runtime failure mode.
+    var savedID: UUID {
+        guard let id else {
+            preconditionFailure("Memory.savedID called on unsaved Memory — use requireID() before persistence")
+        }
+        return id
+    }
+}
+
+/// Server-only helper to create a MemoryDTO from a Fluent model. The
+/// non-throwing path is the production default; callers operating on a
+/// pre-save model should still go through `MemoryDTO.fromUnsavedMemory`.
 extension MemoryDTO {
-    static func fromMemory(_ memory: Memory) throws -> MemoryDTO {
-        try MemoryDTO(
-            id: memory.requireID(),
+    /// Non-throwing converter for any Memory fetched from the DB. Uses
+    /// `savedID` rather than `requireID()` so the call-site no longer has
+    /// to wrap every DTO mapping in `try`.
+    static func fromMemory(_ memory: Memory) -> MemoryDTO {
+        MemoryDTO(
+            id: memory.savedID,
             content: memory.content,
             tags: memory.tags ?? [],
             createdAt: memory.createdAt,
@@ -154,7 +171,7 @@ struct MemoryController {
             limit: limit,
             offset: offset,
         )
-        return try MemoryListResponse(
+        return MemoryListResponse(
             memories: rows.map(MemoryDTO.fromMemory),
             limit: limit,
             offset: offset,
@@ -168,7 +185,7 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: user.requireID(), id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return try MemoryDTO.fromMemory(row)
+        return MemoryDTO.fromMemory(row)
     }
 
     @Sendable
@@ -210,7 +227,7 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return try MemoryDTO.fromMemory(row)
+        return MemoryDTO.fromMemory(row)
     }
 
     /// HER-150: Returns the source vault file (when known) the memory was

@@ -106,7 +106,7 @@ struct CaptureController {
                     SkillEvent.PayloadKey.vaultPath: relativePath,
                 ],
             )
-            Task.detached { await eventBus.publish(event) }
+            eventBus.publish(event)
         }
 
         // Enqueue enrichment task

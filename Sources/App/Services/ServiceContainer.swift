@@ -66,6 +66,10 @@ struct ServiceContainer {
     /// X (Twitter) OAuth 2.0 client ID — audit/audience reference; iOS does
     /// the actual token flow client-side and forwards the access_token.
     let xClientID: String
+    /// HER-200 M3 — rate-limit storage selector: `memory` (default) | `redis`.
+    /// `redis` reserves the env knob for a future Redis-backed PersistDriver;
+    /// until that lands the factory falls back to memory with a warning.
+    let rateLimitStorageKind: String
     /// SMS gateway selector: `logging` (default) | `twilio`.
     let smsKind: String
     /// Twilio account credentials. Required when `smsKind=twilio`.

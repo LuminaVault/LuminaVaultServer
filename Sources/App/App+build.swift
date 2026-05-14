@@ -140,6 +140,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
                 .path,
         ),
         xClientID: reader.string(forKey: "oauth.x.clientId", default: ""),
+        rateLimitStorageKind: reader.string(forKey: "rateLimit.storageKind", default: "memory"),
         smsKind: reader.string(forKey: "sms.kind", default: "logging"),
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
         twilioAuthToken: reader.string(forKey: "twilio.authToken", default: ""),
@@ -306,11 +307,12 @@ func buildRouter(
     if !services.googleClientID.isEmpty {
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
-    // HER-200 M3 — single-replica only. Multi-replica deployments lose
-    // rate-limit effectiveness because each replica owns its own bucket.
-    // Add `rateLimitStorageKind` to ConfigReader + makeRateLimitStorage()
-    // factory; back with Redis when a second replica ships.
-    let rateLimitStorage = MemoryPersistDriver()
+    // HER-200 M3 — single config key controls rate-limit storage. Memory
+    // is fine for single-process; Redis seam reserved for multi-replica.
+    let rateLimitStorage = makeRateLimitStorage(
+        kind: services.rateLimitStorageKind,
+        logger: Logger(label: "lv.ratelimit"),
+    )
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
@@ -766,10 +768,10 @@ func buildRouter(
         fluent: services.fluent,
         logger: skillsLogger,
     )
-    // HER-200 M4 — cronScheduler is constructed but never appended to
-    // managedServices, so ServiceGroup never calls run(). No-op today
-    // (catalog empty); production bug once HER-169 lands.
-    _ = cronScheduler // HER-170 — surface to appServices for ServiceGroup lifecycle
+    // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is
+    // invoked for the application's lifetime. No-op today (catalog empty);
+    // becomes load-bearing once HER-169 lands skill dispatch.
+    managedServices.append(cronScheduler)
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))
@@ -801,13 +803,27 @@ func buildRouter(
             }
         }
 
+        // HER-200 L1 — broadcast guard. Cap the inbound message size, reject
+        // empty payloads, and require valid JSON with a `type` field before
+        // fanning out to peer connections. A compromised client cannot stuff
+        // arbitrary bytes through the broadcast layer.
+        let wsLogger = Logger(label: "lv.ws")
+        let maxInboundBytes = 16 * 1024
         do {
-            for try await packet in inbound.messages(maxSize: .max) {
+            for try await packet in inbound.messages(maxSize: maxInboundBytes) {
                 if case let .text(message) = packet {
-                    // HER-200 L1 — broadcast is unfiltered at this layer.
-                    // Decide owner: validate/whitelist message format here, or
-                    // document explicitly that ConnectionManager.broadcast
-                    // trusts callers + add validation inside ConnectionManager.
+                    guard !message.isEmpty, message.utf8.count <= maxInboundBytes else {
+                        wsLogger.warning("ws.broadcast rejected oversize/empty message tenant=\(tenantID) bytes=\(message.utf8.count)")
+                        continue
+                    }
+                    guard
+                        let data = message.data(using: .utf8),
+                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                        json["type"] is String
+                    else {
+                        wsLogger.warning("ws.broadcast rejected non-JSON or missing type field tenant=\(tenantID)")
+                        continue
+                    }
                     await connectionManager.broadcast(tenantID: tenantID, message: message)
                 }
             }

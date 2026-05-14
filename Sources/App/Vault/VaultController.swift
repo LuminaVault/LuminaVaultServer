@@ -148,7 +148,7 @@ struct VaultController {
                     SkillEvent.PayloadKey.vaultPath: safeRelative,
                 ],
             )
-            await eventBus.publish(event)
+            eventBus.publish(event)
         }
 
         return VaultUploadResponse(

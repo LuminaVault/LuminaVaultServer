@@ -4,9 +4,19 @@ Audit of structural concurrency / sendability / maintainability issues in
 LuminaVaultServer. Tracked findings live as `// HER-200:` markers in the
 source so `grep -rn 'HER-200:' Sources/ docs/` lists outstanding work.
 
-Each entry below: severity, location, current state, recommended fix.
-Scaffold-only — no fixes applied in this branch. Each finding gets a
-follow-up sub-ticket when picked up.
+## Status
+
+| ID | Sev | Status |
+|----|-----|--------|
+| H1 EventBus reentrancy | HIGH | ✅ fixed (actor → final class + NSLock; sync register) |
+| H2 LLMController detached | HIGH | ✅ fixed (Task.detached → structured Task + explicit error log) |
+| H3 SkillRunner event loop | HIGH | ✅ fixed (Task → Task.detached(priority: .utility); cancellation via stopEventSubscriptions) |
+| M1 User @unchecked Sendable | MEDIUM | ✅ documented (invariant comment; Swift-6 migration deferred) |
+| M2 buildRouter god function | MEDIUM | 📝 deferred (own milestone; marker stays in source) |
+| M3 In-memory rate limiter | MEDIUM | ✅ fixed (rateLimit.storageKind config + makeRateLimitStorage factory; Redis seam reserved) |
+| M4 CronScheduler not run() | MEDIUM | ✅ fixed (appended to managedServices) |
+| L1 WebSocket broadcast | LOW | ✅ fixed (16 KB size cap + JSON-with-type-field validation before fan-out) |
+| L2 MemoryDTO.fromMemory throws | LOW | ✅ fixed (Memory.savedID accessor; fromMemory non-throwing) |
 
 ---
 

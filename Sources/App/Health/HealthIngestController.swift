@@ -108,7 +108,7 @@ struct HealthIngestController {
                     SkillEvent.PayloadKey.healthSampleCount: String(refs.count),
                 ],
             )
-            await eventBus.publish(event)
+            eventBus.publish(event)
         }
 
         return HealthIngestResponse(
