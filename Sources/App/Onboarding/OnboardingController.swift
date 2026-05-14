@@ -23,7 +23,7 @@ extension OnboardingStateDTO {
             firstKBCompileCompleted: row.firstKBCompileCompleted,
             firstKBCompileCompletedAt: row.firstKBCompileCompletedAt,
             firstQueryCompleted: row.firstQueryCompleted,
-            firstQueryCompletedAt: row.firstQueryCompletedAt
+            firstQueryCompletedAt: row.firstQueryCompletedAt,
         )
     }
 }

@@ -125,7 +125,7 @@ enum SkillManifestError: Error, Equatable {
 /// HER-168: `parseOverride` lets tests inject a synthetic parser without
 /// touching the real Yams path. Production callers continue to use
 /// `SkillManifestParser()`.
-struct SkillManifestParser: Sendable {
+struct SkillManifestParser {
     typealias ParseFn = @Sendable (SkillManifest.Source, String) throws -> SkillManifest
 
     private let parseOverride: ParseFn?
@@ -293,11 +293,11 @@ private enum StringOrArray: Decodable {
     func toArray() -> [String] {
         switch self {
         case let .string(value):
-            return value
+            value
                 .split(whereSeparator: { $0.isWhitespace })
                 .map(String.init)
         case let .array(values):
-            return values
+            values
         }
     }
 

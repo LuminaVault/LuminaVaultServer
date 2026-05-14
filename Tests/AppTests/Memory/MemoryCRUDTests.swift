@@ -2,8 +2,8 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
-import Testing
 import LuminaVaultShared
+import Testing
 
 /// End-to-end tests for HER-89 memory CRUD endpoints
 /// (`GET /v1/memory`, `GET /v1/memory/:id`, `DELETE /v1/memory/:id`,

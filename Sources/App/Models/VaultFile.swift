@@ -15,6 +15,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
     @Field(key: "content_type") var contentType: String
     @Field(key: "size_bytes") var sizeBytes: Int64
     @Field(key: "sha256") var sha256: String
+    @OptionalField(key: "processed_at") var processedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -28,6 +29,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         contentType: String,
         sizeBytes: Int64,
         sha256: String,
+        processedAt: Date? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -36,5 +38,6 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         self.contentType = contentType
         self.sizeBytes = sizeBytes
         self.sha256 = sha256
+        self.processedAt = processedAt
     }
 }

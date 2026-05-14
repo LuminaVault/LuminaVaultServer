@@ -22,18 +22,19 @@ struct VaultMoveRequest: Codable {
 /// Server-only: convenience init from the Fluent `VaultFile` model.
 extension VaultFileDTO {
     static func fromRow(_ row: VaultFile) throws -> VaultFileDTO {
-        VaultFileDTO(
-            id: try row.requireID(),
+        try VaultFileDTO(
+            id: row.requireID(),
             path: row.path,
             contentType: row.contentType,
             sizeBytes: row.sizeBytes,
             sha256: row.sha256,
             spaceId: row.spaceID,
             createdAt: row.createdAt,
-            updatedAt: row.updatedAt
+            updatedAt: row.updatedAt,
         )
     }
 }
+
 /// - `GET    /v1/vault/files`                     — paginated list (HER-88)
 /// - `DELETE /v1/vault/files/**`                  — soft-delete (HER-88)
 /// - `POST   /v1/vault/files/move`                — rename within tenant root (HER-88)
@@ -345,6 +346,7 @@ struct VaultController {
             existing.contentType = contentType
             existing.sizeBytes = sizeBytes
             existing.sha256 = sha256
+            existing.processedAt = nil
             try await existing.save(on: db)
             return try existing.requireID()
         }

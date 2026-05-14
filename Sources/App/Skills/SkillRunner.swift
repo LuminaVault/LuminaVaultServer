@@ -4,8 +4,8 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
-import SQLKit
 import LuminaVaultShared
+import SQLKit
 
 /// How a skill was triggered. Recorded on `skill_run_log` for audit.
 enum SkillTrigger: Hashable {
@@ -534,11 +534,10 @@ actor SkillRunner {
         try data.write(to: target, options: .atomic)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 
-        let row: VaultFile?
-        if let existing {
-            row = existing
+        let row: VaultFile? = if let existing {
+            existing
         } else {
-            row = try await VaultFile
+            try await VaultFile
                 .query(on: fluent.db(), tenantID: tenantID)
                 .filter(\.$path == safePath)
                 .first()
@@ -547,6 +546,7 @@ actor SkillRunner {
             row.sizeBytes = Int64(data.count)
             row.sha256 = digest
             row.contentType = contentType
+            row.processedAt = nil
             try await row.update(on: fluent.db())
         } else {
             let row = VaultFile(
@@ -727,7 +727,9 @@ actor SkillRunner {
                 if !out.isEmpty, out.last != "-" { out.append("-") }
             }
         }
-        while out.last == "-" { out.removeLast() }
+        while out.last == "-" {
+            out.removeLast()
+        }
         return out.isEmpty ? "skill" : String(out.prefix(64))
     }
 

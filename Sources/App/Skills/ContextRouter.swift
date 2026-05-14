@@ -3,8 +3,8 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
-import NIOCore
 import LuminaVaultShared
+import NIOCore
 
 /// HER-172 ContextRouter middleware.
 ///

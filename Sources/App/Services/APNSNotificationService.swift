@@ -5,8 +5,8 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
-import NIOPosix
 import LuminaVaultShared
+import NIOPosix
 
 // MARK: - Push categories
 
@@ -85,7 +85,7 @@ struct LiveAPNSPushSender: APNSPushSender {
 /// is dead forever" (`BadDeviceToken`, `Unregistered`,
 /// `DeviceTokenNotForTopic`, `MissingDeviceToken`) trigger a hard-delete
 /// of the row so we stop pushing to ghost devices.
-struct APNSNotificationService: Sendable {
+struct APNSNotificationService {
     let enabled: Bool
     let bundleID: String
     let fluent: Fluent

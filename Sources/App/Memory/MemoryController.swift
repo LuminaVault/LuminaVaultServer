@@ -25,11 +25,11 @@ struct MemorySearchRequest: Codable {
 /// Server-only helper to create a MemoryDTO from a Fluent model.
 extension MemoryDTO {
     static func fromMemory(_ memory: Memory) throws -> MemoryDTO {
-        MemoryDTO(
-            id: try memory.requireID(),
+        try MemoryDTO(
+            id: memory.requireID(),
             content: memory.content,
             tags: memory.tags ?? [],
-            createdAt: memory.createdAt
+            createdAt: memory.createdAt,
         )
     }
 }
