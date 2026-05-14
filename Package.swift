@@ -81,4 +81,5 @@ let package = Package(
                     ],
                     path: "Tests/AppTests"),
     ],
+    swiftLanguageVersions: [.v6],
 )

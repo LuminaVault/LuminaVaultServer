@@ -58,8 +58,25 @@ struct MemoryController {
     private static let maxLimit = 100
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
+        addCaptureRoutes(to: router)
+        addSearchRoutes(to: router)
+        addReadRoutes(to: router)
+    }
+
+    func addAgentRoutes(to router: RouterGroup<AppRequestContext>) {
+        addCaptureRoutes(to: router)
+        addSearchRoutes(to: router)
+    }
+
+    func addCaptureRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/upsert", use: upsert)
+    }
+
+    func addSearchRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/search", use: search)
+    }
+
+    func addReadRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)

@@ -18,6 +18,7 @@ struct SkillManifestTests {
         "belief-evolution",
         "pattern-detector",
         "contradiction-detector",
+        "lapse-archiver",
     ]
 
     private static func loadBuiltin(_ name: String) throws -> String {

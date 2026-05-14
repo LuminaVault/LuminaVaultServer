@@ -12,6 +12,7 @@ import Logging
 struct SkillsController {
     let runner: SkillRunner
     let catalog: SkillCatalog
+    let enforcementEnabled: Bool
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -20,9 +21,16 @@ struct SkillsController {
 
     @Sendable
     func runSkill(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
-        _ = try ctx.requireIdentity()
-        guard let _ = ctx.parameters.get("name") else {
+        let user = try ctx.requireIdentity()
+        guard let name = ctx.parameters.get("name") else {
             throw HTTPError(.badRequest, message: "skill name required")
+        }
+        if enforcementEnabled {
+            let manifest = try await catalog.manifest(named: name, for: user.requireID())
+            let capability: Capability = manifest?.source == .vault ? .skillVaultRun : .skillBuiltinRun
+            guard user.entitled(for: capability) else {
+                throw EntitlementDeniedError(capability: capability)
+            }
         }
         // HER-169 will dispatch to `runner.run(...)` inside a do/catch
         // that maps `SkillRunCapExceededError` (from the HER-193 guard)
@@ -39,5 +47,17 @@ struct SkillsController {
             headers: [.retryAfter: String(Int(error.retryAfter.rounded(.up)))],
             message: "daily run cap exceeded for this skill",
         )
+    }
+}
+
+struct EntitlementDeniedError: HTTPResponseError {
+    let capability: Capability
+
+    var status: HTTPResponse.Status {
+        .init(code: 402, reasonPhrase: "Payment Required")
+    }
+
+    func response(from _: Request, context _: some RequestContext) throws -> Response {
+        try EntitlementMiddleware.paywallResponse(for: capability)
     }
 }

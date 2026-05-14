@@ -125,6 +125,13 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty },
         adminToken: reader.string(forKey: "admin.token", default: ""),
+        billingEnforcementEnabled: reader.string(forKey: "billing.enforcementEnabled", default: "false").lowercased() == "true",
+        billingColdStoragePath: reader.string(
+            forKey: "billing.coldStoragePath",
+            default: URL(fileURLWithPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"))
+                .appendingPathComponent("cold-storage")
+                .path,
+        ),
         xClientID: reader.string(forKey: "oauth.x.clientId", default: ""),
         smsKind: reader.string(forKey: "sms.kind", default: "logging"),
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
@@ -137,6 +144,18 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
     let router = try buildRouter(services: services, managedServices: &appServices)
+    if fluentEnabled {
+        let lapseArchiver = LapseArchiverJob(
+            fluent: fluent,
+            vaultPaths: VaultPathService(rootPath: services.vaultRootPath),
+            coldStoragePath: services.billingColdStoragePath,
+            logger: Logger(label: "lv.billing.lapse-archiver"),
+        )
+        appServices.append(LapseArchiverService(
+            job: lapseArchiver,
+            logger: Logger(label: "lv.billing.lapse-archiver"),
+        ))
+    }
     if let otelServices {
         appServices.append(otelServices.metrics)
         appServices.append(otelServices.tracer)
@@ -427,6 +446,7 @@ func buildRouter(
 
     let llmGroup = router.group("/v1/llm")
         .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
         .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
@@ -446,16 +466,25 @@ func buildRouter(
         embeddings: DeterministicEmbeddingService(),
         achievements: achievementsService,
     )
-    // captureByUser covers /upsert (write capture) and /search (read agent loop);
-    // both are tenant-scoped Hermes calls so the per-user budget is shared.
-    let memoryGroup = router.group("/v1/memory")
+    let memoryCaptureGroup = router.group("/v1/memory")
         .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
-    memoryController.addRoutes(to: memoryGroup)
+    memoryController.addCaptureRoutes(to: memoryCaptureGroup)
+    let memorySearchGroup = router.group("/v1/memory")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
+    memoryController.addSearchRoutes(to: memorySearchGroup)
+    let memoryReadGroup = router.group("/v1/memory")
+        .add(middleware: jwtAuthenticator)
+    memoryController.addReadRoutes(to: memoryReadGroup)
 
     // Query (natural-language semantic search) — protected.
     let queryController = QueryController(service: memoryService, achievements: achievementsService)
-    let queryGroup = router.group("/v1/query").add(middleware: jwtAuthenticator)
+    let queryGroup = router.group("/v1/query")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
@@ -469,7 +498,9 @@ func buildRouter(
         logger: Logger(label: "lv.memo"),
     )
     let memoController = MemoController(service: memoGenerator)
-    let memoGroup = router.group("/v1/memos").add(middleware: jwtAuthenticator)
+    let memoGroup = router.group("/v1/memos")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled))
     memoController.addRoutes(to: memoGroup)
 
     // Vault file upload (markdown + images) — protected.
@@ -505,6 +536,7 @@ func buildRouter(
     let kbCompileController = KBCompileController(service: kbCompileService, achievements: achievementsService)
     let kbCompileGroup = router.group("/v1/kb-compile")
         .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .kbCompile, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
     kbCompileController.addRoutes(to: kbCompileGroup)
 
@@ -544,6 +576,7 @@ func buildRouter(
         logger: Logger(label: "lv.health"),
     )
     let healthGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .healthIngest, enforcementEnabled: services.billingEnforcementEnabled))
     healthController.addRoutes(to: healthGroup)
 
     // Admin: hermes-profile reconciliation. Shared-secret gated; off when
@@ -602,6 +635,12 @@ func buildRouter(
         pruning: memoryPruningService,
         job: memoryPruningJob,
     ).addRoutes(to: memoryAdminGroup)
+
+    // Admin: billing tier override. Shared-secret gated; used for support,
+    // TestFlight, and internal accounts without changing RevenueCat state.
+    let billingAdminGroup = router.group("/v1/admin")
+        .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+    BillingAdminController(fluent: services.fluent).addRoutes(to: billingAdminGroup)
 
     // Device tokens (APNS / FCM) — protected.
     let deviceController = DeviceController(fluent: services.fluent)
@@ -669,6 +708,7 @@ func buildRouter(
     SkillsController(
         runner: skillRunner,
         catalog: skillCatalog,
+        enforcementEnabled: services.billingEnforcementEnabled,
         logger: skillsLogger,
     ).addRoutes(to: skillsGroup)
 
