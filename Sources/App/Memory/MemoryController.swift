@@ -23,6 +23,10 @@ struct MemorySearchRequest: Codable {
 }
 
 /// Server-only helper to create a MemoryDTO from a Fluent model.
+/// HER-200 L2 — every DTO conversion throws because Fluent.Model.id is
+/// optional. Models from a query always have an ID; the type system
+/// doesn't enforce it. Add `extension Memory { var savedID: UUID { ... } }`
+/// for post-fetch instances so this becomes a non-throwing helper.
 extension MemoryDTO {
     static func fromMemory(_ memory: Memory) throws -> MemoryDTO {
         try MemoryDTO(

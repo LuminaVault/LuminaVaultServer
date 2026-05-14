@@ -184,6 +184,9 @@ func buildRouter(services: ServiceContainer, reader: ConfigReader) throws -> Rou
 
 /// Build router and surface any ServiceLifecycle-managed background services
 /// constructed alongside route dependencies.
+/// HER-200 M2 — god function. Extract `buildAuthRoutes`, `buildSkillRoutes`,
+/// `buildMemoryRoutes`, `buildAdminRoutes`, `buildLLMRoutes`. Pure refactor,
+/// keep semantics identical. Largest maintenance liability in the repo.
 func buildRouter(
     reader: ConfigReader,
     services: ServiceContainer,
@@ -303,6 +306,10 @@ func buildRouter(
     if !services.googleClientID.isEmpty {
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
+    // HER-200 M3 — single-replica only. Multi-replica deployments lose
+    // rate-limit effectiveness because each replica owns its own bucket.
+    // Add `rateLimitStorageKind` to ConfigReader + makeRateLimitStorage()
+    // factory; back with Redis when a second replica ships.
     let rateLimitStorage = MemoryPersistDriver()
     AuthController(
         service: authService,
@@ -759,6 +766,9 @@ func buildRouter(
         fluent: services.fluent,
         logger: skillsLogger,
     )
+    // HER-200 M4 — cronScheduler is constructed but never appended to
+    // managedServices, so ServiceGroup never calls run(). No-op today
+    // (catalog empty); production bug once HER-169 lands.
     _ = cronScheduler // HER-170 — surface to appServices for ServiceGroup lifecycle
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
@@ -794,6 +804,10 @@ func buildRouter(
         do {
             for try await packet in inbound.messages(maxSize: .max) {
                 if case let .text(message) = packet {
+                    // HER-200 L1 — broadcast is unfiltered at this layer.
+                    // Decide owner: validate/whitelist message format here, or
+                    // document explicitly that ConnectionManager.broadcast
+                    // trusts callers + add validation inside ConnectionManager.
                     await connectionManager.broadcast(tenantID: tenantID, message: message)
                 }
             }

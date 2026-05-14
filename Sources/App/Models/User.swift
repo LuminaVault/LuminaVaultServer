@@ -1,6 +1,10 @@
 import FluentKit
 import Foundation
 
+/// HER-200 M1 — `@unchecked Sendable` is standard Fluent practice but it's
+/// a compiler escape hatch. Invariant: each request gets a fresh model
+/// instance from the DB; never cache or reuse across requests. Swift-6
+/// strict-concurrency migration will replace this with proper Sendable.
 final class User: Model, @unchecked Sendable {
     static let schema = "users"
 

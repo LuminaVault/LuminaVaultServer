@@ -55,6 +55,8 @@ struct LLMController {
             let userID = try user.requireID()
             let username = user.username
             let pushService = notificationService
+            // HER-200 H2 — these detached tasks survive request cancellation.
+            // Switch to structured `Task { ... }` so client disconnect cascades.
             Task.detached {
                 try? await pushService.notifyLLMReply(
                     userID: userID,
@@ -63,6 +65,7 @@ struct LLMController {
                 )
             }
             if let achievements {
+                // HER-200 H2 — same; achievements may fan-out, leaks if request dies.
                 Task.detached { await achievements.recordAndPush(tenantID: userID, event: .chatCompleted) }
             }
             if finalIsDegraded {

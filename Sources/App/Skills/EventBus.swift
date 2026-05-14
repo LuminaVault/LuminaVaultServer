@@ -99,6 +99,10 @@ actor EventBus {
         AsyncStream(bufferingPolicy: .bufferingNewest(Self.bufferCapacity)) { continuation in
             let id = UUID()
             let subscriber = Subscriber(id: id, continuation: continuation)
+            // HER-200 H1 — fire-and-forget register/unregister inside the stream
+            // factory leaks a subscriber entry if the stream is dropped before
+            // the Task runs. Move to nonisolated(unsafe) sync register and call
+            // directly here + in onTermination.
             Task { await self.register(eventType: eventType, subscriber: subscriber) }
             continuation.onTermination = { _ in
                 Task { await self.unregister(eventType: eventType, id: id) }
