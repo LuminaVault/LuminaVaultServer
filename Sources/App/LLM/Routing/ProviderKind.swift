@@ -9,13 +9,15 @@ import Foundation
 /// rename — add new cases instead.
 enum ProviderKind: String, Hashable, CaseIterable, Codable {
     case hermesGateway
+    case anthropic
+    case openai
+    case gemini
     case together
     case groq
+    case fireworks
+    case deepseekDirect
     case openRouter
     case deepseek
     case kimi
-    case gemini
-    case openai
-    case anthropic
     case ollama
 }

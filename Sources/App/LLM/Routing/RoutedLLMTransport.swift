@@ -7,34 +7,36 @@ import Logging
 /// stops on first 2xx, fails over on `.transient` / `.network`, gives up
 /// on `.permanent`.
 ///
-/// Drop-in for `URLSessionHermesChatTransport` — every service that
-/// previously held `any HermesChatTransport` keeps working. Today the
-/// router returns `[.hermesGateway]` so behaviour is unchanged from the
-/// single-gateway path; HER-161 will start producing multi-candidate
-/// decisions and this transport already knows what to do with them.
+/// HER-161 — the transport now takes an explicit `capability` so each
+/// service surface (chat=.medium, kb-compile=.low, etc.) can opt into a
+/// different routing tier. The `modelID` from the selected `ModelRoute`
+/// is rewritten into the payload before dispatch, so the upstream sees
+/// the model the table picked rather than the original user hint.
 struct RoutedLLMTransport: HermesChatTransport {
     let registry: ProviderRegistry
     let router: any ModelRouter
+    let capability: LLMCapabilityLevel
     let logger: Logger
 
     let usageMeter: UsageMeterService?
 
     /// Optional callable that resolves a `User` from the current request
-    /// scope. Today the chat path is decoupled from per-user routing —
-    /// services hold a `tenantID` but not a full `User` — so this is
-    /// injected nil in production and the router does cost / privacy
-    /// routing without it. HER-161 will thread the user through.
+    /// scope. Defaults to the `LLMRoutingContext` task-local so middleware
+    /// can thread the authenticated user without restructuring every
+    /// service signature.
     let currentUser: @Sendable () async -> User?
 
     init(
         registry: ProviderRegistry,
         router: any ModelRouter,
-        currentUser: @escaping @Sendable () async -> User? = { nil },
+        capability: LLMCapabilityLevel = .medium,
+        currentUser: @escaping @Sendable () async -> User? = { LLMRoutingContext.currentUser },
         logger: Logger,
         usageMeter: UsageMeterService? = nil,
     ) {
         self.registry = registry
         self.router = router
+        self.capability = capability
         self.currentUser = currentUser
         self.logger = logger
         self.usageMeter = usageMeter
@@ -47,48 +49,44 @@ struct RoutedLLMTransport: HermesChatTransport {
     func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
         let requestedModel = Self.extractModel(from: payload)
         let user = await currentUser()
-        let decision = await router.pick(forModel: requestedModel, user: user)
+        let decision = await router.pick(forModel: requestedModel, capability: capability, user: user)
 
         var lastRecoverable: (any Error)?
         for candidate in decision.candidates {
-            guard let adapter = await registry.adapter(for: candidate) else {
-                logger.warning("router decision had unregistered provider: \(candidate.rawValue)")
+            guard let adapter = await registry.adapter(for: candidate.provider) else {
+                logger.warning("router decision had unregistered provider: \(candidate.provider.rawValue)")
                 continue
             }
+            let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
             do {
-                let metadata = try await adapter.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
+                let metadata = try await adapter.chatCompletionsWithMetadata(payload: candidatePayload, profileUsername: profileUsername)
                 if let usageMeter, let user {
-                    // Extract usage headers; fire-and-forget recording
                     var mtokIn = 0
                     var mtokOut = 0
                     Self.extractUsage(from: metadata, mtokIn: &mtokIn, mtokOut: &mtokOut)
                     if mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() {
                         let meter = usageMeter
-                        let modelToRecord = candidate.rawValue // Fallback, could be actual model used
+                        let modelToRecord = candidate.modelID
                         Task { await meter.record(tenantID: userID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
                     }
                 }
                 return metadata
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
-                logger.warning("provider \(candidate.rawValue) failed (recoverable): \(providerError)")
+                logger.warning("provider \(candidate.provider.rawValue) failed (recoverable): \(providerError)")
                 continue
             } catch let providerError as ProviderError {
-                // .permanent — caller's payload is wrong. Don't fall over.
-                logger.error("provider \(candidate.rawValue) permanent: \(providerError)")
+                logger.error("provider \(candidate.provider.rawValue) permanent: \(providerError)")
                 throw HTTPError(
                     .badGateway,
-                    message: "llm upstream rejected request (\(candidate.rawValue))",
+                    message: "llm upstream rejected request (\(candidate.provider.rawValue))",
                 )
             } catch {
-                // Something we don't classify — treat as recoverable so a
-                // single bad adapter doesn't break the user.
                 lastRecoverable = error
-                logger.warning("provider \(candidate.rawValue) unclassified error: \(error)")
+                logger.warning("provider \(candidate.provider.rawValue) unclassified error: \(error)")
                 continue
             }
         }
-        // Every candidate failed recoverably (or the registry was empty).
         logger.error("all providers exhausted for decision \(decision.candidates)")
         if let lastRecoverable {
             throw HTTPError(.badGateway, message: "llm upstream unavailable: \(lastRecoverable)")
@@ -99,8 +97,7 @@ struct RoutedLLMTransport: HermesChatTransport {
     // MARK: - Helpers
 
     /// Cheap best-effort pull of the `model` field from the chat-completions
-    /// JSON payload. Used as a hint for the router; nil if unparseable
-    /// (router falls back to its default).
+    /// JSON payload. Used as a hint for the router; nil if unparseable.
     private static func extractModel(from payload: Data) -> String? {
         guard
             let any = try? JSONSerialization.jsonObject(with: payload),
@@ -111,6 +108,17 @@ struct RoutedLLMTransport: HermesChatTransport {
             return nil
         }
         return model
+    }
+
+    /// Rewrites the `model` field in the chat-completions payload so the
+    /// upstream sees the model the router actually picked. Falls through
+    /// on any parse failure rather than mangling the request.
+    private static func rewriteModel(_ modelID: String, in payload: Data) -> Data {
+        guard var dict = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return payload
+        }
+        dict["model"] = modelID
+        return (try? JSONSerialization.data(withJSONObject: dict)) ?? payload
     }
 
     private static func extractUsage(
@@ -132,8 +140,6 @@ struct RoutedLLMTransport: HermesChatTransport {
             }
         }
 
-        // Also attempt to extract from the raw JSON payload since the gateway might not
-        // send headers for usage, but include it in the JSON body.
         if mtokIn == 0, mtokOut == 0 {
             if let responseJSON = try? JSONSerialization.jsonObject(with: metadata.data) as? [String: Any],
                let usage = responseJSON["usage"] as? [String: Any]

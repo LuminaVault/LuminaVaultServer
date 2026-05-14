@@ -150,7 +150,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
-    let router = try buildRouter(services: services, managedServices: &appServices)
+    let router = try buildRouter(reader: reader, services: services, managedServices: &appServices)
     if fluentEnabled {
         let lapseArchiver = LapseArchiverJob(
             fluent: fluent,
@@ -177,16 +177,17 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
 }
 
 /// Build router
-func buildRouter(services: ServiceContainer) throws -> Router<AppRequestContext> {
+func buildRouter(services: ServiceContainer, reader: ConfigReader) throws -> Router<AppRequestContext> {
     var managedServices: [any Service] = []
-    return try buildRouter(services: services, managedServices: &managedServices)
+    return try buildRouter(reader: reader, services: services, managedServices: &managedServices)
 }
 
 /// Build router and surface any ServiceLifecycle-managed background services
 /// constructed alongside route dependencies.
 func buildRouter(
+    reader: ConfigReader,
     services: ServiceContainer,
-    managedServices _: inout [any Service],
+    managedServices: inout [any Service],
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
     router.addMiddleware {
@@ -407,14 +408,25 @@ func buildRouter(
             logger: routingLogger,
         ))
     }
-    let providerRegistry = ProviderRegistry(
+    // HER-161 — env-loaded provider registry. Reads
+    // `llm.provider.<key>.apiKey` / `.baseURL` for anthropic, openai,
+    // gemini, together, groq, fireworks, deepseekDirect — missing keys
+    // disable that provider rather than crashing the boot. Registered
+    // as a `Service` so `ServiceGroup` retains it for the app lifetime.
+    let providerRegistry = ProviderRegistry.from(
+        reader: reader,
         adapters: providerAdapters,
         logger: routingLogger,
     )
-    // HER-200 — model-based router for user-facing chat. Routes
-    // `gemini*` model hints to the Gemini provider and everything
-    // else back to the Hermes gateway.
-    let modelRouter: any ModelRouter = RoutingModelRouter()
+    managedServices.append(providerRegistry)
+    // HER-161 — capability-tier table router. Picks `(provider, model)`
+    // from a static matrix keyed on `(tier, capability)`, honors the
+    // user's `privacy_no_cn_origin` flag, and always falls back to the
+    // Hermes gateway when no upstream is enabled.
+    let modelRouter: any ModelRouter = TableModelRouter(
+        registry: providerRegistry,
+        hermesDefaultModel: services.hermesDefaultModel,
+    )
     let usageMeterService = UsageMeterService(
         fluent: services.fluent,
         freeMtokDaily: services.usageFreeMtokDaily,
