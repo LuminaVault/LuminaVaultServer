@@ -803,28 +803,25 @@ func buildRouter(
             }
         }
 
-        // HER-200 L1 — broadcast guard. Cap the inbound message size, reject
-        // empty payloads, and require valid JSON with a `type` field before
-        // fanning out to peer connections. A compromised client cannot stuff
-        // arbitrary bytes through the broadcast layer.
+        // HER-200 L1 — see `WebSocketBroadcastGuard.evaluate(_:)` for the
+        // rejection rules. Logged at warning with a specific reason so
+        // misbehaving clients are diagnosable.
         let wsLogger = Logger(label: "lv.ws")
-        let maxInboundBytes = 16 * 1024
         do {
-            for try await packet in inbound.messages(maxSize: maxInboundBytes) {
+            for try await packet in inbound.messages(maxSize: WebSocketBroadcastGuard.maxMessageBytes) {
                 if case let .text(message) = packet {
-                    guard !message.isEmpty, message.utf8.count <= maxInboundBytes else {
-                        wsLogger.warning("ws.broadcast rejected oversize/empty message tenant=\(tenantID) bytes=\(message.utf8.count)")
-                        continue
+                    switch WebSocketBroadcastGuard.evaluate(message) {
+                    case .allow:
+                        await connectionManager.broadcast(tenantID: tenantID, message: message)
+                    case .rejectEmpty:
+                        wsLogger.warning("ws.broadcast rejected empty message tenant=\(tenantID)")
+                    case let .rejectOversize(byteCount):
+                        wsLogger.warning("ws.broadcast rejected oversize tenant=\(tenantID) bytes=\(byteCount)")
+                    case .rejectInvalidJSON:
+                        wsLogger.warning("ws.broadcast rejected non-JSON tenant=\(tenantID)")
+                    case .rejectMissingType:
+                        wsLogger.warning("ws.broadcast rejected missing type field tenant=\(tenantID)")
                     }
-                    guard
-                        let data = message.data(using: .utf8),
-                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                        json["type"] is String
-                    else {
-                        wsLogger.warning("ws.broadcast rejected non-JSON or missing type field tenant=\(tenantID)")
-                        continue
-                    }
-                    await connectionManager.broadcast(tenantID: tenantID, message: message)
                 }
             }
         } catch {
