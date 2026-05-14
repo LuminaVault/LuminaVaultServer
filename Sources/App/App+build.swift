@@ -84,6 +84,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         await fluent.migrations.add(M29_CreateUserHermesConfig())
         await fluent.migrations.add(M30_AddVaultFileProcessedAt())
         await fluent.migrations.add(M31_CreateUsageMeter())
+        await fluent.migrations.add(M32_CreateBillingEventLog())
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -357,6 +358,14 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
     meGroup.get("/me", use: meHandler)
     meGroup.put("/me/privacy", use: updatePrivacyHandler(fluent: services.fluent))
+    meGroup.get("/me/billing", use: meBillingHandler(enforcementEnabled: services.billingEnforcementEnabled))
+
+    let billingGroup = router.group("/v1/billing")
+    RevenueCatWebhookController(
+        fluent: services.fluent,
+        webhookSecret: services.revenuecatWebhookSecret,
+        logger: Logger(label: "lv.billing.revenuecat-webhook"),
+    ).addRoutes(to: billingGroup)
 
     // HER-172 — SkillCatalog needs to be in scope for the ContextRouter
     // middleware on `/v1/llm` below; the full Skills runtime (runner,
@@ -911,6 +920,40 @@ private func updatePrivacyHandler(
             isVerified: user.isVerified,
             privacyNoCNOrigin: user.privacyNoCNOrigin,
             contextRouting: user.contextRouting,
+        )
+    }
+}
+
+struct MeBillingResponse: ResponseEncodable, Encodable {
+    let tier: String
+    let tierExpiresAt: Date?
+    let tierOverride: String
+    let inTrial: Bool
+    let daysRemaining: Int
+    let enforcementEnabled: Bool
+}
+
+private func meBillingHandler(
+    enforcementEnabled: Bool,
+) -> @Sendable (Request, AppRequestContext) async throws -> MeBillingResponse {
+    { _, ctx in
+        let user = try ctx.requireIdentity()
+
+        let daysRemaining: Int = if let exp = user.tierExpiresAt {
+            max(0, Calendar.current.dateComponents([.day], from: Date(), to: exp).day ?? 0)
+        } else {
+            0
+        }
+
+        let inTrial = user.tier == "trial" && daysRemaining > 0
+
+        return MeBillingResponse(
+            tier: user.tier,
+            tierExpiresAt: user.tierExpiresAt,
+            tierOverride: user.tierOverride,
+            inTrial: inTrial,
+            daysRemaining: daysRemaining,
+            enforcementEnabled: enforcementEnabled,
         )
     }
 }

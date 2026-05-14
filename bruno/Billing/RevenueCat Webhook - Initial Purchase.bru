@@ -1,0 +1,35 @@
+meta {
+  name: RevenueCat Webhook - Initial Purchase
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/v1/billing/revenuecat-webhook
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{revenuecatWebhookSecret}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "event": {
+      "id": "rc-evt-initial-purchase-{{$randomUUID}}",
+      "type": "INITIAL_PURCHASE",
+      "app_user_id": "{{userId}}",
+      "product_id": "luminavault_pro_monthly",
+      "expiration_at_ms": 1780000000000
+    }
+  }
+}
+
+docs {
+  Sends a signed RevenueCat INITIAL_PURCHASE webhook.
+  Server should upgrade users.tier to "pro" and set tier_expires_at.
+  Bearer = REVENUECAT_WEBHOOK_SECRET (alternative to X-RevenueCat-Signature HMAC).
+  Replaying the same event.id returns 200 with no DB write (idempotency).
+}

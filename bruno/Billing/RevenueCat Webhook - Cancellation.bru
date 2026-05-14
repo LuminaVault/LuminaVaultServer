@@ -1,0 +1,35 @@
+meta {
+  name: RevenueCat Webhook - Cancellation
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/v1/billing/revenuecat-webhook
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{revenuecatWebhookSecret}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "event": {
+      "id": "rc-evt-cancellation-{{$randomUUID}}",
+      "type": "CANCELLATION",
+      "app_user_id": "{{userId}}",
+      "product_id": "luminavault_pro_monthly",
+      "expiration_at_ms": 1700000000000,
+      "is_refund": false
+    }
+  }
+}
+
+docs {
+  Sends a CANCELLATION webhook with past expiration_at_ms.
+  Server should mark users.tier = "lapsed".
+  If expiration is in the future, the user keeps access until then (CANCELLATION is just intent-to-not-renew).
+}
