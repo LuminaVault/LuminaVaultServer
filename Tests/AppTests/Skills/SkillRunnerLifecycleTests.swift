@@ -13,7 +13,7 @@ import Testing
 struct SkillRunnerLifecycleTests {
     // MARK: - Harness
 
-    private struct Harness: Sendable {
+    private struct Harness {
         let fluent: Fluent
         let tenantID: UUID
         let root: URL
