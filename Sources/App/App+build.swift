@@ -525,6 +525,64 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
 
+    // HER-205 — POST /v1/vision/embed. Image embedding endpoint that
+    // returns a 1536-dim vector compatible with `memories.embedding`.
+    // Single configured provider per boot (`vision.embed.provider`,
+    // default `cohere`). Provider registers only when its apiKey is
+    // non-empty; with none configured the service returns 503.
+    let visionEmbedLogger = Logger(label: "lv.vision.embed")
+    var visionEmbedAdapters: [any VisionEmbedProviderAdapter] = []
+    let cohereVisionAPIKey = reader.string(forKey: "vision.embed.provider.cohere.apiKey", isSecret: true, default: "")
+    if !cohereVisionAPIKey.isEmpty {
+        let cohereBaseRaw = reader.string(forKey: "vision.embed.provider.cohere.baseURL", default: "https://api.cohere.com")
+        let cohereBase = URL(string: cohereBaseRaw) ?? URL(string: "https://api.cohere.com")!
+        let cohereModel = reader.string(forKey: "vision.embed.provider.cohere.model", default: "embed-image-v3.0")
+        visionEmbedAdapters.append(CohereImageEmbedAdapter(
+            apiKey: cohereVisionAPIKey,
+            baseURL: cohereBase,
+            model: cohereModel,
+            session: .shared,
+            logger: visionEmbedLogger,
+        ))
+    }
+    // Test-only stub — selected exclusively via `vision.embed.provider=stub`.
+    let visionEmbedProviderName = reader.string(forKey: "vision.embed.provider", default: "cohere")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+    if visionEmbedProviderName == "stub" {
+        visionEmbedAdapters.append(StubVisionEmbedAdapter(
+            dim: reader.int(forKey: "vision.embed.stub.dim", default: 1024),
+            fill: Float(reader.double(forKey: "vision.embed.stub.fill", default: 0.1)),
+            model: reader.string(forKey: "vision.embed.stub.model", default: "stub-clip"),
+            sourceWidth: reader.int(forKey: "vision.embed.stub.sourceWidth", default: 768),
+            sourceHeight: reader.int(forKey: "vision.embed.stub.sourceHeight", default: 768),
+        ))
+    }
+    let visionEmbedRegistry = VisionEmbedProviderRegistry.from(
+        reader: reader,
+        adapters: visionEmbedAdapters,
+        logger: visionEmbedLogger,
+    )
+    managedServices.append(visionEmbedRegistry)
+    let visionEmbedService = VisionEmbedService(
+        registry: visionEmbedRegistry,
+        fluent: services.fluent,
+        usageMeter: usageMeterService,
+        logger: visionEmbedLogger,
+        // Pinned to the `memories.embedding` column width (1536, M07).
+        targetDim: 1536,
+    )
+    let visionEmbedController = VisionEmbedController(
+        service: visionEmbedService,
+        logger: visionEmbedLogger,
+    )
+    let visionEmbedGroup = router.group("/v1/vision")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserPerMinute, storage: rateLimitStorage))
+        .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserDaily, storage: rateLimitStorage))
+    visionEmbedController.addRoutes(to: visionEmbedGroup)
+
     // HER-204 — POST /v1/tts. OpenAI-only adapter at MVP. Provider key
     // sourced from the same `llm.provider.openai.apiKey` slot already
     // loaded for chat. Empty key disables the route at construction time
