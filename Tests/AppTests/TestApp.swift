@@ -57,5 +57,14 @@ let dbTestReader = ConfigReader(providers: [
         // so `/v1/auth/email/verify` tests can drive a known code. MUST
         // stay empty in prod for the same reason as `phone.fixedOtp`.
         "magic.fixedOtp": "313131",
+        // HER-217: deterministic SecretBox master key for BYO Hermes
+        // tests. 32 zero bytes base64-encoded. Never set this value in
+        // prod — every tenant key derives from it via HKDF.
+        "secret.masterKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        // HER-217: open private/loopback ranges so test-time SSRF
+        // validation accepts 127.0.0.1 / docker-internal hosts. Prod
+        // must leave this `false`.
+        "byoHermes.allowPrivate": "true",
+        "lv.environment": "test",
     ]),
 ])
