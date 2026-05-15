@@ -2,6 +2,13 @@ import Foundation
 import Hummingbird
 import LuminaVaultShared
 
+// /spaces DTOs are now OpenAPI-generated in LuminaVaultShared. The typealiases
+// below keep call sites stable; see LuminaVaultShared/Sources/LuminaVaultShared/openapi.yaml.
+typealias SpaceDTO = Components.Schemas.SpaceDTO
+typealias SpaceListResponse = Components.Schemas.SpaceListResponse
+typealias CreateSpaceRequest = Components.Schemas.CreateSpaceRequest
+typealias UpdateSpaceRequest = Components.Schemas.UpdateSpaceRequest
+
 extension SpaceDTO: ResponseEncodable {}
 extension SpaceListResponse: ResponseEncodable {}
 
@@ -9,7 +16,7 @@ extension SpaceListResponse: ResponseEncodable {}
 extension SpaceDTO {
     static func fromSpace(_ space: Space) throws -> SpaceDTO {
         try SpaceDTO(
-            id: space.requireID(),
+            id: space.requireID().uuidString,
             name: space.name,
             slug: space.slug,
             description: space.spaceDescription,

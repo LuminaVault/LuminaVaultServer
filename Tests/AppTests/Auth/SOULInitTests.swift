@@ -96,6 +96,7 @@ struct SOULInitTests {
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
                 logger: logger,
             ),
+            logger: logger,
         )
         return Harness(service: service, fluent: fluent, vaultRoot: tmpRoot)
     }

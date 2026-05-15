@@ -48,6 +48,7 @@ struct DefaultAuthService: AuthService {
     let verificationCodeGenerator: any OTPCodeGenerator
     let hermesProfileService: HermesProfileService
     let soulService: SOULService
+    let logger: Logger
 
     let accessTokenLifetime: TimeInterval = 60 * 60 // 1 hour
     let refreshTokenLifetime: TimeInterval = 60 * 60 * 24 * 30 // 30 days
@@ -69,17 +70,14 @@ struct DefaultAuthService: AuthService {
         let hash = await hasher.hash(password)
         let user = try await repo.createUser(email: email, username: username, passwordHash: hash)
         try await Self.applyTrialDefaults(to: user, on: fluent.db())
-        do {
-            try await hermesProfileService.ensure(for: user)
-        } catch {
-            try? await user.delete(force: true, on: fluent.db())
-            throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
-        }
+        // HER-29 — Hermes provisioning is soft-fail. A degraded gateway
+        // leaves a `status="error"` row that the daily reconciler heals;
+        // signup itself still succeeds and the JWT issues without `hpid`.
+        // SOUL.md remains a hard requirement (load-bearing for Hermes voice).
+        await hermesProfileService.ensureSoft(for: user, logger: logger)
         do {
             try soulService.initIfMissing(for: user)
         } catch {
-            // SOUL.md is load-bearing for Hermes voice; the user should not
-            // exist without it. Roll back so a retry produces a clean state.
             try? await user.delete(force: true, on: fluent.db())
             throw HTTPError(.serviceUnavailable, message: "could not initialize SOUL.md")
         }
@@ -314,12 +312,8 @@ struct DefaultAuthService: AuthService {
             emailVerified: emailVerified,
         )
         try await identity.save(on: fluent.db())
-        do {
-            try await hermesProfileService.ensure(for: user)
-        } catch {
-            try? await user.delete(force: true, on: fluent.db())
-            throw HTTPError(.serviceUnavailable, message: "could not provision hermes profile")
-        }
+        // HER-29 — soft-fail Hermes; see register(...) for rationale.
+        await hermesProfileService.ensureSoft(for: user, logger: logger)
         do {
             try soulService.initIfMissing(for: user)
         } catch {

@@ -40,7 +40,25 @@ Sources/
 ## Running locally
 
 ```bash
-swift run App
+cp .env.example .env   # then edit JWT_HMAC_SECRET + BOOTSTRAP_ADMIN_*
+./setup.sh
+```
+
+`setup.sh` is a one-click orchestrator (HER-30) that brings up Postgres,
+Hermes, and Jaeger via Docker Compose, runs Fluent migrations, optionally
+seeds an admin user, and execs the HTTP server. Every step is idempotent;
+re-run it any time. See [`docs/startup.md`](docs/startup.md) for the full
+walkthrough and CLI reference.
+
+### Manual setup (fallback)
+
+If you'd rather drive each step yourself:
+
+```bash
+make dev-up                                 # postgres + hermes + jaeger + hummingbird
+swift run App migrate                       # apply Fluent migrations
+swift run App bootstrap-admin               # optional: seed admin user
+swift run App                               # foreground HTTP server
 ```
 
 Configuration is read in this order: CLI args → environment variables → `.env` file → in-memory defaults.

@@ -52,40 +52,7 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
             )),
             as: .psql,
         )
-        await fluent.migrations.add(M00_EnableExtensions())
-        await fluent.migrations.add(M01_CreateUser())
-        await fluent.migrations.add(M02_CreateRefreshToken())
-        await fluent.migrations.add(M03_CreatePasswordResetToken())
-        await fluent.migrations.add(M04_CreateMFAChallenge())
-        await fluent.migrations.add(M05_CreateOAuthIdentity())
-        await fluent.migrations.add(M06_CreateMemory())
-        await fluent.migrations.add(M07_AddMemoryEmbedding())
-        await fluent.migrations.add(M08_CreateHermesProfile())
-        await fluent.migrations.add(M09_AddUsernameToUser())
-        await fluent.migrations.add(M10_CreateDeviceToken())
-        await fluent.migrations.add(M11_CreateWebAuthnCredential())
-        await fluent.migrations.add(M12_CreateSpace())
-        await fluent.migrations.add(M13_CreateVaultFile())
-        await fluent.migrations.add(M14_CreateHealthEvent())
-        await fluent.migrations.add(M15_AddTierFields())
-        await fluent.migrations.add(M16_CreateEmailVerificationToken())
-        await fluent.migrations.add(M17_CreateOnboardingState())
-        await fluent.migrations.add(M18_AddMemoryTags())
-        await fluent.migrations.add(M19_CreateSkillsState())
-        await fluent.migrations.add(M20_CreateSkillRunLog())
-        await fluent.migrations.add(M21_AddMemoryScore())
-        await fluent.migrations.add(M22_CreateMemoryArchive())
-        await fluent.migrations.add(M23_AddMemorySourceLineage())
-        await fluent.migrations.add(M24_AddUserContextRouting())
-        await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
-        await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
-        await fluent.migrations.add(M27_AddUserTimezone())
-        await fluent.migrations.add(M28_CreateAchievementProgress())
-        await fluent.migrations.add(M29_CreateUserHermesConfig())
-        await fluent.migrations.add(M30_AddVaultFileProcessedAt())
-        await fluent.migrations.add(M31_CreateUsageMeter())
-        await fluent.migrations.add(M32_CreateBillingEventLog())
-        await fluent.migrations.add(M33_AddVaultFileMetadata())
+        await registerMigrations(on: fluent)
         let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
         if autoMigrateStr.lowercased() != "false" {
             try await fluent.migrate()
@@ -288,6 +255,7 @@ func buildRouter(
         verificationCodeGenerator: verifyGen,
         hermesProfileService: hermesProfileService,
         soulService: soulService,
+        logger: Logger(label: "lv.auth"),
     )
     let webAuthnService = WebAuthnService(
         enabled: services.webAuthnEnabled,
@@ -659,6 +627,15 @@ func buildRouter(
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
     adminController.addRoutes(to: adminGroup)
 
+    // HER-29 — daily 04:00 UTC self-heal pass over `hermes_profiles`. Picks
+    // up rows left in `error` / `provisioning` by signup soft-fails and
+    // retries `HermesProfileService.ensure`. Runs in-process via
+    // `ServiceLifecycle`, mirroring `LapseArchiverService`.
+    managedServices.append(HermesProfileReconcilerService(
+        reconciler: reconciler,
+        logger: Logger(label: "lv.admin"),
+    ))
+
     // Admin: HER-146 Apple Health correlation engine. Shared-secret gated.
     // Host cron drives this nightly via `POST /v1/admin/health/correlate`.
     let healthCorrelationService = HealthCorrelationService(
@@ -926,7 +903,7 @@ private func makeSMSSender(
     }
 }
 
-private func makeHermesGateway(
+func makeHermesGateway(
     kind: String,
     dataRoot: String,
     logger: Logger,
