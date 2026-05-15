@@ -115,6 +115,9 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         phoneFixedOTP: reader.string(forKey: "phone.fixedOtp", default: ""),
         magicLinkFixedOTP: reader.string(forKey: "magic.fixedOtp", default: ""),
         geminiAPIKey: reader.string(forKey: "gemini.apiKey", default: ""),
+        ttsProvider: reader.string(forKey: "tts.provider", default: "openai"),
+        ttsDefaultModel: reader.string(forKey: "tts.defaultModel", default: "tts-1"),
+        ttsCharactersDaily: Int64(reader.int(forKey: "tts.charactersDaily", default: 1_000_000)),
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -521,6 +524,44 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
+
+    // HER-204 — POST /v1/tts. OpenAI-only adapter at MVP. Provider key
+    // sourced from the same `llm.provider.openai.apiKey` slot already
+    // loaded for chat. Empty key disables the route at construction time
+    // (the controller is never wired) rather than crashing the boot.
+    let openaiAPIKey = reader.string(forKey: "llm.provider.openai.apiKey", isSecret: true, default: "")
+    if !openaiAPIKey.isEmpty {
+        let openaiBaseURLRaw = reader.string(forKey: "llm.provider.openai.baseURL", default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let openaiBaseURL = openaiBaseURLRaw.isEmpty
+            ? URL(string: "https://api.openai.com")!
+            : (URL(string: openaiBaseURLRaw) ?? URL(string: "https://api.openai.com")!)
+        let ttsAdapter = OpenAITTSAdapter(
+            apiKey: openaiAPIKey,
+            baseURL: openaiBaseURL,
+            defaultModel: services.ttsDefaultModel,
+            logger: Logger(label: "lv.tts.openai"),
+        )
+        let routedTTSTransport = RoutedTTSTransport(
+            adapter: ttsAdapter,
+            defaultModel: services.ttsDefaultModel,
+            logger: Logger(label: "lv.tts"),
+            usageMeter: usageMeterService,
+        )
+        let ttsController = TTSController(
+            transport: routedTTSTransport,
+            telemetry: RouteTelemetry(labelPrefix: "tts", logger: Logger(label: "lv.tts")),
+            logger: Logger(label: "lv.tts"),
+        )
+        let ttsGroup = router.group("/v1/tts")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+            .add(middleware: RateLimitMiddleware(policy: .ttsByUserPerMinute, storage: rateLimitStorage))
+            .add(middleware: RateLimitMiddleware(policy: .ttsByUserDaily, storage: rateLimitStorage))
+        ttsController.addRoutes(to: ttsGroup)
+    } else {
+        routingLogger.warning("tts disabled: llm.provider.openai.apiKey is empty")
+    }
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(

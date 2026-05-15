@@ -87,4 +87,15 @@ struct ServiceContainer {
     let magicLinkFixedOTP: String
     /// HER-199: Google Gemini API key. Empty = Gemini provider not registered.
     let geminiAPIKey: String
+    /// HER-204: TTS provider selector. Defaults to `openai`. Only adapter
+    /// wired today; other providers (elevenlabs/cartesia/google) land in
+    /// follow-up tickets.
+    let ttsProvider: String
+    /// HER-204: Default model passed to the TTS adapter when the request
+    /// body doesn't override. OpenAI default is `tts-1`.
+    let ttsDefaultModel: String
+    /// HER-204: Soft daily character budget (informational; not enforced
+    /// in MVP). When char-aware budget gating ships, `UsageMeterService`
+    /// reads this to deny at hard cap.
+    let ttsCharactersDaily: Int64
 }

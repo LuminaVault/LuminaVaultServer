@@ -142,4 +142,10 @@ extension RateLimitPolicy {
     /// `/v1/transcribe`.
     static let transcribeByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
     static let transcribeByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
+
+    /// HER-204: POST /v1/tts. Stacked policies mirroring SMS/email-magic-link
+    /// shape — 30/min burst catches abuse, 1000/day caps the per-user budget.
+    /// Both keyed per-user (falls back to per-IP when auth degrades).
+    static let ttsByUserPerMinute = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let ttsByUserDaily = RateLimitPolicy(max: 1000, window: 86400, keyBuilder: userOrIPKey)
 }
