@@ -10,19 +10,19 @@ struct RateLimitStorageFactoryTests {
     @Test
     func `memory kind returns MemoryPersistDriver`() {
         let storage = makeRateLimitStorage(kind: "memory", logger: Self.logger)
-        #expect(storage is MemoryPersistDriver)
+        #expect(storage is MemoryPersistDriver<ContinuousClock>)
     }
 
     @Test
     func `unknown kind defaults to memory`() {
         let storage = makeRateLimitStorage(kind: "etcd", logger: Self.logger)
-        #expect(storage is MemoryPersistDriver)
+        #expect(storage is MemoryPersistDriver<ContinuousClock>)
     }
 
     @Test
     func `empty kind defaults to memory`() {
         let storage = makeRateLimitStorage(kind: "", logger: Self.logger)
-        #expect(storage is MemoryPersistDriver)
+        #expect(storage is MemoryPersistDriver<ContinuousClock>)
     }
 
     @Test
@@ -31,13 +31,13 @@ struct RateLimitStorageFactoryTests {
         // driver. Until it lands, asking for redis logs a warning and falls
         // back to memory — so a misset env var doesn't crash the boot.
         let storage = makeRateLimitStorage(kind: "redis", logger: Self.logger)
-        #expect(storage is MemoryPersistDriver)
+        #expect(storage is MemoryPersistDriver<ContinuousClock>)
     }
 
     @Test
     func `kind matching is case insensitive`() {
         let storage = makeRateLimitStorage(kind: "REDIS", logger: Self.logger)
-        #expect(storage is MemoryPersistDriver)
+        #expect(storage is MemoryPersistDriver<ContinuousClock>)
     }
 
     @Test
