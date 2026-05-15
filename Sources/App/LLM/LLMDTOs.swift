@@ -4,6 +4,7 @@ import LuminaVaultShared
 
 extension ChatResponse: ResponseEncodable {}
 extension TranscribeResponse: ResponseEncodable {}
+extension VisionEmbedResponse: ResponseEncodable {}
 
 // ─── Outbound wire format (used by adapters / transports only, NOT shared) ──
 
