@@ -1,18 +1,2287 @@
 openapi: '3.1.0'
+
+# HER-224 — full API contract for LuminaVaultServer. Hand-written
+# Hummingbird routes are authoritative for routing; this YAML is the
+# documentation contract + the source for `swift-openapi-generator`
+# `types` output (DTOs only). A contract test enforces parity between
+# this file and the live router. See plan: cuddly-baking-cake.md.
+
 info:
-  title: AppService
-  version: 1.0.0
+  title: LuminaVaultServer
+  version: 0.1.0
+  description: |
+    The LuminaVault second-brain backend. Hummingbird + Postgres + pgvector.
+    Every authenticated route requires `Authorization: Bearer <jwt>` unless
+    explicitly marked otherwise. Admin routes require `Authorization: Bearer
+    <admin-token>` (the `admin.token` env var). The RevenueCat webhook
+    requires `Authorization: Bearer <revenuecat-webhook-secret>`.
+
+  contact:
+    name: LuminaVault
+    url: https://github.com/LuminaVault/LuminaVaultServer
+
 servers:
-  - url: https://example.com/api
-    description: App service deployment.
+  - url: http://localhost:8080
+    description: Local development.
+  - url: https://api.luminavault.example
+    description: Production (placeholder).
+
+tags:
+  - name: Root
+  - name: Auth
+  - name: Me
+  - name: Settings
+    description: Per-user config — currently BYO Hermes gateway (HER-217/223).
+  - name: Onboarding
+  - name: Devices
+    description: APNS / FCM device-token registration (HER-214).
+  - name: Account
+  - name: Billing
+  - name: LLM
+    description: Chat (HER-161/165), transcribe (HER-203), TTS (HER-204), vision/embed (HER-205).
+  - name: Memory
+  - name: Capture
+    description: URL capture with async enrichment (HER-149).
+  - name: Query
+  - name: Memos
+  - name: Vault
+  - name: KB
+    description: Knowledge-base compile (Hermes learning loop).
+  - name: Spaces
+  - name: Soul
+    description: SOUL.md CRUD (HER-85).
+  - name: Achievements
+    description: Usage-driven unlocks (HER-196).
+  - name: Health
+    description: Health-data ingest (HER-146) + read (HER-202).
+  - name: Skills
+  - name: WebSocket
+  - name: Admin
+
+security:
+  - bearerJWT: []
+
 paths:
+
+  # ──────────────────────────────── Root ────────────────────────────────
+
   /:
     get:
+      tags: [Root]
       operationId: getHello
+      summary: Hello.
+      security: []
       responses:
         '200':
-          description: Hello!
+          description: Plaintext greeting.
           content:
             text/plain:
+              schema: { type: string }
+
+  /health:
+    get:
+      tags: [Root]
+      operationId: getRootHealth
+      summary: Readiness probe.
+      security: []
+      responses:
+        '200':
+          description: "ok"
+          content:
+            text/plain:
+              schema: { type: string }
+
+  # ──────────────────────────────── Auth ────────────────────────────────
+
+  /v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: authRegister
+      summary: Email + password registration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '200':
+          description: Account created, session token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: authLogin
+      summary: Email + password login.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Session token issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: authRefresh
+      summary: Exchange a refresh token for a new access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New access + refresh token pair.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: authLogout
+      summary: Revoke the active refresh token.
+      responses:
+        '204':
+          description: Logged out.
+
+  /v1/auth/mfa/verify:
+    post:
+      tags: [Auth]
+      operationId: authMfaVerify
+      summary: Verify a TOTP / OTP second factor.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MFAVerifyRequest' }
+      responses:
+        '200':
+          description: Session token issued after second factor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/mfa/resend:
+    post:
+      tags: [Auth]
+      operationId: authMfaResend
+      summary: Re-send the MFA challenge.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MFAResendRequest' }
+      responses:
+        '204':
+          description: Challenge re-sent.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: authForgotPassword
+      summary: Start password-reset flow.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailOnlyRequest' }
+      responses:
+        '204':
+          description: Reset email sent (idempotent).
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/resend-reset:
+    post:
+      tags: [Auth]
+      operationId: authResendReset
+      summary: Re-send the password-reset OTP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailOnlyRequest' }
+      responses:
+        '204':
+          description: Reset OTP re-sent.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: authResetPassword
+      summary: Complete password reset with OTP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204':
+          description: Password reset.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/email/send-verify:
+    post:
+      tags: [Auth]
+      operationId: authEmailSendVerify
+      summary: Send email-verification OTP to the authenticated user.
+      responses:
+        '204':
+          description: Verification OTP sent.
+
+  /v1/auth/email/confirm:
+    post:
+      tags: [Auth]
+      operationId: authEmailConfirm
+      summary: Confirm email with the verification OTP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailConfirmRequest' }
+      responses:
+        '204':
+          description: Email confirmed.
+
+  /v1/auth/oauth/apple/exchange:
+    post:
+      tags: [Auth]
+      operationId: authOAuthAppleExchange
+      summary: Exchange Apple Sign-In ID token for a LuminaVault session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthIDTokenRequest' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/oauth/google/exchange:
+    post:
+      tags: [Auth]
+      operationId: authOAuthGoogleExchange
+      summary: Exchange Google ID token for a LuminaVault session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthIDTokenRequest' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/oauth/x/exchange:
+    post:
+      tags: [Auth]
+      operationId: authOAuthXExchange
+      summary: Exchange X (Twitter) access token for a LuminaVault session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthAccessTokenRequest' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  /v1/auth/phone/start:
+    post:
+      tags: [Auth]
+      operationId: authPhoneStart
+      summary: Send SMS OTP to a phone number.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhoneStartRequest' }
+      responses:
+        '204':
+          description: SMS sent.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/phone/verify:
+    post:
+      tags: [Auth]
+      operationId: authPhoneVerify
+      summary: Verify phone OTP, issue session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhoneVerifyRequest' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  /v1/auth/email/start:
+    post:
+      tags: [Auth]
+      operationId: authEmailStart
+      summary: Send magic-link OTP to email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailOnlyRequest' }
+      responses:
+        '204':
+          description: Magic link sent.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/auth/email/verify:
+    post:
+      tags: [Auth]
+      operationId: authEmailVerify
+      summary: Verify magic-link OTP, issue session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailMagicVerifyRequest' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  /v1/auth/webauthn/register/options:
+    post:
+      tags: [Auth]
+      operationId: authWebAuthnRegisterOptions
+      summary: Get WebAuthn credential-creation options.
+      responses:
+        '200':
+          description: PublicKeyCredentialCreationOptions JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnOptions' }
+        '503':
+          description: WebAuthn disabled (WEBAUTHN_ENABLED=false).
+
+  /v1/auth/webauthn/register/finish:
+    post:
+      tags: [Auth]
+      operationId: authWebAuthnRegisterFinish
+      summary: Finalise WebAuthn credential registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnFinish' }
+      responses:
+        '204':
+          description: Credential registered.
+
+  /v1/auth/webauthn/authenticate/options:
+    post:
+      tags: [Auth]
+      operationId: authWebAuthnAuthenticateOptions
+      summary: Get WebAuthn authentication options for a known user.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnAuthOptionsRequest' }
+      responses:
+        '200':
+          description: PublicKeyCredentialRequestOptions JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnOptions' }
+
+  /v1/auth/webauthn/authenticate/finish:
+    post:
+      tags: [Auth]
+      operationId: authWebAuthnAuthenticateFinish
+      summary: Finalise WebAuthn authentication, issue session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnFinish' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  # ──────────────────────────────── Me ──────────────────────────────────
+
+  /v1/auth/me:
+    get:
+      tags: [Me]
+      operationId: meGet
+      summary: Get the authenticated user's profile.
+      responses:
+        '200':
+          description: User profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+
+  /v1/auth/me/privacy:
+    put:
+      tags: [Me]
+      operationId: mePrivacyUpdate
+      summary: Update privacy flags.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePrivacyRequest' }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+
+  /v1/auth/me/billing:
+    get:
+      tags: [Me]
+      operationId: meBilling
+      summary: Tier + trial status + days remaining.
+      responses:
+        '200':
+          description: Billing snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeBillingResponse' }
+
+  /v1/me/today:
+    get:
+      tags: [Me]
+      operationId: meToday
+      summary: Widget + daily-review digest (HER-206).
+      responses:
+        '200':
+          description: Today snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeTodayResponse' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─────────────────────── Settings — BYO Hermes ────────────────────────
+
+  /v1/settings/hermes:
+    get:
+      tags: [Settings]
+      operationId: hermesConfigGet
+      summary: Get the per-user Hermes gateway override (HER-217).
+      responses:
+        '200':
+          description: Override config.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesConfigGetResponse' }
+        '404':
+          description: No row — falling back to managed default.
+    put:
+      tags: [Settings]
+      operationId: hermesConfigPut
+      summary: Upsert the Hermes gateway override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesConfigPutRequest' }
+      responses:
+        '200':
+          description: Updated config (verifiedAt reset to null).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesConfigGetResponse' }
+        '400':
+          description: SSRFGuard rejection (invalid_base_url:<reason>).
+    delete:
+      tags: [Settings]
+      operationId: hermesConfigDelete
+      summary: Drop the override; revert to managed default.
+      responses:
+        '204':
+          description: Row deleted.
+
+  /v1/settings/hermes/test:
+    post:
+      tags: [Settings]
+      operationId: hermesConfigTest
+      summary: Probe the configured gateway and bump verified_at on success.
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesConfigTestResponse' }
+        '404':
+          description: No config to test.
+        '502':
+          description: |
+            Probe failed. `message` is a stable TestError code:
+            `timeout` / `tls_error` / `http_4xx` / `http_5xx` /
+            `ssrf_rejected` / `decrypt_failed` / `unreachable`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  # ───────────────────────────── Onboarding ─────────────────────────────
+
+  /v1/onboarding:
+    get:
+      tags: [Onboarding]
+      operationId: onboardingGet
+      summary: Server-tracked resumable onboarding state (HER-93).
+      responses:
+        '200':
+          description: Onboarding state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingStateDTO' }
+    patch:
+      tags: [Onboarding]
+      operationId: onboardingPatch
+      summary: Latch one or more onboarding flags (one-way only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OnboardingPatchRequest' }
+      responses:
+        '200':
+          description: Updated state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingStateDTO' }
+        '400':
+          description: Attempted to set a flag to false (latches are one-way).
+
+  # ────────────────────────────── Devices ───────────────────────────────
+
+  /v1/devices:
+    post:
+      tags: [Devices]
+      operationId: deviceRegister
+      summary: Register an APNS / FCM device token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceRegistrationRequest' }
+      responses:
+        '200':
+          description: Registered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceRegistrationResponse' }
+
+  /v1/devices/{token}:
+    delete:
+      tags: [Devices]
+      operationId: deviceUnregister
+      summary: Unregister a device token.
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Unregistered.
+
+  # ────────────────────────────── Account ───────────────────────────────
+
+  /v1/account:
+    delete:
+      tags: [Account]
+      operationId: accountDelete
+      summary: GDPR right-to-erasure (HER-92).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountDeleteRequest' }
+      responses:
+        '204':
+          description: Account wiped.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ────────────────────────────── Billing ───────────────────────────────
+
+  /v1/billing/revenuecat-webhook:
+    post:
+      tags: [Billing]
+      operationId: billingRevenueCatWebhook
+      summary: RevenueCat server-to-server webhook (HER-184).
+      security:
+        - revenueCatWebhookSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RevenueCatWebhookBody' }
+      responses:
+        '204':
+          description: Event ingested.
+        '401':
+          description: Bad webhook secret.
+        '503':
+          description: Webhook disabled (revenuecat.webhookSecret empty).
+
+  # ──────────────────────────────── LLM ─────────────────────────────────
+
+  /v1/llm/chat:
+    post:
+      tags: [LLM]
+      operationId: llmChat
+      summary: Chat completion. Routes via TableModelRouter; BYO Hermes-aware.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+      responses:
+        '200':
+          description: OpenAI-compatible chat-completions response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatResponse' }
+        '402':
+          description: Entitlement / billing block.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: Upstream provider failure (`hermes_unreachable` for BYO).
+
+  /v1/transcribe:
+    post:
+      tags: [LLM]
+      operationId: llmTranscribe
+      summary: Speech-to-text (HER-203). Multipart audio upload.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/TranscribeMultipartRequest' }
+      responses:
+        '200':
+          description: Transcription result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TranscribeResponse' }
+
+  /v1/tts:
+    post:
+      tags: [LLM]
+      operationId: llmTTS
+      summary: Text-to-speech (HER-204). Returns audio/mpeg.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TTSRequest' }
+      responses:
+        '200':
+          description: MP3 audio stream.
+          content:
+            audio/mpeg:
               schema:
                 type: string
+                format: binary
+
+  /v1/vision/embed:
+    post:
+      tags: [LLM]
+      operationId: llmVisionEmbed
+      summary: Image embedding (HER-205). Returns a float vector.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VisionEmbedRequest' }
+      responses:
+        '200':
+          description: Embedding vector.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VisionEmbedResponse' }
+
+  # ────────────────────────────── Memory ────────────────────────────────
+
+  /v1/memory:
+    get:
+      tags: [Memory]
+      operationId: memoryList
+      summary: List memories for the authenticated user.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Memory page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryListResponse' }
+
+  /v1/memory/upsert:
+    post:
+      tags: [Memory]
+      operationId: memoryUpsert
+      summary: Capture a memory (creates or updates by content hash).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryUpsertRequest' }
+      responses:
+        '200':
+          description: Stored memory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDTO' }
+
+  /v1/memory/search:
+    post:
+      tags: [Memory]
+      operationId: memorySearch
+      summary: Semantic + lexical memory search.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemorySearchRequest' }
+      responses:
+        '200':
+          description: Ranked results.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemorySearchResponse' }
+
+  /v1/memory/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    get:
+      tags: [Memory]
+      operationId: memoryGet
+      summary: Fetch a single memory.
+      responses:
+        '200':
+          description: Memory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDTO' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Memory]
+      operationId: memoryPatch
+      summary: Partial update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryPatchRequest' }
+      responses:
+        '200':
+          description: Updated memory.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryDTO' }
+    delete:
+      tags: [Memory]
+      operationId: memoryDelete
+      summary: Hard delete (does not archive).
+      responses:
+        '204':
+          description: Deleted.
+
+  /v1/memory/{id}/lineage:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    get:
+      tags: [Memory]
+      operationId: memoryLineage
+      summary: Trace a memory's source vault file + enrichment chain.
+      responses:
+        '200':
+          description: Lineage tree.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryLineageResponse' }
+
+  # ────────────────────────────── Capture ───────────────────────────────
+
+  /v1/capture/safari:
+    post:
+      tags: [Capture]
+      operationId: captureSafari
+      summary: Capture a URL with async OG / YouTube / X enrichment (HER-149).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaptureSafariRequest' }
+      responses:
+        '200':
+          description: Capture queued; vault file id returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureSafariResponse' }
+
+  # ─────────────────────────────── Query ────────────────────────────────
+
+  /v1/query:
+    post:
+      tags: [Query]
+      operationId: query
+      summary: Natural-language semantic search across memories + vault.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QueryRequest' }
+      responses:
+        '200':
+          description: Query result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueryResponse' }
+
+  # ──────────────────────────────── Memos ───────────────────────────────
+
+  /v1/memos:
+    post:
+      tags: [Memos]
+      operationId: memoGenerate
+      summary: Generate a memo (agent loop → markdown synthesis → vault save).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoGenerateRequest' }
+      responses:
+        '200':
+          description: Memo generated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoGenerateResponse' }
+
+  # ─────────────────────────────── Vault ────────────────────────────────
+
+  /v1/vault/files:
+    post:
+      tags: [Vault]
+      operationId: vaultUpload
+      summary: Upload a vault file (markdown / image).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/VaultUploadRequest' }
+      responses:
+        '200':
+          description: File stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultFileDTO' }
+    get:
+      tags: [Vault]
+      operationId: vaultList
+      summary: List vault files.
+      parameters:
+        - in: query
+          name: prefix
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: Vault file index.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultListResponse' }
+
+  /v1/vault/files/move:
+    post:
+      tags: [Vault]
+      operationId: vaultMove
+      summary: Rename / move a vault file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VaultMoveRequest' }
+      responses:
+        '200':
+          description: Updated file.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultFileDTO' }
+
+  /v1/vault/files/{path}:
+    delete:
+      tags: [Vault]
+      operationId: vaultDelete
+      summary: Delete a vault file by tenant-relative path.
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/vault/export:
+    get:
+      tags: [Vault]
+      operationId: vaultExport
+      summary: Stream the full per-tenant vault as a ZIP (HER-91).
+      parameters:
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+          description: Optional incremental cutoff.
+      responses:
+        '200':
+          description: ZIP stream.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
+  # ─────────────────────────────── KB ───────────────────────────────────
+
+  /v1/kb-compile:
+    post:
+      tags: [KB]
+      operationId: kbCompile
+      summary: Compile a vault batch through the Hermes learning loop.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBCompileRequest' }
+      responses:
+        '200':
+          description: Compile result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBCompileResponse' }
+
+  # ─────────────────────────────── Spaces ───────────────────────────────
+
+  /v1/spaces:
+    get:
+      tags: [Spaces]
+      operationId: spacesList
+      summary: List spaces (user-defined organising folders).
+      responses:
+        '200':
+          description: Spaces.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceListResponse' }
+    post:
+      tags: [Spaces]
+      operationId: spacesCreate
+      summary: Create a space.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SpaceCreateRequest' }
+      responses:
+        '200':
+          description: Created space.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceDTO' }
+
+  /v1/spaces/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Spaces]
+      operationId: spacesGet
+      summary: Get one space.
+      responses:
+        '200':
+          description: Space.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceDTO' }
+    put:
+      tags: [Spaces]
+      operationId: spacesUpdate
+      summary: Update a space.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SpaceUpdateRequest' }
+      responses:
+        '200':
+          description: Updated space.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceDTO' }
+    delete:
+      tags: [Spaces]
+      operationId: spacesDelete
+      summary: Delete a space.
+      responses:
+        '204':
+          description: Deleted.
+
+  # ─────────────────────────────── Soul ─────────────────────────────────
+
+  /v1/soul:
+    get:
+      tags: [Soul]
+      operationId: soulGet
+      summary: Read SOUL.md (HER-85).
+      responses:
+        '200':
+          description: SOUL.md.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SoulResponse' }
+    put:
+      tags: [Soul]
+      operationId: soulPut
+      summary: Write SOUL.md (full document replace).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SoulPutRequest' }
+      responses:
+        '200':
+          description: Updated SOUL.md.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SoulResponse' }
+    delete:
+      tags: [Soul]
+      operationId: soulDelete
+      summary: Reset SOUL.md to the bootstrap template.
+      responses:
+        '204':
+          description: Reset.
+
+  # ──────────────────────────── Achievements ────────────────────────────
+
+  /v1/achievements:
+    get:
+      tags: [Achievements]
+      operationId: achievementsList
+      summary: Full achievements catalog joined to per-tenant progress.
+      responses:
+        '200':
+          description: Achievements catalog.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AchievementsListResponse' }
+
+  /v1/achievements/recent:
+    get:
+      tags: [Achievements]
+      operationId: achievementsRecent
+      summary: Recently unlocked achievements.
+      responses:
+        '200':
+          description: Recent unlocks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AchievementsRecentResponse' }
+
+  # ─────────────────────────────── Health ───────────────────────────────
+
+  /v1/health:
+    post:
+      tags: [Health]
+      operationId: healthIngest
+      summary: Ingest health events (Apple Health / Withings / manual).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HealthIngestRequest' }
+      responses:
+        '200':
+          description: Ingested.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthIngestResponse' }
+    get:
+      tags: [Health]
+      operationId: healthRead
+      summary: Read ingested health events (HER-202).
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Health events page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthListResponse' }
+
+  # ─────────────────────────────── Skills ───────────────────────────────
+
+  /v1/skills/{name}/run:
+    post:
+      tags: [Skills]
+      operationId: skillsRun
+      summary: Manually trigger a skill run.
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillRunRequest' }
+      responses:
+        '200':
+          description: Skill dispatched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillRunResponse' }
+        '402':
+          description: Tier entitlement or daily-cap exhaustion.
+        '404':
+          description: Unknown skill.
+
+  # ───────────────────────────── WebSocket ──────────────────────────────
+
+  /v1/ws:
+    get:
+      tags: [WebSocket]
+      operationId: wsUpgrade
+      summary: Per-tenant WebSocket upgrade (broadcast channel).
+      parameters:
+        - in: header
+          name: Upgrade
+          required: true
+          schema: { type: string, enum: [websocket] }
+      responses:
+        '101':
+          description: Switching Protocols.
+        '401':
+          description: Missing / invalid JWT.
+
+  # ──────────────────────────────── Admin ───────────────────────────────
+
+  /v1/admin/hermes-profiles/health:
+    get:
+      tags: [Admin]
+      operationId: adminHermesProfilesHealth
+      summary: Hermes-profile reconciliation health snapshot.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminHermesProfilesHealth' }
+
+  /v1/admin/hermes-profiles/reconcile:
+    post:
+      tags: [Admin]
+      operationId: adminHermesProfilesReconcile
+      summary: Force-run the reconciler pass.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Reconcile result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminReconcileResponse' }
+
+  /v1/admin/hermes-profiles/reap-orphans:
+    post:
+      tags: [Admin]
+      operationId: adminHermesProfilesReap
+      summary: Delete profile.json files with no matching user row.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Reap result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminReapResponse' }
+
+  /admin/llm/health:
+    get:
+      tags: [Admin]
+      operationId: adminLLMHealth
+      summary: Provider-registry health (per-provider 2xx/last-error).
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Provider health table.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminLLMHealthResponse' }
+
+  /v1/admin/health/correlate:
+    post:
+      tags: [Admin]
+      operationId: adminHealthCorrelateAll
+      summary: Run the health-correlation engine across all tenants.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Correlation summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCorrelateResponse' }
+
+  /v1/admin/health/correlate/{userID}:
+    post:
+      tags: [Admin]
+      operationId: adminHealthCorrelateOne
+      summary: Run health correlation for a single tenant.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Correlation summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCorrelateResponse' }
+
+  /v1/admin/memory/recompute:
+    post:
+      tags: [Admin]
+      operationId: adminMemoryRecomputeAll
+      summary: Recompute memory scores for all tenants.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Recompute summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminMemoryScoreResponse' }
+
+  /v1/admin/memory/recompute/{userID}:
+    post:
+      tags: [Admin]
+      operationId: adminMemoryRecomputeOne
+      summary: Recompute memory scores for one tenant.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Recompute summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminMemoryScoreResponse' }
+
+  /v1/admin/memory/prune:
+    post:
+      tags: [Admin]
+      operationId: adminMemoryPruneAll
+      summary: Run memory pruning across all tenants.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Prune summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminMemoryPruneResponse' }
+
+  /v1/admin/memory/prune/{userID}:
+    post:
+      tags: [Admin]
+      operationId: adminMemoryPruneOne
+      summary: Prune memories for one tenant.
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Prune summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminMemoryPruneResponse' }
+
+  /v1/admin/users/{userID}/tier-override:
+    put:
+      tags: [Admin]
+      operationId: adminTierOverride
+      summary: Override a user's billing tier (support / TestFlight).
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: userID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TierOverrideRequest' }
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TierOverrideResponse' }
+
+components:
+
+  securitySchemes:
+    bearerJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HMAC HS256 session token (`SessionToken` — see jwt-kit usage).
+    adminToken:
+      type: http
+      scheme: bearer
+      description: Shared-secret bearer (`admin.token` env var).
+    revenueCatWebhookSecret:
+      type: http
+      scheme: bearer
+      description: RevenueCat webhook shared secret (`revenuecat.webhookSecret`).
+
+  parameters:
+    MemoryId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Missing / invalid credential.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Resource conflict (e.g. duplicate registration).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    RateLimited:
+      description: Rate-limit exceeded; honour `Retry-After`.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  schemas:
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        message: { type: string }
+
+    # ── Auth ──
+
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string, minLength: 3 }
+        password: { type: string, minLength: 12 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    AuthResponse:
+      type: object
+      required: [accessToken, userId]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+
+    EmailOnlyRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    EmailConfirmRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+
+    ResetPasswordRequest:
+      type: object
+      required: [email, code, newPassword]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string }
+        newPassword: { type: string, minLength: 12 }
+
+    MFAVerifyRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId: { type: string }
+        code: { type: string }
+
+    MFAResendRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId: { type: string }
+
+    OAuthIDTokenRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken: { type: string }
+
+    OAuthAccessTokenRequest:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken: { type: string }
+
+    PhoneStartRequest:
+      type: object
+      required: [phoneE164]
+      properties:
+        phoneE164: { type: string }
+
+    PhoneVerifyRequest:
+      type: object
+      required: [phoneE164, code]
+      properties:
+        phoneE164: { type: string }
+        code: { type: string }
+
+    EmailMagicVerifyRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string }
+
+    WebAuthnAuthOptionsRequest:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string }
+
+    WebAuthnOptions:
+      type: object
+      description: |
+        Opaque PublicKeyCredentialCreationOptions / RequestOptions JSON
+        as returned by the WebAuthn relying-party library. Forwarded
+        verbatim to the iOS / browser WebAuthn API.
+      additionalProperties: true
+
+    WebAuthnFinish:
+      type: object
+      description: |
+        Browser/iOS-returned PublicKeyCredential JSON. Forwarded verbatim
+        to the relying-party library for verification.
+      additionalProperties: true
+
+    # ── Me ──
+
+    MeResponse:
+      type: object
+      required: [userId, email, username, isVerified]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        username: { type: string }
+        isVerified: { type: boolean }
+        privacyNoCNOrigin: { type: boolean }
+        contextRouting: { type: boolean }
+
+    UpdatePrivacyRequest:
+      type: object
+      properties:
+        privacyNoCNOrigin: { type: boolean }
+        contextRouting: { type: boolean }
+
+    MeBillingResponse:
+      type: object
+      required: [tier, tierOverride, inTrial, daysRemaining, enforcementEnabled]
+      properties:
+        tier: { type: string, enum: [trial, pro, ultimate, lapsed, archived] }
+        tierExpiresAt: { type: string, format: date-time }
+        tierOverride: { type: string }
+        inTrial: { type: boolean }
+        daysRemaining: { type: integer }
+        enforcementEnabled: { type: boolean }
+
+    MeTodayResponse:
+      type: object
+      description: Widget + daily-review digest (HER-206).
+      properties:
+        date: { type: string, format: date }
+        memories:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryDTO' }
+        achievements:
+          type: array
+          items: { $ref: '#/components/schemas/AchievementDTO' }
+        soulExcerpt: { type: string }
+        suggestedActions:
+          type: array
+          items: { type: string }
+
+    # ── BYO Hermes ──
+
+    HermesConfigGetResponse:
+      type: object
+      required: [baseUrl, hasAuthHeader]
+      properties:
+        baseUrl: { type: string, format: uri }
+        hasAuthHeader: { type: boolean }
+        verifiedAt: { type: string, format: date-time }
+
+    HermesConfigPutRequest:
+      type: object
+      required: [baseUrl]
+      properties:
+        baseUrl: { type: string, format: uri }
+        authHeader:
+          type: string
+          description: Full Authorization header value (e.g. `Bearer xyz`).
+
+    HermesConfigTestResponse:
+      type: object
+      required: [verifiedAt]
+      properties:
+        verifiedAt: { type: string, format: date-time }
+
+    # ── Onboarding ──
+
+    OnboardingStateDTO:
+      type: object
+      properties:
+        signupCompleted: { type: boolean }
+        signupCompletedAt: { type: string, format: date-time }
+        emailVerifiedCompleted: { type: boolean }
+        emailVerifiedCompletedAt: { type: string, format: date-time }
+        soulConfiguredCompleted: { type: boolean }
+        soulConfiguredCompletedAt: { type: string, format: date-time }
+        firstCaptureCompleted: { type: boolean }
+        firstCaptureCompletedAt: { type: string, format: date-time }
+        firstKBCompileCompleted: { type: boolean }
+        firstKBCompileCompletedAt: { type: string, format: date-time }
+        firstQueryCompleted: { type: boolean }
+        firstQueryCompletedAt: { type: string, format: date-time }
+
+    OnboardingPatchRequest:
+      type: object
+      description: |
+        All fields optional. Only `true` is accepted — `false` rejected
+        with 400 because the flags are one-way latches.
+      properties:
+        signupCompleted: { type: boolean }
+        emailVerifiedCompleted: { type: boolean }
+        soulConfiguredCompleted: { type: boolean }
+        firstCaptureCompleted: { type: boolean }
+        firstKBCompileCompleted: { type: boolean }
+        firstQueryCompleted: { type: boolean }
+
+    # ── Devices ──
+
+    DeviceRegistrationRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token: { type: string }
+        platform: { type: string, enum: [ios, android] }
+
+    DeviceRegistrationResponse:
+      type: object
+      required: [id, token, platform]
+      properties:
+        id: { type: string, format: uuid }
+        token: { type: string }
+        platform: { type: string }
+
+    # ── Account ──
+
+    AccountDeleteRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          description: Optional re-auth; bypassed for OAuth-only accounts.
+
+    # ── Billing ──
+
+    RevenueCatWebhookBody:
+      type: object
+      description: Opaque RevenueCat event envelope; forwarded verbatim.
+      additionalProperties: true
+
+    # ── LLM / Chat ──
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        model: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        stream: { type: boolean, default: false }
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [system, user, assistant, tool] }
+        content: { type: string }
+        toolCalls:
+          type: array
+          items: { type: object, additionalProperties: true }
+
+    ChatResponse:
+      type: object
+      required: [id, choices]
+      properties:
+        id: { type: string }
+        model: { type: string }
+        choices:
+          type: array
+          items: { $ref: '#/components/schemas/ChatChoice' }
+        usage: { $ref: '#/components/schemas/ChatUsage' }
+
+    ChatChoice:
+      type: object
+      required: [index, message]
+      properties:
+        index: { type: integer }
+        message: { $ref: '#/components/schemas/ChatMessage' }
+        finishReason: { type: string }
+
+    ChatUsage:
+      type: object
+      properties:
+        promptTokens: { type: integer }
+        completionTokens: { type: integer }
+        totalTokens: { type: integer }
+
+    # ── Transcribe (HER-203) ──
+
+    TranscribeMultipartRequest:
+      type: object
+      required: [audio]
+      properties:
+        audio:
+          type: string
+          format: binary
+        model: { type: string }
+        language: { type: string }
+
+    TranscribeResponse:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        durationSec: { type: number }
+
+    # ── TTS (HER-204) ──
+
+    TTSRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        voice: { type: string }
+        model: { type: string }
+        format: { type: string, enum: [mp3], default: mp3 }
+
+    # ── Vision embed (HER-205) ──
+
+    VisionEmbedRequest:
+      type: object
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: byte
+          description: Base64-encoded image bytes.
+        mimeType:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        model: { type: string }
+
+    VisionEmbedResponse:
+      type: object
+      required: [embedding]
+      properties:
+        embedding:
+          type: array
+          items: { type: number }
+
+    # ── Memory ──
+
+    MemoryDTO:
+      type: object
+      required: [id, content]
+      properties:
+        id: { type: string, format: uuid }
+        content: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        score: { type: number }
+        accessCount: { type: integer }
+        queryHitCount: { type: integer }
+        lastAccessedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        sourceVaultFileId: { type: string, format: uuid }
+
+    MemoryListResponse:
+      type: object
+      required: [memories]
+      properties:
+        memories:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryDTO' }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    MemoryUpsertRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        sourceVaultFileId: { type: string, format: uuid }
+
+    MemorySearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+        limit: { type: integer, default: 20 }
+        filters:
+          type: object
+          additionalProperties: true
+
+    MemorySearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/MemorySearchResult' }
+
+    MemorySearchResult:
+      type: object
+      required: [memory, score]
+      properties:
+        memory: { $ref: '#/components/schemas/MemoryDTO' }
+        score: { type: number }
+
+    MemoryPatchRequest:
+      type: object
+      properties:
+        content: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+
+    MemoryLineageResponse:
+      type: object
+      properties:
+        memory: { $ref: '#/components/schemas/MemoryDTO' }
+        vaultFile: { $ref: '#/components/schemas/VaultFileDTO' }
+        ancestors:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryDTO' }
+
+    # ── Capture / URL Enrichment ──
+
+    CaptureSafariRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
+        notes: { type: string }
+        spaceId: { type: string, format: uuid }
+
+    CaptureSafariResponse:
+      type: object
+      required: [vaultFileId]
+      properties:
+        vaultFileId: { type: string, format: uuid }
+        enrichmentStatus: { type: string, enum: [pending, complete, failed] }
+
+    # ── Query ──
+
+    QueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+        limit: { type: integer, default: 10 }
+
+    QueryResponse:
+      type: object
+      required: [answer, citations]
+      properties:
+        answer: { type: string }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/QueryCitation' }
+
+    QueryCitation:
+      type: object
+      properties:
+        memoryId: { type: string, format: uuid }
+        vaultFileId: { type: string, format: uuid }
+        excerpt: { type: string }
+
+    # ── Memos ──
+
+    MemoGenerateRequest:
+      type: object
+      required: [topic]
+      properties:
+        topic: { type: string }
+        depth: { type: string, enum: [quick, deep] }
+
+    MemoGenerateResponse:
+      type: object
+      required: [vaultFileId, markdown]
+      properties:
+        vaultFileId: { type: string, format: uuid }
+        markdown: { type: string }
+
+    # ── Vault ──
+
+    VaultFileDTO:
+      type: object
+      required: [id, path, contentType, sizeBytes]
+      properties:
+        id: { type: string, format: uuid }
+        path: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string }
+        processedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    VaultListResponse:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/VaultFileDTO' }
+
+    VaultUploadRequest:
+      type: object
+      required: [file, path]
+      properties:
+        file:
+          type: string
+          format: binary
+        path: { type: string }
+        contentType: { type: string }
+
+    VaultMoveRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from: { type: string }
+        to: { type: string }
+
+    # ── KB ──
+
+    KBCompileRequest:
+      type: object
+      properties:
+        vaultFileIds:
+          type: array
+          items: { type: string, format: uuid }
+        forceFullRecompile: { type: boolean, default: false }
+
+    KBCompileResponse:
+      type: object
+      required: [memoriesIngested]
+      properties:
+        memoriesIngested: { type: integer }
+        memoriesUpdated: { type: integer }
+        durationMs: { type: integer }
+
+    # ── Spaces ──
+
+    SpaceDTO:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        color: { type: string }
+        icon: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    SpaceListResponse:
+      type: object
+      required: [spaces]
+      properties:
+        spaces:
+          type: array
+          items: { $ref: '#/components/schemas/SpaceDTO' }
+
+    SpaceCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        color: { type: string }
+        icon: { type: string }
+
+    SpaceUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        color: { type: string }
+        icon: { type: string }
+
+    # ── Soul ──
+
+    SoulResponse:
+      type: object
+      required: [markdown]
+      properties:
+        markdown: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    SoulPutRequest:
+      type: object
+      required: [markdown]
+      properties:
+        markdown: { type: string }
+
+    # ── Achievements ──
+
+    AchievementDTO:
+      type: object
+      required: [key, title]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        description: { type: string }
+        tier: { type: string }
+        progressCount: { type: integer }
+        targetCount: { type: integer }
+        unlockedAt: { type: string, format: date-time }
+
+    AchievementsListResponse:
+      type: object
+      required: [achievements]
+      properties:
+        achievements:
+          type: array
+          items: { $ref: '#/components/schemas/AchievementDTO' }
+
+    AchievementsRecentResponse:
+      type: object
+      required: [unlocks]
+      properties:
+        unlocks:
+          type: array
+          items: { $ref: '#/components/schemas/AchievementDTO' }
+
+    # ── Health ──
+
+    HealthEventDTO:
+      type: object
+      required: [id, eventType, recordedAt]
+      properties:
+        id: { type: string, format: uuid }
+        eventType: { type: string }
+        valueNumeric: { type: number }
+        valueText: { type: string }
+        unit: { type: string }
+        recordedAt: { type: string, format: date-time }
+        source: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    HealthIngestRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/HealthEventInput' }
+
+    HealthEventInput:
+      type: object
+      required: [eventType, recordedAt]
+      properties:
+        eventType: { type: string }
+        valueNumeric: { type: number }
+        valueText: { type: string }
+        unit: { type: string }
+        recordedAt: { type: string, format: date-time }
+        source: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    HealthIngestResponse:
+      type: object
+      required: [ingested]
+      properties:
+        ingested: { type: integer }
+
+    HealthListResponse:
+      type: object
+      required: [events, limit, offset]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/HealthEventDTO' }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    # ── Skills ──
+
+    SkillRunRequest:
+      type: object
+      properties:
+        args:
+          type: object
+          additionalProperties: true
+
+    SkillRunResponse:
+      type: object
+      required: [runId, status]
+      properties:
+        runId: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed] }
+
+    # ── Admin ──
+
+    AdminHermesProfilesHealth:
+      type: object
+      properties:
+        totalUsers: { type: integer }
+        provisioned: { type: integer }
+        errored: { type: integer }
+        provisioning: { type: integer }
+
+    AdminReconcileResponse:
+      type: object
+      properties:
+        retried: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+
+    AdminReapResponse:
+      type: object
+      properties:
+        orphansReaped: { type: integer }
+
+    AdminLLMHealthResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              enabled: { type: boolean }
+              lastSuccessAt: { type: string, format: date-time }
+              lastErrorAt: { type: string, format: date-time }
+              lastErrorClass: { type: string }
+
+    AdminCorrelateResponse:
+      type: object
+      properties:
+        tenantsProcessed: { type: integer }
+        correlationsFound: { type: integer }
+        durationMs: { type: integer }
+
+    AdminMemoryScoreResponse:
+      type: object
+      properties:
+        memoriesScored: { type: integer }
+        durationMs: { type: integer }
+
+    AdminMemoryPruneResponse:
+      type: object
+      properties:
+        memoriesPruned: { type: integer }
+        memoriesArchived: { type: integer }
+        durationMs: { type: integer }
+
+    TierOverrideRequest:
+      type: object
+      required: [override]
+      properties:
+        override: { type: string, enum: [none, trial, pro, ultimate, lapsed, archived] }
+        expiresAt: { type: string, format: date-time }
+
+    TierOverrideResponse:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        tier: { type: string }
+        tierOverride: { type: string }
+        tierExpiresAt: { type: string, format: date-time }
