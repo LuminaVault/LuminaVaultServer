@@ -1,5 +1,5 @@
 {
-  "originHash" : "26199ea3a172657a0112e285eb1492d5d6752698656bee869cc5bcac643510b7",
+  "originHash" : "e67f628d02f952620131ff05db5bf025eb0a0f6343ee1cc0273b7b0912cfd5df",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -123,8 +123,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
       "state" : {
-        "branch" : "fcorreia/openapi-pilot-spaces",
-        "revision" : "d885a08d6db7e4c87bd6949f527987a7f906834a"
+        "revision" : "d885a08d6db7e4c87bd6949f527987a7f906834a",
+        "version" : "0.2.0"
       }
     },
     {
