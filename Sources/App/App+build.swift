@@ -10,7 +10,6 @@ import JWTKit
 import Logging
 import LuminaVaultShared
 import Metrics
-import OpenAPIHummingbird
 import OTel
 import OTLPGRPC
 import ServiceLifecycle
@@ -190,10 +189,13 @@ func buildRouter(
         ))
     }
     router.get("/health") { _, _ -> String in "ok" }
-
-    // Mount OpenAPI handlers (existing surface)
-    let api = APIImplementation()
-    try api.registerHandlers(on: router)
+    // HER-227 — root greeting served as a plain Hummingbird route. The
+    // generated `APIProtocol` server stubs were never registered for any
+    // other path; openapi-generator now emits `types` only (see
+    // `Sources/AppAPI/openapi-generator-config.yaml`). The yaml at
+    // `Sources/AppAPI/openapi.yaml` is the documentation contract; every
+    // other route is hand-written below.
+    router.get("/") { _, _ -> String in "Hello!" }
 
     // Auth routes
     let mfaService = DefaultMFAService(
