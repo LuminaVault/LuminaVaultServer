@@ -366,6 +366,51 @@ func buildRouter(
         fatalError("invalid hermes.gatewayUrl: \(services.hermesGatewayURL)")
     }
 
+    // HER-217 / HER-223 — BYO Hermes endpoint config + resolver.
+    // Constructed only when `LV_SECRET_MASTER_KEY` is set so tests that
+    // don't exercise BYO Hermes leave the env unset and the routes 404.
+    // When unset, every chat call falls through to the managed Hermes
+    // default — identical to pre-BYO behaviour.
+    let byoHermesLogger = Logger(label: "lv.byo-hermes")
+    let secretMasterKey = reader.string(forKey: "secret.masterKey", default: "")
+    let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
+    let byoHermesAllowPrivate = reader.string(forKey: "byoHermes.allowPrivate", default: "false")
+        .lowercased() == "true"
+    var byoHermesController: HermesConfigController?
+    var byoHermesMiddleware: HermesResolutionMiddleware?
+    if !secretMasterKey.isEmpty {
+        do {
+            let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
+            let ssrfGuard = SSRFGuard(
+                allowPrivateRanges: byoHermesAllowPrivate,
+                environment: lvEnvironment,
+            )
+            byoHermesController = HermesConfigController(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                ssrfGuard: ssrfGuard,
+                logger: byoHermesLogger,
+            )
+            let resolver = HermesEndpointResolver(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                ssrfGuard: ssrfGuard,
+                defaultBaseURL: hermesURL,
+                logger: byoHermesLogger,
+            )
+            byoHermesMiddleware = HermesResolutionMiddleware(
+                resolver: resolver,
+                logger: byoHermesLogger,
+            )
+        } catch {
+            fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
+        }
+    } else {
+        byoHermesLogger.warning(
+            "BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes",
+        )
+    }
+
     // HER-165 routing — single shared registry + router + transport
     // injected into every chat-using service. Today the registry holds
     // only the Hermes adapter and the router always picks `hermesGateway`,
@@ -461,8 +506,16 @@ func buildRouter(
         logger: Logger(label: "lv.context-router"),
     )
 
-    let llmGroup = router.group("/v1/llm")
-        .add(middleware: jwtAuthenticator)
+    // HER-223 — BYO Hermes resolution middleware threads the per-tenant
+    // `Resolution` into `LLMRoutingContext.currentResolution`, which
+    // `HermesGatewayAdapter` reads to dispatch chat traffic against the
+    // user's hosted gateway. Attached to every Hermes-touching route
+    // group (llm/memory/query/memos/kb-compile). When `byoHermesMiddleware`
+    // is nil (LV_SECRET_MASTER_KEY unset) every chat call routes to the
+    // managed Hermes default — identical to pre-BYO behaviour.
+    let llmGroupBase = router.group("/v1/llm").add(middleware: jwtAuthenticator)
+    let llmGroupWithByo = byoHermesMiddleware.map { llmGroupBase.add(middleware: $0) } ?? llmGroupBase
+    let llmGroup = llmGroupWithByo
         .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
         .add(middleware: contextRouterMiddleware)
@@ -636,16 +689,23 @@ func buildRouter(
         embeddings: DeterministicEmbeddingService(),
         achievements: achievementsService,
     )
-    let memoryCaptureGroup = router.group("/v1/memory")
-        .add(middleware: jwtAuthenticator)
+    // HER-223 — memory routes also fire chat calls (memory agent loop in
+    // HermesMemoryService); attach the resolution middleware so user-
+    // configured gateways receive that traffic too.
+    let memoryCaptureBase = router.group("/v1/memory").add(middleware: jwtAuthenticator)
+    let memoryCaptureWithByo = byoHermesMiddleware.map { memoryCaptureBase.add(middleware: $0) } ?? memoryCaptureBase
+    let memoryCaptureGroup = memoryCaptureWithByo
         .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     memoryController.addCaptureRoutes(to: memoryCaptureGroup)
-    let memorySearchGroup = router.group("/v1/memory")
-        .add(middleware: jwtAuthenticator)
+    let memorySearchBase = router.group("/v1/memory").add(middleware: jwtAuthenticator)
+    let memorySearchWithByo = byoHermesMiddleware.map { memorySearchBase.add(middleware: $0) } ?? memorySearchBase
+    let memorySearchGroup = memorySearchWithByo
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     memoryController.addSearchRoutes(to: memorySearchGroup)
+    // Read routes don't fire chat — skip BYO middleware to keep the
+    // chain minimal.
     let memoryReadGroup = router.group("/v1/memory")
         .add(middleware: jwtAuthenticator)
     memoryController.addReadRoutes(to: memoryReadGroup)
@@ -672,8 +732,10 @@ func buildRouter(
 
     // Query (natural-language semantic search) — protected.
     let queryController = QueryController(service: memoryService, achievements: achievementsService)
-    let queryGroup = router.group("/v1/query")
-        .add(middleware: jwtAuthenticator)
+    // HER-223 — query fires Hermes calls under the hood via memoryService.
+    let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
+    let queryWithByo = byoHermesMiddleware.map { queryBase.add(middleware: $0) } ?? queryBase
+    let queryGroup = queryWithByo
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
 
@@ -688,8 +750,10 @@ func buildRouter(
         logger: Logger(label: "lv.memo"),
     )
     let memoController = MemoController(service: memoGenerator)
-    let memoGroup = router.group("/v1/memos")
-        .add(middleware: jwtAuthenticator)
+    // HER-223 — memo generator runs an agent loop with multiple Hermes calls.
+    let memoBase = router.group("/v1/memos").add(middleware: jwtAuthenticator)
+    let memoWithByo = byoHermesMiddleware.map { memoBase.add(middleware: $0) } ?? memoBase
+    let memoGroup = memoWithByo
         .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled))
     memoController.addRoutes(to: memoGroup)
 
@@ -724,8 +788,11 @@ func buildRouter(
         logger: Logger(label: "lv.kb-compile"),
     )
     let kbCompileController = KBCompileController(service: kbCompileService, achievements: achievementsService)
-    let kbCompileGroup = router.group("/v1/kb-compile")
-        .add(middleware: jwtAuthenticator)
+    // HER-223 — kb-compile fires the heaviest Hermes traffic; must route
+    // to the user's gateway when one is configured.
+    let kbCompileBase = router.group("/v1/kb-compile").add(middleware: jwtAuthenticator)
+    let kbCompileWithByo = byoHermesMiddleware.map { kbCompileBase.add(middleware: $0) } ?? kbCompileBase
+    let kbCompileGroup = kbCompileWithByo
         .add(middleware: EntitlementMiddleware(requires: .kbCompile, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
     kbCompileController.addRoutes(to: kbCompileGroup)
@@ -856,6 +923,18 @@ func buildRouter(
     let onboardingController = OnboardingController(fluent: services.fluent)
     let onboardingGroup = router.group("/v1/onboarding").add(middleware: jwtAuthenticator)
     onboardingController.addRoutes(to: onboardingGroup)
+
+    // HER-217 / HER-223 — BYO Hermes settings (/v1/settings/hermes
+    // GET/PUT/DELETE/test). No EntitlementMiddleware — setting a self-
+    // hosted gateway is tier-agnostic, same reasoning as /v1/auth/me/privacy
+    // and /v1/health read in HER-202. Mounted only when the controller
+    // could be constructed (LV_SECRET_MASTER_KEY set).
+    if let byoHermesController {
+        let settingsHermesGroup = router.group("/v1/settings/hermes")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        byoHermesController.addRoutes(to: settingsHermesGroup)
+    }
 
     // Account management (HER-92) — DELETE /v1/account (GDPR data wipe).
     let accountDeletionService = AccountDeletionService(

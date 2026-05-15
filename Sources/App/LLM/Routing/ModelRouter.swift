@@ -33,8 +33,16 @@ struct RouteDecision: Hashable {
 /// but not a full `User`; middleware/services that *do* have a user push
 /// it through this `@TaskLocal` so the router can apply per-user privacy +
 /// tier rules without restructuring every service signature.
+///
+/// HER-223 — same trick for the BYO Hermes `Resolution`.
+/// `HermesResolutionMiddleware` pushes the resolved override (if any) into
+/// `currentResolution`; `HermesGatewayAdapter` reads it inside
+/// `chatCompletionsWithMetadata` and dispatches against the user's gateway
+/// + Authorization header when `isUserOverride == true`. Avoids threading
+/// `Resolution` through every consumer service signature.
 enum LLMRoutingContext {
     @TaskLocal static var currentUser: User?
+    @TaskLocal static var currentResolution: HermesEndpointResolver.Resolution?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on
