@@ -133,4 +133,13 @@ extension RateLimitPolicy {
     /// `/v1/auth/email/start`.
     static let emailMagicStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
     static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
+
+    /// HER-203: `POST /v1/transcribe` (STT). Each call burns upstream
+    /// Whisper-provider seconds-of-audio quota — Groq/OpenAI bill by
+    /// transcribed second, so capping protects provider spend per user.
+    /// Stacked policies: 10/min covers normal voice-memo bursts, 200/day
+    /// bounds the daily provider bill per tenant. Apply BOTH on
+    /// `/v1/transcribe`.
+    static let transcribeByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+    static let transcribeByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
 }

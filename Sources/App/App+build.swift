@@ -465,6 +465,63 @@ func buildRouter(
         .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
 
+    // HER-203 — STT (speech-to-text) endpoint. Single configured provider
+    // per boot (`transcribe.provider`, default `groq`). Registry stays
+    // separate from the chat-routing `ProviderRegistry` so STT failover
+    // policy can evolve independently. Adapters register only when the
+    // provider's apiKey is set; with none configured the route mounts
+    // and returns 503 via the service layer.
+    let transcribeLogger = Logger(label: "lv.transcribe")
+    var transcribeAdapters: [any TranscribeProviderAdapter] = []
+    let groqAPIKey = reader.string(forKey: "transcribe.provider.groq.apiKey", isSecret: true, default: "")
+    if !groqAPIKey.isEmpty {
+        let groqBaseRaw = reader.string(forKey: "transcribe.provider.groq.baseURL", default: "https://api.groq.com")
+        let groqBase = URL(string: groqBaseRaw) ?? URL(string: "https://api.groq.com")!
+        let groqModel = reader.string(forKey: "transcribe.provider.groq.model", default: "whisper-large-v3")
+        transcribeAdapters.append(GroqWhisperAdapter(
+            apiKey: groqAPIKey,
+            baseURL: groqBase,
+            model: groqModel,
+            session: .shared,
+            logger: transcribeLogger,
+        ))
+    }
+    // Test-only stub adapter — selected exclusively via
+    // `transcribe.provider=stub`. The branch is unreachable in prod
+    // unless someone sets that env var; the adapter has no network I/O.
+    let transcribeProviderName = reader.string(forKey: "transcribe.provider", default: "groq")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+    if transcribeProviderName == "stub" {
+        transcribeAdapters.append(StubTranscribeAdapter(
+            text: reader.string(forKey: "transcribe.stub.text", default: "stub transcript"),
+            language: reader.string(forKey: "transcribe.stub.language", default: "en"),
+            confidence: reader.double(forKey: "transcribe.stub.confidence", default: 0.95),
+            durationSeconds: reader.double(forKey: "transcribe.stub.durationSeconds", default: 30),
+        ))
+    }
+    let transcribeRegistry = TranscribeProviderRegistry.from(
+        reader: reader,
+        adapters: transcribeAdapters,
+        logger: transcribeLogger,
+    )
+    managedServices.append(transcribeRegistry)
+    let transcribeService = TranscribeService(
+        registry: transcribeRegistry,
+        usageMeter: usageMeterService,
+        logger: transcribeLogger,
+    )
+    let transcribeController = TranscribeController(
+        service: transcribeService,
+        logger: transcribeLogger,
+    )
+    let transcribeGroup = router.group("/v1/transcribe")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
+        .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
+    transcribeController.addRoutes(to: transcribeGroup)
+
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
         transport: routedTransport,
