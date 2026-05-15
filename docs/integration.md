@@ -4,6 +4,10 @@ End-to-end operations runbook: from a clean Ubuntu VPS to a fully wired
 Hummingbird + Postgres + Hermes stack with `POST /v1/llm/chat` returning a
 real reply from the LLM.
 
+> **Hetzner users:** start here, then read [`hetzner-deployment.md`](./hetzner-deployment.md)
+> (HER-31) for sizing, cost, network, backup, and reverse-proxy details
+> specific to Hetzner Cloud — currently the recommended primary host.
+
 ---
 
 ## 1. Stack at a glance
