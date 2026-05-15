@@ -148,4 +148,10 @@ extension RateLimitPolicy {
     /// Both keyed per-user (falls back to per-IP when auth degrades).
     static let ttsByUserPerMinute = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
     static let ttsByUserDaily = RateLimitPolicy(max: 1000, window: 86400, keyBuilder: userOrIPKey)
+
+    /// HER-217: `/v1/settings/hermes` GET/PUT/DELETE/test. Shared bucket
+    /// across all four verbs so a hammering client cannot PUT-spin its
+    /// way around the test cap. 30/min/user keyed via `userOrIPKey`
+    /// falls back to per-IP if auth degrades.
+    static let settingsByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
 }
