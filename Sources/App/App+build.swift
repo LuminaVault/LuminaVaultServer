@@ -604,14 +604,20 @@ func buildRouter(
     achievementsController.addRoutes(to: achievementsGroup)
 
     // Health ingest (HealthKit / Google Fit / manual) — protected.
+    // HER-202 — read of own data is mounted on a separate group so the
+    // `EntitlementMiddleware` only gates ingest. A `lapsed`/`archived`
+    // tier can still read their own samples (export-window behaviour),
+    // matching how `/v1/memory` read routes are wired.
     let healthController = HealthIngestController(
         fluent: services.fluent,
         eventBus: eventBus,
         logger: Logger(label: "lv.health"),
     )
-    let healthGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
+    let healthIngestGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
         .add(middleware: EntitlementMiddleware(requires: .healthIngest, enforcementEnabled: services.billingEnforcementEnabled))
-    healthController.addRoutes(to: healthGroup)
+    healthController.addRoutes(to: healthIngestGroup)
+    let healthReadGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
+    healthController.addReadRoutes(to: healthReadGroup)
 
     // Admin: hermes-profile reconciliation. Shared-secret gated; off when
     // `admin.token` is empty.
