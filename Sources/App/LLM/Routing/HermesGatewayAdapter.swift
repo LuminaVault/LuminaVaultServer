@@ -9,6 +9,12 @@ import Logging
 /// wire format as `URLSessionHermesChatTransport` (kept for back-compat
 /// in tests + dev), but throws `ProviderError` so the routed dispatcher
 /// can classify failover.
+///
+/// HER-223 — when `LLMRoutingContext.currentResolution.isUserOverride` is
+/// true, dispatch against the user's hosted gateway (the row stored in
+/// `user_hermes_config`) instead of the managed default. The override
+/// also injects the decrypted `Authorization` header. Falls back to the
+/// adapter's construction-time `baseURL` when no override is in scope.
 struct HermesGatewayAdapter: ProviderAdapter {
     let kind: ProviderKind = .hermesGateway
     let baseURL: URL
@@ -20,7 +26,18 @@ struct HermesGatewayAdapter: ProviderAdapter {
     }
 
     func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
-        let url = baseURL
+        let resolution = LLMRoutingContext.currentResolution
+        let dispatchBaseURL: URL
+        let authHeader: String?
+        if let resolution, resolution.isUserOverride {
+            dispatchBaseURL = resolution.baseURL
+            authHeader = resolution.authHeader
+        } else {
+            dispatchBaseURL = baseURL
+            authHeader = nil
+        }
+
+        let url = dispatchBaseURL
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
             .appendingPathComponent("completions")
@@ -28,6 +45,9 @@ struct HermesGatewayAdapter: ProviderAdapter {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+        if let authHeader, !authHeader.isEmpty {
+            req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        }
         req.httpBody = payload
 
         let data: Data
