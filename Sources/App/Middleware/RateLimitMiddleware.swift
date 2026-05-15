@@ -154,4 +154,10 @@ extension RateLimitPolicy {
     /// way around the test cap. 30/min/user keyed via `userOrIPKey`
     /// falls back to per-IP if auth degrades.
     static let settingsByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+
+    /// HER-206: `GET /v1/me/today` widget + daily-review digest. Widgets
+    /// refresh on 5-15 min timelines and a cache-warm response is
+    /// memory-only, so a generous per-minute budget covers worst-case
+    /// 10-widget loops on a single device. 60/min/user.
+    static let meTodayByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
 }

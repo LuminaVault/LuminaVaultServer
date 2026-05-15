@@ -230,6 +230,12 @@ func buildRouter(
         fluent: services.fluent,
         logger: Logger(label: "lv.apns"),
     )
+    // HER-206 — EventBus constructed early so AchievementsService can
+    // publish .achievementUnlocked into the same instance MeTodayCache
+    // subscribes to. SkillRunner / capture publishers reuse this bus
+    // below; we share one bus across the app.
+    let eventBus = EventBus(logger: Logger(label: "lv.eventbus"))
+
     // HER-196 — usage-driven achievement progress + per-unlock APNS push.
     // Constructed once and threaded into every controller hot-path (Memory,
     // LLM, KBCompile, Query, Vault, SOUL) plus the read-only catalog
@@ -237,6 +243,7 @@ func buildRouter(
     let achievementsService = AchievementsService(
         fluent: services.fluent,
         pushService: pushService,
+        eventBus: eventBus,
         logger: Logger(label: "lv.achievements"),
     )
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
@@ -355,11 +362,9 @@ func buildRouter(
     // has no dependencies on those, so hoisting it is safe.
     let skillsLogger = Logger(label: "lv.skills")
     let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
-    // HER-171 — EventBus is constructed up here (alongside SkillCatalog) so
-    // every publisher (vault, health, memory) and the SkillRunner subscriber
-    // share the same instance. Publishers fire-and-forget; the bus is an
-    // in-process actor with a bounded per-subscriber buffer.
-    let eventBus = EventBus(logger: skillsLogger)
+    // HER-171 — EventBus is shared across every publisher (vault, health,
+    // memory, achievements) and the SkillRunner / MeTodayCache subscribers.
+    // Constructed earlier (above AchievementsService); reused here.
 
     // LLM (Hermes-backed) routes — protected.
     guard let hermesURL = URL(string: services.hermesGatewayURL) else {
@@ -635,6 +640,33 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserDaily, storage: rateLimitStorage))
     visionEmbedController.addRoutes(to: visionEmbedGroup)
+
+    // HER-206 — GET /v1/me/today widget + daily-review aggregator.
+    // Cache + EventBus listener live in `MeTodayCache` (a Service);
+    // it invalidates entries within 1s of memory_upserted /
+    // achievement_unlocked events for the publishing tenant.
+    let meTodayLogger = Logger(label: "lv.me.today")
+    let meTodayCache = MeTodayCache(ttl: 300, eventBus: eventBus, logger: meTodayLogger)
+    managedServices.append(meTodayCache)
+    let meTodayService = MeTodayService(
+        fluent: services.fluent,
+        memories: MemoryRepository(fluent: services.fluent),
+        achievements: achievementsService,
+        spaces: SpacesService(fluent: services.fluent),
+        catalog: .current,
+        logger: meTodayLogger,
+    )
+    let meTodayController = MeTodayController(
+        service: meTodayService,
+        cache: meTodayCache,
+        logger: meTodayLogger,
+    )
+    // No EntitlementMiddleware — read of own data, mirrors HER-202
+    // `/v1/health` precedent. JWT + per-user rate-limit only.
+    let meTodayGroup = router.group("/v1/me")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .meTodayByUser, storage: rateLimitStorage))
+    meTodayController.addRoutes(to: meTodayGroup)
 
     // HER-204 — POST /v1/tts. OpenAI-only adapter at MVP. Provider key
     // sourced from the same `llm.provider.openai.apiKey` slot already

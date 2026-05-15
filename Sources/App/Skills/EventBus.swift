@@ -8,6 +8,10 @@ enum SkillEventType: String, Hashable, Codable, CaseIterable {
     case vaultFileCreated = "vault_file_created"
     case healthEventSynced = "health_event_synced"
     case memoryUpserted = "memory_upserted"
+    /// HER-206 — fires when an `AchievementProgress` row transitions from
+    /// locked → unlocked. Consumed by `MeTodayCache` for sub-1s digest
+    /// invalidation; future widget streaming endpoints can reuse it.
+    case achievementUnlocked = "achievement_unlocked"
 }
 
 /// In-process event envelope. Payload is stringly-typed for now to keep
