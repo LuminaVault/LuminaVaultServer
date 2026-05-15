@@ -101,6 +101,7 @@ struct AuthFlowTests {
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
                 logger: logger,
             ),
+            logger: logger,
         )
         return Harness(service: service, fluent: fluent, recorder: recorder)
     }

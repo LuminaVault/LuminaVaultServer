@@ -1,0 +1,42 @@
+import HummingbirdFluent
+
+/// HER-30 — single source of truth for the migration list. Called from
+/// `buildApplication` (server boot) and `runMigrateCommand` (CLI). Keeping
+/// these in one place removes drift risk when adding a new migration.
+func registerMigrations(on fluent: Fluent) async {
+    await fluent.migrations.add(M00_EnableExtensions())
+    await fluent.migrations.add(M01_CreateUser())
+    await fluent.migrations.add(M02_CreateRefreshToken())
+    await fluent.migrations.add(M03_CreatePasswordResetToken())
+    await fluent.migrations.add(M04_CreateMFAChallenge())
+    await fluent.migrations.add(M05_CreateOAuthIdentity())
+    await fluent.migrations.add(M06_CreateMemory())
+    await fluent.migrations.add(M07_AddMemoryEmbedding())
+    await fluent.migrations.add(M08_CreateHermesProfile())
+    await fluent.migrations.add(M09_AddUsernameToUser())
+    await fluent.migrations.add(M10_CreateDeviceToken())
+    await fluent.migrations.add(M11_CreateWebAuthnCredential())
+    await fluent.migrations.add(M12_CreateSpace())
+    await fluent.migrations.add(M13_CreateVaultFile())
+    await fluent.migrations.add(M14_CreateHealthEvent())
+    await fluent.migrations.add(M15_AddTierFields())
+    await fluent.migrations.add(M16_CreateEmailVerificationToken())
+    await fluent.migrations.add(M17_CreateOnboardingState())
+    await fluent.migrations.add(M18_AddMemoryTags())
+    await fluent.migrations.add(M19_CreateSkillsState())
+    await fluent.migrations.add(M20_CreateSkillRunLog())
+    await fluent.migrations.add(M21_AddMemoryScore())
+    await fluent.migrations.add(M22_CreateMemoryArchive())
+    await fluent.migrations.add(M23_AddMemorySourceLineage())
+    await fluent.migrations.add(M24_AddUserContextRouting())
+    await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
+    await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
+    await fluent.migrations.add(M27_AddUserTimezone())
+    await fluent.migrations.add(M28_CreateAchievementProgress())
+    await fluent.migrations.add(M29_CreateUserHermesConfig())
+    await fluent.migrations.add(M30_AddVaultFileProcessedAt())
+    await fluent.migrations.add(M31_CreateUsageMeter())
+    await fluent.migrations.add(M32_CreateBillingEventLog())
+    await fluent.migrations.add(M33_AddVaultFileMetadata())
+    await fluent.migrations.add(M34_AddUserIsAdmin())
+}

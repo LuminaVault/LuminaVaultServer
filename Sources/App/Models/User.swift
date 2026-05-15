@@ -33,6 +33,11 @@ final class User: Model, @unchecked Sendable {
     /// fires at 07:00 LOCAL, not 07:00 UTC. Defaults to "UTC" when iOS
     /// hasn't sent one yet (older clients).
     @Field(key: "timezone") var timezone: String
+    /// HER-30 — flips `true` for users seeded by `bootstrap-admin`. Dormant
+    /// field today: AdminTokenMiddleware still uses a shared-secret header
+    /// (see `Sources/App/Middleware/AdminTokenMiddleware.swift`). Seeding
+    /// the column now means the RBAC swap is a middleware-only change.
+    @Field(key: "is_admin") var isAdmin: Bool
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -40,6 +45,7 @@ final class User: Model, @unchecked Sendable {
         contextRouting = false
         privacyNoCNOrigin = false
         timezone = "UTC"
+        isAdmin = false
     }
 
     init(
@@ -69,5 +75,6 @@ final class User: Model, @unchecked Sendable {
         contextRouting = false
         privacyNoCNOrigin = false
         timezone = "UTC"
+        isAdmin = false
     }
 }

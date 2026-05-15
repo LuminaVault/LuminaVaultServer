@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-logs test build-image setup-hermes help
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes clean lint help
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -6,6 +6,12 @@ SHELL := /bin/bash
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+setup: ## One-click developer setup (./setup.sh)
+	./setup.sh
+
+migrate: ## Run Fluent migrations against the local database
+	swift run App migrate
 
 dev-up: ## Start all services for local development
 	$(DOCKER_COMPOSE) up -d postgres hermes jaeger
