@@ -25,6 +25,16 @@ struct HermesProfileHealth: Codable {
     let profilesError: Int
     let usersWithoutProfile: Int
     let orphanFilesystemDirs: Int
+    /// HER-226 — true when the most-recent (cached) probe of
+    /// `GET <gatewayUrl>/v1/models` returned any HTTP response within
+    /// the 1 s timeout. False means network failure / timeout / invalid
+    /// URL — operators should investigate the gateway, not the DB rows
+    /// above.
+    let gatewayReachable: Bool
+    /// HER-226 — round-trip latency of the most-recent gateway probe in
+    /// milliseconds. `nil` when the probe failed (network error /
+    /// timeout) — pair with `gatewayReachable == false`.
+    let gatewayLatencyMs: Int?
 }
 
 /// Admin-side reconciliation. Idempotent and safe to re-run. Built for
@@ -35,6 +45,13 @@ struct HermesProfileReconciler {
     let service: HermesProfileService
     let vaultPaths: VaultPathService
     let hermesDataRoot: String
+    /// HER-226 — base gateway URL probed by `health()`; reused verbatim
+    /// from `ServiceContainer.hermesGatewayURL` at boot. Empty string
+    /// disables probing (probe still runs but always marks unreachable).
+    let hermesGatewayURL: String
+    /// HER-226 — shared probe with a 30 s LRU cache so repeated `/health`
+    /// hits within a window produce zero additional outbound requests.
+    let gatewayProbe: HermesGatewayProbe
     let logger: Logger
 
     func reconcile() async throws -> HermesProfileReconcileSummary {
@@ -145,6 +162,11 @@ struct HermesProfileReconciler {
             orphans = entries.count(where: { !$0.hasPrefix("_deleted_") && !active.contains($0) })
         }
 
+        // HER-226 — probe the gateway. 1 s timeout + 30 s cache means
+        // this call is dominated by cache hits and the chat SLA is
+        // unaffected even when the gateway is hung.
+        let probe = await gatewayProbe.probe(gatewayURL: hermesGatewayURL)
+
         return HermesProfileHealth(
             totalUsers: totalUsers,
             profilesReady: ready,
@@ -152,6 +174,8 @@ struct HermesProfileReconciler {
             profilesError: error,
             usersWithoutProfile: withoutProfile,
             orphanFilesystemDirs: orphans,
+            gatewayReachable: probe.reachable,
+            gatewayLatencyMs: probe.latencyMs,
         )
     }
 }
