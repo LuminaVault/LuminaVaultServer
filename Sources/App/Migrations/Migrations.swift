@@ -40,4 +40,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M33_AddVaultFileMetadata())
     await fluent.migrations.add(M34_AddUserIsAdmin())
     await fluent.migrations.add(M35_AddUsageMeterCharsOut())
+    await fluent.migrations.add(M36_AddMemoryGeo())
 }
