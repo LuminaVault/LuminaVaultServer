@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes clean lint help
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes clean lint help bruno-regen
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -43,3 +43,6 @@ clean: ## Remove build artifacts and data
 
 lint:
 	swiftformat --lint .
+
+bruno-regen: ## Regenerate the LuminaVaultCollection Bruno collection from Sources/AppAPI/openapi.yaml (HER-229)
+	./scripts/generate-bruno.sh
