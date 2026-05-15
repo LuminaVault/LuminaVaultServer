@@ -28,17 +28,23 @@ struct AchievementsService {
     let fluent: Fluent
     let catalog: AchievementCatalog
     let pushService: APNSNotificationService?
+    /// HER-206 — optional EventBus; when present, every newly-unlocked
+    /// sub-achievement is published as `.achievementUnlocked` so
+    /// `MeTodayCache` (and future subscribers) can invalidate.
+    let eventBus: EventBus?
     let logger: Logger
 
     init(
         fluent: Fluent,
         catalog: AchievementCatalog = .current,
         pushService: APNSNotificationService? = nil,
+        eventBus: EventBus? = nil,
         logger: Logger,
     ) {
         self.fluent = fluent
         self.catalog = catalog
         self.pushService = pushService
+        self.eventBus = eventBus
         self.logger = logger
     }
 
@@ -91,6 +97,18 @@ struct AchievementsService {
         }
         if !newlyUnlocked.isEmpty {
             logger.info("achievements.unlocked tenant=\(tenantID) keys=\(newlyUnlocked.map(\.key).joined(separator: ","))")
+            // HER-206 — surface the unlock so `MeTodayCache` can drop
+            // its entry within 1s (ticket acceptance). Fire-and-forget;
+            // EventBus.publish is non-blocking.
+            if let eventBus {
+                for sub in newlyUnlocked {
+                    eventBus.publish(SkillEvent(
+                        type: .achievementUnlocked,
+                        tenantID: tenantID,
+                        payload: ["achievement_key": sub.key],
+                    ))
+                }
+            }
         }
         return newlyUnlocked
     }
