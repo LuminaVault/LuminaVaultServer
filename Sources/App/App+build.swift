@@ -438,6 +438,28 @@ func buildRouter(
             logger: routingLogger,
         ))
     }
+    // HER-164 — OpenAI-compatible adapter covers Together, Groq,
+    // Fireworks, DeepInfra, and DeepSeek-direct in one struct. Each
+    // provider registers only when its apiKey is present; the base
+    // URL defaults to the provider's production host but can be
+    // overridden via `llm.provider.<key>.baseURL`.
+    for kind in [ProviderKind.together, .groq, .fireworks, .deepInfra, .deepseekDirect] {
+        let key = kind.rawValue
+        let apiKey = reader.string(forKey: "llm.provider.\(key).apiKey", isSecret: true, default: "")
+        guard !apiKey.isEmpty else { continue }
+        let rawBaseURL = reader.string(forKey: "llm.provider.\(key).baseURL", default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = rawBaseURL.isEmpty
+            ? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
+            : (URL(string: rawBaseURL) ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind))
+        providerAdapters.append(OpenAICompatibleAdapter(
+            kind: kind,
+            apiKey: apiKey,
+            baseURL: baseURL,
+            session: .shared,
+            logger: routingLogger,
+        ))
+    }
     // HER-161 — env-loaded provider registry. Reads
     // `llm.provider.<key>.apiKey` / `.baseURL` for anthropic, openai,
     // gemini, together, groq, fireworks, deepseekDirect — missing keys
@@ -887,6 +909,18 @@ func buildRouter(
     let adminGroup = router.group("/v1/admin/hermes-profiles")
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
     adminController.addRoutes(to: adminGroup)
+
+    // HER-164 — admin LLM health-check fanout. `GET /admin/llm/health`
+    // pings every registered OpenAI-compatible provider concurrently
+    // and returns one row per upstream with status + latency, so the
+    // ops dashboard can spot a dead key or upstream outage at a glance.
+    let llmHealthController = LLMHealthController(
+        registry: providerRegistry,
+        logger: routingLogger,
+    )
+    let llmHealthGroup = router.group("/admin")
+        .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+    llmHealthController.addRoutes(to: llmHealthGroup)
 
     // HER-29 — daily 04:00 UTC self-heal pass over `hermes_profiles`. Picks
     // up rows left in `error` / `provisioning` by signup soft-fails and

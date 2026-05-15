@@ -112,6 +112,9 @@ actor ProviderRegistry: Service {
             loadConfig(kind: .together, key: "together", reader: reader),
             loadConfig(kind: .groq, key: "groq", reader: reader),
             loadConfig(kind: .fireworks, key: "fireworks", reader: reader),
+            // HER-164 — DeepInfra slot added; OpenAI-compatible adapter
+            // handles together/groq/fireworks/deepInfra/deepseekDirect.
+            loadConfig(kind: .deepInfra, key: "deepInfra", reader: reader),
             loadConfig(kind: .deepseekDirect, key: "deepseekDirect", reader: reader),
         ].compactMap(\.self)
     }

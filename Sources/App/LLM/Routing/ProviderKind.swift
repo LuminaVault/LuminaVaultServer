@@ -15,9 +15,24 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
     case together
     case groq
     case fireworks
+    case deepInfra
     case deepseekDirect
     case openRouter
     case deepseek
     case kimi
     case ollama
+
+    /// HER-164 — hosting / weight-origin region tag used by the privacy
+    /// filter to exclude `.cn` providers when `privacy_no_cn_origin=true`.
+    /// `deepseek` (non-direct) and `deepseekDirect` are both Chinese-hosted
+    /// inference endpoints. Together / Groq / Fireworks / DeepInfra host
+    /// CN-origin *weights* on US infra — they stay `.us` here; the
+    /// model-identifier substring filter in `ModelOriginRegistry` covers
+    /// weight-origin exclusion.
+    var region: ModelOrigin {
+        switch self {
+        case .deepseek, .deepseekDirect, .kimi: .cn
+        default: .us
+        }
+    }
 }
