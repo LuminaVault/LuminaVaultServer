@@ -13,9 +13,8 @@ extension MemoryLineageResponse: ResponseEncodable {}
 extension MemoryLineageSourceDTO: ResponseEncodable {}
 extension MemoryDTO: ResponseEncodable {}
 
-struct MemoryUpsertRequest: Codable {
-    let content: String
-}
+// HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
+// four optional geo fields. The server-local definition has been removed.
 
 struct MemorySearchRequest: Codable {
     let query: String
@@ -51,6 +50,10 @@ extension MemoryDTO {
             content: memory.content,
             tags: memory.tags ?? [],
             createdAt: memory.createdAt,
+            lat: memory.lat,
+            lng: memory.lng,
+            accuracyM: memory.accuracyM,
+            placeName: memory.placeName,
         )
     }
 }
@@ -118,6 +121,20 @@ struct MemoryController {
             profileUsername: user.username,
             content: body.content,
         )
+        // HER-207 — geo passthrough. The agent-driven upsert path doesn't
+        // know about location, so we patch the four optional fields onto
+        // the saved Memory after the tool call returns. All four are
+        // independently optional; only fields actually supplied are set,
+        // so a partial body (e.g. lat+lng without place_name) round-trips
+        // correctly.
+        let hasGeo = body.lat != nil || body.lng != nil || body.accuracyM != nil || body.placeName != nil
+        if hasGeo {
+            result.memory.lat = body.lat
+            result.memory.lng = body.lng
+            result.memory.accuracyM = body.accuracyM
+            result.memory.placeName = body.placeName
+            try await result.memory.save(on: repository.fluent.db())
+        }
         if let achievements {
             Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .memoryUpserted) }
         }
