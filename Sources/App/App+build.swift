@@ -898,11 +898,20 @@ func buildRouter(
 
     // Admin: hermes-profile reconciliation. Shared-secret gated; off when
     // `admin.token` is empty.
+    // HER-226 — gateway-reachability probe shared by reconciler + service
+    // log line. Single actor across the app so the 30 s TTL caches one
+    // probe per gateway URL regardless of caller.
+    let gatewayProbe = HermesGatewayProbe(
+        session: .shared,
+        logger: Logger(label: "lv.hermes.probe"),
+    )
     let reconciler = HermesProfileReconciler(
         fluent: services.fluent,
         service: hermesProfileService,
         vaultPaths: vaultPaths,
         hermesDataRoot: services.hermesDataRoot,
+        hermesGatewayURL: services.hermesGatewayURL,
+        gatewayProbe: gatewayProbe,
         logger: Logger(label: "lv.admin"),
     )
     let adminController = AdminController(reconciler: reconciler)

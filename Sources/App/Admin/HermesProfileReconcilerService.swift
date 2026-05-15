@@ -22,7 +22,16 @@ actor HermesProfileReconcilerService: Service {
     }
 
     func run() async throws {
-        logger.info("hermes.reconciler.service started")
+        // HER-226 — surface gateway reachability at startup so the
+        // first log line operators see on boot answers "is Hermes up?".
+        do {
+            let h = try await reconciler.health()
+            logger.info(
+                "hermes.reconciler.service started gateway_reachable=\(h.gatewayReachable) gateway_latency_ms=\(h.gatewayLatencyMs.map(String.init) ?? "nil")",
+            )
+        } catch {
+            logger.info("hermes.reconciler.service started (health probe failed: \(error))")
+        }
         while !Task.isShuttingDownGracefully, !Task.isCancelled {
             do {
                 try await cancelWhenGracefulShutdown {
