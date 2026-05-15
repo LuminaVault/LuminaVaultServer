@@ -97,6 +97,32 @@ actor UsageMeterService {
         }
     }
 
+    /// HER-204 — character-based metering for TTS endpoints. Same upsert
+    /// shape as the token recorder, but only advances `chars_out`. Fire-
+    /// and-forget from the hot path; failures are logged and swallowed
+    /// so a metering blip never breaks audio synthesis.
+    func record(tenantID: UUID, model: String, charactersOut: Int) async {
+        guard charactersOut > 0 else { return }
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            logger.warning("usage_meter requires SQL driver, skipping chars record")
+            return
+        }
+        do {
+            try await sql.raw("""
+            INSERT INTO usage_meter (tenant_id, day, model, chars_out)
+            VALUES (\(bind: tenantID), CURRENT_DATE, \(bind: model),
+                    \(bind: Int64(charactersOut)))
+            ON CONFLICT (tenant_id, day, model) DO UPDATE
+                SET chars_out = usage_meter.chars_out + EXCLUDED.chars_out
+            """).run()
+        } catch {
+            logger.error("usage_meter chars record failed", metadata: [
+                "tenant_id": .string(tenantID.uuidString),
+                "error": .string("\(error)"),
+            ])
+        }
+    }
+
     // MARK: - Budget check (tier-wide)
 
     /// Pre-request budget gate. Sums today's total `(mtok_in + mtok_out)`
