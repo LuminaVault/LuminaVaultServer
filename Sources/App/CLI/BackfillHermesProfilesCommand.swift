@@ -54,11 +54,18 @@ func runBackfillHermesProfilesCommand(reader: ConfigReader) async throws {
         gateway: gateway,
         vaultPaths: vaultPaths,
     )
+    let hermesGatewayURL = reader.string(forKey: "hermes.gatewayURL", default: "")
+    let gatewayProbe = HermesGatewayProbe(
+        session: .shared,
+        logger: Logger(label: "lv.hermes.probe"),
+    )
     let reconciler = HermesProfileReconciler(
         fluent: fluent,
         service: service,
         vaultPaths: vaultPaths,
         hermesDataRoot: hermesDataRoot,
+        hermesGatewayURL: hermesGatewayURL,
+        gatewayProbe: gatewayProbe,
         logger: logger,
     )
 

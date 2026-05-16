@@ -1,13 +1,15 @@
+import AppAPI
 import Foundation
 import Hummingbird
 import LuminaVaultShared
 
-// /spaces DTOs are now OpenAPI-generated in LuminaVaultShared. The typealiases
-// below keep call sites stable; see LuminaVaultShared/Sources/LuminaVaultShared/openapi.yaml.
+// /spaces DTOs are OpenAPI-generated in `Sources/AppAPI/openapi.yaml`.
+// The typealiases below alias the generated schema names to the call-site
+// names used by `SpacesController` + `SpacesService`.
 typealias SpaceDTO = Components.Schemas.SpaceDTO
 typealias SpaceListResponse = Components.Schemas.SpaceListResponse
-typealias CreateSpaceRequest = Components.Schemas.CreateSpaceRequest
-typealias UpdateSpaceRequest = Components.Schemas.UpdateSpaceRequest
+typealias CreateSpaceRequest = Components.Schemas.SpaceCreateRequest
+typealias UpdateSpaceRequest = Components.Schemas.SpaceUpdateRequest
 
 extension SpaceDTO: ResponseEncodable {}
 extension SpaceListResponse: ResponseEncodable {}
@@ -23,7 +25,6 @@ extension SpaceDTO {
             color: space.color,
             icon: space.icon,
             createdAt: space.createdAt,
-            updatedAt: space.updatedAt,
         )
     }
 }
@@ -53,7 +54,7 @@ struct SpacesController {
         let space = try await service.create(
             tenantID: user.requireID(),
             name: body.name,
-            slugRaw: body.slug,
+            slugRaw: body.slug ?? "",
             description: body.description,
             color: body.color,
             icon: body.icon,

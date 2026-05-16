@@ -143,6 +143,12 @@ extension RateLimitPolicy {
     static let transcribeByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
     static let transcribeByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
 
+    // HER-213 — vision-embed mirrors the transcribe ladder (expensive
+    // GPU-backed provider call). Per-minute cap stops accidental loops;
+    // daily cap covers cost.
+    static let visionEmbedByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+    static let visionEmbedByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
+
     /// HER-204: POST /v1/tts. Stacked policies mirroring SMS/email-magic-link
     /// shape — 30/min burst catches abuse, 1000/day caps the per-user budget.
     /// Both keyed per-user (falls back to per-IP when auth degrades).

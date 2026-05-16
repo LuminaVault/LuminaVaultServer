@@ -123,7 +123,7 @@ struct HermesProvisioningLifecycleTests {
                 .filter(\.$email == email.lowercased())
                 .first()
             #expect(user != nil)
-            let tenantID = try #require(user?.requireID())
+            let tenantID = try #require(try user?.requireID())
 
             // HermesProfile is left in `error` for the reconciler to heal.
             let profile = try await HermesProfile

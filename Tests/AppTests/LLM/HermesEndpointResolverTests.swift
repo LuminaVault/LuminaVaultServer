@@ -65,8 +65,8 @@ struct HermesEndpointResolverTests {
 
     @Test
     func `returns managed default when no row exists`() async throws {
-        let (resolver, fluent, _) = try await makeResolver()
-        defer { try? fluent.shutdown() }
+        let (resolver, fluent, _) = try await Self.makeResolver()
+        defer { Task { try? await fluent.shutdown() } }
 
         // Fresh tenantID with no matching row.
         let tenantID = UUID()
@@ -79,8 +79,8 @@ struct HermesEndpointResolverTests {
 
     @Test
     func `returns override when row exists and decrypts auth header`() async throws {
-        let (resolver, fluent, secretBox) = try await makeResolver()
-        defer { try? fluent.shutdown() }
+        let (resolver, fluent, secretBox) = try await Self.makeResolver()
+        defer { Task { try? await fluent.shutdown() } }
 
         // Provision a user so the FK cascade is satisfied.
         let user = User()
@@ -108,8 +108,8 @@ struct HermesEndpointResolverTests {
 
     @Test
     func `throws ssrfRejected when stored URL fails revalidation`() async throws {
-        let (resolver, fluent, _) = try await makeResolver(allowPrivate: false)
-        defer { try? fluent.shutdown() }
+        let (resolver, fluent, _) = try await Self.makeResolver(allowPrivate: false)
+        defer { Task { try? await fluent.shutdown() } }
 
         let user = User()
         user.email = "resolver-\(UUID().uuidString.prefix(8))@test.luminavault"
@@ -133,8 +133,8 @@ struct HermesEndpointResolverTests {
 
     @Test
     func `throws decryptFailed when ciphertext is corrupt`() async throws {
-        let (resolver, fluent, secretBox) = try await makeResolver()
-        defer { try? fluent.shutdown() }
+        let (resolver, fluent, secretBox) = try await Self.makeResolver()
+        defer { Task { try? await fluent.shutdown() } }
 
         let user = User()
         user.email = "resolver-\(UUID().uuidString.prefix(8))@test.luminavault"
