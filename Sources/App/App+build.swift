@@ -447,9 +447,9 @@ func buildRouter(
     // overridden via `llm.provider.<key>.baseURL`.
     for kind in [ProviderKind.together, .groq, .fireworks, .deepInfra, .deepseekDirect] {
         let key = kind.rawValue
-        let apiKey = reader.string(forKey: "llm.provider.\(key).apiKey", isSecret: true, default: "")
+        let apiKey = reader.string(forKey: ConfigKey("llm.provider.\(key).apiKey"), isSecret: true, default: "")
         guard !apiKey.isEmpty else { continue }
-        let rawBaseURL = reader.string(forKey: "llm.provider.\(key).baseURL", default: "")
+        let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(key).baseURL"), default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let baseURL = rawBaseURL.isEmpty
             ? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
@@ -676,7 +676,7 @@ func buildRouter(
         fluent: services.fluent,
         memories: MemoryRepository(fluent: services.fluent),
         achievements: achievementsService,
-        spaces: SpacesService(fluent: services.fluent),
+        spaces: SpacesService(fluent: services.fluent, vaultPaths: vaultPaths, logger: Logger(label: "lv.spaces.metoday")),
         catalog: .current,
         logger: meTodayLogger,
     )

@@ -49,7 +49,7 @@ struct MeTodayService: Sendable {
     // MARK: - Fragments
 
     private func fetchLastMemory(tenantID: UUID) async throws -> MeTodayLastMemoryDTO? {
-        let rows = try await memories.listPaginated(tenantID: tenantID, limit: 1, offset: 0)
+        let rows = try await memories.listPaginated(tenantID: tenantID, tag: nil, limit: 1, offset: 0)
         guard let row = rows.first, let id = row.id, let createdAt = row.createdAt else { return nil }
         return MeTodayLastMemoryDTO(
             id: id,

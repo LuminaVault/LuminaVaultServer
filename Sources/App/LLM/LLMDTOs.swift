@@ -3,9 +3,21 @@ import Hummingbird
 import LuminaVaultShared
 
 extension ChatResponse: ResponseEncodable {}
-extension TranscribeResponse: ResponseEncodable {}
-extension VisionEmbedResponse: ResponseEncodable {}
-extension MeTodayResponse: ResponseEncodable {}
+
+// HER-213: TTSRequest pruned from LuminaVaultShared v0.11.0 (server
+// negotiates voice catalog; no client-stable contract yet). Server-local.
+struct TTSRequest: Codable, Sendable {
+    let text: String
+    let voice: String?
+    init(text: String, voice: String? = nil) {
+        self.text = text
+        self.voice = voice
+    }
+}
+
+// ResponseEncodable conformances for the previously-Shared types now live
+// next to their server-local declarations (TranscribeDTOs / VisionDTOs /
+// MeTodayDTOs / HealthDTOs).
 
 // ─── Outbound wire format (used by adapters / transports only, NOT shared) ──
 

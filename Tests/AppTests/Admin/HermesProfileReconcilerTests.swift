@@ -27,11 +27,17 @@ struct HermesProfileReconcilerTests {
             gateway: FilesystemHermesGateway(rootPath: hermesDataRoot, logger: logger),
             vaultPaths: vaultPaths,
         )
+        let gatewayProbe = HermesGatewayProbe(
+            session: .shared,
+            logger: logger,
+        )
         let reconciler = HermesProfileReconciler(
             fluent: fluent,
             service: service,
             vaultPaths: vaultPaths,
             hermesDataRoot: hermesDataRoot,
+            hermesGatewayURL: "",
+            gatewayProbe: gatewayProbe,
             logger: logger,
         )
         do {

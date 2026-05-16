@@ -8,8 +8,7 @@ import LuminaVaultShared
 // MARK: - Server-side conformances
 
 extension HealthIngestResponse: ResponseEncodable {}
-extension HealthEventDTO: ResponseEncodable {}
-extension HealthListResponse: ResponseEncodable {}
+// HER-213: HealthEventDTO + HealthListResponse conformances live in HealthDTOs.swift.
 
 // HER-202 — non-throwing accessor mirroring `Memory.savedID`
 // (`Sources/App/Memory/MemoryController.swift:29-39`). Fluent's `id`

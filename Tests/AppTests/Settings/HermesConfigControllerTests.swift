@@ -2,6 +2,7 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
+import struct LuminaVaultShared.AuthResponse
 import Testing
 
 /// HER-217 — `/v1/settings/hermes` E2E. Runs against the real router
