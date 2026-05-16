@@ -2,9 +2,9 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
-// HER-213: selective imports avoid ambiguity between server-local
-// MemoryDTO (geo-bearing shadow) and the slimmer Shared version.
 import struct LuminaVaultShared.AuthResponse
+import struct LuminaVaultShared.MemoryDTO
+import struct LuminaVaultShared.MemoryUpsertRequest
 import struct LuminaVaultShared.MemoryUpsertResponse
 import Testing
 

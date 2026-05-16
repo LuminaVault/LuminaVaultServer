@@ -58,13 +58,6 @@ extension MemoryDTO {
     }
 }
 
-/// PATCH body. All fields optional. `content` change triggers re-embed.
-/// `tags == nil` leaves tags untouched; pass `[]` to clear.
-struct MemoryPatchRequest: Codable {
-    let content: String?
-    let tags: [String]?
-}
-
 /// Routes the user's authenticated requests through the Hermes tool-calling
 /// agent (`HermesMemoryService`). Profile name == username; tenancy comes
 /// from the JWT subject claim via `AppRequestContext.requireIdentity`.
