@@ -49,9 +49,10 @@ echo "    spec:   ${SPEC}"
 echo "    target: ${TARGET}"
 
 bru import openapi \
-  --input "${SPEC}" \
+  --source "${SPEC}" \
   --output "${TARGET}" \
-  --collection-name "LuminaVaultServer"
+  --collection-name "LuminaVaultServer" \
+  --group-by tags
 
 echo
 echo "✓ regenerated Bruno collection at ${TARGET}"
