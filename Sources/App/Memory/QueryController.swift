@@ -4,11 +4,6 @@ import LuminaVaultShared
 
 extension QueryResponse: ResponseEncodable {}
 
-struct QueryRequest: Codable {
-    let query: String
-    let limit: Int?
-}
-
 /// Natural-language query against the user's memories. Thin wrapper on top
 /// of `HermesMemoryService.search` — keeps a stable URL for the iOS client
 /// even if the underlying agent loop changes shape.

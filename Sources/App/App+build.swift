@@ -727,6 +727,14 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .meTodayByUser, storage: rateLimitStorage))
     meTodayController.addRoutes(to: meTodayGroup)
 
+    // HER-37 — GET /v1/me/suggestions. Static list at scaffold; iterates to
+    // per-user dynamic generation in HER-37a. Sibling of `/v1/me/today` —
+    // JWT-only, no entitlement gate (read of own data).
+    let suggestionsGroup = router.group("/v1/me")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .meTodayByUser, storage: rateLimitStorage))
+    SuggestionsController().addRoutes(to: suggestionsGroup)
+
     // HER-204 — POST /v1/tts. OpenAI-only adapter at MVP. Provider key
     // sourced from the same `llm.provider.openai.apiKey` slot already
     // loaded for chat. Empty key disables the route at construction time
@@ -840,7 +848,7 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memo"),
     )
-    let memoController = MemoController(service: memoGenerator)
+    let memoController = MemoController(service: memoGenerator, fluent: services.fluent)
     // HER-223 — memo generator runs an agent loop with multiple Hermes calls.
     let memoBase = router.group("/v1/memos").add(middleware: jwtAuthenticator)
     let memoWithByo = byoHermesMiddleware.map { memoBase.add(middleware: $0) } ?? memoBase
