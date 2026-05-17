@@ -79,6 +79,8 @@ struct VaultController {
         // Catch-all so subdirs in the path component (`notes/today.md`)
         // are accepted as a single parameter.
         router.delete("/files/**", use: delete)
+        // HER-105 — per-file content read for the in-app Markdown reader.
+        router.get("/files/**", use: read)
     }
 
     /// Registered on a dedicated group with a tighter rate-limit policy.
@@ -245,6 +247,48 @@ struct VaultController {
             files: dtos,
             limit: limit,
             nextBefore: rows.count == limit ? rows.last?.createdAt : nil,
+        )
+    }
+
+    // MARK: - Read (HER-105)
+
+    /// `GET /v1/vault/files/<path>` — streams the raw bytes for a single
+    /// tenant-owned file. Used by the iOS vault browser's Markdown reader.
+    /// Returns 404 if the DB row is absent **or** the file is no longer on
+    /// disk (covers the soft-deleted state where the row is gone but the
+    /// `_deleted_*` mirror still exists).
+    @Sendable
+    func read(_: Request, ctx: AppRequestContext) async throws -> Response {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+
+        guard let rawPath: String = ctx.parameters.getCatchAll().joined(separator: "/").nonEmpty else {
+            throw HTTPError(.badRequest, message: "missing path")
+        }
+        let safeRelative = try Self.sanitizePath(rawPath)
+
+        let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$path == safeRelative)
+            .first()
+        guard let row else {
+            throw HTTPError(.notFound, message: "vault file not found")
+        }
+
+        let rawRoot = vaultPaths.rawDirectory(for: tenantID)
+        let target = try Self.resolveInside(rawRoot: rawRoot, relative: safeRelative)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: target.path) else {
+            throw HTTPError(.notFound, message: "vault file body missing")
+        }
+
+        let data = try Data(contentsOf: target)
+        var headers = HTTPFields()
+        headers[.contentType] = row.contentType
+        headers[.contentLength] = String(data.count)
+        return Response(
+            status: .ok,
+            headers: headers,
+            body: ResponseBody(byteBuffer: ByteBuffer(data: data)),
         )
     }
 

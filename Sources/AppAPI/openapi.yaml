@@ -1003,6 +1003,23 @@ paths:
               schema: { $ref: '#/components/schemas/VaultFileDTO' }
 
   /v1/vault/files/{path}:
+    get:
+      tags: [Vault]
+      operationId: vaultRead
+      summary: Stream raw bytes for a single tenant-owned vault file (HER-105).
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File body with the stored `Content-Type`.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags: [Vault]
       operationId: vaultDelete
