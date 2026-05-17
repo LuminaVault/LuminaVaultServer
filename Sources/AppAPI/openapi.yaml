@@ -1089,7 +1089,22 @@ paths:
     post:
       tags: [KB]
       operationId: kbCompile
-      summary: Compile a vault batch through the Hermes learning loop.
+      summary: Compile vault rows through the Hermes learning loop ("Sync & Learn").
+      description: |
+        Reads `vault_files` rows for the caller and runs the per-tenant Hermes
+        agent loop over them. Three input modes:
+
+          * `vaultFileIds == null` (default) — compile every row where
+            `processed_at` is null. This is the one-tap UX behind the iOS
+            "Sync & Learn" button.
+          * `vaultFileIds == [ids]` — compile exactly those rows (tenant-scoped).
+          * `forceFullRecompile == true` — compile every row for the tenant,
+            ignoring `processed_at` and any explicit IDs.
+
+        Tap-with-nothing-pending is a no-op success: `memoriesIngested: 0` and
+        no side effects. First successful compile flips
+        `OnboardingState.firstKBCompileCompleted` and emits the `kb_compiled`
+        achievement event.
       requestBody:
         required: true
         content:
