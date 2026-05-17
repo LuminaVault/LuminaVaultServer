@@ -24,10 +24,34 @@ LuminaVaultServer reads configuration through Apple's [swift-configuration](http
 The prod compose declares these as `${VAR:?required}` — container start fails if unset:
 
 - `POSTGRES_PASSWORD`
-- `JWT_HMAC_SECRET` (32+ chars; rotate annually)
+- `JWT_HMAC_SECRET` (32+ chars; rotate annually — see "JWT key rotation" below)
 - `CORS_ALLOWEDORIGINS` (comma-separated list, no spaces inside URLs)
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
+
+### Email magic-link (HER-33)
+
+The signup verification, password-reset, MFA, and magic-link sign-in flows all share one `EmailOTPSender`. In production set:
+
+- `EMAIL_KIND=resend`
+- `EMAIL_RESEND_APIKEY=re_...` (Resend dashboard → API Keys)
+- `EMAIL_FROM_ADDRESS="LuminaVault <auth@yourdomain.com>"` — sender domain MUST be verified in Resend
+- `EMAIL_REPLY_TO=support@yourdomain.com` (optional)
+
+When `EMAIL_KIND` is unset or `logging`, the server writes OTPs to stderr instead of sending email. That is the dev/CI default; iOS clients hitting a production deploy with `EMAIL_KIND=logging` will appear to send OTPs successfully but no email ever arrives.
+
+### JWT key rotation (HER-33)
+
+`JWT_HMAC_SECRETS` carries an ordered csv of `kid:secret,kid:secret` pairs. The first entry is the active signer; the rest stay loaded so in-flight tokens still verify during the rollover window. Each secret must be 32+ chars; duplicate kids are rejected at boot.
+
+Zero-downtime rotation:
+
+1. Generate a new 32-byte secret: `openssl rand -base64 48 | tr -d '/+=' | cut -c1-48`.
+2. Prepend it to `JWT_HMAC_SECRETS`: `JWT_HMAC_SECRETS=newkid:NEW_SECRET,oldkid:OLD_SECRET`. Redeploy. New tokens sign under `newkid`; tokens still in flight under `oldkid` continue to verify.
+3. Wait at least one access-token TTL (1 hour) plus your refresh-token TTL window (30 days) to let all sessions migrate to the new key.
+4. Remove the old entry: `JWT_HMAC_SECRETS=newkid:NEW_SECRET`. Redeploy.
+
+When `JWT_HMAC_SECRETS` is unset, the loader falls back to the legacy single-key envs (`JWT_HMAC_SECRET` + `JWT_KID`) — existing deploys keep working without a config change.
 
 ## Backdoors to keep out of production
 

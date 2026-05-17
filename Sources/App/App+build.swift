@@ -59,13 +59,32 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     }
 
     // --- JWT keys (HMAC HS256) ---
+    // HER-33: `jwt.hmac.secrets` (env `JWT_HMAC_SECRETS`) is an ordered csv of
+    // `kid:secret` pairs supporting zero-downtime rotation. The first entry
+    // is the active signer; the rest stay loaded so in-flight tokens still
+    // verify during the rollover window. When unset, fall back to the
+    // legacy single-key envs (`JWT_HMAC_SECRET` + `JWT_KID`).
     let jwtKeys = JWTKeyCollection()
-    let secret = reader.string(forKey: "jwt.hmac.secret", default: "")
-    guard !secret.isEmpty else {
-        fatalError("jwt.hmac.secret must be set (env JWT_HMAC_SECRET)")
+    let kid: JWKIdentifier
+    let jwtSecretsCSV = reader.string(forKey: "jwt.hmac.secrets", isSecret: true, default: "")
+    if !jwtSecretsCSV.isEmpty {
+        let entries = try parseJWTSecrets(jwtSecretsCSV)
+        guard let active = entries.first else {
+            fatalError("jwt.hmac.secrets parsed to empty list (env JWT_HMAC_SECRETS)")
+        }
+        try await loadJWTKeys(into: jwtKeys, secrets: entries)
+        kid = active.kid
+    } else {
+        let secret = reader.string(forKey: "jwt.hmac.secret", isSecret: true, default: "")
+        guard !secret.isEmpty else {
+            fatalError(
+                "jwt.hmac.secret must be set (env JWT_HMAC_SECRET) "
+                    + "— or use JWT_HMAC_SECRETS=kid:secret,... for rotation support",
+            )
+        }
+        kid = JWKIdentifier(string: reader.string(forKey: "jwt.kid", default: "lv-default"))
+        await jwtKeys.add(hmac: HMACKey(stringLiteral: secret), digestAlgorithm: .sha256, kid: kid)
     }
-    let kid = JWKIdentifier(string: reader.string(forKey: "jwt.kid", default: "lv-default"))
-    await jwtKeys.add(hmac: HMACKey(stringLiteral: secret), digestAlgorithm: .sha256, kid: kid)
 
     let services = ServiceContainer(
         fluent: fluent,
@@ -117,6 +136,10 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
         ttsProvider: reader.string(forKey: "tts.provider", default: "openai"),
         ttsDefaultModel: reader.string(forKey: "tts.defaultModel", default: "tts-1"),
         ttsCharactersDaily: Int64(reader.int(forKey: "tts.charactersDaily", default: 1_000_000)),
+        emailKind: reader.string(forKey: "email.kind", default: "logging"),
+        emailResendAPIKey: reader.string(forKey: "email.resend.apiKey", isSecret: true, default: ""),
+        emailFromAddress: reader.string(forKey: "email.fromAddress", default: ""),
+        emailReplyTo: reader.string(forKey: "email.replyTo", default: ""),
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -198,14 +221,26 @@ func buildRouter(
     router.get("/") { _, _ -> String in "Hello!" }
 
     // Auth routes
+    // HER-33 — every email OTP surface (MFA challenge, password reset,
+    // signup verification, magic-link sign-in) routes through one factory
+    // so a single `EMAIL_KIND=resend` flip activates production delivery.
+    let makeEmailSender: (String) -> any EmailOTPSender = { label in
+        makeEmailOTPSender(
+            kind: services.emailKind,
+            apiKey: services.emailResendAPIKey,
+            fromAddress: services.emailFromAddress,
+            replyTo: services.emailReplyTo,
+            logger: Logger(label: label),
+        )
+    }
     let mfaService = DefaultMFAService(
         fluent: services.fluent,
-        sender: LoggingEmailOTPSender(logger: Logger(label: "lv.mfa")),
+        sender: makeEmailSender("lv.mfa"),
         generator: DefaultOTPCodeGenerator(),
     )
-    let resetSender = LoggingEmailOTPSender(logger: Logger(label: "lv.reset"))
+    let resetSender = makeEmailSender("lv.reset")
     let resetGen = DefaultOTPCodeGenerator()
-    let verifySender = LoggingEmailOTPSender(logger: Logger(label: "lv.verify"))
+    let verifySender = makeEmailSender("lv.verify")
     let verifyGen = DefaultOTPCodeGenerator()
     let vaultPaths = VaultPathService(rootPath: services.vaultRootPath)
     let hermesLogger = Logger(label: "lv.hermes")
@@ -331,7 +366,7 @@ func buildRouter(
         : FixedOTPCodeGenerator(code: services.magicLinkFixedOTP)
     EmailMagicLinkController(
         authService: authService,
-        emailSender: LoggingEmailOTPSender(logger: Logger(label: "lv.auth.magic")),
+        emailSender: makeEmailSender("lv.auth.magic"),
         generator: magicLinkOTPGenerator,
         challengeStore: preAuthStore,
         rateLimitStorage: rateLimitStorage,
