@@ -1,0 +1,52 @@
+# SwiftLint configuration — conservative baseline.
+#
+# Goal: catch shape problems (force unwraps, unused code, very long
+# functions/files) without bikeshedding style. SwiftFormat already
+# handles formatting; this is purely structural.
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - Tests/AppTests/.build
+  - Sources/AppAPI/Generated.swift # OpenAPI-generated code; do not lint.
+
+# Most rules emit warnings, not errors. Make CI noisy but not blocking
+# until we have a clean baseline; tighten over time by promoting
+# specific rules to `error` severity.
+
+disabled_rules:
+  - trailing_whitespace        # SwiftFormat handles this.
+  - trailing_newline           # SwiftFormat handles this.
+  - opening_brace              # SwiftFormat handles this.
+  - line_length                # SwiftFormat handles this.
+  - identifier_name            # too noisy for short var names like `i`, `id`.
+  - todo                       # TODOs are useful; don't lint them out.
+  - cyclomatic_complexity      # noisy; revisit when codebase is stable.
+  - function_body_length       # noisy; revisit.
+  - type_body_length           # noisy; revisit.
+  - file_length                # noisy; revisit.
+  - large_tuple                # noisy; revisit.
+  - nesting                    # noisy; revisit.
+
+opt_in_rules:
+  - force_unwrapping
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - sorted_first_last
+  - contains_over_first_not_nil
+  - unused_import
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+
+force_unwrapping:
+  severity: warning
+
+# Tune specific rules.
+trailing_comma:
+  mandatory_comma: true
