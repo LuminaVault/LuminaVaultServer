@@ -45,6 +45,7 @@ extension VaultFileDTO {
 struct VaultController {
     let vaultPaths: VaultPathService
     let fluent: Fluent
+    let initService: VaultInitService?
     let eventBus: EventBus?
     let achievements: AchievementsService?
     let logger: Logger
@@ -56,6 +57,7 @@ struct VaultController {
     init(
         vaultPaths: VaultPathService,
         fluent: Fluent,
+        initService: VaultInitService? = nil,
         eventBus: EventBus? = nil,
         achievements: AchievementsService? = nil,
         logger: Logger,
@@ -63,6 +65,7 @@ struct VaultController {
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
+        self.initService = initService
         self.eventBus = eventBus
         self.achievements = achievements
         self.logger = logger
@@ -82,6 +85,31 @@ struct VaultController {
     /// See `App+build.swift` for the wiring.
     func addExportRoute(to router: RouterGroup<AppRequestContext>) {
         router.get("/export", use: export)
+    }
+
+    /// HER-35 — `/v1/vault/{create,status}`. Distinct router group so the
+    /// upload rate-limit policy never applies to the init handshake.
+    func addInitRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.post("/create", use: create)
+        router.get("/status", use: status)
+    }
+
+    @Sendable
+    func create(_: Request, ctx: AppRequestContext) async throws -> VaultStatusResponse {
+        let user = try ctx.requireIdentity()
+        guard let initService else {
+            throw HTTPError(.serviceUnavailable, message: "vault init service unavailable")
+        }
+        return try await initService.create(for: user)
+    }
+
+    @Sendable
+    func status(_: Request, ctx: AppRequestContext) async throws -> VaultStatusResponse {
+        let user = try ctx.requireIdentity()
+        guard let initService else {
+            throw HTTPError(.serviceUnavailable, message: "vault init service unavailable")
+        }
+        return try await initService.status(for: user)
     }
 
     // MARK: - Upload

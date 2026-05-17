@@ -54,6 +54,7 @@ struct SpacesService {
         description: String?,
         color: String?,
         icon: String?,
+        category: String? = nil,
     ) async throws -> Space {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { throw SpacesError.nameRequired }
@@ -78,6 +79,7 @@ struct SpacesService {
             description: description,
             color: color,
             icon: icon,
+            category: category?.isEmpty == true ? nil : category,
         )
         do {
             try await space.save(on: db)
@@ -91,7 +93,7 @@ struct SpacesService {
     }
 
     /// nil means "don't touch"; non-nil means "set". Pass empty string to
-    /// clear an optional field (description / color / icon).
+    /// clear an optional field (description / color / icon / category).
     func update(
         tenantID: UUID,
         id: UUID,
@@ -99,6 +101,7 @@ struct SpacesService {
         description: String?,
         color: String?,
         icon: String?,
+        category: String? = nil,
     ) async throws -> Space {
         let space = try await get(tenantID: tenantID, id: id)
         if let name {
@@ -109,8 +112,38 @@ struct SpacesService {
         if let description { space.spaceDescription = description.isEmpty ? nil : description }
         if let color { space.color = color.isEmpty ? nil : color }
         if let icon { space.icon = icon.isEmpty ? nil : icon }
+        if let category { space.category = category.isEmpty ? nil : category }
         try await space.save(on: fluent.db())
         return space
+    }
+
+    /// Seeded on first `POST /v1/vault/create`. Slugs are reserved
+    /// product-defaults and stable across users so the client can render
+    /// known category icons on first launch. Idempotent: skips any slug
+    /// the tenant already owns. Returns the list of slugs actually
+    /// created in this call (already-present slugs are not re-reported).
+    @discardableResult
+    func seedDefaults(tenantID: UUID) async throws -> [String] {
+        var created: [String] = []
+        for entry in SpaceDefaults.entries {
+            do {
+                _ = try await create(
+                    tenantID: tenantID,
+                    name: entry.name,
+                    slugRaw: entry.slug,
+                    description: nil,
+                    color: nil,
+                    icon: entry.icon,
+                    category: entry.slug,
+                )
+                created.append(entry.slug)
+            } catch let httpError as HTTPError where httpError.status == .conflict {
+                // Slug already owned by this tenant — re-run of vault create
+                // (idempotent) or a manual create that won the race. Skip.
+                continue
+            }
+        }
+        return created
     }
 
     func delete(tenantID: UUID, id: UUID) async throws {

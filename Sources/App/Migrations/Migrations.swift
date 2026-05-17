@@ -41,4 +41,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M34_AddUserIsAdmin())
     await fluent.migrations.add(M35_AddUsageMeterCharsOut())
     await fluent.migrations.add(M36_AddMemoryGeo())
+    await fluent.migrations.add(M37_AddUserVaultInitialized())
+    await fluent.migrations.add(M38_AddSpaceCategoryAndCount())
 }

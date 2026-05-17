@@ -38,6 +38,10 @@ final class User: Model, @unchecked Sendable {
     /// (see `Sources/App/Middleware/AdminTokenMiddleware.swift`). Seeding
     /// the column now means the RBAC swap is a middleware-only change.
     @Field(key: "is_admin") var isAdmin: Bool
+    /// HER-35 — gates the post-auth "Create My Vault" screen on the client.
+    /// `false` for new accounts until `POST /v1/vault/create` succeeds; M37
+    /// backfills existing users to `true` so legacy installs skip the gate.
+    @Field(key: "vault_initialized") var vaultInitialized: Bool
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -46,6 +50,7 @@ final class User: Model, @unchecked Sendable {
         privacyNoCNOrigin = false
         timezone = "UTC"
         isAdmin = false
+        vaultInitialized = false
     }
 
     init(
@@ -76,5 +81,6 @@ final class User: Model, @unchecked Sendable {
         privacyNoCNOrigin = false
         timezone = "UTC"
         isAdmin = false
+        vaultInitialized = false
     }
 }
