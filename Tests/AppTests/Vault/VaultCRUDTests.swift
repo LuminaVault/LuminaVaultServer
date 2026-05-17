@@ -270,4 +270,70 @@ struct VaultCRUDTests {
             ) { #expect($0.status == .unauthorized) }
         }
     }
+
+    // MARK: - HER-34 HEIC allowlist
+
+    /// Minimal HEIC byte sequence — file-type box header. The server upload
+    /// path persists raw bytes; the validator only checks MIME, not magic.
+    private static let heicStubBytes: Data = Data([
+        0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, // box len + 'ftyp'
+        0x68, 0x65, 0x69, 0x63, // major brand 'heic'
+    ])
+
+    @Test
+    func `upload accepts image_heic content type for .heic path`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+            try await client.execute(
+                uri: "/v1/vault/files?path=captures/sample.heic",
+                method: .post,
+                headers: [
+                    .authorization: "Bearer \(token)",
+                    .contentType: "image/heic",
+                ],
+                body: ByteBuffer(data: Self.heicStubBytes),
+            ) { response in
+                #expect(response.status == .ok || response.status == .created)
+            }
+        }
+    }
+
+    @Test
+    func `upload accepts image_heif content type for .heic path`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+            try await client.execute(
+                uri: "/v1/vault/files?path=captures/alias.heic",
+                method: .post,
+                headers: [
+                    .authorization: "Bearer \(token)",
+                    .contentType: "image/heif",
+                ],
+                body: ByteBuffer(data: Self.heicStubBytes),
+            ) { response in
+                #expect(response.status == .ok || response.status == .created)
+            }
+        }
+    }
+
+    @Test
+    func `upload rejects image_jpeg content type for .heic path`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+            try await client.execute(
+                uri: "/v1/vault/files?path=captures/mismatch.heic",
+                method: .post,
+                headers: [
+                    .authorization: "Bearer \(token)",
+                    .contentType: "image/jpeg",
+                ],
+                body: ByteBuffer(data: Self.heicStubBytes),
+            ) { response in
+                #expect(response.status == .badRequest)
+            }
+        }
+    }
 }
