@@ -201,6 +201,10 @@ struct VaultController {
         let before = request.uri.queryParameters["before"].flatMap { Self.parseISODate(String($0)) }
         let after = request.uri.queryParameters["after"].flatMap { Self.parseISODate(String($0)) }
         let spaceSlug = request.uri.queryParameters["space"].map(String.init)
+        // HER-105 — filename substring search for the vault browser's
+        // top search bar. Case-insensitive `ILIKE` on the `path` column.
+        // No trigram index yet (pg_trgm) — scale doesn't warrant it.
+        let q = request.uri.queryParameters["q"].map(String.init).flatMap { $0.isEmpty ? nil : $0 }
 
         var spaceID: UUID?
         if let slug = spaceSlug, !slug.isEmpty {
@@ -225,6 +229,14 @@ struct VaultController {
         }
         if let spaceID {
             _ = query.filter(\.$spaceID == spaceID)
+        }
+        if let q {
+            // SQL ILIKE wildcard match. Escape `%` and `_` so a user
+            // searching for them doesn't accidentally widen the match.
+            let escaped = q.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            _ = query.filter(\.$path, .custom("ILIKE"), "%\(escaped)%")
         }
 
         let rows = try await query.all()

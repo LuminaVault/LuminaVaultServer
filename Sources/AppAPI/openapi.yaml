@@ -960,8 +960,21 @@ paths:
       summary: List vault files.
       parameters:
         - in: query
-          name: prefix
+          name: space
+          description: Filter by Space slug (HER-9 binding).
           schema: { type: string }
+        - in: query
+          name: q
+          description: Case-insensitive substring match on file path (HER-105).
+          schema: { type: string }
+        - in: query
+          name: before
+          description: Cursor — ISO-8601 createdAt; returns rows older than this.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: after
+          description: Cursor — ISO-8601 createdAt; returns rows newer than this.
+          schema: { type: string, format: date-time }
         - in: query
           name: limit
           schema: { type: integer, default: 100 }
