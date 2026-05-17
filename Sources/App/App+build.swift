@@ -904,7 +904,12 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.kb-compile"),
     )
-    let kbCompileController = KBCompileController(service: kbCompileService, achievements: achievementsService)
+    let kbCompileController = KBCompileController(
+        service: kbCompileService,
+        fluent: services.fluent,
+        achievements: achievementsService,
+        logger: Logger(label: "lv.kb-compile.controller"),
+    )
     // HER-223 — kb-compile fires the heaviest Hermes traffic; must route
     // to the user's gateway when one is configured.
     let kbCompileBase = router.group("/v1/kb-compile").add(middleware: jwtAuthenticator)
