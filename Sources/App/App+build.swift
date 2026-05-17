@@ -813,10 +813,31 @@ func buildRouter(
         .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled))
     memoController.addRoutes(to: memoGroup)
 
-    // Vault file upload (markdown + images) — protected.
+    // Spaces (user-defined organizing folders) — service is created early so
+    // the vault-init handshake can seed default Spaces on first launch.
+    let spacesService = SpacesService(
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        logger: Logger(label: "lv.spaces"),
+    )
+
+    // HER-35: VaultInitService owns the `POST /v1/vault/create` handshake.
+    // It pulls together the existing SOUL bootstrap, default-Space seeding,
+    // and the `users.vault_initialized` flip so the client can render a
+    // clean "Create My Vault" gate before any other tab unlocks.
+    let vaultInitService = VaultInitService(
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        soulService: soulService,
+        spacesService: spacesService,
+        logger: Logger(label: "lv.vault.init"),
+    )
+
+    // Vault file upload (markdown + images) + init handshake — protected.
     let vaultController = VaultController(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
+        initService: vaultInitService,
         eventBus: eventBus,
         achievements: achievementsService,
         logger: Logger(label: "lv.vault"),
@@ -825,6 +846,11 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
     vaultController.addRoutes(to: vaultGroup)
+
+    // HER-35: vault init handshake — separate group so the heavy upload
+    // rate-limit policy never blocks the "Create My Vault" call.
+    let vaultInitGroup = router.group("/v1/vault").add(middleware: jwtAuthenticator)
+    vaultController.addInitRoutes(to: vaultInitGroup)
 
     // HER-91: vault export — separate group so the heavier per-user limit
     // doesn't fight the upload limiter, and so exports never burn the
@@ -853,12 +879,8 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
     kbCompileController.addRoutes(to: kbCompileGroup)
 
-    // Spaces (user-defined organizing folders) — protected.
-    let spacesService = SpacesService(
-        fluent: services.fluent,
-        vaultPaths: vaultPaths,
-        logger: Logger(label: "lv.spaces"),
-    )
+    // Spaces routes — service is constructed alongside `vaultInitService`
+    // above so first-run vault create can seed defaults.
     let spacesController = SpacesController(service: spacesService)
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)

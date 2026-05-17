@@ -1024,6 +1024,35 @@ paths:
                 type: string
                 format: binary
 
+  /v1/vault/create:
+    post:
+      tags: [Vault]
+      operationId: vaultCreate
+      summary: HER-35 — initialize the tenant vault (folders, SOUL.md, default Spaces). Idempotent.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VaultCreateRequest' }
+      responses:
+        '200':
+          description: Vault status after create.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultStatusResponse' }
+
+  /v1/vault/status:
+    get:
+      tags: [Vault]
+      operationId: vaultStatus
+      summary: HER-35 — report whether the tenant vault has been initialized.
+      responses:
+        '200':
+          description: Vault status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultStatusResponse' }
+
   # ─────────────────────────────── KB ───────────────────────────────────
 
   /v1/kb-compile:
@@ -1528,7 +1557,7 @@ components:
 
     AuthResponse:
       type: object
-      required: [accessToken, userId]
+      required: [accessToken, userId, vaultInitialized]
       properties:
         accessToken: { type: string }
         refreshToken: { type: string }
@@ -1536,6 +1565,9 @@ components:
         userId: { type: string, format: uuid }
         username: { type: string }
         email: { type: string, format: email }
+        vaultInitialized:
+          type: boolean
+          description: HER-35 — false until `POST /v1/vault/create` runs; clients gate the "Create My Vault" screen on this flag.
 
     EmailOnlyRequest:
       type: object
@@ -2063,7 +2095,7 @@ components:
 
     SpaceDTO:
       type: object
-      required: [id, name, slug]
+      required: [id, name, slug, noteCount]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -2071,6 +2103,16 @@ components:
         description: { type: string }
         color: { type: string }
         icon: { type: string }
+        category:
+          type: string
+          description: HER-35 — free-form bucket label (e.g. "ai", "stocks") rendered as a segmented chip on the client.
+        noteCount:
+          type: integer
+          description: HER-35 — denormalized memo count for the Space card. Default 0; updated by the ingest path.
+        lastCompiledAt:
+          type: string
+          format: date-time
+          description: HER-35 — timestamp of the last KB compile that included this Space; null if never compiled.
         createdAt: { type: string, format: date-time }
 
     SpaceListResponse:
@@ -2090,6 +2132,7 @@ components:
         description: { type: string }
         color: { type: string }
         icon: { type: string }
+        category: { type: string }
 
     SpaceUpdateRequest:
       type: object
@@ -2098,6 +2141,29 @@ components:
         description: { type: string }
         color: { type: string }
         icon: { type: string }
+        category: { type: string }
+
+    # ── Vault Init (HER-35) ──
+
+    VaultCreateRequest:
+      type: object
+      description: HER-35 — `POST /v1/vault/create` has no body. Defined as an empty schema so generated clients keep a typed Encodable.
+      properties: {}
+
+    VaultStatusResponse:
+      type: object
+      required: [initialized, defaultSpaceSlugs]
+      properties:
+        initialized:
+          type: boolean
+          description: True once the tenant has run `POST /v1/vault/create`.
+        createdAt:
+          type: string
+          format: date-time
+        defaultSpaceSlugs:
+          type: array
+          items: { type: string }
+          description: Slugs of Spaces seeded on first vault create.
 
     # ── Soul ──
 

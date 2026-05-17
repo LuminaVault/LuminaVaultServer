@@ -14,6 +14,9 @@ final class Space: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "description") var spaceDescription: String?
     @OptionalField(key: "color") var color: String?
     @OptionalField(key: "icon") var icon: String?
+    @OptionalField(key: "category") var category: String?
+    @Field(key: "note_count") var noteCount: Int
+    @OptionalField(key: "last_compiled_at") var lastCompiledAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -27,6 +30,9 @@ final class Space: Model, TenantModel, @unchecked Sendable {
         description: String? = nil,
         color: String? = nil,
         icon: String? = nil,
+        category: String? = nil,
+        noteCount: Int = 0,
+        lastCompiledAt: Date? = nil,
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -35,5 +41,8 @@ final class Space: Model, TenantModel, @unchecked Sendable {
         spaceDescription = description
         self.color = color
         self.icon = icon
+        self.category = category
+        self.noteCount = noteCount
+        self.lastCompiledAt = lastCompiledAt
     }
 }

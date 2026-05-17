@@ -73,14 +73,11 @@ struct DefaultAuthService: AuthService {
         // HER-29 — Hermes provisioning is soft-fail. A degraded gateway
         // leaves a `status="error"` row that the daily reconciler heals;
         // signup itself still succeeds and the JWT issues without `hpid`.
-        // SOUL.md remains a hard requirement (load-bearing for Hermes voice).
         await hermesProfileService.ensureSoft(for: user, logger: logger)
-        do {
-            try soulService.initIfMissing(for: user)
-        } catch {
-            try? await user.delete(force: true, on: fluent.db())
-            throw HTTPError(.serviceUnavailable, message: "could not initialize SOUL.md")
-        }
+        // HER-35 — SOUL.md write moved to `POST /v1/vault/create`. New users
+        // land on the client's "Create My Vault" screen until they hit that
+        // endpoint, at which point `vault_initialized` flips true and Hermes
+        // voice becomes usable.
         return try await issueTokens(for: user)
     }
 
@@ -314,12 +311,7 @@ struct DefaultAuthService: AuthService {
         try await identity.save(on: fluent.db())
         // HER-29 — soft-fail Hermes; see register(...) for rationale.
         await hermesProfileService.ensureSoft(for: user, logger: logger)
-        do {
-            try soulService.initIfMissing(for: user)
-        } catch {
-            try? await user.delete(force: true, on: fluent.db())
-            throw HTTPError(.serviceUnavailable, message: "could not initialize SOUL.md")
-        }
+        // HER-35 — SOUL.md bootstrap deferred to `POST /v1/vault/create`.
         return user
     }
 
@@ -388,6 +380,7 @@ struct DefaultAuthService: AuthService {
             expiresIn: Int(accessTokenLifetime),
             mfaRequired: nil,
             mfaChallengeId: nil,
+            vaultInitialized: user.vaultInitialized,
         )
     }
 
@@ -402,6 +395,7 @@ struct DefaultAuthService: AuthService {
             expiresIn: 0,
             mfaRequired: true,
             mfaChallengeId: challengeID,
+            vaultInitialized: user.vaultInitialized,
         )
     }
 
