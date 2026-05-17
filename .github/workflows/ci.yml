@@ -2,29 +2,27 @@ name: CI
 
 on:
   push:
-    branches-ignore:
-      - main
-      - dev
     paths:
       - 'Sources/**'
       - 'Tests/**'
       - 'Package.swift'
       - 'Package.resolved'
+      - '.swiftlint.yml'
+      - '.swiftformat'
       - '.github/workflows/**'
   pull_request:
-    branches-ignore:
-      - main
-      - dev
     paths:
       - 'Sources/**'
       - 'Tests/**'
       - 'Package.swift'
       - 'Package.resolved'
+      - '.swiftlint.yml'
+      - '.swiftformat'
       - '.github/workflows/**'
 
 jobs:
   lint:
-    name: SwiftFormat Lint
+    name: SwiftFormat + SwiftLint
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +30,10 @@ jobs:
         run: brew install swiftformat
       - name: SwiftFormat
         run: swiftformat --lint . --reporter github-actions-log
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: SwiftLint
+        run: swiftlint lint --reporter github-actions-logging
 
   test:
     name: Run Tests
@@ -73,7 +75,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swift-test-
 
-      - name: Run tests
+      - name: Run tests (with coverage)
         env:
           DATABASE_URL: postgres://hermes:hermes_password@postgres:5432/hermes_test
           # Test harness reads these via TestPostgres.configuration().
@@ -84,4 +86,33 @@ jobs:
           POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
-        run: swift test --parallel
+        run: swift test --parallel --enable-code-coverage
+
+      - name: Export coverage to lcov
+        # Best-effort; emits a workflow notice on failure but does not
+        # break the build. Coverage is informational until we wire a
+        # dashboard upload step.
+        if: always()
+        run: |
+          set -euo pipefail
+          BIN_PATH=$(swift build --show-bin-path)
+          PROFDATA="${BIN_PATH}/codecov/default.profdata"
+          XCTEST_PATH=$(find "${BIN_PATH}" -name '*.xctest' -print -quit)
+          if [[ -f "${PROFDATA}" && -n "${XCTEST_PATH}" ]]; then
+            llvm-cov export \
+              -format=lcov \
+              -instr-profile "${PROFDATA}" \
+              "${XCTEST_PATH}/${XCTEST_PATH##*/}" \
+              > coverage.lcov || true
+          else
+            echo "::notice::coverage artefacts not found; skipping export"
+            : > coverage.lcov
+          fi
+
+      - name: Upload coverage artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage.lcov
+          if-no-files-found: ignore
