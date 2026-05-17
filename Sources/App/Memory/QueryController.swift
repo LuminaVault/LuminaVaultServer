@@ -5,11 +5,6 @@ import LuminaVaultShared
 
 extension QueryResponse: ResponseEncodable {}
 
-struct QueryRequest: Codable {
-    let query: String
-    let limit: Int?
-}
-
 /// Natural-language query against the user's memories. The non-streaming
 /// path is a thin wrapper on top of `HermesMemoryService.search` and
 /// keeps a stable URL for the iOS client. HER-37 adds a streaming
