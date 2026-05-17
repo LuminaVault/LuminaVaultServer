@@ -856,6 +856,15 @@ func buildRouter(
         logger: Logger(label: "lv.spaces"),
     )
 
+    // HER-234 — per-tenant partial HNSW index lifecycle. Pairs with M39's
+    // baseline global HNSW + tsvector. `ensureIndex` fires once per tenant
+    // on vault-init; `dropIndex` is wired into the account-deletion path
+    // in a follow-up.
+    let tenantVectorIndexService = TenantVectorIndexService(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.vector.index"),
+    )
+
     // HER-35: VaultInitService owns the `POST /v1/vault/create` handshake.
     // It pulls together the existing SOUL bootstrap, default-Space seeding,
     // and the `users.vault_initialized` flip so the client can render a
@@ -865,6 +874,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         soulService: soulService,
         spacesService: spacesService,
+        vectorIndexService: tenantVectorIndexService,
         logger: Logger(label: "lv.vault.init"),
     )
 
