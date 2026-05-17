@@ -98,4 +98,15 @@ struct ServiceContainer {
     /// in MVP). When char-aware budget gating ships, `UsageMeterService`
     /// reads this to deny at hard cap.
     let ttsCharactersDaily: Int64
+    /// HER-33: Email transport selector. `logging` (default) writes OTPs
+    /// to the log; `resend` posts to the Resend HTTP API. Production
+    /// MUST set `resend` or the magic-link flow silently no-ops.
+    let emailKind: String
+    /// HER-33: Resend API key (required when `emailKind=resend`).
+    let emailResendAPIKey: String
+    /// HER-33: From address shown to recipients. Must be on a verified
+    /// Resend sender domain (e.g. `LuminaVault <auth@lumina.app>`).
+    let emailFromAddress: String
+    /// HER-33: Optional Reply-To header. Empty omits the field.
+    let emailReplyTo: String
 }

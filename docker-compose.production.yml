@@ -19,8 +19,21 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
       FLUENT_AUTOMIGRATE: ${FLUENT_AUTOMIGRATE:-false}
       # --- Auth ---
+      # HER-33: JWT_HMAC_SECRET + JWT_KID is the legacy single-key path.
+      # JWT_HMAC_SECRETS (csv `kid:secret,kid:secret`) supersedes it and
+      # enables zero-downtime rotation. Production should prefer it. See
+      # docs/CONFIG.md section "JWT key rotation".
       JWT_HMAC_SECRET: ${JWT_HMAC_SECRET:?required}
       JWT_KID: ${JWT_KID:-lv-prod}
+      JWT_HMAC_SECRETS: ${JWT_HMAC_SECRETS:-}
+      # --- Email magic-link / OTP delivery (HER-33) ---
+      # Production MUST set EMAIL_KIND=resend or magic-link OTPs only log
+      # to stderr. Sender domain in EMAIL_FROM_ADDRESS must be verified
+      # in Resend.
+      EMAIL_KIND: ${EMAIL_KIND:-logging}
+      EMAIL_RESEND_APIKEY: ${EMAIL_RESEND_APIKEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
       # --- OAuth providers (empty = provider disabled) ---
       OAUTH_APPLE_CLIENTID: ${OAUTH_APPLE_CLIENTID:-}
       OAUTH_GOOGLE_CLIENTID: ${OAUTH_GOOGLE_CLIENTID:-}
