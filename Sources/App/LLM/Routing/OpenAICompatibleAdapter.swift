@@ -98,12 +98,12 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         do {
             let (_, response) = try await session.data(for: req)
             let elapsed = ContinuousClock.now - start
-            let latencyMs = Int(elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+            let latencyMs = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             return HealthCheckResult(ok: status > 0, latencyMs: max(0, latencyMs), error: nil)
         } catch {
             let elapsed = ContinuousClock.now - start
-            let latencyMs = Int(elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+            let latencyMs = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
             return HealthCheckResult(ok: false, latencyMs: max(0, latencyMs), error: String(describing: error))
         }
     }
@@ -126,9 +126,9 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         case .deepInfra:
             // DeepInfra-default baseURL = `https://api.deepinfra.com/v1/openai`.
             // If callers override baseURL they keep the prefix themselves.
-            return baseURL.appendingPathComponent("chat").appendingPathComponent("completions")
+            baseURL.appendingPathComponent("chat").appendingPathComponent("completions")
         default:
-            return baseURL
+            baseURL
                 .appendingPathComponent("v1")
                 .appendingPathComponent("chat")
                 .appendingPathComponent("completions")
@@ -150,7 +150,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
 }
 
 /// Lightweight result struct shared with `LLMHealthController`.
-struct HealthCheckResult: Sendable {
+struct HealthCheckResult {
     let ok: Bool
     let latencyMs: Int
     let error: String?

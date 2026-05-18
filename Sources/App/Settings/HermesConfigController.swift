@@ -256,11 +256,11 @@ struct HermesConfigController {
                 return .unreachable
             }
             switch http.statusCode {
-            case 200...299:
+            case 200 ... 299:
                 return nil
-            case 400...499:
+            case 400 ... 499:
                 return .http4xx
-            case 500...599:
+            case 500 ... 599:
                 return .http5xx
             default:
                 return .unreachable

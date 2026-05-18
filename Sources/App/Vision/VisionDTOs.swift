@@ -5,7 +5,7 @@ import Hummingbird
 // per the wire-types-only boundary (model + dimensions are server-internal
 // reflection of which provider answered). Lives server-side now.
 
-struct VisionEmbedResponse: Codable, Sendable {
+struct VisionEmbedResponse: Codable {
     let embedding: [Float]
     let dim: Int
     let model: String
@@ -16,6 +16,7 @@ struct VisionEmbedResponse: Codable, Sendable {
         case sourceWidth = "source_width"
         case sourceHeight = "source_height"
     }
+
     init(embedding: [Float], dim: Int, model: String, sourceWidth: Int, sourceHeight: Int) {
         self.embedding = embedding; self.dim = dim; self.model = model
         self.sourceWidth = sourceWidth; self.sourceHeight = sourceHeight

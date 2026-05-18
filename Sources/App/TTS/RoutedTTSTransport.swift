@@ -14,7 +14,7 @@ import Logging
 /// blocks audio delivery. Same fail-soft contract as the token
 /// recorder — metering loss is acceptable; a stuck audio response
 /// is not.
-struct RoutedTTSTransport: Sendable {
+struct RoutedTTSTransport {
     let adapter: any TTSProviderAdapter
     let defaultModel: String
     let logger: Logger

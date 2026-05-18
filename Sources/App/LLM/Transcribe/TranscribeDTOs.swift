@@ -5,7 +5,7 @@ import Hummingbird
 // LuminaVaultShared v0.11.0 per the "wire-types-only" boundary. They now
 // live server-side; the iOS client builds its own decoders.
 
-struct TranscribeSegment: Codable, Sendable {
+struct TranscribeSegment: Codable {
     let start: Double
     let end: Double
     let text: String
@@ -14,7 +14,7 @@ struct TranscribeSegment: Codable, Sendable {
     }
 }
 
-struct TranscribeResponse: Codable, Sendable {
+struct TranscribeResponse: Codable {
     let id: String
     let text: String
     let language: String
@@ -26,6 +26,7 @@ struct TranscribeResponse: Codable, Sendable {
         case durationSeconds = "duration_seconds"
         case segments
     }
+
     init(id: String, text: String, language: String, confidence: Double, durationSeconds: Double, segments: [TranscribeSegment]? = nil) {
         self.id = id; self.text = text; self.language = language
         self.confidence = confidence; self.durationSeconds = durationSeconds

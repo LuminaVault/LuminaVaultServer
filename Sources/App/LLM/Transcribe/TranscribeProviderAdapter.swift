@@ -24,7 +24,7 @@ protocol TranscribeProviderAdapter: Sendable {
 
 /// Stable identifier per provider. Map 1:1 to the `transcribe.provider`
 /// env knob — `transcribe.provider=groq` selects `.groq`.
-enum TranscribeProviderKind: String, Sendable, CaseIterable {
+enum TranscribeProviderKind: String, CaseIterable {
     case groq
     case openai
     case replicate
@@ -33,7 +33,7 @@ enum TranscribeProviderKind: String, Sendable, CaseIterable {
 
 /// Normalized result returned from any `TranscribeProviderAdapter`. The
 /// service layer converts this into the wire `TranscribeResponse`.
-struct TranscribeUpstreamResult: Sendable {
+struct TranscribeUpstreamResult {
     let text: String
     let language: String
     /// Confidence in `[0,1]`. Providers that don't expose a single number

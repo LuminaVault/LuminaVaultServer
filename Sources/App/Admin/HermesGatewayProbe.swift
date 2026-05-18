@@ -12,7 +12,7 @@ import Logging
 /// dashboard can refresh aggressively without producing additional
 /// outbound traffic.
 actor HermesGatewayProbe {
-    struct ProbeResult: Sendable {
+    struct ProbeResult {
         let reachable: Bool
         let latencyMs: Int?
         let checkedAt: Date
@@ -82,7 +82,7 @@ actor HermesGatewayProbe {
     }
 
     private static func elapsedMilliseconds(_ duration: Duration) -> Int {
-        let seconds = Int(duration.components.seconds * 1_000)
+        let seconds = Int(duration.components.seconds * 1000)
         let frac = Int(duration.components.attoseconds / 1_000_000_000_000_000)
         return max(0, seconds + frac)
     }

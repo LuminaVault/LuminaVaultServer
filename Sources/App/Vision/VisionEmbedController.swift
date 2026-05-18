@@ -45,7 +45,8 @@ struct VisionEmbedController {
 
         if let lengthHeader = request.headers[.contentLength],
            let declared = Int(lengthHeader),
-           declared > Self.maxBodyBytes {
+           declared > Self.maxBodyBytes
+        {
             throw HTTPError(.contentTooLarge, message: "image body exceeds \(Self.maxBodyBytes) byte cap")
         }
 

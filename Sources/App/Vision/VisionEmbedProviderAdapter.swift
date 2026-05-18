@@ -23,7 +23,7 @@ protocol VisionEmbedProviderAdapter: Sendable {
 
 /// Stable identifier per provider. Map 1:1 to the `vision.embed.provider`
 /// env knob — `vision.embed.provider=cohere` selects `.cohere`.
-enum VisionEmbedProviderKind: String, Sendable, CaseIterable {
+enum VisionEmbedProviderKind: String, CaseIterable {
     case cohere
     case openai
     case replicate
@@ -34,7 +34,7 @@ enum VisionEmbedProviderKind: String, Sendable, CaseIterable {
 /// Normalized result from any `VisionEmbedProviderAdapter`. The service
 /// layer pads / truncates `embedding` to `targetDim` before responding
 /// or writing to `memory_embeddings`.
-struct VisionEmbedUpstreamResult: Sendable {
+struct VisionEmbedUpstreamResult {
     /// Raw embedding from the provider. Length is provider-defined —
     /// service normalizes to the target dim (1536 for pgvector).
     let embedding: [Float]

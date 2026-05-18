@@ -5,7 +5,7 @@ import Hummingbird
 // LuminaVaultShared v0.11.0 (carry server-side `id` populated post-insert,
 // outside the wire-types-only boundary). They live server-side now.
 
-struct HealthEventDTO: Codable, Sendable {
+struct HealthEventDTO: Codable {
     let id: UUID
     let type: String
     let recordedAt: Date
@@ -22,7 +22,7 @@ struct HealthEventDTO: Codable, Sendable {
         valueText: String? = nil,
         unit: String? = nil,
         source: String? = nil,
-        metadata: [String: String]? = nil
+        metadata: [String: String]? = nil,
     ) {
         self.id = id
         self.type = type
@@ -35,15 +35,10 @@ struct HealthEventDTO: Codable, Sendable {
     }
 }
 
-struct HealthListResponse: Codable, Sendable {
+struct HealthListResponse: Codable {
     let events: [HealthEventDTO]
     let limit: Int
     let offset: Int
-    init(events: [HealthEventDTO], limit: Int, offset: Int) {
-        self.events = events
-        self.limit = limit
-        self.offset = offset
-    }
 }
 
 extension HealthEventDTO: ResponseEncodable {}

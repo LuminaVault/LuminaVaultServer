@@ -6,7 +6,7 @@ extension ChatResponse: ResponseEncodable {}
 
 // HER-213: TTSRequest pruned from LuminaVaultShared v0.11.0 (server
 // negotiates voice catalog; no client-stable contract yet). Server-local.
-struct TTSRequest: Codable, Sendable {
+struct TTSRequest: Codable {
     let text: String
     let voice: String?
     init(text: String, voice: String? = nil) {

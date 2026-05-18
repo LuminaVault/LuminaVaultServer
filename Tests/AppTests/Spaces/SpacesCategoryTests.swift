@@ -69,7 +69,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.encode(create),
+                body: Self.encode(create),
             ) { try Self.decodeSpace($0.body) }
             #expect(created.category == "stocks")
             #expect(created.noteCount == 0)
@@ -88,7 +88,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.encode(CreateSpaceRequest(
+                body: Self.encode(CreateSpaceRequest(
                     name: "Reading",
                     slug: "reading",
                     description: nil,
@@ -103,7 +103,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces/\(created.id)",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.encode(UpdateSpaceRequest(category: "work")),
+                body: Self.encode(UpdateSpaceRequest(category: "work")),
             ) { try Self.decodeSpace($0.body) }
             #expect(moved.category == "work")
 
@@ -112,7 +112,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces/\(created.id)",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.encode(UpdateSpaceRequest(category: "")),
+                body: Self.encode(UpdateSpaceRequest(category: "")),
             ) { try Self.decodeSpace($0.body) }
             #expect(cleared.category == nil)
         }

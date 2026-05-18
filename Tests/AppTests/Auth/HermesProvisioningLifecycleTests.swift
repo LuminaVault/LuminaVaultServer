@@ -147,7 +147,9 @@ struct HermesProvisioningLifecycleTests {
 
 private struct AlwaysFailingHermesGateway: HermesGateway {
     struct Down: Error, CustomStringConvertible {
-        var description: String { "hermes gateway is intentionally down for lifecycle test" }
+        var description: String {
+            "hermes gateway is intentionally down for lifecycle test"
+        }
     }
 
     func provisionProfile(tenantID _: UUID, username _: String) async throws -> String {

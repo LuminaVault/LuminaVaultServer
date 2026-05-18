@@ -26,14 +26,8 @@ protocol TTSProviderAdapter: Sendable {
 /// `charactersBilled` is what `UsageMeterService.record(charactersOut:)`
 /// will record — typically `text.count` but adapters MAY override (e.g.
 /// some providers normalise / strip SSML before counting).
-struct TTSSynthesisResponse: Sendable {
+struct TTSSynthesisResponse {
     let audioData: Data
     let contentType: String
     let charactersBilled: Int
-
-    init(audioData: Data, contentType: String, charactersBilled: Int) {
-        self.audioData = audioData
-        self.contentType = contentType
-        self.charactersBilled = charactersBilled
-    }
 }

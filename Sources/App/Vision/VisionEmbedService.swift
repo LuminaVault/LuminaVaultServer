@@ -12,7 +12,7 @@ import SQLKit
 /// to `memories.embedding` when the caller passes
 /// `?indexAs=memory&memoryId=<uuid>`. Sits between `VisionEmbedController`
 /// (HTTP boundary) and `VisionEmbedProviderAdapter` (upstream).
-struct VisionEmbedService: Sendable {
+struct VisionEmbedService {
     let registry: VisionEmbedProviderRegistry
     let fluent: Fluent
     let usageMeter: UsageMeterService?
