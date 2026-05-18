@@ -1,0 +1,42 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317   # metrics + traces from the app (swift-otel OTLPGRPC exporters)
+      http:
+        endpoint: 0.0.0.0:4318   # logs from the app (OTLPHTTPLogExporter)
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  otlphttp/posthog:
+    logs_endpoint: https://us.i.posthog.com/otlp/v1/logs
+    headers:
+      Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/posthog]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

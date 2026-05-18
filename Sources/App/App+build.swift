@@ -10,7 +10,7 @@ import JWTKit
 import Logging
 import LuminaVaultShared
 import Metrics
-import OTel
+@_spi(Logging) import OTel
 import OTLPGRPC
 import ServiceLifecycle
 import Tracing
@@ -29,7 +29,10 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     // = http://jaeger:4317`). Otherwise keep no-op metrics for test runs.
     let otelEnabled = reader.string(forKey: "otel.enabled", default: "false").lowercased() == "true"
     let otelServices = otelEnabled
-        ? try await bootstrapOTelOnce(serviceName: reader.string(forKey: "otel.serviceName", default: "luminavault"))
+        ? try await bootstrapOTelOnce(
+            serviceName: reader.string(forKey: "otel.serviceName", default: "luminavault"),
+            logLevel: logger.logLevel,
+        )
         : nil
     if !otelEnabled {
         bootstrapMetricsOnce()
@@ -159,6 +162,9 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     if let otelServices {
         appServices.append(otelServices.metrics)
         appServices.append(otelServices.tracer)
+        if let logs = otelServices.logs {
+            appServices.append(logs)
+        }
     }
     return Application(
         router: router,
@@ -1216,6 +1222,9 @@ private func bootstrapMetricsOnce() {
 struct OTelServices {
     let metrics: any Service
     let tracer: any Service
+    /// HER-236: optional swift-log → OTel → otel-collector → PostHog pipeline.
+    /// Nil when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is unset (log shipping off).
+    let logs: (any Service)?
 }
 
 /// Same single-shot pattern as `bootstrapMetricsOnce` — guards against
@@ -1224,7 +1233,7 @@ private actor OTelLatch {
     static let shared = OTelLatch()
     private var services: OTelServices?
 
-    func bootstrap(serviceName: String) async throws -> OTelServices {
+    func bootstrap(serviceName: String, logLevel: Logger.Level) async throws -> OTelServices {
         if let services { return services }
 
         let environment = OTelEnvironment.detected()
@@ -1260,14 +1269,32 @@ private actor OTelLatch {
         )
         InstrumentationSystem.bootstrap(tracer)
 
-        let bundle = OTelServices(metrics: metricsReader, tracer: tracer)
+        // HER-236: OTLP log pipeline → otel-collector (JSON/HTTP) → PostHog.
+        // Opt-in via OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; absent = no log shipping
+        // and the stock console handler stays installed.
+        var logsService: (any Service)?
+        if let logsEndpoint = environment["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"],
+           !logsEndpoint.isEmpty
+        {
+            let logExporter = OTLPHTTPLogExporter(endpoint: logsEndpoint)
+            let logProcessor = OTelBatchLogRecordProcessor(
+                exporter: logExporter,
+                configuration: .init(environment: environment),
+            )
+            LoggingSystem.bootstrap { _ in
+                OTelLogHandler(processor: logProcessor, logLevel: logLevel, resource: resource)
+            }
+            logsService = logProcessor
+        }
+
+        let bundle = OTelServices(metrics: metricsReader, tracer: tracer, logs: logsService)
         services = bundle
         return bundle
     }
 }
 
-private func bootstrapOTelOnce(serviceName: String) async throws -> OTelServices {
-    try await OTelLatch.shared.bootstrap(serviceName: serviceName)
+private func bootstrapOTelOnce(serviceName: String, logLevel: Logger.Level) async throws -> OTelServices {
+    try await OTelLatch.shared.bootstrap(serviceName: serviceName, logLevel: logLevel)
 }
 
 private func makeSMSSender(
