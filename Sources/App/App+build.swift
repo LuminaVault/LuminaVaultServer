@@ -16,8 +16,16 @@ import ServiceLifecycle
 import Tracing
 
 ///  Build application
-/// - Parameter reader: configuration reader
-func buildApplication(reader: ConfigReader) async throws -> some ApplicationProtocol {
+/// - Parameters:
+///   - reader: configuration reader.
+///   - kbCompileTransportOverride: when non-nil, substitutes for
+///     `routedTransport` inside `KBCompileService`. Test-only escape hatch
+///     for happy-path coverage that needs a deterministic chat backend.
+///     Production callers leave this `nil`.
+func buildApplication(
+    reader: ConfigReader,
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
+) async throws -> some ApplicationProtocol {
     let logger = {
         var logger = Logger(label: "LuminaVaultServer")
         logger.logLevel = reader.string(forKey: "log.level", as: Logger.Level.self, default: .info)
@@ -143,7 +151,12 @@ func buildApplication(reader: ConfigReader) async throws -> some ApplicationProt
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
-    let router = try buildRouter(reader: reader, services: services, managedServices: &appServices)
+    let router = try buildRouter(
+        reader: reader,
+        services: services,
+        managedServices: &appServices,
+        kbCompileTransportOverride: kbCompileTransportOverride,
+    )
     if fluentEnabled {
         let lapseArchiver = LapseArchiverJob(
             fluent: fluent,
@@ -184,6 +197,7 @@ func buildRouter(
     reader: ConfigReader,
     services: ServiceContainer,
     managedServices: inout [any Service],
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
     router.addMiddleware {
@@ -908,7 +922,7 @@ func buildRouter(
     // kb-compile (write batch + Hermes learning loop) — protected.
     let kbCompileService = KBCompileService(
         vaultPaths: vaultPaths,
-        transport: routedTransport,
+        transport: kbCompileTransportOverride ?? routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
