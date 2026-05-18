@@ -195,7 +195,14 @@ struct SystemHostResolver: HostResolver {
 
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
-        hints.ai_socktype = SOCK_STREAM
+        // `SOCK_STREAM` is `Int32` on Darwin but `__socket_type` (a C
+        // enum) on Glibc. Cast via the underlying `Int32` ABI so the
+        // assignment compiles on both platforms.
+        #if canImport(Glibc)
+            hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+        #else
+            hints.ai_socktype = SOCK_STREAM
+        #endif
 
         var result: UnsafeMutablePointer<addrinfo>?
         let rc = getaddrinfo(host, nil, &hints, &result)
