@@ -92,8 +92,8 @@ struct TenantVectorIndexServiceTests {
     }
 
     @Test
-    func `index name is deterministic and quote-safe`() {
-        let uuid = UUID(uuidString: "11111111-2222-3333-4444-555566667777")!
+    func `index name is deterministic and quote-safe`() throws {
+        let uuid = try #require(UUID(uuidString: "11111111-2222-3333-4444-555566667777"))
         let name = TenantVectorIndexService.indexName(for: uuid)
         #expect(name == "idx_memories_emb_t_11111111222233334444555566667777")
         #expect(name.count <= 63) // Postgres identifier limit.

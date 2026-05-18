@@ -173,7 +173,9 @@ struct HermesProfileServiceTests {
 
 private struct ThrowingHermesGateway: HermesGateway {
     struct GatewayDown: Error, CustomStringConvertible {
-        var description: String { "gateway is intentionally down for the test" }
+        var description: String {
+            "gateway is intentionally down for the test"
+        }
     }
 
     func provisionProfile(tenantID _: UUID, username _: String) async throws -> String {

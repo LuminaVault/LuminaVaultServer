@@ -15,6 +15,7 @@ struct M39HnswAndTsvectorTests {
     private struct PgIndexRow: Codable {
         let indexname: String
     }
+
     private struct PgAttrRow: Codable {
         let attname: String
     }

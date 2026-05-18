@@ -46,7 +46,7 @@ struct KBCompileMemoryUpsertTests {
     }
 
     private static func compileBody(_ request: KBCompileRequest) throws -> ByteBuffer {
-        ByteBuffer(data: try JSONEncoder().encode(request))
+        try ByteBuffer(data: JSONEncoder().encode(request))
     }
 
     private static func decodeCompileResponse(_ buffer: ByteBuffer) throws -> KBCompileResponse {
@@ -123,7 +123,7 @@ struct KBCompileMemoryUpsertTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -196,7 +196,10 @@ struct KBCompileMemoryUpsertTests {
 /// would mean the agent loop ran more turns than the test scripted.
 private actor ScriptedChatTransportInbox {
     private var turns: [String]
-    init(turns: [String]) { self.turns = turns }
+    init(turns: [String]) {
+        self.turns = turns
+    }
+
     func next() throws -> String {
         guard !turns.isEmpty else {
             throw ScriptedChatTransportError.exhausted
@@ -213,7 +216,7 @@ private struct ScriptedChatTransport: HermesChatTransport {
     let inbox: ScriptedChatTransportInbox
 
     init(turns: [String]) {
-        self.inbox = ScriptedChatTransportInbox(turns: turns)
+        inbox = ScriptedChatTransportInbox(turns: turns)
     }
 
     func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {

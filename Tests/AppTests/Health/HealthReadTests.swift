@@ -72,7 +72,7 @@ struct HealthReadTests {
 
     /// `ISO8601DateFormatter` is documented thread-safe; `nonisolated(unsafe)`
     /// is the standard Swift 6 escape hatch for these legacy Foundation types.
-    nonisolated(unsafe) private static let isoFmt: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let isoFmt: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
@@ -89,7 +89,7 @@ struct HealthReadTests {
             try await Self.seedEvents(client: client, token: token, events: [
                 LuminaVaultShared.HealthEventInput(type: "steps", recordedAt: now, valueNumeric: 1200, unit: "count"),
                 LuminaVaultShared.HealthEventInput(type: "steps", recordedAt: now.addingTimeInterval(-3600), valueNumeric: 800, unit: "count"),
-                LuminaVaultShared.HealthEventInput(type: "steps", recordedAt: now.addingTimeInterval(-3 * 86_400), valueNumeric: 4000, unit: "count"),
+                LuminaVaultShared.HealthEventInput(type: "steps", recordedAt: now.addingTimeInterval(-3 * 86400), valueNumeric: 4000, unit: "count"),
             ])
 
             try await client.execute(
@@ -140,7 +140,7 @@ struct HealthReadTests {
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
             let now = Date()
-            let thirtyDaysAgo = now.addingTimeInterval(-30 * 86_400)
+            let thirtyDaysAgo = now.addingTimeInterval(-30 * 86400)
             try await Self.seedEvents(client: client, token: token, events: [
                 LuminaVaultShared.HealthEventInput(type: "weight_kg", recordedAt: thirtyDaysAgo, valueNumeric: 80.0, unit: "kg"),
             ])
@@ -157,7 +157,7 @@ struct HealthReadTests {
             }
 
             // Explicit window covering the 30-day-old event must return it.
-            let from = Self.isoFmt.string(from: now.addingTimeInterval(-40 * 86_400))
+            let from = Self.isoFmt.string(from: now.addingTimeInterval(-40 * 86400))
             let to = Self.isoFmt.string(from: now)
             try await client.execute(
                 uri: "/v1/health?type=weight_kg&from=\(from)&to=\(to)",

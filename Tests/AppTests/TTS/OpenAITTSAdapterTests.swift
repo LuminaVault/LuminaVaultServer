@@ -19,11 +19,16 @@ struct OpenAITTSAdapterTests {
     /// Concurrency-safe per-test handler injection. Each test installs its
     /// own response handler before kicking off a request; `setHandler(nil)`
     /// resets in `defer` so leaks across tests can't happen.
-    nonisolated(unsafe) private final class StubProtocol: URLProtocol, @unchecked Sendable {
+    private final nonisolated(unsafe) class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.handler else {

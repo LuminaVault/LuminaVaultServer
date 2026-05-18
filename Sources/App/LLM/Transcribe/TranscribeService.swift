@@ -15,7 +15,7 @@ import NIOCore
 ///   the full router,
 /// - leaves room for a future failover loop across providers without
 ///   touching the controller signature.
-struct TranscribeService: Sendable {
+struct TranscribeService {
     let registry: TranscribeProviderRegistry
     let usageMeter: UsageMeterService?
     let logger: Logger

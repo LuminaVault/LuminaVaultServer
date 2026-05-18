@@ -59,7 +59,7 @@ struct LLMHealthController {
 
 // MARK: - Wire DTOs (server-only)
 
-struct LLMProviderHealthLine: Codable, Sendable {
+struct LLMProviderHealthLine: Codable {
     let kind: String
     let region: String
     let ok: Bool
@@ -73,7 +73,7 @@ struct LLMProviderHealthLine: Codable, Sendable {
     }
 }
 
-struct LLMHealthResponse: Codable, Sendable, ResponseEncodable {
+struct LLMHealthResponse: Codable, ResponseEncodable {
     let checkedAt: Date
     let providers: [LLMProviderHealthLine]
 

@@ -5,7 +5,7 @@ import Foundation
 /// Icons are SF Symbol names so the iOS client can render without any
 /// additional asset shipping.
 enum SpaceDefaults {
-    struct Entry: Sendable {
+    struct Entry {
         let slug: String
         let name: String
         let icon: String

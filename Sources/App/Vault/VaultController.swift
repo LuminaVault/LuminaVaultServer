@@ -488,6 +488,11 @@ struct VaultController {
         "jpeg": ["image/jpeg"],
         "webp": ["image/webp"],
         "gif": ["image/gif"],
+        // HER-34: iOS Photos Picker default. Accept `image/heif` as an
+        // alias because iOS sometimes labels HEIC files with the
+        // container MIME (`image/heif`) and sometimes the codec MIME
+        // (`image/heic`).
+        "heic": ["image/heic", "image/heif"],
     ]
 
     static func sanitizePath(_ raw: String) throws -> String {

@@ -1,5 +1,10 @@
 import Foundation
-import Network
+
+// `Network` (Apple high-level framework) was imported here historically
+// but the SSRF guard only uses POSIX `getaddrinfo` / `getnameinfo`,
+// which come from Foundation on both Darwin and Linux. Importing
+// `Network` breaks the Linux build on CI (Hummingbird's Linux runner
+// does not ship a `Network` module). Drop the import.
 
 /// HER-217 — URL allowlist for user-supplied gateway endpoints
 /// (HER-197 follow-up).
@@ -144,7 +149,7 @@ struct SSRFGuard {
             // 10.0.0.0/8
             if v4.0 == 10 { return true }
             // 172.16.0.0/12
-            if v4.0 == 172, (16...31).contains(v4.1) { return true }
+            if v4.0 == 172, (16 ... 31).contains(v4.1) { return true }
             // 192.168.0.0/16
             if v4.0 == 192, v4.1 == 168 { return true }
             // 0.0.0.0/8 (wildcard / "this network") — never legitimate as a target.
@@ -167,7 +172,7 @@ struct SSRFGuard {
         let parts = ip.split(separator: ".")
         guard parts.count == 4 else { return nil }
         let nums = parts.compactMap { Int($0) }
-        guard nums.count == 4, nums.allSatisfy({ (0...255).contains($0) }) else {
+        guard nums.count == 4, nums.allSatisfy({ (0 ... 255).contains($0) }) else {
             return nil
         }
         return (nums[0], nums[1], nums[2], nums[3])
@@ -190,7 +195,14 @@ struct SystemHostResolver: HostResolver {
 
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
-        hints.ai_socktype = SOCK_STREAM
+        // `SOCK_STREAM` is `Int32` on Darwin but `__socket_type` (a C
+        // enum) on Glibc. Cast via the underlying `Int32` ABI so the
+        // assignment compiles on both platforms.
+        #if canImport(Glibc)
+            hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+        #else
+            hints.ai_socktype = SOCK_STREAM
+        #endif
 
         var result: UnsafeMutablePointer<addrinfo>?
         let rc = getaddrinfo(host, nil, &hints, &result)

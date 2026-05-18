@@ -83,7 +83,7 @@ struct HealthIngestController {
     /// Default read window when neither `from` nor `to` is supplied. Health
     /// dashboards almost always open on "last 7 days"; widen via query
     /// params for long-term review.
-    private static let defaultWindowSeconds: TimeInterval = 7 * 86_400
+    private static let defaultWindowSeconds: TimeInterval = 7 * 86400
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: ingest)

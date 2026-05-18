@@ -43,7 +43,8 @@ struct TranscribeController {
 
         if let lengthHeader = request.headers[.contentLength],
            let declared = Int(lengthHeader),
-           declared > Self.maxBodyBytes {
+           declared > Self.maxBodyBytes
+        {
             throw HTTPError(.contentTooLarge, message: "audio body exceeds \(Self.maxBodyBytes) byte cap")
         }
 

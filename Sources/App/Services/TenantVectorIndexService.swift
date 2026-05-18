@@ -20,14 +20,9 @@ import SQLKit
 /// transaction, so the caller MUST NOT wrap them in
 /// `fluent.db().transaction { ... }`. Vault-init and account-deletion
 /// already run outside transactions.
-struct TenantVectorIndexService: Sendable {
+struct TenantVectorIndexService {
     let fluent: Fluent
     let logger: Logger
-
-    init(fluent: Fluent, logger: Logger) {
-        self.fluent = fluent
-        self.logger = logger
-    }
 
     /// Idempotent — Postgres `IF NOT EXISTS` plus a deterministic index
     /// name. Safe to invoke on every vault-init call, including the

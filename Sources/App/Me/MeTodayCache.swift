@@ -19,7 +19,7 @@ actor MeTodayCache: Service {
     /// so the controller can return `304 Not Modified` without
     /// re-serialising. `generatedAt` is what the response embedded —
     /// driving TTL off it keeps eviction simple.
-    struct Entry: Sendable {
+    struct Entry {
         let body: Data
         let etag: String
         let generatedAt: Date
@@ -57,7 +57,9 @@ actor MeTodayCache: Service {
         entries.removeAll()
     }
 
-    func cachedTenantCount() -> Int { entries.count }
+    func cachedTenantCount() -> Int {
+        entries.count
+    }
 
     func run() async throws {
         guard let eventBus else {
@@ -68,14 +70,14 @@ actor MeTodayCache: Service {
             group.addTask { [weak self, eventBus, logger] in
                 for await event in eventBus.subscribe(eventType: .memoryUpserted) {
                     guard let self else { return }
-                    await self.invalidate(tenantID: event.tenantID)
+                    await invalidate(tenantID: event.tenantID)
                     logger.debug("me.today cache invalidated by memory_upserted tenant=\(event.tenantID)")
                 }
             }
             group.addTask { [weak self, eventBus, logger] in
                 for await event in eventBus.subscribe(eventType: .achievementUnlocked) {
                     guard let self else { return }
-                    await self.invalidate(tenantID: event.tenantID)
+                    await invalidate(tenantID: event.tenantID)
                     logger.debug("me.today cache invalidated by achievement_unlocked tenant=\(event.tenantID)")
                 }
             }

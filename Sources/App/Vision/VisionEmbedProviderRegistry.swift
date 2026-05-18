@@ -33,7 +33,7 @@ actor VisionEmbedProviderRegistry: Service {
         adapters: [any VisionEmbedProviderAdapter],
         logger: Logger,
     ) {
-        self.activeKind = active
+        activeKind = active
         self.logger = logger
         for config in configs where config.isEnabled {
             self.configs[config.kind] = config

@@ -1,5 +1,11 @@
 import FluentKit
 import Foundation
+#if canImport(FoundationNetworking)
+    // `URLSession` lives in `FoundationNetworking` on swift-corelibs
+    // Linux. On Darwin the symbol is already in Foundation, so this
+    // import is a no-op there.
+    import FoundationNetworking
+#endif
 import Hummingbird
 import HummingbirdFluent
 import Logging
@@ -256,11 +262,11 @@ struct HermesConfigController {
                 return .unreachable
             }
             switch http.statusCode {
-            case 200...299:
+            case 200 ... 299:
                 return nil
-            case 400...499:
+            case 400 ... 499:
                 return .http4xx
-            case 500...599:
+            case 500 ... 599:
                 return .http5xx
             default:
                 return .unreachable

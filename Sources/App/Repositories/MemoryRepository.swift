@@ -148,7 +148,7 @@ struct MemoryRepository {
         // the migration CLI keep compiling against `MemoryRepository(fluent:)`.
         if let telemetry {
             return try await telemetry.observe("memory.semanticSearch") {
-                try await self.semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
+                try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
             }
         }
         return try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)

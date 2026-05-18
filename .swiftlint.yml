@@ -50,3 +50,11 @@ force_unwrapping:
 # Tune specific rules.
 trailing_comma:
   mandatory_comma: true
+
+# Fluent migration types follow the project-wide `M\d+_Name` convention
+# (e.g. `M01_CreateUser`), which the default `type_name` regex rejects.
+# Allow underscores so this established pattern doesn't fail CI.
+type_name:
+  allowed_symbols: ["_"]
+  min_length: 2
+  max_length: 60

@@ -10,7 +10,7 @@ import SQLKit
 /// Stays out of the cache plumbing — `MeTodayController` is responsible
 /// for `MeTodayCache.get` / `put`, the service just computes a fresh
 /// payload when the cache misses.
-struct MeTodayService: Sendable {
+struct MeTodayService {
     let fluent: Fluent
     let memories: MemoryRepository
     let achievements: AchievementsService
@@ -87,7 +87,7 @@ struct MeTodayService: Sendable {
         """).all(decoding: HealthSumRow.self)
         let stepsToday = stepsRows.first.map { Int($0.total) }
 
-        let prevDay = dayStart.addingTimeInterval(-86_400)
+        let prevDay = dayStart.addingTimeInterval(-86400)
         let sleepRows = try await sql.raw("""
         SELECT COALESCE(SUM(value_numeric), 0)::BIGINT AS total
         FROM health_events
