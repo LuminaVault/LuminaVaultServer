@@ -942,18 +942,43 @@ paths:
     post:
       tags: [Vault]
       operationId: vaultUpload
-      summary: Upload a vault file (markdown / image).
+      summary: Upload a vault file (markdown / image / arbitrary blob).
+      description: |
+        Raw-body upload. The relative path under `<rawRoot>/` is supplied via
+        the `path` query param; the body bytes are written verbatim. The
+        optional `space_id` query param associates the row with a Space the
+        caller owns — used by the iOS Capture tab so first-tap captures land
+        directly into the active Space without a separate move call.
+      parameters:
+        - in: query
+          name: path
+          required: true
+          description: Tenant-relative file path (e.g. `notes/today.md`).
+          schema: { type: string }
+        - in: query
+          name: space_id
+          description: |
+            Optional Space association (HER-CaptureTab). Must belong to the
+            caller's tenant; cross-tenant UUIDs and malformed UUIDs both
+            return 400. Omit to leave the file unfiled. On re-upload to an
+            existing path, a provided value overwrites the prior link; an
+            omitted value leaves the existing link intact.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
-          multipart/form-data:
-            schema: { $ref: '#/components/schemas/VaultUploadRequest' }
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
       responses:
         '200':
           description: File stored.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/VaultFileDTO' }
+              schema: { $ref: '#/components/schemas/VaultUploadResponse' }
+        '400':
+          description: Malformed `path`, malformed `space_id`, cross-tenant space, empty body, or content-type mismatch.
     get:
       tags: [Vault]
       operationId: vaultList
@@ -2101,15 +2126,14 @@ components:
           type: array
           items: { $ref: '#/components/schemas/VaultFileDTO' }
 
-    VaultUploadRequest:
+    VaultUploadResponse:
       type: object
-      required: [file, path]
+      required: [path, size, contentType, sha256]
       properties:
-        file:
-          type: string
-          format: binary
         path: { type: string }
+        size: { type: integer }
         contentType: { type: string }
+        sha256: { type: string }
 
     VaultMoveRequest:
       type: object
