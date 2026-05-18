@@ -43,4 +43,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M36_AddMemoryGeo())
     await fluent.migrations.add(M37_AddUserVaultInitialized())
     await fluent.migrations.add(M38_AddSpaceCategoryAndCount())
+    await fluent.migrations.add(M39_HnswAndTsvector())
 }

@@ -26,7 +26,24 @@ struct VaultInitService {
     let vaultPaths: VaultPathService
     let soulService: SOULService
     let spacesService: SpacesService
+    let vectorIndexService: TenantVectorIndexService?
     let logger: Logger
+
+    init(
+        fluent: Fluent,
+        vaultPaths: VaultPathService,
+        soulService: SOULService,
+        spacesService: SpacesService,
+        vectorIndexService: TenantVectorIndexService? = nil,
+        logger: Logger,
+    ) {
+        self.fluent = fluent
+        self.vaultPaths = vaultPaths
+        self.soulService = soulService
+        self.spacesService = spacesService
+        self.vectorIndexService = vectorIndexService
+        self.logger = logger
+    }
 
     /// Idempotent. Returns the response the caller should ship to the client.
     func create(for user: User) async throws -> VaultStatusResponse {
@@ -46,6 +63,17 @@ struct VaultInitService {
         let seededSlugs = try await spacesService.seedDefaults(tenantID: tenantID)
         user.vaultInitialized = true
         try await user.save(on: fluent.db())
+
+        // HER-234 — best-effort per-tenant HNSW index. The global
+        // HNSW from M39 still serves searches if this fails, so we
+        // log and continue rather than rolling back vault-init.
+        if let vectorIndexService {
+            do {
+                try await vectorIndexService.ensureIndex(for: tenantID)
+            } catch {
+                logger.error("vault.init.hnsw-index-failed tenant=\(tenantID): \(error)")
+            }
+        }
 
         logger.info("vault.created tenant=\(tenantID) seeded=\(seededSlugs.count)")
         return VaultStatusResponse(

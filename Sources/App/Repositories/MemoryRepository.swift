@@ -6,6 +6,10 @@ import SQLKit
 
 struct MemoryRepository {
     let fluent: Fluent
+    /// HER-234 — optional latency timer around the hot search path. Default
+    /// nil so existing `MemoryRepository(fluent:)` constructions keep working
+    /// while the telemetry wiring lands incrementally.
+    var telemetry: RouteTelemetry?
 
     func create(content: String, context: AppRequestContext) async throws -> Memory {
         let tenantID = try context.requireTenantID()
@@ -134,6 +138,23 @@ struct MemoryRepository {
     /// hot path; the bump is wrapped in `Task.detached` so a slow
     /// counter UPDATE never blocks the user-visible response.
     func semanticSearch(
+        tenantID: UUID,
+        queryEmbedding: [Float],
+        limit: Int,
+    ) async throws -> [MemorySearchResult] {
+        // HER-234 — wrap the SQL hop in `RouteTelemetry.observe` when wired
+        // (request counter + duration timer + tracing span). Falls through
+        // to the raw query when no telemetry is injected so unit tests and
+        // the migration CLI keep compiling against `MemoryRepository(fluent:)`.
+        if let telemetry {
+            return try await telemetry.observe("memory.semanticSearch") {
+                try await self.semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
+            }
+        }
+        return try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
+    }
+
+    private func semanticSearchRaw(
         tenantID: UUID,
         queryEmbedding: [Float],
         limit: Int,

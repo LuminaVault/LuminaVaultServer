@@ -11,15 +11,6 @@ import SQLKit
 
 // MARK: - DTOs
 
-struct InternalKBCompileFile: Codable {
-    let path: String
-    let contentType: String
-    /// Plain text payload — use for markdown / .txt. Mutually exclusive with `base64`.
-    let text: String?
-    /// Base64-encoded bytes — use for images and other binary. Mutually exclusive with `text`.
-    let base64: String?
-}
-
 struct InternalKBCompileWrittenFile: Codable {
     let path: String
     let size: Int
@@ -39,9 +30,6 @@ struct InternalKBCompileResult {
 }
 
 enum KBCompileError: Error {
-    case missingPayload
-    case bothPayloadsSet
-    case invalidBase64
     case fileTooLarge(path: String, limit: Int)
     case noFiles
 }
@@ -85,94 +73,6 @@ actor KBCompileService {
         self.maxFileSize = maxFileSize
         self.maxBatchBytes = maxBatchBytes
         self.maxToolIterations = maxToolIterations
-    }
-
-    func compile(
-        tenantID: UUID,
-        profileUsername: String,
-        files: [InternalKBCompileFile],
-        hint: String?,
-    ) async throws -> InternalKBCompileResult {
-        guard !files.isEmpty else { throw KBCompileError.noFiles }
-
-        // 1. Write every file to the per-tenant raw vault.
-        try vaultPaths.ensureTenantDirectories(for: tenantID)
-        let rawRoot = vaultPaths.rawDirectory(for: tenantID)
-        let rawRootPrefix = rawRoot.standardizedFileURL.path + "/"
-
-        var writtenFiles: [InternalKBCompileWrittenFile] = []
-        var totalBytes = 0
-        var compiledTextBlocks: [(path: String, content: String, contentType: String)] = []
-
-        for file in files {
-            let safeRelative = try VaultController.sanitizePath(file.path)
-            try VaultController.validateContentType(
-                file.contentType,
-                againstExtension: (safeRelative as NSString).pathExtension.lowercased(),
-            )
-            let payload = try Self.decodePayload(file)
-            guard payload.count <= maxFileSize else {
-                throw KBCompileError.fileTooLarge(path: safeRelative, limit: maxFileSize)
-            }
-            totalBytes += payload.count
-            guard totalBytes <= maxBatchBytes else {
-                throw HTTPError(.contentTooLarge, message: "batch exceeds \(maxBatchBytes) bytes")
-            }
-
-            let target = rawRoot.appendingPathComponent(safeRelative)
-            guard target.standardizedFileURL.path.hasPrefix(rawRootPrefix) else {
-                throw HTTPError(.badRequest, message: "resolved path escapes vault root: \(safeRelative)")
-            }
-            try FileManager.default.createDirectory(
-                at: target.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
-            )
-            let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
-            try payload.write(to: tmp, options: .atomic)
-            if FileManager.default.fileExists(atPath: target.path) {
-                try FileManager.default.removeItem(at: target)
-            }
-            try FileManager.default.moveItem(at: tmp, to: target)
-
-            let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
-            writtenFiles.append(InternalKBCompileWrittenFile(
-                path: safeRelative,
-                size: payload.count,
-                contentType: file.contentType,
-                sha256: digest,
-            ))
-
-            // Only feed text-shaped files into the chat. Images go to disk
-            // but Hermes can't reason about pixel bytes via this surface.
-            if Self.isTextLike(contentType: file.contentType), let text = file.text {
-                compiledTextBlocks.append((safeRelative, text, file.contentType))
-            }
-        }
-
-        logger.info("kb-compile wrote \(writtenFiles.count) files (\(totalBytes) bytes) for tenant \(tenantID)")
-        let processedRowIDs = try await upsertVaultFileRows(
-            tenantID: tenantID,
-            files: writtenFiles,
-            processedAt: nil,
-        )
-
-        // 2. Drive Hermes through the agent loop.
-        let summary = try await runCompileLoop(
-            tenantID: tenantID,
-            profileUsername: profileUsername,
-            blocks: compiledTextBlocks,
-            hint: hint,
-        )
-        try await markVaultFilesProcessed(ids: processedRowIDs, at: Date())
-
-        // 3. Reload memories created during the loop. We can't trivially
-        // distinguish new from existing without per-call tracking; the loop
-        // keeps a list itself.
-        return InternalKBCompileResult(
-            writtenFiles: writtenFiles,
-            memories: summary.memories,
-            summary: summary.text,
-        )
     }
 
     func compileExistingVaultFiles(
@@ -451,59 +351,9 @@ actor KBCompileService {
 
     // MARK: - Helpers
 
-    private static func decodePayload(_ file: InternalKBCompileFile) throws -> Data {
-        switch (file.text, file.base64) {
-        case (.some(let text), nil):
-            return Data(text.utf8)
-        case (nil, let .some(b64)):
-            guard let data = Data(base64Encoded: b64) else {
-                throw KBCompileError.invalidBase64
-            }
-            return data
-        case (.none, .none):
-            throw KBCompileError.missingPayload
-        case (.some, .some):
-            throw KBCompileError.bothPayloadsSet
-        }
-    }
-
     private static func isTextLike(contentType: String) -> Bool {
         let mime = contentType.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? contentType.lowercased()
         return mime.hasPrefix("text/")
-    }
-
-    private func upsertVaultFileRows(
-        tenantID: UUID,
-        files: [InternalKBCompileWrittenFile],
-        processedAt: Date?,
-    ) async throws -> [UUID] {
-        var ids: [UUID] = []
-        for file in files {
-            let db = memories.fluent.db()
-            if let existing = try await VaultFile.query(on: db, tenantID: tenantID)
-                .filter(\.$path == file.path)
-                .first()
-            {
-                existing.contentType = file.contentType
-                existing.sizeBytes = Int64(file.size)
-                existing.sha256 = file.sha256
-                existing.processedAt = processedAt
-                try await existing.save(on: db)
-                try ids.append(existing.requireID())
-            } else {
-                let row = VaultFile(
-                    tenantID: tenantID,
-                    path: file.path,
-                    contentType: file.contentType,
-                    sizeBytes: Int64(file.size),
-                    sha256: file.sha256,
-                    processedAt: processedAt,
-                )
-                try await row.save(on: db)
-                try ids.append(row.requireID())
-            }
-        }
-        return ids
     }
 
     private func markVaultFilesProcessed(ids: [UUID], at date: Date) async throws {
