@@ -34,8 +34,13 @@ struct HermesGatewayAdapterTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.handler else {
@@ -73,7 +78,7 @@ struct HermesGatewayAdapterTests {
         )
     }
 
-    private static let payload: Data = Data(#"{"model":"hermes-3","messages":[]}"#.utf8)
+    private static let payload: Data = .init(#"{"model":"hermes-3","messages":[]}"#.utf8)
 
     private static func okResponse(for url: URL) -> HTTPURLResponse {
         HTTPURLResponse(
@@ -84,7 +89,7 @@ struct HermesGatewayAdapterTests {
         )!
     }
 
-    private static let okBody: Data = Data(#"{"choices":[]}"#.utf8)
+    private static let okBody: Data = .init(#"{"choices":[]}"#.utf8)
 
     // MARK: - No task-local → managed default
 
@@ -120,8 +125,8 @@ struct HermesGatewayAdapterTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        let override = HermesEndpointResolver.Resolution(
-            baseURL: URL(string: "https://my-vps.example.com:8642")!,
+        let override = try HermesEndpointResolver.Resolution(
+            baseURL: #require(URL(string: "https://my-vps.example.com:8642")),
             authHeader: "Bearer my-secret-token",
             isUserOverride: true,
         )
@@ -151,8 +156,8 @@ struct HermesGatewayAdapterTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        let nonOverride = HermesEndpointResolver.Resolution(
-            baseURL: URL(string: "https://should-not-be-used.example.com")!,
+        let nonOverride = try HermesEndpointResolver.Resolution(
+            baseURL: #require(URL(string: "https://should-not-be-used.example.com")),
             authHeader: nil,
             isUserOverride: false,
         )
@@ -179,8 +184,8 @@ struct HermesGatewayAdapterTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        let override = HermesEndpointResolver.Resolution(
-            baseURL: URL(string: "https://my-vps.example.com")!,
+        let override = try HermesEndpointResolver.Resolution(
+            baseURL: #require(URL(string: "https://my-vps.example.com")),
             authHeader: nil,
             isUserOverride: true,
         )
@@ -206,8 +211,8 @@ struct HermesGatewayAdapterTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        let override = HermesEndpointResolver.Resolution(
-            baseURL: URL(string: "https://my-vps.example.com")!,
+        let override = try HermesEndpointResolver.Resolution(
+            baseURL: #require(URL(string: "https://my-vps.example.com")),
             authHeader: "",
             isUserOverride: true,
         )

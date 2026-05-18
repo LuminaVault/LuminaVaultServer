@@ -1,5 +1,9 @@
 import Foundation
-import Network
+// `Network` (Apple high-level framework) was imported here historically
+// but the SSRF guard only uses POSIX `getaddrinfo` / `getnameinfo`,
+// which come from Foundation on both Darwin and Linux. Importing
+// `Network` breaks the Linux build on CI (Hummingbird's Linux runner
+// does not ship a `Network` module). Drop the import.
 
 /// HER-217 — URL allowlist for user-supplied gateway endpoints
 /// (HER-197 follow-up).
