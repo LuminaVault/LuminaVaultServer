@@ -47,7 +47,7 @@ struct KBCompileHappyPathTests {
     }
 
     private static func compileBody(_ request: KBCompileRequest) throws -> ByteBuffer {
-        ByteBuffer(data: try JSONEncoder().encode(request))
+        try ByteBuffer(data: JSONEncoder().encode(request))
     }
 
     private static func decodeCompileResponse(_ buffer: ByteBuffer) throws -> KBCompileResponse {
@@ -116,7 +116,7 @@ struct KBCompileHappyPathTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -146,7 +146,7 @@ struct KBCompileHappyPathTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
