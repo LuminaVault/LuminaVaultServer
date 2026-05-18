@@ -99,6 +99,7 @@ jobs:
             git clean -fd
 
             APP_IMAGE="${{ needs.build.outputs.app_image }}"
+            POSTHOG_OTEL_TOKEN="${{ secrets.POSTHOG_OTEL_TOKEN }}"
 
             # Login to container registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -113,10 +114,25 @@ jobs:
               echo "APP_IMAGE=${APP_IMAGE}" >> .env.production
             fi
 
+            # HER-236: PostHog OTel token consumed by the otel-collector container.
+            if [ -n "${POSTHOG_OTEL_TOKEN}" ]; then
+              if grep -q '^POSTHOG_OTEL_TOKEN=' .env.production; then
+                sed -i "s|^POSTHOG_OTEL_TOKEN=.*|POSTHOG_OTEL_TOKEN=${POSTHOG_OTEL_TOKEN}|" .env.production
+              else
+                echo "POSTHOG_OTEL_TOKEN=${POSTHOG_OTEL_TOKEN}" >> .env.production
+              fi
+            fi
+
             ln -sf /opt/obsidian-claudebrain/.env.production /opt/obsidian-claudebrain/.env
 
             export APP_IMAGE
             export APP_PORT=8080
+
+            # HER-236: bring up otel-collector before app so /v1/health logs go through.
+            APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              up -d --no-deps otel-collector
 
             # Deploy
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \

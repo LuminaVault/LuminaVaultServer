@@ -29,6 +29,8 @@ let package = Package(
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
         .package(url: "https://github.com/slashmo/swift-otel.git", from: "0.10.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
+        // HER-236: OTLPHTTPLogExporter posts JSON log batches to the otel-collector.
+        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.33.0"),
     ],
     targets: [
         .executableTarget(name: "App",
@@ -51,6 +53,7 @@ let package = Package(
                               .product(name: "APNS", package: "APNSwift"),
                               .product(name: "OTel", package: "swift-otel"),
                               .product(name: "OTLPGRPC", package: "swift-otel"),
+                              .product(name: "AsyncHTTPClient", package: "async-http-client"),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                               .product(name: "Yams", package: "Yams"),
                               .byName(name: "AppAPI"),

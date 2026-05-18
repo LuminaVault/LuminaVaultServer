@@ -68,10 +68,11 @@ services:
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: hermes-3
       VAULT_ROOTPATH: /app/data/luminavault
-      # --- Observability (real Jaeger traces in dev) ---
+      # --- Observability (app → otel-collector → {jaeger, posthog, debug}) ---
       OTEL_ENABLED: "true"
       OTEL_SERVICENAME: luminavault
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: otlp
       LOG_LEVEL: debug
@@ -88,7 +89,7 @@ services:
         condition: service_healthy
       hermes:
         condition: service_started
-      jaeger:
+      otel-collector:
         condition: service_started
 
   jaeger:
@@ -97,10 +98,27 @@ services:
     restart: unless-stopped
     ports:
       - "16686:16686" # UI -> http://localhost:16686
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+
+  otel-collector:
+    # HER-236: front door for all OTel signals — fans traces → jaeger,
+    # logs → PostHog, metrics → debug (future: prometheus exporter).
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: hermes-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      POSTHOG_OTEL_TOKEN: ${POSTHOG_OTEL_TOKEN:-}
+    ports:
+      - "4317:4317" # OTLP gRPC (metrics + traces from app)
+      - "4318:4318" # OTLP HTTP (logs from app)
+      - "13133:13133" # health_check extension
+    depends_on:
+      jaeger:
+        condition: service_started
 
 networks:
   default:
