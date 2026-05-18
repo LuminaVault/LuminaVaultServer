@@ -1,5 +1,11 @@
 import FluentKit
 import Foundation
+#if canImport(FoundationNetworking)
+    // `URLSession` lives in `FoundationNetworking` on swift-corelibs
+    // Linux. On Darwin the symbol is already in Foundation, so this
+    // import is a no-op there.
+    import FoundationNetworking
+#endif
 import Hummingbird
 import HummingbirdFluent
 import Logging

@@ -57,13 +57,13 @@ struct ContextRouterTests {
         )
     }
 
-    private static func chatBody(messages: [(String, String)]) -> Data {
+    private static func chatBody(messages: [(String, String)]) throws -> Data {
         let body = ChatRoutingBody(
             messages: messages.map { ChatRoutingBody.Message(role: $0.0, content: $0.1) },
             model: "stub",
             temperature: 0,
         )
-        return try! JSONEncoder().encode(body)
+        return try JSONEncoder().encode(body)
     }
 
     // MARK: - ChatRoutingBody invariants (pure)
@@ -129,7 +129,7 @@ struct ContextRouterTests {
 
         let app = Application(router: router)
         try await app.test(.router) { client in
-            let body = ByteBuffer(bytes: Self.chatBody(messages: [("user", "anything")]))
+            let body = try ByteBuffer(bytes: Self.chatBody(messages: [("user", "anything")]))
             try await client.execute(
                 uri: "/probe",
                 method: .post,
@@ -167,7 +167,7 @@ struct ContextRouterTests {
 
         let app = Application(router: router)
         try await app.test(.router) { client in
-            let body = ByteBuffer(bytes: Self.chatBody(messages: [("user", "what's blocking me?")]))
+            let body = try ByteBuffer(bytes: Self.chatBody(messages: [("user", "what's blocking me?")]))
             try await client.execute(
                 uri: "/probe",
                 method: .post,
@@ -208,7 +208,7 @@ struct ContextRouterTests {
 
         let app = Application(router: router)
         try await app.test(.router) { client in
-            let body = ByteBuffer(bytes: Self.chatBody(messages: [
+            let body = try ByteBuffer(bytes: Self.chatBody(messages: [
                 ("system", "you are hermes"),
                 ("user", "what's blocking me from yesterday?"),
             ]))
@@ -248,7 +248,7 @@ struct ContextRouterTests {
 
         let app = Application(router: router)
         try await app.test(.router) { client in
-            let body = ByteBuffer(bytes: Self.chatBody(messages: [("user", "hi")]))
+            let body = try ByteBuffer(bytes: Self.chatBody(messages: [("user", "hi")]))
             try await client.execute(
                 uri: "/probe",
                 method: .post,
