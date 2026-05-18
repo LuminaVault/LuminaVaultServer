@@ -275,7 +275,7 @@ struct VaultCRUDTests {
 
     /// Minimal HEIC byte sequence — file-type box header. The server upload
     /// path persists raw bytes; the validator only checks MIME, not magic.
-    private static let heicStubBytes: Data = Data([
+    private static let heicStubBytes: Data = .init([
         0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, // box len + 'ftyp'
         0x68, 0x65, 0x69, 0x63, // major brand 'heic'
     ])
