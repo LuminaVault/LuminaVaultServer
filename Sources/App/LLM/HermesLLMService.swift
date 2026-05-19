@@ -30,9 +30,19 @@ struct DefaultHermesLLMService: HermesLLMService {
     let session: URLSession
     let defaultModel: String
     let logger: Logger
+    /// HER-254 — Bearer key for the central Hermes gateway. Empty skips the header.
+    let apiKey: String
     let successCounter = Counter(label: "luminavault.llm.chat.success")
     let failureCounter = Counter(label: "luminavault.llm.chat.failure")
     let durationTimer = Timer(label: "luminavault.llm.chat.duration")
+
+    init(baseURL: URL, session: URLSession, defaultModel: String, logger: Logger, apiKey: String = "") {
+        self.baseURL = baseURL
+        self.session = session
+        self.defaultModel = defaultModel
+        self.logger = logger
+        self.apiKey = apiKey
+    }
 
     func chat(profileUsername: String, request: ChatRequest) async throws -> ChatResponse {
         let started = DispatchTime.now().uptimeNanoseconds
@@ -44,6 +54,9 @@ struct DefaultHermesLLMService: HermesLLMService {
             // ASSUMPTION: upstream Hermes gateway routes per-profile traffic via this header.
             // If wrong, swap to `model: "<username>/<base>"` or `?profile=` here.
             urlReq.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+            if !apiKey.isEmpty {
+                urlReq.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            }
 
             let payload = HermesUpstreamRequest(
                 model: request.model ?? defaultModel,

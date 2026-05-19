@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes clean lint help bruno-regen
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap clean lint help bruno-regen
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -36,6 +36,22 @@ setup-hermes: ## Run the Hermes setup wizard (one-time, interactive)
 	docker run -it --rm \
 		-v "$$(pwd)/data/hermes:/opt/data" \
 		nousresearch/hermes-agent setup
+
+hermes-bootstrap: ## Generate HERMES_API_KEY in .env if missing (HER-254)
+	@if [ ! -f .env ]; then \
+		echo "no .env file — copy .env.example to .env first"; exit 1; \
+	fi
+	@if grep -qE '^HERMES_API_KEY=.+' .env; then \
+		echo "HERMES_API_KEY already set in .env (skipping)"; \
+	else \
+		key=$$(openssl rand -hex 32); \
+		if grep -qE '^HERMES_API_KEY=$$' .env; then \
+			sed -i.bak "s|^HERMES_API_KEY=$$|HERMES_API_KEY=$$key|" .env && rm -f .env.bak; \
+		else \
+			printf '\n# HER-254 auto-generated\nHERMES_API_KEY=%s\n' "$$key" >> .env; \
+		fi; \
+		echo "wrote HERMES_API_KEY to .env"; \
+	fi
 
 clean: ## Remove build artifacts and data
 	rm -rf .build

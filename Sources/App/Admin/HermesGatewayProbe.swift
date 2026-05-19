@@ -26,6 +26,9 @@ actor HermesGatewayProbe {
     private let logger: Logger
     private let timeout: TimeInterval
     private let ttl: TimeInterval
+    /// HER-254 — Bearer key for the managed default gateway. Empty disables
+    /// the header (probe still works against gateways that don't require auth).
+    private let apiKey: String
     private var cache: [String: CacheEntry] = [:]
 
     init(
@@ -33,11 +36,13 @@ actor HermesGatewayProbe {
         logger: Logger,
         timeout: TimeInterval = 1.0,
         ttl: TimeInterval = 30.0,
+        apiKey: String = "",
     ) {
         self.session = session
         self.logger = logger
         self.timeout = timeout
         self.ttl = ttl
+        self.apiKey = apiKey
     }
 
     /// Returns a fresh probe if the cached entry is older than `ttl`,
@@ -68,6 +73,9 @@ actor HermesGatewayProbe {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.timeoutInterval = timeout
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         let start = ContinuousClock.now
         do {
             let (_, response) = try await session.data(for: req)

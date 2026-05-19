@@ -113,6 +113,59 @@ struct HermesGatewayAdapterTests {
         #expect(req.value(forHTTPHeaderField: "X-Hermes-Profile") == "alice")
     }
 
+    // MARK: - HER-254 — managed default Bearer header
+
+    @Test
+    func `defaultAuthHeader sends Authorization when no override is in scope`() async throws {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            return (Self.okResponse(for: request.url!), Self.okBody)
+        }
+        defer { StubProtocol.handler = nil }
+
+        let baseURL = try #require(URL(string: "https://managed.hermes.test"))
+        let adapter = HermesGatewayAdapter(
+            baseURL: baseURL,
+            session: Self.stubSession(),
+            logger: Logger(label: "lv.test.adapter.her254"),
+            defaultAuthHeader: "Bearer her254-key",
+        )
+        _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "elise")
+
+        #expect(captured.requests.count == 1)
+        #expect(captured.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer her254-key")
+    }
+
+    @Test
+    func `user override masks the defaultAuthHeader`() async throws {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            return (Self.okResponse(for: request.url!), Self.okBody)
+        }
+        defer { StubProtocol.handler = nil }
+
+        let baseURL = try #require(URL(string: "https://managed.hermes.test"))
+        let adapter = HermesGatewayAdapter(
+            baseURL: baseURL,
+            session: Self.stubSession(),
+            logger: Logger(label: "lv.test.adapter.her254-mask"),
+            defaultAuthHeader: "Bearer central-key",
+        )
+        let override = try HermesEndpointResolver.Resolution(
+            baseURL: #require(URL(string: "https://my-vps.example.com")),
+            authHeader: "Bearer user-token",
+            isUserOverride: true,
+        )
+        try await LLMRoutingContext.$currentResolution.withValue(override) {
+            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "fred")
+        }
+
+        #expect(captured.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer user-token")
+        #expect(captured.requests[0].url?.host == "my-vps.example.com")
+    }
+
     // MARK: - User override → user baseURL + auth header
 
     @Test

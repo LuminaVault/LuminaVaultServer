@@ -20,6 +20,17 @@ struct HermesGatewayAdapter: ProviderAdapter {
     let baseURL: URL
     let session: URLSession
     let logger: Logger
+    /// HER-254: Bearer token for the managed default gateway. Sent as
+    /// `Authorization: Bearer <key>` when present and no user override is
+    /// in scope. Required by Hermes when its api_server binds 0.0.0.0.
+    let defaultAuthHeader: String?
+
+    init(baseURL: URL, session: URLSession, logger: Logger, defaultAuthHeader: String? = nil) {
+        self.baseURL = baseURL
+        self.session = session
+        self.logger = logger
+        self.defaultAuthHeader = defaultAuthHeader
+    }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
         try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
@@ -34,7 +45,7 @@ struct HermesGatewayAdapter: ProviderAdapter {
             authHeader = resolution.authHeader
         } else {
             dispatchBaseURL = baseURL
-            authHeader = nil
+            authHeader = defaultAuthHeader
         }
 
         let url = dispatchBaseURL
