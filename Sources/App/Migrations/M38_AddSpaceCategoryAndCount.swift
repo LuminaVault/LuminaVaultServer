@@ -6,13 +6,13 @@ import SQLKit
 /// - `category` — free-form bucket label (e.g. "ai", "stocks") rendered as
 ///   a segmented control on the Spaces tab. Null for un-categorised
 ///   spaces. Indexed on `(tenant_id, category)` so the filter is cheap.
-/// - `note_count` — denormalized memo count for the Space card. Default 0.
-///   Counter writes are out of scope for this migration; the column hooks
-///   the schema in place so a future ingest-path PR can flip it on without
-///   touching the wire format again.
+/// - `note_count` — denormalized count of vault_files in the space. Default
+///   0 until first KB compile touches the space; thereafter
+///   `KBCompileService.refreshSpaceCounters` recomputes it as part of every
+///   compile run, so the value self-heals on subsequent compiles.
 /// - `last_compiled_at` — timestamp of the last KB compile run that
-///   included this Space. Null until the compile pipeline starts updating
-///   it (separate PR).
+///   included this Space. Written alongside `note_count` by
+///   `KBCompileService.refreshSpaceCounters`. NULL until first compile.
 ///
 /// Idempotent via `ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`.
 struct M38_AddSpaceCategoryAndCount: AsyncMigration {

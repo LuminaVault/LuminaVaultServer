@@ -124,7 +124,13 @@ actor KBCompileService {
             blocks: compiledTextBlocks,
             hint: hint,
         )
-        try await markVaultFilesProcessed(ids: rowIDs, at: Date())
+        let completedAt = Date()
+        try await markVaultFilesProcessed(ids: rowIDs, at: completedAt)
+        try await refreshSpaceCounters(
+            tenantID: tenantID,
+            spaceIDs: Set(rows.compactMap(\.spaceID)),
+            at: completedAt,
+        )
         return InternalKBCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
@@ -364,6 +370,35 @@ actor KBCompileService {
         SET processed_at = \(bind: date),
             updated_at = updated_at
         WHERE id = ANY(\(unsafeRaw: literal))
+        """).run()
+    }
+
+    /// Refreshes the denormalised counters M38 added to `spaces`:
+    /// `note_count` (live count of vault_files in the space) and
+    /// `last_compiled_at` (timestamp of this compile). Recompute-by-count
+    /// instead of incr/decr hooks keeps the write side race-free; cost is
+    /// O(distinct spaces touched by this compile).
+    ///
+    /// Internal (not private) so the integration test can call it directly
+    /// without spinning up the full LLM agent loop.
+    func refreshSpaceCounters(
+        tenantID: UUID,
+        spaceIDs: Set<UUID>,
+        at date: Date,
+    ) async throws {
+        guard let sql = memories.fluent.db() as? any SQLDatabase, !spaceIDs.isEmpty else { return }
+        let literal = "ARRAY[" + spaceIDs.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"
+        try await sql.raw("""
+        UPDATE spaces s
+           SET note_count = (
+             SELECT COUNT(*)::int
+               FROM vault_files vf
+              WHERE vf.tenant_id = s.tenant_id
+                AND vf.space_id = s.id
+           ),
+           last_compiled_at = \(bind: date)
+         WHERE s.tenant_id = \(bind: tenantID)
+           AND s.id = ANY(\(unsafeRaw: literal))
         """).run()
     }
 

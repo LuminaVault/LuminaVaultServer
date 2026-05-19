@@ -46,16 +46,18 @@ actor JWKSCache {
     private var fetchedAt: Date?
     private let ttl: TimeInterval = 60 * 60 * 12 // 12h
     private let url: URL
+    private let session: URLSession
 
-    init(url: URL) {
+    init(url: URL, session: URLSession = .shared) {
         self.url = url
+        self.session = session
     }
 
     func current() async throws -> JWTKeyCollection {
         if let keys, let fetchedAt, Date().timeIntervalSince(fetchedAt) < ttl {
             return keys
         }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await session.data(from: url)
         let collection = JWTKeyCollection()
         try await collection.add(jwksJSON: String(decoding: data, as: UTF8.self))
         keys = collection
@@ -71,10 +73,11 @@ struct AppleOAuthProvider: OAuthProvider {
     let jwks: JWKSCache
 
     init(audience: String,
-         jwksURL: URL = URL(string: "https://appleid.apple.com/auth/keys")!)
+         jwksURL: URL = URL(string: "https://appleid.apple.com/auth/keys")!,
+         session: URLSession = .shared)
     {
         self.audience = audience
-        jwks = JWKSCache(url: jwksURL)
+        jwks = JWKSCache(url: jwksURL, session: session)
     }
 
     func verify(idToken: String) async throws -> OAuthIdentityInfo {

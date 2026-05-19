@@ -126,6 +126,15 @@ struct VaultController {
         }
         let safeRelative = try Self.sanitizePath(rawPath)
 
+        // HER-CaptureTab — optional space association. When provided, the row
+        // must belong to the caller's tenant; cross-tenant ids are rejected
+        // with 400 rather than silently dropped so the Capture UI surfaces
+        // the misconfiguration instead of orphaning the file.
+        let spaceID = try await resolveOptionalSpaceID(
+            raw: request.uri.queryParameters["space_id"].map(String.init),
+            tenantID: tenantID,
+        )
+
         let contentType = request.headers[.contentType] ?? "application/octet-stream"
         try Self.validateContentType(contentType, againstExtension: (safeRelative as NSString).pathExtension.lowercased())
 
@@ -155,6 +164,7 @@ struct VaultController {
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let savedID = try await upsertVaultFileRow(
             tenantID: tenantID,
+            spaceID: spaceID,
             path: safeRelative,
             contentType: contentType,
             sizeBytes: Int64(data.count),
@@ -415,8 +425,13 @@ struct VaultController {
 
     /// Returns the row id of the upserted vault file so the upload handler
     /// can include it in the `vault_file_created` event payload (HER-171).
+    /// `spaceID` is propagated from the optional `space_id` upload query
+    /// param. On re-upload to an existing path, a provided `spaceID`
+    /// overwrites the prior value; `nil` leaves the existing association
+    /// untouched so a content update doesn't accidentally unfile the row.
     private func upsertVaultFileRow(
         tenantID: UUID,
+        spaceID: UUID?,
         path: String,
         contentType: String,
         sizeBytes: Int64,
@@ -431,11 +446,15 @@ struct VaultController {
             existing.sizeBytes = sizeBytes
             existing.sha256 = sha256
             existing.processedAt = nil
+            if let spaceID {
+                existing.spaceID = spaceID
+            }
             try await existing.save(on: db)
             return try existing.requireID()
         }
         let row = VaultFile(
             tenantID: tenantID,
+            spaceID: spaceID,
             path: path,
             contentType: contentType,
             sizeBytes: sizeBytes,
@@ -443,6 +462,24 @@ struct VaultController {
         )
         try await row.save(on: db)
         return try row.requireID()
+    }
+
+    /// Parses the optional `space_id` upload query param and confirms it
+    /// belongs to `tenantID`. nil-in / nil-out is the unfiled path; a
+    /// malformed UUID or cross-tenant id both raise 400 so the client
+    /// sees the misconfiguration instead of silently dropping the link.
+    private func resolveOptionalSpaceID(raw: String?, tenantID: UUID) async throws -> UUID? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard let spaceID = UUID(uuidString: raw) else {
+            throw HTTPError(.badRequest, message: "`space_id` is not a valid UUID")
+        }
+        let exists = try await Space.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == spaceID)
+            .first()
+        guard exists != nil else {
+            throw HTTPError(.badRequest, message: "`space_id` does not belong to the caller")
+        }
+        return spaceID
     }
 
     // MARK: - Path resolution

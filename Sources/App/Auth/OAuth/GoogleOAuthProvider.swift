@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import JWTKit
 
 private struct GoogleIDClaims: JWTPayload {
@@ -26,10 +29,11 @@ struct GoogleOAuthProvider: OAuthProvider {
     let jwks: JWKSCache
 
     init(audience: String,
-         jwksURL: URL = URL(string: "https://www.googleapis.com/oauth2/v3/certs")!)
+         jwksURL: URL = URL(string: "https://www.googleapis.com/oauth2/v3/certs")!,
+         session: URLSession = .shared)
     {
         self.audience = audience
-        jwks = JWKSCache(url: jwksURL)
+        jwks = JWKSCache(url: jwksURL, session: session)
     }
 
     func verify(idToken: String) async throws -> OAuthIdentityInfo {
