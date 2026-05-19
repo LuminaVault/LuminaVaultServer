@@ -39,7 +39,7 @@ struct VaultUploadSpaceTests {
         client: some TestClientProtocol,
         token: String,
         name: String,
-    ) async throws -> SpaceDTO {
+    ) async throws -> LuminaVaultShared.SpaceDTO {
         try await client.execute(
             uri: "/v1/spaces",
             method: .post,
@@ -49,7 +49,7 @@ struct VaultUploadSpaceTests {
             """),
         ) { response in
             #expect(response.status == .ok || response.status == .created)
-            return try testJSONDecoder().decode(SpaceDTO.self, from: Data(buffer: response.body))
+            return try testJSONDecoder().decode(LuminaVaultShared.SpaceDTO.self, from: Data(buffer: response.body))
         }
     }
 
