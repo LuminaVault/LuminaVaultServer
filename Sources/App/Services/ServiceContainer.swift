@@ -29,6 +29,13 @@ struct ServiceContainer {
     /// Default model name when chat requests don't specify one. Verify via
     /// `GET http://hermes:8642/v1/models` against the running container.
     let hermesDefaultModel: String
+    /// HER-254: Bearer token shared with the central Hermes container's
+    /// `API_SERVER_KEY` env var. Required (empty = container refuses to
+    /// bind to 0.0.0.0). Outbound HTTP clients send it as
+    /// `Authorization: Bearer <key>`. Empty in dev triggers a degraded
+    /// boot per HER-242 contract — chat/memo/KB upstream calls will 401
+    /// but signup still succeeds.
+    let hermesAPIKey: String
     /// WebAuthn / passkeys.
     let webAuthnEnabled: Bool
     let webAuthnRelyingPartyID: String

@@ -110,6 +110,7 @@ func buildApplication(
         hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
         hermesDataRoot: reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes"),
         hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3"),
+        hermesAPIKey: reader.string(forKey: "hermes.apiKey", isSecret: true, default: ""),
         webAuthnEnabled: reader.string(forKey: "webauthn.enabled", default: "false").lowercased() == "true",
         webAuthnRelyingPartyID: reader.string(forKey: "webauthn.relyingPartyId", default: ""),
         webAuthnRelyingPartyName: reader.string(forKey: "webauthn.relyingPartyName", default: "LuminaVault"),
@@ -435,6 +436,14 @@ func buildRouter(
     guard let hermesURL = URL(string: services.hermesGatewayURL) else {
         fatalError("invalid hermes.gatewayUrl: \(services.hermesGatewayURL)")
     }
+    // HER-254 — Bearer token guard. Empty key is the HER-242 degraded path
+    // (signup still succeeds via HermesProfileService.ensureSoft); upstream
+    // chat/memo/KB will 401 against a gateway that enforces auth.
+    if services.hermesAPIKey.isEmpty {
+        Logger(label: "lv.hermes").warning(
+            "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated; the central api_server platform refuses to bind 0.0.0.0 without it. Run `make hermes-bootstrap` and restart the stack.",
+        )
+    }
 
     // HER-217 / HER-223 — BYO Hermes endpoint config + resolver.
     // Constructed only when `LV_SECRET_MASTER_KEY` is set so tests that
@@ -495,6 +504,7 @@ func buildRouter(
                     portRangeStart: services.hermesPerTenantPortRangeStart,
                     portRangeEnd: services.hermesPerTenantPortRangeEnd,
                     idleTTLSeconds: services.hermesPerTenantIdleTTLSeconds,
+                    defaultModel: services.hermesDefaultModel,
                 ),
                 logger: Logger(label: "lv.hermes-tenant"),
             )
@@ -549,6 +559,7 @@ func buildRouter(
             baseURL: hermesURL,
             session: .shared,
             logger: routingLogger,
+            defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)",
         ),
     ]
     // HER-199 — register Gemini provider when API key is configured.
@@ -1086,6 +1097,7 @@ func buildRouter(
     let gatewayProbe = HermesGatewayProbe(
         session: .shared,
         logger: Logger(label: "lv.hermes.probe"),
+        apiKey: services.hermesAPIKey,
     )
     let reconciler = HermesProfileReconciler(
         fluent: services.fluent,

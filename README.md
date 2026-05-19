@@ -40,9 +40,15 @@ Sources/
 ## Running locally
 
 ```bash
-cp .env.example .env   # then edit JWT_HMAC_SECRET + BOOTSTRAP_ADMIN_*
+cp .env.example .env       # then edit JWT_HMAC_SECRET + BOOTSTRAP_ADMIN_*
+make hermes-bootstrap      # HER-254: generate HERMES_API_KEY in .env
 ./setup.sh
 ```
+
+`make hermes-bootstrap` writes a fresh `HERMES_API_KEY` (32-byte hex) into
+`.env` when missing. The Hermes `api_server` platform refuses to bind to
+`0.0.0.0` without it, so the dev compose stack fails fast if the value is
+unset.
 
 `setup.sh` is a one-click orchestrator (HER-30) that brings up Postgres,
 Hermes, and Jaeger via Docker Compose, runs Fluent migrations, optionally

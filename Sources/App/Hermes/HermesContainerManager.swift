@@ -19,13 +19,16 @@ import Logging
 /// concurrent requests for the same tenant don't race to spawn duplicate
 /// containers or allocate the same port.
 actor HermesContainerManager {
-    struct Config: Sendable {
+    struct Config {
         let image: String
         let network: String
         let dataRootBase: String
         let portRangeStart: Int
         let portRangeEnd: Int
         let idleTTLSeconds: Int
+        /// HER-254 — model alias rendered into the seeded `config.yaml` so
+        /// `/v1/chat/completions` returns a deterministic default.
+        let defaultModel: String
         init(
             image: String,
             network: String,
@@ -33,6 +36,7 @@ actor HermesContainerManager {
             portRangeStart: Int,
             portRangeEnd: Int,
             idleTTLSeconds: Int,
+            defaultModel: String = "hermes-3",
         ) {
             self.image = image
             self.network = network
@@ -40,6 +44,7 @@ actor HermesContainerManager {
             self.portRangeStart = portRangeStart
             self.portRangeEnd = portRangeEnd
             self.idleTTLSeconds = idleTTLSeconds
+            self.defaultModel = defaultModel
         }
     }
 
@@ -80,12 +85,12 @@ actor HermesContainerManager {
 
         let existing = try await loadRow(tenantID: tenantID)
         if let row = existing {
-            let isUp = (try? await docker.isRunning(container: row.containerName)) ?? false
+            let isUp = await (try? docker.isRunning(container: row.containerName)) ?? false
             if !isUp {
                 try await dockerRun(
                     containerName: row.containerName,
                     port: row.port,
-                    apiServerKey: try decrypt(row: row, tenantID: tenantID),
+                    apiServerKey: decrypt(row: row, tenantID: tenantID),
                     tenantID: tenantID,
                 )
             }
@@ -213,7 +218,7 @@ actor HermesContainerManager {
     private func allocatePort() async throws -> Int {
         let rows = try await HermesTenantContainer.query(on: fluent.db()).all()
         let taken = Set(rows.map(\.port))
-        for port in config.portRangeStart..<config.portRangeEnd where !taken.contains(port) {
+        for port in config.portRangeStart ..< config.portRangeEnd where !taken.contains(port) {
             return port
         }
         throw Error.portRangeExhausted
@@ -234,6 +239,11 @@ actor HermesContainerManager {
         tenantID: UUID,
     ) async throws {
         let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
+        try HermesTenantConfigTemplate.seed(
+            volumePath: volumePath,
+            apiKey: apiServerKey,
+            defaultModel: config.defaultModel,
+        )
         let args = [
             "run",
             "--detach",

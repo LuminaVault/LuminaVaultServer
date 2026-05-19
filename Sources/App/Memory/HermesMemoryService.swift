@@ -44,6 +44,16 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
     let baseURL: URL
     let session: URLSession
     let logger: Logger
+    /// HER-254 — Bearer token for the central Hermes gateway. Empty skips
+    /// the header.
+    let apiKey: String
+
+    init(baseURL: URL, session: URLSession, logger: Logger, apiKey: String = "") {
+        self.baseURL = baseURL
+        self.session = session
+        self.logger = logger
+        self.apiKey = apiKey
+    }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
         try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
@@ -58,6 +68,9 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         req.httpBody = payload
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
