@@ -28,12 +28,35 @@ protocol DockerExec: Sendable {
     /// `docker network create --driver=bridge <name>` once; subsequent calls
     /// are no-ops. Caller is responsible for picking a stable name.
     func ensureNetworkExists(_ name: String) async throws
+
+    /// Long-running variant of `exec`. The returned `StreamingExecHandle`
+    /// yields stdout line-by-line and exposes `wait()` for the eventual
+    /// exit code. Used by `LiveXaiOAuthBackend` so it can read the
+    /// `Authorize at: <URL>` line and return it to the caller while the
+    /// underlying `hermes auth add xai-oauth --no-browser` subprocess
+    /// keeps its loopback listener open until the iOS app POSTs the
+    /// captured callback URL.
+    func execStreaming(container: String, command: [String]) async throws -> any StreamingExecHandle
 }
 
 extension DockerExec {
     func exec(container: String, command: [String]) async throws -> DockerResult {
         try await exec(container: container, command: command, stdin: nil)
     }
+}
+
+/// Opaque handle to a long-running `docker exec` subprocess. Lines flow
+/// over `lines`; the process exit code is observable via `wait()`. Always
+/// `cancel()` if the handle is abandoned so the docker subprocess doesn't
+/// leak.
+protocol StreamingExecHandle: Sendable {
+    /// Stdout line stream. Finishes once the subprocess exits.
+    var lines: AsyncStream<String> { get }
+    /// Await final exit code. Throws `DockerExecError.spawnFailed` if the
+    /// subprocess never started.
+    func wait() async throws -> Int32
+    /// Best-effort terminate. Safe to call multiple times.
+    func cancel() async
 }
 
 struct DockerResult: Sendable, Equatable {
@@ -81,6 +104,14 @@ struct ProcessDockerExec: DockerExec {
         )
         guard result.ok else { return false }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+    }
+
+    func execStreaming(container: String, command: [String]) async throws -> any StreamingExecHandle {
+        try await ProcessStreamingHandle.spawn(
+            binaryPath: binaryPath,
+            args: ["exec", "-i", container] + command,
+            logger: logger,
+        )
     }
 
     func ensureNetworkExists(_ name: String) async throws {
@@ -138,5 +169,154 @@ struct ProcessDockerExec: DockerExec {
                 try? inputPipe.fileHandleForWriting.close()
             }
         }
+    }
+}
+
+/// Live streaming handle backed by a `Process`. Stdout is read incrementally
+/// through the pipe's `readabilityHandler`; whole lines are emitted into the
+/// `AsyncStream`. Termination resolves `wait()`.
+final class ProcessStreamingHandle: StreamingExecHandle, @unchecked Sendable {
+    let lines: AsyncStream<String>
+    private let process: Process
+    private let continuation: AsyncStream<String>.Continuation
+    private let exitFuture: Task<Int32, Error>
+    private let stderrCollector: StderrCollector
+
+    private init(
+        lines: AsyncStream<String>,
+        continuation: AsyncStream<String>.Continuation,
+        process: Process,
+        exitFuture: Task<Int32, Error>,
+        stderrCollector: StderrCollector,
+    ) {
+        self.lines = lines
+        self.continuation = continuation
+        self.process = process
+        self.exitFuture = exitFuture
+        self.stderrCollector = stderrCollector
+    }
+
+    func wait() async throws -> Int32 {
+        try await exitFuture.value
+    }
+
+    func cancel() async {
+        if process.isRunning {
+            process.terminate()
+        }
+        continuation.finish()
+    }
+
+    static func spawn(
+        binaryPath: String,
+        args: [String],
+        logger: Logger,
+    ) async throws -> ProcessStreamingHandle {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binaryPath)
+        process.arguments = args
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        let (stream, continuation) = AsyncStream<String>.makeStream(bufferingPolicy: .unbounded)
+        let lineBuffer = LineBuffer { line in
+            continuation.yield(line)
+        }
+        outPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                outPipe.fileHandleForReading.readabilityHandler = nil
+            } else {
+                lineBuffer.append(data)
+            }
+        }
+        let stderr = StderrCollector()
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                errPipe.fileHandleForReading.readabilityHandler = nil
+            } else {
+                stderr.append(data)
+            }
+        }
+
+        let exitFuture = Task<Int32, Error> {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Int32, Error>) in
+                process.terminationHandler = { proc in
+                    lineBuffer.flush()
+                    continuation.finish()
+                    cont.resume(returning: proc.terminationStatus)
+                }
+            }
+        }
+
+        do {
+            try process.run()
+        } catch {
+            continuation.finish()
+            exitFuture.cancel()
+            logger.warning("docker exec streaming spawn failed: \(error)")
+            throw DockerExecError.spawnFailed(String(describing: error))
+        }
+
+        return ProcessStreamingHandle(
+            lines: stream,
+            continuation: continuation,
+            process: process,
+            exitFuture: exitFuture,
+            stderrCollector: stderr,
+        )
+    }
+}
+
+/// Splits incoming byte chunks into newline-terminated UTF-8 lines.
+private final class LineBuffer: @unchecked Sendable {
+    private var carry = Data()
+    private let lock = NSLock()
+    private let emit: @Sendable (String) -> Void
+
+    init(emit: @escaping @Sendable (String) -> Void) {
+        self.emit = emit
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        carry.append(data)
+        while let nl = carry.firstIndex(of: 0x0A) {
+            let lineData = carry[..<nl]
+            carry.removeSubrange(..<carry.index(after: nl))
+            if let line = String(data: lineData, encoding: .utf8) {
+                emit(line.trimmingCharacters(in: CharacterSet(charactersIn: "\r")))
+            }
+        }
+        lock.unlock()
+    }
+
+    func flush() {
+        lock.lock()
+        if !carry.isEmpty, let line = String(data: carry, encoding: .utf8), !line.isEmpty {
+            emit(line)
+        }
+        carry.removeAll()
+        lock.unlock()
+    }
+}
+
+/// Captures stderr bytes for surface-time diagnostics. Tiny critical
+/// section so the readability handler stays non-blocking.
+private final class StderrCollector: @unchecked Sendable {
+    private var buffer = Data()
+    private let lock = NSLock()
+
+    func append(_ data: Data) {
+        lock.lock(); buffer.append(data); lock.unlock()
+    }
+
+    var text: String {
+        lock.lock(); defer { lock.unlock() }
+        return String(decoding: buffer, as: UTF8.self)
     }
 }

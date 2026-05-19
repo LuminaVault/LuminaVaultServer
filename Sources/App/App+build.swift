@@ -494,10 +494,15 @@ func buildRouter(
                 ),
                 logger: Logger(label: "lv.hermes-tenant"),
             )
+            let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
                 sessionStore: XaiOAuthSessionStore(),
-                backend: LiveXaiOAuthBackend(docker: dockerExec, logger: xaiLogger),
+                backend: LiveXaiOAuthBackend(
+                    docker: dockerExec,
+                    registry: xaiProcessRegistry,
+                    logger: xaiLogger,
+                ),
                 fluent: services.fluent,
                 logger: xaiLogger,
             )
