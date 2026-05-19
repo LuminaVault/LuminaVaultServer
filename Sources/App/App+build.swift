@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Configuration
 import FluentKit
 import FluentPostgresDriver
@@ -451,6 +452,9 @@ func buildRouter(
     // Gated on the same SecretBox the BYO Hermes flow depends on because
     // the tenant's encrypted `API_SERVER_KEY` is sealed with the same KDF.
     var xaiOAuthController: XaiOAuthController?
+    // HER-240c — Grok runtime proxy. Built alongside the xai bits so it
+    // shares the same container manager instance.
+    var grokController: GrokController?
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
@@ -509,6 +513,20 @@ func buildRouter(
             xaiOAuthController = XaiOAuthController(
                 service: xaiService,
                 logger: xaiLogger,
+            )
+            // HER-240c — Grok runtime proxy shares the container manager.
+            // `.singleton` ELG so the HTTPClient lifecycle is bounded by
+            // the process; explicit shutdown lands when we put ServiceGroup
+            // wrappers around the third-party HTTP transports as a
+            // codebase-wide cleanup.
+            let grokHTTPClient = HTTPClient(eventLoopGroupProvider: .singleton)
+            grokController = GrokController(
+                containerManager: containerManager,
+                proxy: HermesGrokProxy(
+                    httpClient: grokHTTPClient,
+                    logger: Logger(label: "lv.grok-proxy"),
+                ),
+                logger: Logger(label: "lv.grok"),
             )
         } catch {
             fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
@@ -1182,6 +1200,15 @@ func buildRouter(
         let integrationsGroup = router.group("/v1")
             .add(middleware: jwtAuthenticator)
         xaiOAuthController.addRoutes(to: integrationsGroup)
+    }
+
+    // HER-240c — /v1/grok/* routes. JWT-protected + premium-gated. 402 for
+    // free/trial users, 409 for premium users without an active xai-oauth.
+    if let grokController {
+        let grokGroup = router.group("/v1")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: PremiumGuardMiddleware(logger: Logger(label: "lv.grok.premium-guard")))
+        grokController.addRoutes(to: grokGroup)
     }
 
     // Account management (HER-92) — DELETE /v1/account (GDPR data wipe).
