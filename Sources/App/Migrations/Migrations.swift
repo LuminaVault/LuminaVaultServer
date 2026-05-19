@@ -45,4 +45,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M38_AddSpaceCategoryAndCount())
     await fluent.migrations.add(M39_HnswAndTsvector())
     await fluent.migrations.add(M40_CreateIdempotencyKey())
+    await fluent.migrations.add(M41_HermesTenantContainers())
 }

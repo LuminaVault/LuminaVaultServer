@@ -109,4 +109,27 @@ struct ServiceContainer {
     let emailFromAddress: String
     /// HER-33: Optional Reply-To header. Empty omits the field.
     let emailReplyTo: String
+    /// HER-240a: Image used for per-tenant Hermes containers spawned by
+    /// `HermesContainerManager`. Distinct from the shared `hermesGatewayURL`
+    /// instance (which still serves KB compile and other non-Grok routes).
+    let hermesPerTenantImage: String
+    /// HER-240a: Docker network name shared by all per-tenant Hermes
+    /// containers + the server. Created on boot if absent.
+    let hermesPerTenantNetwork: String
+    /// HER-240a: Host directory under which each tenant's Hermes data volume
+    /// is mounted (`{base}/{tenantID}` → `/opt/data` inside the container).
+    let hermesPerTenantDataRootBase: String
+    /// HER-240a: Inclusive lower / exclusive upper bound of the host port
+    /// range used for per-tenant Hermes containers.
+    let hermesPerTenantPortRangeStart: Int
+    let hermesPerTenantPortRangeEnd: Int
+    /// HER-240a: Idle TTL in seconds. Containers with no xai-oauth token
+    /// whose `lastUsedAt` is older than this are stopped + removed by
+    /// `HermesContainerManager.evictIdle()`. Containers with an active
+    /// xai-oauth token are never evicted (their auth.json must persist).
+    let hermesPerTenantIdleTTLSeconds: Int
+    /// HER-240a: Path to the `docker` binary on the host that runs the
+    /// server process. Defaults to `/usr/bin/docker`. Override on macOS
+    /// dev (`/opt/homebrew/bin/docker`).
+    let dockerBinaryPath: String
 }
