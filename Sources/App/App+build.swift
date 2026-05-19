@@ -151,6 +151,13 @@ func buildApplication(
         emailResendAPIKey: reader.string(forKey: "email.resend.apiKey", isSecret: true, default: ""),
         emailFromAddress: reader.string(forKey: "email.fromAddress", default: ""),
         emailReplyTo: reader.string(forKey: "email.replyTo", default: ""),
+        hermesPerTenantImage: reader.string(forKey: "hermes.perTenant.image", default: "nousresearch/hermes-agent:latest"),
+        hermesPerTenantNetwork: reader.string(forKey: "hermes.perTenant.network", default: "luminavault-hermes-net"),
+        hermesPerTenantDataRootBase: reader.string(forKey: "hermes.perTenant.dataRootBase", default: "/app/data/hermes-tenants"),
+        hermesPerTenantPortRangeStart: reader.int(forKey: "hermes.perTenant.portRangeStart", default: 9000),
+        hermesPerTenantPortRangeEnd: reader.int(forKey: "hermes.perTenant.portRangeEnd", default: 9500),
+        hermesPerTenantIdleTTLSeconds: reader.int(forKey: "hermes.perTenant.idleTTLSeconds", default: 1800),
+        dockerBinaryPath: reader.string(forKey: "docker.binaryPath", default: "/usr/bin/docker"),
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -440,6 +447,10 @@ func buildRouter(
         .lowercased() == "true"
     var byoHermesController: HermesConfigController?
     var byoHermesMiddleware: HermesResolutionMiddleware?
+    // HER-240a — per-tenant Hermes container manager + xai-oauth service.
+    // Gated on the same SecretBox the BYO Hermes flow depends on because
+    // the tenant's encrypted `API_SERVER_KEY` is sealed with the same KDF.
+    var xaiOAuthController: XaiOAuthController?
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
@@ -463,6 +474,36 @@ func buildRouter(
             byoHermesMiddleware = HermesResolutionMiddleware(
                 resolver: resolver,
                 logger: byoHermesLogger,
+            )
+            let xaiLogger = Logger(label: "lv.xai-oauth")
+            let dockerExec = ProcessDockerExec(
+                binaryPath: services.dockerBinaryPath,
+                logger: Logger(label: "lv.docker"),
+            )
+            let containerManager = HermesContainerManager(
+                docker: dockerExec,
+                fluent: services.fluent,
+                secretBox: secretBox,
+                config: HermesContainerManager.Config(
+                    image: services.hermesPerTenantImage,
+                    network: services.hermesPerTenantNetwork,
+                    dataRootBase: services.hermesPerTenantDataRootBase,
+                    portRangeStart: services.hermesPerTenantPortRangeStart,
+                    portRangeEnd: services.hermesPerTenantPortRangeEnd,
+                    idleTTLSeconds: services.hermesPerTenantIdleTTLSeconds,
+                ),
+                logger: Logger(label: "lv.hermes-tenant"),
+            )
+            let xaiService = XaiOAuthService(
+                containerManager: containerManager,
+                sessionStore: XaiOAuthSessionStore(),
+                backend: LiveXaiOAuthBackend(docker: dockerExec, logger: xaiLogger),
+                fluent: services.fluent,
+                logger: xaiLogger,
+            )
+            xaiOAuthController = XaiOAuthController(
+                service: xaiService,
+                logger: xaiLogger,
             )
         } catch {
             fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
@@ -1126,6 +1167,16 @@ func buildRouter(
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         byoHermesController.addRoutes(to: settingsHermesGroup)
+    }
+
+    // HER-240a — /v1/integrations/xai routes. Mounted only when the master
+    // secret is set (same gate as BYO Hermes); a missing secret means the
+    // tenant container manager can't seal the API_SERVER_KEY, so the routes
+    // 404 in that mode rather than misbehave.
+    if let xaiOAuthController {
+        let integrationsGroup = router.group("/v1")
+            .add(middleware: jwtAuthenticator)
+        xaiOAuthController.addRoutes(to: integrationsGroup)
     }
 
     // Account management (HER-92) — DELETE /v1/account (GDPR data wipe).
