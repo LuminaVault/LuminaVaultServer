@@ -57,6 +57,8 @@ tags:
   - name: Skills
   - name: WebSocket
   - name: Admin
+  - name: Dashboard
+    description: OS Shell home/dashboard surface (HER-244).
 
 security:
   - bearerJWT: []
@@ -527,6 +529,78 @@ paths:
               schema: { $ref: '#/components/schemas/MeTodayResponse' }
         '429':
           $ref: '#/components/responses/RateLimited'
+
+  # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
+
+  /v1/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardStats
+      summary: Aggregated counters for the Home/Dashboard surface (HER-244).
+      description: |
+        Returns the small set of numbers the iOS Home/Dashboard renders:
+        memories created today, total memories ever, and the most recent
+        space compile timestamp. Per-tenant scoped.
+      responses:
+        '200':
+          description: Dashboard stats snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardStatsResponse' }
+
+  /v1/tasks:
+    get:
+      tags: [Dashboard]
+      operationId: tasksList
+      summary: List active and recent Hermes tasks (HER-244 / HER-246).
+      description: |
+        Per-tenant list of long-running operations (kb-compile, deep
+        analysis, skill runs). Initial implementation returns an empty
+        list — real job tracking ships under HER-246.
+      parameters:
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+            enum: [running, queued, completed, failed]
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Task list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskListResponse' }
+
+  /v1/insights:
+    get:
+      tags: [Dashboard]
+      operationId: insightsList
+      summary: List proactive insights (HER-244 / HER-248).
+      description: |
+        Per-tenant list of "what Lumina noticed" findings. Initial
+        implementation returns an empty list — real insight generation
+        ships under HER-248 backed by pattern/contradiction skills.
+      parameters:
+        - in: query
+          name: section
+          required: false
+          schema:
+            type: string
+            enum: [this_week, patterns, contradictions, connections]
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Insight list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InsightListResponse' }
 
   # ─────────────────────── Settings — BYO Hermes ────────────────────────
 
@@ -1770,6 +1844,83 @@ components:
         suggestedActions:
           type: array
           items: { type: string }
+
+    # ── Dashboard (HER-244) ──
+
+    DashboardStatsResponse:
+      type: object
+      required: [memoriesToday, memoriesTotal]
+      description: Aggregated counters for the OS Shell Home/Dashboard (HER-244).
+      properties:
+        memoriesToday: { type: integer, minimum: 0 }
+        memoriesTotal: { type: integer, minimum: 0 }
+        lastCompileAt:
+          type: string
+          format: date-time
+          description: Most recent space compile timestamp; null if never compiled.
+
+    TaskState:
+      type: string
+      enum: [running, queued, completed, failed]
+
+    TaskDTO:
+      type: object
+      required: [id, kind, label, state]
+      description: A long-running server-side operation (HER-244 / HER-246).
+      properties:
+        id: { type: string, format: uuid }
+        kind:
+          type: string
+          description: Stable identifier for the kind of work (e.g. "kb-compile").
+        label:
+          type: string
+          description: Human-readable label rendered in the iOS Tasks card.
+        state: { $ref: '#/components/schemas/TaskState' }
+        progress:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        startedAt: { type: string, format: date-time }
+        elapsedSeconds: { type: integer, minimum: 0 }
+        error: { type: string }
+
+    TaskListResponse:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/TaskDTO' }
+        nextCursor: { type: string }
+
+    InsightSection:
+      type: string
+      enum: [this_week, patterns, contradictions, connections]
+
+    InsightDTO:
+      type: object
+      required: [id, headline, summary, section, createdAt]
+      description: A proactive finding surfaced by Hermes (HER-244 / HER-248).
+      properties:
+        id: { type: string, format: uuid }
+        headline: { type: string }
+        summary: { type: string }
+        section: { $ref: '#/components/schemas/InsightSection' }
+        createdAt: { type: string, format: date-time }
+        sourceMemoryIDs:
+          type: array
+          items: { type: string, format: uuid }
+        dismissed: { type: boolean, default: false }
+
+    InsightListResponse:
+      type: object
+      required: [insights]
+      properties:
+        insights:
+          type: array
+          items: { $ref: '#/components/schemas/InsightDTO' }
+        nextCursor: { type: string }
 
     # ── BYO Hermes ──
 

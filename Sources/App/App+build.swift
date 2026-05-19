@@ -974,6 +974,24 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .achievementsByUser, storage: rateLimitStorage))
     achievementsController.addRoutes(to: achievementsGroup)
 
+    // HER-244 — OS Shell Home/Dashboard surface. Aggregated counters,
+    // tasks list, insights list. Tasks + Insights are empty-list stubs
+    // until HER-246 / HER-248 land their data layers.
+    let dashboardController = DashboardController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.dashboard"),
+    )
+    let dashboardGroup = router.group("/v1/dashboard").add(middleware: jwtAuthenticator)
+    dashboardController.addRoutes(to: dashboardGroup)
+
+    let tasksController = TasksController(logger: Logger(label: "lv.tasks"))
+    let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
+    tasksController.addRoutes(to: tasksGroup)
+
+    let insightsController = InsightsController(logger: Logger(label: "lv.insights"))
+    let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
+    insightsController.addRoutes(to: insightsGroup)
+
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the
     // `EntitlementMiddleware` only gates ingest. A `lapsed`/`archived`
