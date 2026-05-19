@@ -35,6 +35,9 @@ struct VaultUploadSpaceTests {
         return resp.accessToken
     }
 
+    // HER-235: fully qualify `LuminaVaultShared.SpaceDTO` to disambiguate
+    // from `App.SpaceDTO` (typealias to `Components.Schemas.SpaceDTO`).
+    // The wire shapes are equivalent; the shared type is the API contract.
     private static func createSpace(
         client: some TestClientProtocol,
         token: String,

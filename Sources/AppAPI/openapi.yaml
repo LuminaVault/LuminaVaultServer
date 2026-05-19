@@ -953,6 +953,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryLineageResponse' }
 
+  /v1/memory/graph:
+    get:
+      tags: [Memory]
+      operationId: memoryGraph
+      summary: Derived memory graph for the current tenant (HER-235).
+      description: |
+        Nodes are top-scored memories; edges are derived on read from shared
+        tags + pgvector cosine similarity. No edges are persisted in v1.
+      parameters:
+        - in: query
+          name: limit
+          description: Max number of nodes returned (highest-scored memories first).
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+        - in: query
+          name: similarityThreshold
+          description: |
+            Minimum cosine similarity (1 - pgvector distance) required for a
+            semantic edge. Values in [0, 1]; 0 keeps every comparable pair.
+          schema: { type: number, format: double, minimum: 0.0, maximum: 1.0, default: 0.78 }
+        - in: query
+          name: maxEdgesPerNode
+          description: |
+            After tag + semantic edges are merged, each node is pruned to its
+            top-K strongest edges by weight (undirected).
+          schema: { type: integer, minimum: 1, maximum: 50, default: 8 }
+      responses:
+        '200':
+          description: Derived graph for the current tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryGraphResponse' }
+
   # ────────────────────────────── Capture ───────────────────────────────
 
   /v1/capture/safari:
@@ -2210,6 +2242,59 @@ components:
         ancestors:
           type: array
           items: { $ref: '#/components/schemas/MemoryDTO' }
+
+    # ── Memory Graph (HER-235) ──
+
+    MemoryGraphNodeDTO:
+      type: object
+      required: [id, title, tags, createdAt, score]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, description: "First ~60 chars of memory content; used as node label." }
+        tags:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        score: { type: number, format: double, description: "Existing memories.score — drives node radius client-side." }
+
+    MemoryEdgeKindDTO:
+      type: string
+      enum: [tag, semantic]
+
+    MemoryGraphEdgeDTO:
+      type: object
+      required: [from, to, kind, weight]
+      properties:
+        from: { type: string, format: uuid }
+        to: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/MemoryEdgeKindDTO' }
+        tag:
+          type: string
+          description: "Populated when kind == tag: the shared tag that produced the edge."
+        similarity:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+          description: "Populated when kind == semantic: cosine similarity in [0, 1]."
+        weight:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+          description: "Normalised edge strength used for visual alpha/thickness."
+
+    MemoryGraphResponse:
+      type: object
+      required: [nodes, edges, generatedAt]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryGraphNodeDTO' }
+        edges:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryGraphEdgeDTO' }
+        generatedAt: { type: string, format: date-time }
 
     # ── Capture / URL Enrichment ──
 

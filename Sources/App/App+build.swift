@@ -863,6 +863,7 @@ func buildRouter(
         repository: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         achievements: achievementsService,
+        graphService: MemoryGraphService(fluent: services.fluent),
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
     // HermesMemoryService); attach the resolution middleware so user-

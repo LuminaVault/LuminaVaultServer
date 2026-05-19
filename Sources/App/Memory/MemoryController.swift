@@ -12,6 +12,7 @@ extension MemoryListResponse: ResponseEncodable {}
 extension MemoryLineageResponse: ResponseEncodable {}
 extension MemoryLineageSourceDTO: ResponseEncodable {}
 extension MemoryDTO: ResponseEncodable {}
+extension MemoryGraphResponse: ResponseEncodable {}
 
 // HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
 // four optional geo fields. The server-local definition has been removed.
@@ -70,6 +71,8 @@ struct MemoryController {
     let repository: MemoryRepository
     let embeddings: any EmbeddingService
     let achievements: AchievementsService?
+    /// HER-235 — derives the read-only memory graph on request.
+    let graphService: MemoryGraphService
 
     private static let defaultLimit = 20
     private static let maxLimit = 100
@@ -95,6 +98,9 @@ struct MemoryController {
 
     func addReadRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
+        // `/graph` is registered before `/:id` so Hummingbird's router takes
+        // the static segment in preference to the UUID parameter match (HER-235).
+        router.get("/graph", use: graph)
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)
         router.delete("/:id", use: delete)
@@ -270,6 +276,37 @@ struct MemoryController {
         return MemoryLineageResponse(memoryId: row.memoryID, source: source, trace: trace)
     }
 
+    /// HER-235 — returns the derived memory graph for the authenticated
+    /// tenant. Nodes are top-scored memories; edges are computed on read
+    /// from shared tags + pgvector cosine similarity. No persistence in v1.
+    @Sendable
+    func graph(_ req: Request, ctx: AppRequestContext) async throws -> MemoryGraphResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+
+        let limit = Self.clamp(
+            req.uri.queryParameters["limit"].flatMap { Int($0) } ?? MemoryGraphService.defaultLimit,
+            min: 1, max: MemoryGraphService.maxLimit,
+        )
+        let similarity = Self.clampDouble(
+            req.uri.queryParameters["similarityThreshold"].flatMap { Double($0) }
+                ?? MemoryGraphService.defaultSimilarity,
+            min: 0.0, max: 1.0,
+        )
+        let maxEdges = Self.clamp(
+            req.uri.queryParameters["maxEdgesPerNode"].flatMap { Int($0) }
+                ?? MemoryGraphService.defaultMaxEdgesPerNode,
+            min: 1, max: MemoryGraphService.maxMaxEdgesPerNode,
+        )
+
+        return try await graphService.graph(
+            tenantID: tenantID,
+            limit: limit,
+            similarity: similarity,
+            maxEdgesPerNode: maxEdges,
+        )
+    }
+
     /// Renders a source date as "YYYY-MM-DD" UTC. Keeps the trace string
     /// stable across client locales — UI can re-format as it pleases.
     private static func formatTraceDate(_ date: Date?) -> String {
@@ -287,6 +324,10 @@ struct MemoryController {
     }
 
     private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {
+        Swift.max(lo, Swift.min(hi, value))
+    }
+
+    private static func clampDouble(_ value: Double, min lo: Double, max hi: Double) -> Double {
         Swift.max(lo, Swift.min(hi, value))
     }
 }
