@@ -909,12 +909,15 @@ func buildRouter(
     )
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
+        .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
         .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
     vaultController.addRoutes(to: vaultGroup)
 
     // HER-35: vault init handshake — separate group so the heavy upload
     // rate-limit policy never blocks the "Create My Vault" call.
-    let vaultInitGroup = router.group("/v1/vault").add(middleware: jwtAuthenticator)
+    let vaultInitGroup = router.group("/v1/vault")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
     vaultController.addInitRoutes(to: vaultInitGroup)
 
     // HER-91: vault export — separate group so the heavier per-user limit
@@ -942,7 +945,9 @@ func buildRouter(
     )
     // HER-223 — kb-compile fires the heaviest Hermes traffic; must route
     // to the user's gateway when one is configured.
-    let kbCompileBase = router.group("/v1/kb-compile").add(middleware: jwtAuthenticator)
+    let kbCompileBase = router.group("/v1/kb-compile")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
     let kbCompileWithByo = byoHermesMiddleware.map { kbCompileBase.add(middleware: $0) } ?? kbCompileBase
     let kbCompileGroup = kbCompileWithByo
         .add(middleware: EntitlementMiddleware(requires: .kbCompile, enforcementEnabled: services.billingEnforcementEnabled))

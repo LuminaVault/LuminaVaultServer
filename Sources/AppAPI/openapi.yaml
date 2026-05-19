@@ -964,6 +964,7 @@ paths:
             existing path, a provided value overwrites the prior link; an
             omitted value leaves the existing link intact.
           schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1015,6 +1016,8 @@ paths:
       tags: [Vault]
       operationId: vaultMove
       summary: Rename / move a vault file.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1054,6 +1057,7 @@ paths:
           name: path
           required: true
           schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '204':
           description: Deleted.
@@ -1115,6 +1119,8 @@ paths:
       tags: [KB]
       operationId: kbCompile
       summary: Compile vault rows through the Hermes learning loop ("Sync & Learn").
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       description: |
         Reads `vault_files` rows for the caller and runs the per-tenant Hermes
         agent loop over them. Three input modes:
@@ -1566,6 +1572,17 @@ components:
       in: path
       name: id
       required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      description: >
+        HER-39 — client-generated UUIDv4. Retrying a mutating request with the
+        same key (within 24 h) replays the cached response instead of
+        re-executing the handler. Reusing a key with a different request body
+        returns 409. Tenant-scoped: the same key value across different tenants
+        does not collide.
       schema: { type: string, format: uuid }
 
   responses:
