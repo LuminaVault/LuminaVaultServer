@@ -67,16 +67,12 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             }
             return HermesChatTransportMetadata(data: data, headers: headers)
         }
-        let preview = String(data: data.prefix(512), encoding: .utf8)
-        // Mirror HermesGatewayAdapter: 429 + 5xx are retryable transient
-        // failures; everything else is a permanent payload-shape problem
-        // (or auth) that another upstream wouldn't fix.
-        if status == 429 || (500 ..< 600).contains(status) {
-            logger.error("\(kind.rawValue) upstream transient \(status): \(preview ?? "<binary>")")
-            throw ProviderError.transient(provider: kind, status: status, body: preview)
-        }
-        logger.error("\(kind.rawValue) upstream permanent \(status): \(preview ?? "<binary>")")
-        throw ProviderError.permanent(provider: kind, status: status, body: preview)
+        // HER-252 — classifier centralizes the 4xx/5xx → ProviderError
+        // mapping so 402 + 403-with-credit-marker fall over to the next
+        // candidate instead of bubbling up as permanent.
+        let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
+        logger.error("\(kind.rawValue) upstream \(error.reasonCode) status=\(status)")
+        throw error
     }
 
     // MARK: - Health check
