@@ -927,7 +927,7 @@ func buildRouter(
     // `/v1/query` via the existing agent loop.
     let queryStreamService = DefaultHermesLLMStreamService(
         baseURL: hermesURL,
-        session: URLSession.shared,
+        httpClient: HTTPClient.shared,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,
