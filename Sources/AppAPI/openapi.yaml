@@ -644,6 +644,23 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/APNSCategoryPrefsResponse' }
 
+  /v1/sessions:
+    get:
+      tags: [Dashboard]
+      operationId: sessionsList
+      summary: List chat-history sessions for the OS Shell Sessions tab (HER-245 / HER-259).
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Session list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionListResponse' }
+
   /v1/dashboard/stats:
     get:
       tags: [Dashboard]
@@ -2257,6 +2274,30 @@ components:
         chatEnabled: { type: boolean }
         nudgeEnabled: { type: boolean }
         digestEnabled: { type: boolean }
+
+    # ── Sessions (HER-245 / HER-259) ──
+
+    SessionDTO:
+      type: object
+      required: [id, title, preview, messageCount, lastMessageAt, pinned, archived]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        preview: { type: string }
+        messageCount: { type: integer }
+        lastMessageAt: { type: string, format: date-time }
+        workspaceID: { type: string, format: uuid }
+        pinned: { type: boolean }
+        archived: { type: boolean }
+
+    SessionListResponse:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: '#/components/schemas/SessionDTO' }
+        nextCursor: { type: string }
 
     DashboardStatsResponse:
       type: object

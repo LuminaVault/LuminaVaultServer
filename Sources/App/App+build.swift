@@ -1123,6 +1123,14 @@ func buildRouter(
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
 
+    // HER-245 / HER-259 — Sessions list. Joins conversations + messages.
+    let sessionsController = SessionsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.sessions"),
+    )
+    let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
+    sessionsController.addRoutes(to: sessionsGroup)
+
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the
     // `EntitlementMiddleware` only gates ingest. A `lapsed`/`archived`
