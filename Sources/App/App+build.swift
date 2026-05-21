@@ -50,7 +50,12 @@ func buildApplication(
     // --- Fluent (Postgres) — optional; tests pass fluent.enabled=false ---
     let fluentEnabledStr = reader.string(forKey: "fluent.enabled", default: "true")
     let fluentEnabled = fluentEnabledStr.lowercased() != "false"
-    let fluent = Fluent(logger: logger)
+    // HER-251: Fluent gets its own logger pinned to `.notice` so `LOG_LEVEL=debug`
+    // in dev compose keeps app-level debug visible without drowning every request
+    // in per-query FluentKit chatter. Override with `fluent.log.level` if needed.
+    var fluentLogger = Logger(label: "lv.fluent")
+    fluentLogger.logLevel = reader.string(forKey: "fluent.log.level", as: Logger.Level.self, default: .notice)
+    let fluent = Fluent(logger: fluentLogger)
     if fluentEnabled {
         fluent.databases.use(
             .postgres(configuration: .init(
