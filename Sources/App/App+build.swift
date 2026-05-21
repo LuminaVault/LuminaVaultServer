@@ -465,6 +465,10 @@ func buildRouter(
         .lowercased() == "true"
     var byoHermesController: HermesConfigController?
     var byoHermesMiddleware: HermesResolutionMiddleware?
+    // HER-252 — captured from the same SecretBox the BYO Hermes flow
+    // builds so the new per-user provider credential surface can reuse
+    // the AES-GCM helper without a second master-key load.
+    var secretBoxRef: SecretBox?
     // HER-240a — per-tenant Hermes container manager + xai-oauth service.
     // Gated on the same SecretBox the BYO Hermes flow depends on because
     // the tenant's encrypted `API_SERVER_KEY` is sealed with the same KDF.
@@ -475,6 +479,7 @@ func buildRouter(
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
+            secretBoxRef = secretBox
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: byoHermesAllowPrivate,
                 environment: lvEnvironment,
@@ -562,6 +567,27 @@ func buildRouter(
     // adding `together` / `groq` / `openRouter` etc. is a registration
     // line each (HER-162..HER-164).
     let routingLogger = Logger(label: "lv.routing")
+
+    // HER-252 — per-user credential store + LLM preference repository +
+    // failover telemetry logger. UserCredentialStore depends on
+    // SecretBox; absent the master key (dev without LV_SECRET_MASTER_KEY)
+    // we leave it nil and adapters fall back to deployment env keys.
+    let userCredentialStore: UserCredentialStore? = secretBoxRef.map { secretBox in
+        UserCredentialStore(
+            fluent: services.fluent,
+            secretBox: secretBox,
+            logger: routingLogger,
+        )
+    }
+    let userLLMPreferenceRepo = UserLLMPreferenceRepository(
+        fluent: services.fluent,
+        logger: routingLogger,
+    )
+    let providerFailoverLogger = ProviderFailoverLogger(
+        fluent: services.fluent,
+        logger: routingLogger,
+    )
+
     var providerAdapters: [any ProviderAdapter] = [
         HermesGatewayAdapter(
             baseURL: hermesURL,
@@ -600,6 +626,45 @@ func buildRouter(
             logger: routingLogger,
         ))
     }
+    // HER-252 — register adapters for the per-user-credential providers
+    // (xai, openai, openRouter via OpenAICompatibleAdapter; anthropic +
+    // ollama via their bespoke adapters). Each is registered
+    // unconditionally so a user can attach a personal key at any time;
+    // the deployment env key is the fallback when no user creds exist.
+    for kind in [ProviderKind.xai, .openai, .openRouter] {
+        let envKey = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).apiKey"), isSecret: true, default: "")
+        let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).baseURL"), default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = rawBaseURL.isEmpty
+            ? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
+            : (URL(string: rawBaseURL) ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind))
+        providerAdapters.append(OpenAICompatibleAdapter(
+            kind: kind,
+            apiKey: envKey,
+            baseURL: baseURL,
+            session: .shared,
+            logger: routingLogger,
+            userCredentials: userCredentialStore,
+        ))
+    }
+    let anthropicEnvKey = reader.string(forKey: ConfigKey("llm.provider.anthropic.apiKey"), isSecret: true, default: "")
+    let anthropicRawBaseURL = reader.string(forKey: ConfigKey("llm.provider.anthropic.baseURL"), default: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    providerAdapters.append(AnthropicAdapter(
+        apiKey: anthropicEnvKey,
+        baseURL: anthropicRawBaseURL.isEmpty ? URL(string: "https://api.anthropic.com")! : (URL(string: anthropicRawBaseURL) ?? URL(string: "https://api.anthropic.com")!),
+        session: .shared,
+        logger: routingLogger,
+        userCredentials: userCredentialStore,
+    ))
+    let ollamaRawBaseURL = reader.string(forKey: ConfigKey("llm.provider.ollama.baseURL"), default: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    providerAdapters.append(OllamaAdapter(
+        defaultBaseURL: ollamaRawBaseURL.isEmpty ? URL(string: "http://localhost:11434")! : (URL(string: ollamaRawBaseURL) ?? URL(string: "http://localhost:11434")!),
+        session: .shared,
+        logger: routingLogger,
+        userCredentials: userCredentialStore,
+    ))
     // HER-161 — env-loaded provider registry. Reads
     // `llm.provider.<key>.apiKey` / `.baseURL` for anthropic, openai,
     // gemini, together, groq, fireworks, deepseekDirect — missing keys
@@ -615,9 +680,18 @@ func buildRouter(
     // from a static matrix keyed on `(tier, capability)`, honors the
     // user's `privacy_no_cn_origin` flag, and always falls back to the
     // Hermes gateway when no upstream is enabled.
-    let modelRouter: any ModelRouter = TableModelRouter(
+    let tableModelRouter = TableModelRouter(
         registry: providerRegistry,
         hermesDefaultModel: services.hermesDefaultModel,
+    )
+    // HER-252 — wrap the static table with a user-preference-aware router
+    // so a user's primary (provider, model) + fallback chain take
+    // precedence on every chat / query / kb-compile call. Absent any
+    // user preference row, the table is consulted exactly as before.
+    let modelRouter: any ModelRouter = UserPreferenceModelRouter(
+        preferences: userLLMPreferenceRepo,
+        fallback: tableModelRouter,
+        logger: routingLogger,
     )
     let usageMeterService = UsageMeterService(
         fluent: services.fluent,
@@ -632,6 +706,7 @@ func buildRouter(
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
+        failoverLogger: providerFailoverLogger,
     )
 
     // HER-200 — use the routed transport for the user-facing chat
@@ -1265,6 +1340,31 @@ func buildRouter(
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         byoHermesController.addRoutes(to: settingsHermesGroup)
     }
+
+    // HER-252 — /v1/me/providers (CRUD + test) and /v1/me/preferences/llm
+    // (GET/PUT) for per-user LLM credential + routing preferences.
+    // Providers controller only mounts when SecretBox is available (it
+    // needs the per-tenant key to seal API keys at rest). Preferences
+    // controller has no crypto dependency so it mounts unconditionally.
+    if let userCredentialStore {
+        let providersController = ProvidersController(
+            credentialStore: userCredentialStore,
+            fluent: services.fluent,
+            logger: Logger(label: "lv.me.providers"),
+        )
+        let providersGroup = router.group("/v1/me/providers")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        providersController.addRoutes(to: providersGroup)
+    }
+    let llmPrefsController = LLMPreferencesController(
+        repository: userLLMPreferenceRepo,
+        logger: Logger(label: "lv.me.llm-prefs"),
+    )
+    let llmPrefsGroup = router.group("/v1/me/preferences/llm")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    llmPrefsController.addRoutes(to: llmPrefsGroup)
 
     // HER-240a — /v1/integrations/xai routes. Mounted only when the master
     // secret is set (same gate as BYO Hermes); a missing secret means the
