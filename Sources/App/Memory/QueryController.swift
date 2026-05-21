@@ -23,6 +23,9 @@ struct QueryController {
     let memories: MemoryRepository?
     let embeddings: (any EmbeddingService)?
     let streamService: (any HermesLLMStreamService)?
+    /// HER-37 Slice C — optional. When nil both `/v1/query` and
+    /// `/v1/query/stream` emit no follow-ups (back-compat).
+    let followUpGenerator: FollowUpGenerator?
     let defaultModel: String
     let logger: Logger
 
@@ -32,6 +35,7 @@ struct QueryController {
         memories: MemoryRepository? = nil,
         embeddings: (any EmbeddingService)? = nil,
         streamService: (any HermesLLMStreamService)? = nil,
+        followUpGenerator: FollowUpGenerator? = nil,
         defaultModel: String = "",
         logger: Logger = Logger(label: "lv.query"),
     ) {
@@ -40,6 +44,7 @@ struct QueryController {
         self.memories = memories
         self.embeddings = embeddings
         self.streamService = streamService
+        self.followUpGenerator = followUpGenerator
         self.defaultModel = defaultModel
         self.logger = logger
     }
@@ -69,7 +74,21 @@ struct QueryController {
         let hits = answer.hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }
-        return QueryResponse(summary: answer.summary, hits: hits)
+        // HER-37 Slice C — best-effort follow-ups. Generator is defensive
+        // (returns [] on any failure) so this never bumps the response
+        // latency floor by more than one bounded Hermes round-trip.
+        let followUps: [String]?
+        if let followUpGenerator {
+            let ups = await followUpGenerator.generate(
+                profileUsername: user.username,
+                summary: answer.summary,
+                sources: hits,
+            )
+            followUps = ups.isEmpty ? nil : ups
+        } else {
+            followUps = nil
+        }
+        return QueryResponse(summary: answer.summary, hits: hits, followUps: followUps)
     }
 
     /// HER-37 — streaming counterpart to `query`. Retrieves pgvector
@@ -114,18 +133,19 @@ struct QueryController {
         )
         let chunks = streamService.chatStream(profileUsername: profileUsername, request: chatRequest)
         let logger = logger
+        let followUpGenerator = followUpGenerator
+        let hitDTOs = hits.map {
+            QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
+        }
 
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
+                var assistantBuffer = ""
+
                 // 1. Source events — emit before any token so the client
                 //    can render the "Based on N notes" provenance row.
-                for hit in hits {
-                    continuation.yield(.source(QueryHitDTO(
-                        id: hit.id,
-                        content: hit.content,
-                        distance: hit.distance,
-                        createdAt: hit.createdAt,
-                    )))
+                for dto in hitDTOs {
+                    continuation.yield(.source(dto))
                 }
 
                 // 2. LLM token deltas.
@@ -133,6 +153,7 @@ struct QueryController {
                     for try await chunk in chunks {
                         if Task.isCancelled { break }
                         if !chunk.delta.isEmpty {
+                            assistantBuffer.append(chunk.delta)
                             continuation.yield(.token(chunk.delta))
                         }
                     }
@@ -143,10 +164,19 @@ struct QueryController {
                     return
                 }
 
-                // 3. Server-generated follow-ups. HER-37 Slice C wires
-                //    `FollowUpGenerator`; until then emit an empty array
-                //    so the wire shape is stable.
-                continuation.yield(.followUps([]))
+                // 3. Server-generated follow-ups (HER-37 Slice C).
+                //    Best-effort: generator returns [] on any failure so
+                //    it can never abort the parent stream.
+                let followUps: [String] = if let followUpGenerator {
+                    await followUpGenerator.generate(
+                        profileUsername: profileUsername,
+                        summary: assistantBuffer,
+                        sources: hitDTOs,
+                    )
+                } else {
+                    []
+                }
+                continuation.yield(.followUps(followUps))
 
                 // 4. Terminator.
                 continuation.yield(.done)

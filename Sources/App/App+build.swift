@@ -924,10 +924,18 @@ func buildRouter(
     // `/v1/query` via the existing agent loop.
     let queryStreamService = DefaultHermesLLMStreamService(
         baseURL: hermesURL,
-        session: URLSession(configuration: .default),
+        session: URLSession.shared,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,
+    )
+    // HER-37 Slice C — single FollowUpGenerator instance shared by the
+    // Query + Conversation controllers. Reuses the routed transport so
+    // Gemini/Grok/BYO routing applies to the follow-up call too.
+    let followUpGenerator = FollowUpGenerator(
+        transport: routedTransport,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.followups"),
     )
     let queryController = QueryController(
         service: memoryService,
@@ -935,6 +943,7 @@ func buildRouter(
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         streamService: queryStreamService,
+        followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
@@ -952,6 +961,7 @@ func buildRouter(
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         streamService: queryStreamService,
+        followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations"),
     )
@@ -1107,12 +1117,6 @@ func buildRouter(
     let insightsController = InsightsController(logger: Logger(label: "lv.insights"))
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
-
-    // HER-245 — Sessions list (chat history). Empty-list stub until
-    // persistence layer joins chat sessions to memos + workspaces.
-    let sessionsController = SessionsController(logger: Logger(label: "lv.sessions"))
-    let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
-    sessionsController.addRoutes(to: sessionsGroup)
 
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the

@@ -25,8 +25,29 @@ struct ConversationController {
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
     let streamService: any HermesLLMStreamService
+    /// HER-37 Slice C — optional. When nil the SSE stream emits an empty
+    /// `.followUps([])` event for back-compat.
+    let followUpGenerator: FollowUpGenerator?
     let defaultModel: String
     let logger: Logger
+
+    init(
+        fluent: Fluent,
+        memories: MemoryRepository,
+        embeddings: any EmbeddingService,
+        streamService: any HermesLLMStreamService,
+        followUpGenerator: FollowUpGenerator? = nil,
+        defaultModel: String,
+        logger: Logger,
+    ) {
+        self.fluent = fluent
+        self.memories = memories
+        self.embeddings = embeddings
+        self.streamService = streamService
+        self.followUpGenerator = followUpGenerator
+        self.defaultModel = defaultModel
+        self.logger = logger
+    }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: create)
@@ -137,19 +158,19 @@ struct ConversationController {
         let chunks = streamService.chatStream(profileUsername: user.username, request: chatRequest)
         let fluent = fluent
         let logger = logger
+        let followUpGenerator = followUpGenerator
+        let profileUsername = user.username
         let sourceIDs = hits.map(\.id)
+        let hitDTOs = hits.map {
+            QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
+        }
 
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
                 var assistantBuffer = ""
 
-                for hit in hits {
-                    continuation.yield(.source(QueryHitDTO(
-                        id: hit.id,
-                        content: hit.content,
-                        distance: hit.distance,
-                        createdAt: hit.createdAt,
-                    )))
+                for dto in hitDTOs {
+                    continuation.yield(.source(dto))
                 }
 
                 do {
@@ -184,7 +205,17 @@ struct ConversationController {
                     logger.error("assistant turn persist failed: \(error)")
                 }
 
-                continuation.yield(.followUps([]))
+                // HER-37 Slice C — best-effort follow-ups, defensive ([]).
+                let followUps: [String] = if let followUpGenerator {
+                    await followUpGenerator.generate(
+                        profileUsername: profileUsername,
+                        summary: assistantBuffer,
+                        sources: hitDTOs,
+                    )
+                } else {
+                    []
+                }
+                continuation.yield(.followUps(followUps))
                 continuation.yield(.done)
                 continuation.finish()
             }
