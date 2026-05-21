@@ -1,13 +1,11 @@
+import AsyncHTTPClient
 import Foundation
 import Hummingbird
 import Logging
 import LuminaVaultShared
 import Metrics
+import NIOCore
 import Tracing
-
-#if canImport(FoundationNetworking)
-    import FoundationNetworking
-#endif
 
 /// HER-37 — single delta produced by a streaming chat completion.
 /// Concatenate `delta`s in order to reconstruct the full reply.
@@ -26,9 +24,12 @@ struct ChatStreamChunk: Equatable {
 /// `AsyncThrowingStream` of `ChatStreamChunk` so callers can forward
 /// deltas over SSE without buffering the full reply.
 ///
-/// Note: routed/Gemini streaming is out of scope for HER-37. The default
-/// impl hits the central Hermes gateway directly and parses its
-/// OpenAI-compatible `text/event-stream` body.
+/// Routed/Gemini streaming is out of scope for HER-37. The default impl
+/// hits the central Hermes gateway directly and parses its OpenAI-
+/// compatible `text/event-stream` body.
+///
+/// Uses `AsyncHTTPClient` rather than `URLSession.bytes(for:)` because
+/// the latter is not available on Linux's swift-corelibs-foundation.
 protocol HermesLLMStreamService: Sendable {
     func chatStream(
         profileUsername: String,
@@ -38,26 +39,30 @@ protocol HermesLLMStreamService: Sendable {
 
 struct DefaultHermesLLMStreamService: HermesLLMStreamService {
     let baseURL: URL
-    let session: URLSession
+    let httpClient: HTTPClient
     let defaultModel: String
     let logger: Logger
-    /// HER-254 — Bearer key for the central Hermes gateway. Empty skips the header.
+    /// HER-254 — Bearer key for the central Hermes gateway. Empty skips
+    /// the header.
     let apiKey: String
+    let requestTimeout: TimeAmount
     let successCounter = Counter(label: "luminavault.llm.chat.stream.success")
     let failureCounter = Counter(label: "luminavault.llm.chat.stream.failure")
 
     init(
         baseURL: URL,
-        session: URLSession,
+        httpClient: HTTPClient,
         defaultModel: String,
         logger: Logger,
         apiKey: String = "",
+        requestTimeout: TimeAmount = .seconds(120),
     ) {
         self.baseURL = baseURL
-        self.session = session
+        self.httpClient = httpClient
         self.defaultModel = defaultModel
         self.logger = logger
         self.apiKey = apiKey
+        self.requestTimeout = requestTimeout
     }
 
     func chatStream(
@@ -65,86 +70,115 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         request: ChatRequest,
     ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let baseURL = baseURL
-        let session = session
+        let httpClient = httpClient
         let defaultModel = defaultModel
         let logger = logger
         let apiKey = apiKey
+        let requestTimeout = requestTimeout
         let successCounter = successCounter
         let failureCounter = failureCounter
 
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let url = baseURL
-                        .appendingPathComponent("v1")
-                        .appendingPathComponent("chat")
-                        .appendingPathComponent("completions")
-                    var urlReq = URLRequest(url: url)
-                    urlReq.httpMethod = "POST"
-                    urlReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    urlReq.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    urlReq.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
-                    if !apiKey.isEmpty {
-                        urlReq.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-                    }
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            do {
+                let url = baseURL
+                    .appendingPathComponent("v1")
+                    .appendingPathComponent("chat")
+                    .appendingPathComponent("completions")
 
-                    let payload = StreamingChatRequestBody(
-                        model: request.model ?? defaultModel,
-                        messages: request.messages,
-                        temperature: request.temperature,
-                        stream: true,
-                    )
-                    urlReq.httpBody = try JSONEncoder().encode(payload)
+                let payload = StreamingChatRequestBody(
+                    model: request.model ?? defaultModel,
+                    messages: request.messages,
+                    temperature: request.temperature,
+                    stream: true,
+                )
+                let payloadData = try JSONEncoder().encode(payload)
 
-                    let (bytes, response) = try await session.bytes(for: urlReq)
-                    guard let http = response as? HTTPURLResponse else {
-                        failureCounter.increment()
-                        continuation.finish(throwing: HTTPError(.badGateway, message: "hermes stream returned no http response"))
-                        return
-                    }
-                    guard (200 ..< 300).contains(http.statusCode) else {
-                        failureCounter.increment()
-                        logger.error("hermes stream upstream \(http.statusCode)")
-                        continuation.finish(throwing: HTTPError(.badGateway, message: "hermes stream upstream error (\(http.statusCode))"))
-                        return
-                    }
+                var httpReq = HTTPClientRequest(url: url.absoluteString)
+                httpReq.method = .POST
+                httpReq.headers.add(name: "Content-Type", value: "application/json")
+                httpReq.headers.add(name: "Accept", value: "text/event-stream")
+                httpReq.headers.add(name: "X-Hermes-Profile", value: profileUsername)
+                if !apiKey.isEmpty {
+                    httpReq.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
+                }
+                httpReq.body = .bytes(payloadData)
 
-                    let decoder = JSONDecoder()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        // OpenAI SSE: each event is `data: <json>` with an
-                        // optional `[DONE]` sentinel at end. Empty lines
-                        // and non-`data:` comments are skipped per spec.
-                        guard line.hasPrefix("data:") else { continue }
-                        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                        if payload.isEmpty { continue }
-                        if payload == "[DONE]" { break }
-                        guard let data = payload.data(using: .utf8) else { continue }
-                        do {
-                            let chunk = try decoder.decode(UpstreamStreamChunk.self, from: data)
-                            guard let choice = chunk.choices.first else { continue }
-                            let delta = choice.delta.content ?? ""
-                            if !delta.isEmpty || choice.finishReason != nil {
-                                continuation.yield(ChatStreamChunk(
-                                    delta: delta,
-                                    finishReason: choice.finishReason,
-                                ))
-                            }
-                            if choice.finishReason != nil { break }
-                        } catch {
-                            logger.debug("hermes stream chunk decode skipped: \(error)")
-                            continue
+                let response = try await httpClient.execute(httpReq, timeout: requestTimeout)
+                guard (200 ..< 300).contains(Int(response.status.code)) else {
+                    failureCounter.increment()
+                    logger.error("hermes stream upstream \(response.status.code)")
+                    continuation.finish(throwing: HTTPError(.badGateway, message: "hermes stream upstream error (\(response.status.code))"))
+                    return
+                }
+
+                var buffer = ""
+                let decoder = JSONDecoder()
+                var finished = false
+                for try await chunk in response.body {
+                    if Task.isCancelled { break }
+                    if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
+                        buffer.append(text)
+                    }
+                    // OpenAI SSE: events terminated by `\n\n`. Pop
+                    // complete records out of the buffer; leave any
+                    // partial tail in place.
+                    while let terminator = buffer.range(of: "\n\n") {
+                        let record = String(buffer[..<terminator.lowerBound])
+                        buffer.removeSubrange(..<terminator.upperBound)
+                        if Self.processRecord(
+                            record,
+                            decoder: decoder,
+                            yield: { continuation.yield($0) },
+                            logger: logger,
+                        ) {
+                            finished = true
+                            break
                         }
                     }
-                    successCounter.increment()
-                    continuation.finish()
-                } catch {
-                    failureCounter.increment()
-                    continuation.finish(throwing: error)
+                    if finished { break }
                 }
+                successCounter.increment()
+                continuation.finish()
+            } catch {
+                failureCounter.increment()
+                continuation.finish(throwing: error)
             }
-            continuation.onTermination = { _ in task.cancel() }
         }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
+    }
+
+    /// Parses one `data: ...` SSE record. Returns `true` when the
+    /// upstream signalled end-of-stream (either `[DONE]` or
+    /// `finish_reason`).
+    private static func processRecord(
+        _ record: String,
+        decoder: JSONDecoder,
+        yield: (ChatStreamChunk) -> Void,
+        logger: Logger,
+    ) -> Bool {
+        for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine)
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload.isEmpty { continue }
+            if payload == "[DONE]" { return true }
+            guard let data = payload.data(using: .utf8) else { continue }
+            do {
+                let chunk = try decoder.decode(UpstreamStreamChunk.self, from: data)
+                guard let choice = chunk.choices.first else { continue }
+                let delta = choice.delta.content ?? ""
+                if !delta.isEmpty || choice.finishReason != nil {
+                    yield(ChatStreamChunk(delta: delta, finishReason: choice.finishReason))
+                }
+                if choice.finishReason != nil { return true }
+            } catch {
+                logger.debug("hermes stream chunk decode skipped: \(error)")
+                continue
+            }
+        }
+        return false
     }
 }
 
