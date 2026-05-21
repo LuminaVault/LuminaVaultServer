@@ -91,6 +91,7 @@ extension ProviderKind {
         case .deepseek: "DeepSeek"
         case .kimi: "Kimi"
         case .ollama: "Ollama"
+        case .xai: "Grok"
         }
     }
 }

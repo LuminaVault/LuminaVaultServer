@@ -19,6 +19,10 @@ struct RoutedLLMTransport: HermesChatTransport {
     let logger: Logger
 
     let usageMeter: UsageMeterService?
+    /// HER-252 — append-only telemetry sink for failover events. Optional
+    /// so non-production wirings (tests, single-gateway deployments)
+    /// can skip the DB write.
+    let failoverLogger: ProviderFailoverLogger?
 
     /// Optional callable that resolves a `User` from the current request
     /// scope. Defaults to the `LLMRoutingContext` task-local so middleware
@@ -33,6 +37,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         currentUser: @escaping @Sendable () async -> User? = { LLMRoutingContext.currentUser },
         logger: Logger,
         usageMeter: UsageMeterService? = nil,
+        failoverLogger: ProviderFailoverLogger? = nil,
     ) {
         self.registry = registry
         self.router = router
@@ -40,6 +45,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         self.currentUser = currentUser
         self.logger = logger
         self.usageMeter = usageMeter
+        self.failoverLogger = failoverLogger
     }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
@@ -51,7 +57,16 @@ struct RoutedLLMTransport: HermesChatTransport {
         let user = await currentUser()
         let decision = await router.pick(forModel: requestedModel, capability: capability, user: user)
 
+        // HER-252 — track the most recent recoverable failure so when the
+        // next candidate succeeds we can build a ProviderFailoverNotice
+        // describing the transition. Reset on each new candidate so we
+        // only ever emit one notice per actual failover.
         var lastRecoverable: (any Error)?
+        var lastFailedCandidate: (route: ModelRoute, error: ProviderError)?
+        let userID: UUID? = (try? user?.requireID())
+        let source: ProviderFailoverNotice.TelemetrySource =
+            (LLMRoutingContext.currentResolution?.isUserOverride == true) ? .byo : .hosted
+
         for candidate in decision.candidates {
             guard let adapter = await registry.adapter(for: candidate.provider) else {
                 logger.warning("router decision had unregistered provider: \(candidate.provider.rawValue)")
@@ -60,6 +75,18 @@ struct RoutedLLMTransport: HermesChatTransport {
             let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
             do {
                 let metadata = try await adapter.chatCompletionsWithMetadata(payload: candidatePayload, profileUsername: profileUsername)
+                // HER-252 — successful candidate. If we got here by falling
+                // over from a prior failure, emit + log a notice describing
+                // the transition.
+                if let prior = lastFailedCandidate {
+                    publishFailover(
+                        original: prior.route,
+                        originalError: prior.error,
+                        fallback: candidate,
+                        tenantID: userID,
+                        source: source,
+                    )
+                }
                 if let usageMeter, let user {
                     var mtokIn = 0
                     var mtokOut = 0
@@ -73,7 +100,8 @@ struct RoutedLLMTransport: HermesChatTransport {
                 return metadata
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
-                logger.warning("provider \(candidate.provider.rawValue) failed (recoverable): \(providerError)")
+                lastFailedCandidate = (candidate, providerError)
+                logger.warning("provider \(candidate.provider.rawValue) failed (\(providerError.reasonCode)): \(providerError)")
                 continue
             } catch let providerError as ProviderError {
                 logger.error("provider \(candidate.provider.rawValue) permanent: \(providerError)")
@@ -92,6 +120,43 @@ struct RoutedLLMTransport: HermesChatTransport {
             throw HTTPError(.badGateway, message: "llm upstream unavailable: \(lastRecoverable)")
         }
         throw HTTPError(.badGateway, message: "llm upstream unavailable: no providers")
+    }
+
+    /// HER-252 — publish a `ProviderFailoverNotice` to both the SSE sink
+    /// (via task-local `FailoverNoticeContext`) and the persistent
+    /// telemetry logger (if wired). Best-effort; never throws.
+    private func publishFailover(
+        original: ModelRoute,
+        originalError: ProviderError,
+        fallback: ModelRoute,
+        tenantID: UUID?,
+        source: ProviderFailoverNotice.TelemetrySource,
+    ) {
+        let statusCode: Int? = switch originalError {
+        case let .transient(_, status, _): status
+        case let .permanent(_, status, _): status
+        case let .creditExhausted(_, status, _): status
+        case .network: nil
+        }
+        let bodyPreview: String? = switch originalError {
+        case let .transient(_, _, body): body
+        case let .permanent(_, _, body): body
+        case let .creditExhausted(_, _, body): body
+        case .network: nil
+        }
+        let notice = ProviderFailoverNotice(
+            originalProvider: original.provider,
+            originalModel: original.modelID,
+            fallbackProvider: fallback.provider,
+            fallbackModel: fallback.modelID,
+            reasonCode: originalError.reasonCode,
+            userMessage: originalError.userMessage,
+            statusCode: statusCode,
+            bodyPreview: bodyPreview,
+            source: source,
+        )
+        FailoverNoticeContext.sink?(notice)
+        failoverLogger?.record(notice: notice, tenantID: tenantID)
     }
 
     // MARK: - Helpers

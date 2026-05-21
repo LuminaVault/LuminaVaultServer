@@ -173,12 +173,22 @@ struct ConversationController {
                     continuation.yield(.source(dto))
                 }
 
+                // HER-252 — attach a failover sink so RoutedLLMTransport
+                // can surface mid-stream provider transitions (e.g. Grok
+                // credits exhausted → Qwen2.5 via OpenRouter) as a
+                // `.fallback` SSE event the client renders as a banner.
+                let fallbackSink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
+                    continuation.yield(.fallback(notice.wireDTO()))
+                }
+
                 do {
-                    for try await chunk in chunks {
-                        if Task.isCancelled { break }
-                        if !chunk.delta.isEmpty {
-                            assistantBuffer.append(chunk.delta)
-                            continuation.yield(.token(chunk.delta))
+                    try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                        for try await chunk in chunks {
+                            if Task.isCancelled { break }
+                            if !chunk.delta.isEmpty {
+                                assistantBuffer.append(chunk.delta)
+                                continuation.yield(.token(chunk.delta))
+                            }
                         }
                     }
                 } catch {
