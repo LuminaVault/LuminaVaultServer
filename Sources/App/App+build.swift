@@ -944,6 +944,23 @@ func buildRouter(
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
 
+    // HER-37 Slice B — multi-turn chat persistence. Reuses the same
+    // streaming service + retrieval pipeline as /v1/query/stream. BYO
+    // Hermes middleware is in scope because each turn hits the gateway.
+    let conversationController = ConversationController(
+        fluent: services.fluent,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: DeterministicEmbeddingService(),
+        streamService: queryStreamService,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.conversations"),
+    )
+    let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
+    let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
+    let conversationsGroup = conversationsWithByo
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+    conversationController.addRoutes(to: conversationsGroup)
+
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
         transport: routedTransport,
@@ -1090,6 +1107,12 @@ func buildRouter(
     let insightsController = InsightsController(logger: Logger(label: "lv.insights"))
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
+
+    // HER-245 — Sessions list (chat history). Empty-list stub until
+    // persistence layer joins chat sessions to memos + workspaces.
+    let sessionsController = SessionsController(logger: Logger(label: "lv.sessions"))
+    let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
+    sessionsController.addRoutes(to: sessionsGroup)
 
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the

@@ -1167,6 +1167,93 @@ paths:
             text/event-stream:
               schema: { $ref: '#/components/schemas/QueryStreamEvent' }
 
+  # ─────────────────────────── Conversations ────────────────────────────
+
+  /v1/conversations:
+    post:
+      tags: [Conversations]
+      operationId: conversationCreate
+      summary: Create a new chat conversation (HER-37).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationCreateRequest' }
+      responses:
+        '200':
+          description: Created conversation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationDTO' }
+    get:
+      tags: [Conversations]
+      operationId: conversationList
+      summary: List the caller's conversations, newest first (HER-37).
+      responses:
+        '200':
+          description: Conversation list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationListResponse' }
+
+  /v1/conversations/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Conversations]
+      operationId: conversationGet
+      summary: Conversation detail with full message transcript (HER-37).
+      responses:
+        '200':
+          description: Conversation + ordered messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationDetailResponse' }
+        '404':
+          description: Conversation not found.
+    delete:
+      tags: [Conversations]
+      operationId: conversationDelete
+      summary: Delete a conversation and its messages (HER-37).
+      responses:
+        '204':
+          description: Conversation deleted.
+        '404':
+          description: Conversation not found.
+
+  /v1/conversations/{id}/messages/stream:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: conversationStreamReply
+      summary: Stream an assistant turn over SSE (HER-37).
+      description: |
+        Persists the user's message immediately, then streams the
+        assistant reply as `QueryStreamEvent`s (`source` → `token`s →
+        `follow_ups` → `done`). The assistant turn is persisted exactly
+        once on `done`; mid-flight failures emit `error` and abort
+        persistence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageStreamRequest' }
+      responses:
+        '200':
+          description: Server-Sent Events stream of `QueryStreamEvent`.
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/QueryStreamEvent' }
+        '404':
+          description: Conversation not found.
+
   # ──────────────────────────────── Memos ───────────────────────────────
 
   /v1/memos:
