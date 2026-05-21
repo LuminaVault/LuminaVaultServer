@@ -713,18 +713,20 @@ paths:
     get:
       tags: [Dashboard]
       operationId: insightsList
-      summary: List proactive insights (HER-244 / HER-248).
+      summary: List proactive insights (HER-37 Slice D).
       description: |
-        Per-tenant list of "what Lumina noticed" findings. Initial
-        implementation returns an empty list — real insight generation
-        ships under HER-248 backed by pattern/contradiction skills.
+        Per-tenant list of "what Lumina noticed" findings, newest
+        first. Dismissed rows are filtered out — soft-dismiss via
+        `POST /v1/insights/{id}/dismiss`. Populated by the
+        SynthesisWorker; empty until the worker fires for the first
+        time.
       parameters:
         - in: query
           name: section
           required: false
           schema:
             type: string
-            enum: [this_week, patterns, contradictions, connections]
+            enum: [this_week, this_month, patterns, contradictions, connections]
         - in: query
           name: limit
           required: false
@@ -735,6 +737,43 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InsightListResponse' }
+
+  /v1/insights/synthesis/latest:
+    get:
+      tags: [Dashboard]
+      operationId: insightsLatestSynthesis
+      summary: Newest weekly/monthly synthesis row (HER-37 Slice D).
+      description: |
+        Returns the most recent `thisWeek` or `thisMonth` row for the
+        tenant, regardless of dismissal. iOS hides the synthesis card
+        when this returns 404.
+      responses:
+        '200':
+          description: Latest synthesis insight.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InsightDTO' }
+        '404':
+          description: No synthesis available yet.
+
+  /v1/insights/{id}/dismiss:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Dashboard]
+      operationId: insightsDismiss
+      summary: Soft-dismiss an insight (HER-37 Slice D).
+      description: |
+        Sets `dismissed_at`. The row stays in the table for audit but
+        stops appearing in the `list` endpoint.
+      responses:
+        '204':
+          description: Insight dismissed.
+        '404':
+          description: Insight not found.
 
   # ─────────────────────── Settings — BYO Hermes ────────────────────────
 
