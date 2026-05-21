@@ -21,6 +21,12 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     let baseURL: URL
     let session: URLSession
     let logger: Logger
+    /// HER-252 — optional per-user credential resolver. When present, the
+    /// adapter consults the store via `LLMRoutingContext.currentUser` on
+    /// every chat call; if the user has a stored credential we use it
+    /// (and the user's base URL override, if any), otherwise we fall
+    /// back to the construction-time deployment defaults.
+    let userCredentials: UserCredentialStore?
 
     init(
         kind: ProviderKind,
@@ -28,12 +34,14 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         baseURL: URL,
         session: URLSession = .shared,
         logger: Logger,
+        userCredentials: UserCredentialStore? = nil,
     ) {
         self.kind = kind
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.session = session
         self.logger = logger
+        self.userCredentials = userCredentials
     }
 
     func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
@@ -41,11 +49,26 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     }
 
     func chatCompletionsWithMetadata(payload: Data, profileUsername _: String) async throws -> HermesChatTransportMetadata {
-        let url = Self.endpoint(for: kind, baseURL: baseURL)
+        // HER-252 — per-user credential lookup. Empty deployment env key
+        // + present user key is the canonical BYO mode. Per-user base
+        // URL override (e.g. Azure OpenAI proxy) takes precedence over
+        // the construction-time default.
+        let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+        let url = Self.endpoint(for: kind, baseURL: resolvedBaseURL)
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !resolvedKey.isEmpty {
+            req.setValue("Bearer \(resolvedKey)", forHTTPHeaderField: "Authorization")
+        }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // HER-252 — OpenRouter requires an HTTP-Referer / X-Title to
+        // route requests on shared keys. We set our LuminaVault identity
+        // so usage is attributable in OpenRouter's dashboard even when
+        // the user is on a personal key.
+        if kind == .openRouter {
+            req.setValue("https://luminavault.app", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("LuminaVault", forHTTPHeaderField: "X-Title")
+        }
         req.httpBody = payload
 
         let data: Data
@@ -73,6 +96,34 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
         logger.error("\(kind.rawValue) upstream \(error.reasonCode) status=\(status)")
         throw error
+    }
+
+    // MARK: - Credential resolution
+
+    /// Resolve the credential + base URL for the current request. Pulls
+    /// the user from `LLMRoutingContext.currentUser`, then checks
+    /// `UserCredentialStore` for a per-tenant override; falls back to
+    /// the construction-time deployment defaults. Errors during lookup
+    /// are logged but never thrown — a stale user credential row must
+    /// not break the chat path.
+    private func resolveCredentials() async -> (key: String, baseURL: URL) {
+        guard let userCredentials,
+              let user = LLMRoutingContext.currentUser,
+              let tenantID = try? user.requireID()
+        else {
+            return (apiKey, baseURL)
+        }
+        do {
+            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID) else {
+                return (apiKey, baseURL)
+            }
+            let key = creds.apiKey ?? apiKey
+            let url = creds.baseURL ?? baseURL
+            return (key, url)
+        } catch {
+            logger.error("user credential lookup failed for \(kind.rawValue): \(error)")
+            return (apiKey, baseURL)
+        }
     }
 
     // MARK: - Health check
