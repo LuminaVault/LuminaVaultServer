@@ -21,6 +21,8 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "last_run_at") var lastRunAt: Date?
     @OptionalField(key: "last_status") var lastStatus: String?
     @OptionalField(key: "last_error") var lastError: String?
+    /// HER-247 — per-skill APNS category override ("digest" / "nudge" / "chat" / nil).
+    @OptionalField(key: "apns_category") var apnsCategory: String?
 
     init() {}
 
@@ -33,6 +35,7 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         lastRunAt: Date? = nil,
         lastStatus: String? = nil,
         lastError: String? = nil,
+        apnsCategory: String? = nil,
     ) {
         id = tenantID
         self.tenantID = tenantID
@@ -43,5 +46,6 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         self.lastRunAt = lastRunAt
         self.lastStatus = lastStatus
         self.lastError = lastError
+        self.apnsCategory = apnsCategory
     }
 }

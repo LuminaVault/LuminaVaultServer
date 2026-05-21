@@ -43,6 +43,8 @@ tags:
   - name: Capture
     description: URL capture with async enrichment (HER-149).
   - name: Query
+  - name: Conversations
+    description: Multi-turn "thinking workspace" chat persistence (HER-37).
   - name: Memos
   - name: Vault
   - name: KB
@@ -55,6 +57,7 @@ tags:
   - name: Health
     description: Health-data ingest (HER-146) + read (HER-202).
   - name: Skills
+    description: Skills hub (HER-247), Today outputs (HER-177), Automations (HER-178).
   - name: WebSocket
   - name: Admin
   - name: Dashboard
@@ -531,6 +534,115 @@ paths:
           $ref: '#/components/responses/RateLimited'
 
   # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
+
+  # ─────────────────── Skills (HER-247 / HER-177 / HER-178) ────────────
+
+  /v1/skills:
+    get:
+      tags: [Skills]
+      operationId: skillsList
+      summary: List skills + per-tenant state for the Skills hub (HER-247).
+      responses:
+        '200':
+          description: Skill list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillListResponse' }
+
+  /v1/skills/{name}:
+    patch:
+      tags: [Skills]
+      operationId: skillPatch
+      summary: Toggle enable/disable, set schedule override, or pick APNS category (HER-247 / HER-178).
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillPatchRequest' }
+      responses:
+        '200':
+          description: Updated skill snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillDTO' }
+        '400':
+          description: Invalid cron expression or category.
+        '404':
+          description: Skill not found.
+
+  /v1/skills/{name}/runs:
+    get:
+      tags: [Skills]
+      operationId: skillRuns
+      summary: Paginated run history + 14-day sparkline for the Skills hub detail view (HER-247).
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Run history + sparkline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillRunsResponse' }
+
+  /v1/skills/outputs:
+    get:
+      tags: [Skills]
+      operationId: skillOutputs
+      summary: Today-tab skill outputs feed (HER-177). Empty until skill dispatch lands (HER-169).
+      parameters:
+        - in: query
+          name: since
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Outputs feed + streak + active-run flag.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillOutputListResponse' }
+
+  /v1/me/apns-categories:
+    get:
+      tags: [Me]
+      operationId: apnsPrefsGet
+      summary: Per-tenant APNS category opt-out (HER-179).
+      responses:
+        '200':
+          description: Current preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/APNSCategoryPrefsResponse' }
+    put:
+      tags: [Me]
+      operationId: apnsPrefsPut
+      summary: Update per-tenant APNS category opt-out (HER-179).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/APNSCategoryPrefsPutRequest' }
+      responses:
+        '200':
+          description: Updated preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/APNSCategoryPrefsResponse' }
 
   /v1/dashboard/stats:
     get:
@@ -1022,6 +1134,38 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QueryResponse' }
+
+  /v1/query/stream:
+    post:
+      tags: [Query]
+      operationId: queryStream
+      summary: Streaming natural-language semantic query (SSE).
+      description: |
+        Returns `text/event-stream` — each event is a JSON-encoded
+        `QueryStreamEvent` on a single SSE `data:` line.
+
+        Streams an answer in this order:
+
+        1. One `source` event per top-N retrieved memory hit (client may
+           render source chips immediately).
+        2. Many `token` events as the LLM produces output deltas.
+        3. Optional `summary` event with the final concatenated answer.
+        4. One `follow_ups` event with server-generated follow-up chips.
+        5. One `done` event to terminate the stream.
+
+        On stream-level failures an `error` event is emitted in lieu of
+        `done`. Clients should abort the read loop on either terminator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QueryRequest' }
+      responses:
+        '200':
+          description: Server-Sent Events stream of `QueryStreamEvent`.
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/QueryStreamEvent' }
 
   # ──────────────────────────────── Memos ───────────────────────────────
 
@@ -1896,6 +2040,137 @@ components:
 
     # ── Dashboard (HER-244) ──
 
+    # ── Skills (HER-247 / HER-177 / HER-178 / HER-179) ──
+
+    SkillSource:
+      type: string
+      enum: [builtin, vault]
+
+    SkillRunStatus:
+      type: string
+      enum: [pending, running, success, error]
+
+    SkillCapability:
+      type: string
+      enum: [low, medium, high]
+
+    APNSCategory:
+      type: string
+      enum: [chat, nudge, digest]
+
+    SkillDTO:
+      type: object
+      required: [id, source, name, title, descriptionText, capability, enabled, dailyRunCount, dailyRunCap, bodyExcerpt]
+      properties:
+        id: { type: string }
+        source: { $ref: '#/components/schemas/SkillSource' }
+        name: { type: string }
+        title: { type: string }
+        descriptionText: { type: string }
+        capability: { $ref: '#/components/schemas/SkillCapability' }
+        schedule: { type: string }
+        scheduleOverride: { type: string }
+        enabled: { type: boolean }
+        lastRunAt: { type: string, format: date-time }
+        lastStatus: { $ref: '#/components/schemas/SkillRunStatus' }
+        lastError: { type: string }
+        dailyRunCount: { type: integer }
+        dailyRunCap: { type: integer }
+        apnsCategory: { $ref: '#/components/schemas/APNSCategory' }
+        bodyExcerpt: { type: string }
+
+    SkillListResponse:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/SkillDTO' }
+
+    SkillRunDTO:
+      type: object
+      required: [id, startedAt, status]
+      properties:
+        id: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/SkillRunStatus' }
+        error: { type: string }
+        modelUsed: { type: string }
+        mtokIn: { type: integer }
+        mtokOut: { type: integer }
+
+    SkillSparklinePoint:
+      type: object
+      required: [day, count]
+      properties:
+        day: { type: string, format: date-time }
+        count: { type: integer }
+
+    SkillRunsResponse:
+      type: object
+      required: [runs, sparkline]
+      properties:
+        runs:
+          type: array
+          items: { $ref: '#/components/schemas/SkillRunDTO' }
+        sparkline:
+          type: array
+          items: { $ref: '#/components/schemas/SkillSparklinePoint' }
+        nextCursor: { type: string }
+
+    SkillPatchRequest:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        scheduleOverride: { type: string }
+        apnsCategory: { $ref: '#/components/schemas/APNSCategory' }
+
+    SkillOutputKind:
+      type: string
+      enum: [daily_brief, weekly_memo, correlation_insight, capture_enriched, pattern_finding, contradiction_finding, generic]
+
+    SkillOutputDTO:
+      type: object
+      required: [id, skillName, source, kind, headline, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        skillName: { type: string }
+        source: { $ref: '#/components/schemas/SkillSource' }
+        kind: { $ref: '#/components/schemas/SkillOutputKind' }
+        headline: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+        memoryID: { type: string, format: uuid }
+        memoID: { type: string, format: uuid }
+        vaultFilePath: { type: string }
+
+    SkillOutputListResponse:
+      type: object
+      required: [outputs, streakDays, activeRun]
+      properties:
+        outputs:
+          type: array
+          items: { $ref: '#/components/schemas/SkillOutputDTO' }
+        streakDays: { type: integer }
+        activeRun: { type: boolean }
+        nextCursor: { type: string }
+
+    APNSCategoryPrefsResponse:
+      type: object
+      required: [chatEnabled, nudgeEnabled, digestEnabled]
+      properties:
+        chatEnabled: { type: boolean }
+        nudgeEnabled: { type: boolean }
+        digestEnabled: { type: boolean }
+
+    APNSCategoryPrefsPutRequest:
+      type: object
+      properties:
+        chatEnabled: { type: boolean }
+        nudgeEnabled: { type: boolean }
+        digestEnabled: { type: boolean }
+
     DashboardStatsResponse:
       type: object
       required: [memoriesToday, memoriesTotal]
@@ -1945,12 +2220,16 @@ components:
 
     InsightSection:
       type: string
-      enum: [this_week, patterns, contradictions, connections]
+      enum: [this_week, this_month, patterns, contradictions, connections]
 
     InsightDTO:
       type: object
       required: [id, headline, summary, section, createdAt]
-      description: A proactive finding surfaced by Hermes (HER-244 / HER-248).
+      description: |
+        A proactive finding surfaced by Hermes (HER-244 / HER-248 / HER-37).
+        For `this_week` / `this_month` synthesis rows the `periodStart` /
+        `periodEnd` fields demarcate the analytical window. Pattern rows
+        leave both nil.
       properties:
         id: { type: string, format: uuid }
         headline: { type: string }
@@ -1961,6 +2240,8 @@ components:
           type: array
           items: { type: string, format: uuid }
         dismissed: { type: boolean, default: false }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
 
     InsightListResponse:
       type: object
@@ -2322,21 +2603,120 @@ components:
         query: { type: string }
         limit: { type: integer, default: 10 }
 
+    QueryHitDTO:
+      type: object
+      required: [id, content, distance]
+      description: A single retrieved memory snippet returned by `/v1/query`.
+      properties:
+        id: { type: string, format: uuid }
+        content: { type: string }
+        distance: { type: number, format: float }
+        createdAt: { type: string, format: date-time }
+
     QueryResponse:
       type: object
-      required: [answer, citations]
+      required: [summary, hits]
+      description: |
+        Non-streaming response for `POST /v1/query`. The streaming variant
+        emits `QueryStreamEvent` over SSE — see `/v1/query/stream`.
+        `followUps` is server-generated and optional for backward
+        compatibility with pre-HER-37 clients.
       properties:
-        answer: { type: string }
-        citations:
+        summary: { type: string }
+        hits:
           type: array
-          items: { $ref: '#/components/schemas/QueryCitation' }
+          items: { $ref: '#/components/schemas/QueryHitDTO' }
+        followUps:
+          type: array
+          items: { type: string }
 
-    QueryCitation:
+    QueryStreamEvent:
+      type: object
+      required: [type]
+      description: |
+        Discriminated-union event emitted on `POST /v1/query/stream` and
+        `POST /v1/conversations/{id}/messages/stream` Server-Sent-Event
+        streams. Each SSE `data:` line carries one JSON object of this
+        shape. The `payload` shape depends on `type`:
+
+        - `source` — `QueryHitDTO`
+        - `token` — `string` (incremental LLM delta, concatenate in order)
+        - `summary` — `string` (final summary, sent after all tokens)
+        - `follow_ups` — `array<string>` (server-generated follow-up chips)
+        - `done` — no payload (stream terminator)
+        - `error` — `string` (stream-level error; client surfaces and aborts)
+      properties:
+        type:
+          type: string
+          enum: [source, token, summary, follow_ups, done, error]
+        payload:
+          description: Case-specific payload; absent for `done`.
+
+    # ── Conversations (HER-37 multi-turn chat) ──
+
+    ConversationMessageRole:
+      type: string
+      enum: [user, assistant, system]
+
+    ConversationDTO:
+      type: object
+      required: [id, title, createdAt, updatedAt]
+      description: |
+        A persisted multi-turn chat thread. Backs the "thinking workspace"
+        continuity surface on the Think tab.
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        spaceId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ConversationMessageDTO:
+      type: object
+      required: [id, conversationId, role, content, createdAt]
+      description: |
+        A single persisted turn within a Conversation. Durable record;
+        distinct from the transient `ChatMessage` used on the Hermes
+        upstream wire.
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/ConversationMessageRole' }
+        content: { type: string }
+        sourceMemoryIDs:
+          type: array
+          items: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    ConversationCreateRequest:
       type: object
       properties:
-        memoryId: { type: string, format: uuid }
-        vaultFileId: { type: string, format: uuid }
-        excerpt: { type: string }
+        title: { type: string }
+        spaceId: { type: string, format: uuid }
+
+    ConversationListResponse:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items: { $ref: '#/components/schemas/ConversationDTO' }
+        nextCursor: { type: string }
+
+    ConversationDetailResponse:
+      type: object
+      required: [conversation, messages]
+      properties:
+        conversation: { $ref: '#/components/schemas/ConversationDTO' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ConversationMessageDTO' }
+
+    MessageStreamRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
 
     # ── Memos ──
 

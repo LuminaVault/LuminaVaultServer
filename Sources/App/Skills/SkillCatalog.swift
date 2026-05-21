@@ -30,9 +30,43 @@ actor SkillCatalog {
 
     /// Returns the merged manifest list for `tenantID`. Vault entries
     /// shadow built-in entries with the same `name` (HER-168 acceptance).
+    ///
+    /// HER-247: minimal implementation scans the bundled
+    /// `Resources/Skills/<name>/SKILL.md` files. Vault scanning is
+    /// deferred to HER-168.
     func manifests(for _: UUID) async throws -> [SkillManifest] {
-        // HER-168: scan builtin bundle + vault dir, merge by name with vault precedence.
-        []
+        guard let resourceRoot = Bundle.module.resourceURL?
+            .appendingPathComponent("Skills", isDirectory: true)
+        else {
+            return []
+        }
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(
+            at: resourceRoot,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else {
+            return []
+        }
+        var manifests: [SkillManifest] = []
+        manifests.reserveCapacity(dirs.count)
+        for dir in dirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            let skillFile = dir.appendingPathComponent("SKILL.md")
+            guard fm.fileExists(atPath: skillFile.path) else { continue }
+            do {
+                let contents = try String(contentsOf: skillFile, encoding: .utf8)
+                let manifest = try parser.parse(source: .builtin, contents: contents)
+                manifests.append(manifest)
+            } catch {
+                logger.warning("skill_catalog parse failure", metadata: [
+                    "skill": .string(dir.lastPathComponent),
+                    "error": .string(String(describing: error)),
+                ])
+                continue
+            }
+        }
+        return manifests
     }
 
     /// Convenience lookup for the route handler / runner. Returns `nil` if

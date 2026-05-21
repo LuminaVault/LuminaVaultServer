@@ -918,7 +918,25 @@ func buildRouter(
     captureController.addRoutes(to: captureGroup)
 
     // Query (natural-language semantic search) — protected.
-    let queryController = QueryController(service: memoryService, achievements: achievementsService)
+    // HER-37 — streaming counterpart at POST /v1/query/stream hits the
+    // central Hermes gateway directly (routed/Gemini streaming is out of
+    // scope). Bypasses the routing layer; falls back to non-streaming
+    // `/v1/query` via the existing agent loop.
+    let queryStreamService = DefaultHermesLLMStreamService(
+        baseURL: hermesURL,
+        session: URLSession(configuration: .default),
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.query.stream"),
+        apiKey: services.hermesAPIKey,
+    )
+    let queryController = QueryController(
+        service: memoryService,
+        achievements: achievementsService,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: DeterministicEmbeddingService(),
+        streamService: queryStreamService,
+        defaultModel: services.hermesDefaultModel,
+    )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
     let queryWithByo = byoHermesMiddleware.map { queryBase.add(middleware: $0) } ?? queryBase
@@ -1284,9 +1302,20 @@ func buildRouter(
     SkillsController(
         runner: skillRunner,
         catalog: skillCatalog,
+        fluent: services.fluent,
         enforcementEnabled: services.billingEnforcementEnabled,
         logger: skillsLogger,
     ).addRoutes(to: skillsGroup)
+
+    // HER-177 — Today-tab skill outputs feed.
+    SkillOutputsController(logger: skillsLogger).addRoutes(to: skillsGroup)
+
+    // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
+    let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
+    ApnsCategoryPrefsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.me.apns-prefs"),
+    ).addRoutes(to: apnsPrefsGroup)
 
     let websocketGroup = router.group("/v1/ws").add(middleware: jwtAuthenticator)
     websocketGroup.ws("") { _, context in
