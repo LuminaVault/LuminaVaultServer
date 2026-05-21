@@ -48,4 +48,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M41_HermesTenantContainers())
     await fluent.migrations.add(M42_AddSkillsStateApnsCategory())
     await fluent.migrations.add(M43_CreateApnsCategoryPrefs())
+    await fluent.migrations.add(M44_CreateConversation())
+    await fluent.migrations.add(M45_CreateConversationMessage())
 }

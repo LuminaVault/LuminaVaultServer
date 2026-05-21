@@ -924,10 +924,18 @@ func buildRouter(
     // `/v1/query` via the existing agent loop.
     let queryStreamService = DefaultHermesLLMStreamService(
         baseURL: hermesURL,
-        session: URLSession(configuration: .default),
+        session: URLSession.shared,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,
+    )
+    // HER-37 Slice C — single FollowUpGenerator instance shared by the
+    // Query + Conversation controllers. Reuses the routed transport so
+    // Gemini/Grok/BYO routing applies to the follow-up call too.
+    let followUpGenerator = FollowUpGenerator(
+        transport: routedTransport,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.followups"),
     )
     let queryController = QueryController(
         service: memoryService,
@@ -935,6 +943,7 @@ func buildRouter(
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         streamService: queryStreamService,
+        followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
@@ -943,6 +952,24 @@ func buildRouter(
     let queryGroup = queryWithByo
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
+
+    // HER-37 Slice B — multi-turn chat persistence. Reuses the same
+    // streaming service + retrieval pipeline as /v1/query/stream. BYO
+    // Hermes middleware is in scope because each turn hits the gateway.
+    let conversationController = ConversationController(
+        fluent: services.fluent,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: DeterministicEmbeddingService(),
+        streamService: queryStreamService,
+        followUpGenerator: followUpGenerator,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.conversations"),
+    )
+    let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
+    let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
+    let conversationsGroup = conversationsWithByo
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+    conversationController.addRoutes(to: conversationsGroup)
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
