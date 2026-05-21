@@ -9,7 +9,7 @@ import SQLKit
 /// including the HER-37 additions: `section` adds `this_month`, and the
 /// `period_start` / `period_end` columns demarcate the analytical
 /// window for synthesis rows (NULL for pattern rows).
-struct M46_CreateInsight: AsyncMigration {
+struct M49_CreateInsight: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw("""

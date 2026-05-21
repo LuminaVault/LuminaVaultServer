@@ -21,6 +21,12 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
     case deepseek
     case kimi
     case ollama
+    /// HER-252 — direct xAI API-key path (`https://api.x.ai/v1/...`),
+    /// distinct from the OAuth container path that routes through
+    /// `.hermesGateway`. Adapter is the OpenAI-compatible one with a
+    /// per-user `Authorization: Bearer <xai-key>` resolved from
+    /// `user_provider_credentials`.
+    case xai
 
     /// HER-164 — hosting / weight-origin region tag used by the privacy
     /// filter to exclude `.cn` providers when `privacy_no_cn_origin=true`.
@@ -35,4 +41,15 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
         default: .us
         }
     }
+}
+
+extension ProviderKind {
+    /// HER-252 — providers that participate in per-user credential
+    /// management + user-facing fallback chain. Anything outside this set
+    /// is an internal routing target (e.g. `.together` as a deployment
+    /// default for free-tier users) and not exposed in the iOS providers
+    /// pane / LLM preferences UI.
+    static let userCredentialTargets: Set<ProviderKind> = [
+        .xai, .anthropic, .openai, .openRouter, .ollama,
+    ]
 }

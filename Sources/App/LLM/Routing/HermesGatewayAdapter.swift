@@ -81,15 +81,11 @@ struct HermesGatewayAdapter: ProviderAdapter {
             }
             return HermesChatTransportMetadata(data: data, headers: headers)
         }
-        let preview = String(data: data.prefix(512), encoding: .utf8)
-        // 429 = rate-limited, retryable. 5xx = upstream broken, retryable.
-        // Everything else is permanent — our payload is bad and another
-        // provider won't fix it.
-        if status == 429 || (500 ..< 600).contains(status) {
-            logger.error("hermes upstream transient \(status): \(preview ?? "<binary>")")
-            throw ProviderError.transient(provider: kind, status: status, body: preview)
-        }
-        logger.error("hermes upstream permanent \(status): \(preview ?? "<binary>")")
-        throw ProviderError.permanent(provider: kind, status: status, body: preview)
+        // HER-252 — classifier centralizes the 4xx/5xx → ProviderError
+        // mapping so 402 + 403-with-credit-marker fall over to the next
+        // candidate instead of bubbling up as permanent.
+        let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
+        logger.error("hermes upstream \(error.reasonCode) status=\(status)")
+        throw error
     }
 }

@@ -148,13 +148,20 @@ struct QueryController {
                     continuation.yield(.source(dto))
                 }
 
-                // 2. LLM token deltas.
+                // 2. LLM token deltas. HER-252 — attach failover sink so
+                //    mid-stream provider transitions surface as a
+                //    `.fallback` SSE event the client can banner.
+                let fallbackSink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
+                    continuation.yield(.fallback(notice.wireDTO()))
+                }
                 do {
-                    for try await chunk in chunks {
-                        if Task.isCancelled { break }
-                        if !chunk.delta.isEmpty {
-                            assistantBuffer.append(chunk.delta)
-                            continuation.yield(.token(chunk.delta))
+                    try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                        for try await chunk in chunks {
+                            if Task.isCancelled { break }
+                            if !chunk.delta.isEmpty {
+                                assistantBuffer.append(chunk.delta)
+                                continuation.yield(.token(chunk.delta))
+                            }
                         }
                     }
                 } catch {

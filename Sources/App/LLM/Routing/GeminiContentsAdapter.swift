@@ -124,14 +124,11 @@ struct GeminiContentsAdapter: ProviderAdapter {
             return HermesChatTransportMetadata(data: responseData, headers: headers)
         }
 
-        // 7. Error classification
-        let preview = String(data: data.prefix(512), encoding: .utf8)
-        if status == 429 || (500 ..< 600).contains(status) {
-            logger.error("gemini upstream transient \(status): \(preview ?? "<binary>")")
-            throw ProviderError.transient(provider: kind, status: status, body: preview)
-        }
-        logger.error("gemini upstream permanent \(status): \(preview ?? "<binary>")")
-        throw ProviderError.permanent(provider: kind, status: status, body: preview)
+        // 7. Error classification — HER-252 centralized classifier so
+        // 402 + 403-with-credit-marker fall over instead of bubbling up.
+        let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
+        logger.error("gemini upstream \(error.reasonCode) status=\(status)")
+        throw error
     }
 
     // MARK: - Model Resolution
