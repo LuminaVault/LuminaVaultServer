@@ -254,6 +254,32 @@ struct APNSNotificationService {
         return deadTokenReasons.contains(reason.reason)
     }
 
+    /// HER-260 — `true` if the tenant has opted out of `category` in
+    /// `apns_category_prefs`. Absent rows default to all-enabled.
+    /// `achievement` is never gated by this table — unlock pushes
+    /// are infrequent and high-signal.
+    static func isCategorySuppressed(
+        _ category: APNSPushCategory,
+        tenantID: UUID,
+        on db: any Database,
+    ) async throws -> Bool {
+        switch category {
+        case .achievement:
+            return false
+        case .chat, .nudge, .digest:
+            break
+        }
+        guard let prefs = try await ApnsCategoryPrefs.find(tenantID, on: db) else {
+            return false
+        }
+        switch category {
+        case .chat: return !prefs.chatEnabled
+        case .nudge: return !prefs.nudgeEnabled
+        case .digest: return !prefs.digestEnabled
+        case .achievement: return false
+        }
+    }
+
     private static func makeClient(
         privateKeyPath: String,
         environment: String,
