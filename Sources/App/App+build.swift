@@ -3,6 +3,9 @@ import Configuration
 import FluentKit
 import FluentPostgresDriver
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import Hummingbird
 import HummingbirdCompression
 import HummingbirdFluent
