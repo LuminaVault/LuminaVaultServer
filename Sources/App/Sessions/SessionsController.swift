@@ -30,6 +30,7 @@ struct SessionsController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let limit = Self.parseLimit(req)
+        let workspaceID = Self.parseWorkspaceID(req)
 
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "sql unavailable")
@@ -43,26 +44,54 @@ struct SessionsController {
             let message_count: Int
             let last_preview: String?
         }
-        let rows = try await sql.raw("""
-        SELECT c.id, c.title, c.updated_at, c.space_id,
-               COALESCE(m.cnt, 0)::int AS message_count,
-               (
-                  SELECT content
-                  FROM conversation_messages
-                  WHERE conversation_id = c.id
-                  ORDER BY created_at DESC
-                  LIMIT 1
-               ) AS last_preview
-        FROM conversations c
-        LEFT JOIN (
-            SELECT conversation_id, COUNT(*) AS cnt
-            FROM conversation_messages
-            GROUP BY conversation_id
-        ) m ON m.conversation_id = c.id
-        WHERE c.tenant_id = \(bind: tenantID)
-        ORDER BY c.updated_at DESC
-        LIMIT \(bind: limit)
-        """).all(decoding: Row.self)
+
+        // HER-261 — `?workspace=<uuid>` scopes to that Space's conversations.
+        // Absent => all workspaces.
+        let rows: [Row]
+        if let workspaceID {
+            rows = try await sql.raw("""
+            SELECT c.id, c.title, c.updated_at, c.space_id,
+                   COALESCE(m.cnt, 0)::int AS message_count,
+                   (
+                      SELECT content
+                      FROM conversation_messages
+                      WHERE conversation_id = c.id
+                      ORDER BY created_at DESC
+                      LIMIT 1
+                   ) AS last_preview
+            FROM conversations c
+            LEFT JOIN (
+                SELECT conversation_id, COUNT(*) AS cnt
+                FROM conversation_messages
+                GROUP BY conversation_id
+            ) m ON m.conversation_id = c.id
+            WHERE c.tenant_id = \(bind: tenantID)
+              AND c.space_id = \(bind: workspaceID)
+            ORDER BY c.updated_at DESC
+            LIMIT \(bind: limit)
+            """).all(decoding: Row.self)
+        } else {
+            rows = try await sql.raw("""
+            SELECT c.id, c.title, c.updated_at, c.space_id,
+                   COALESCE(m.cnt, 0)::int AS message_count,
+                   (
+                      SELECT content
+                      FROM conversation_messages
+                      WHERE conversation_id = c.id
+                      ORDER BY created_at DESC
+                      LIMIT 1
+                   ) AS last_preview
+            FROM conversations c
+            LEFT JOIN (
+                SELECT conversation_id, COUNT(*) AS cnt
+                FROM conversation_messages
+                GROUP BY conversation_id
+            ) m ON m.conversation_id = c.id
+            WHERE c.tenant_id = \(bind: tenantID)
+            ORDER BY c.updated_at DESC
+            LIMIT \(bind: limit)
+            """).all(decoding: Row.self)
+        }
 
         let sessions = rows.map { row in
             SessionDTO(
@@ -84,5 +113,10 @@ struct SessionsController {
             return defaultLimit
         }
         return max(1, min(raw, maxLimit))
+    }
+
+    private static func parseWorkspaceID(_ req: Request) -> UUID? {
+        guard let raw = req.uri.queryParameters["workspace"] else { return nil }
+        return UUID(uuidString: String(raw))
     }
 }

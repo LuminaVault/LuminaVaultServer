@@ -654,6 +654,11 @@ paths:
           name: limit
           required: false
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: workspace
+          required: false
+          description: HER-261 — scope to a single Workspace (Space) ID.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Session list.
