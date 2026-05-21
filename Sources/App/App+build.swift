@@ -1122,9 +1122,31 @@ func buildRouter(
     let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
     tasksController.addRoutes(to: tasksGroup)
 
-    let insightsController = InsightsController(logger: Logger(label: "lv.insights"))
+    // HER-37 Slice D — Postgres-backed insights surface (was a stub
+    // under HER-244). The SynthesisWorker below populates `thisWeek`
+    // synthesis + `patterns` rows on its hourly tick.
+    let insightsController = InsightsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.insights"),
+    )
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
+
+    // HER-37 Slice D — synthesis worker. Off by default so local + CI
+    // builds don't fire real Hermes traffic. Enable in production via
+    // `SYNTHESIS_WORKER_ENABLED=true` env var.
+    if reader.string(forKey: "synthesis.workerEnabled", default: "false").lowercased() == "true" {
+        let synthesisWorker = SynthesisWorker(
+            fluent: services.fluent,
+            memories: MemoryRepository(fluent: services.fluent),
+            transport: routedTransport,
+            defaultModel: services.hermesDefaultModel,
+            logger: Logger(label: "lv.synthesis"),
+        )
+        managedServices.append(synthesisWorker)
+    } else {
+        routingLogger.info("synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)")
+    }
 
     // HER-245 / HER-259 — Sessions list. Joins conversations + messages.
     let sessionsController = SessionsController(
