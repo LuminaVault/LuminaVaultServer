@@ -50,4 +50,7 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M43_CreateApnsCategoryPrefs())
     await fluent.migrations.add(M44_CreateConversation())
     await fluent.migrations.add(M45_CreateConversationMessage())
+    await fluent.migrations.add(M46_CreateUserProviderCredentials())
+    await fluent.migrations.add(M47_CreateUserLLMPreferences())
+    await fluent.migrations.add(M48_CreateProviderFailoverEvents())
 }
