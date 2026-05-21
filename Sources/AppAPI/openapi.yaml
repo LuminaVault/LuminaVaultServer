@@ -793,6 +793,129 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  # ─────────── Me — External LLM provider credentials (HER-252) ──────────
+
+  /v1/me/providers:
+    get:
+      tags: [Me]
+      operationId: providersList
+      summary: List per-user external LLM provider credentials (HER-252).
+      description: |
+        Returns one row per supported provider. Plaintext credentials are
+        never echoed — only `hasCredential` and metadata. Providers with
+        no row are returned with `hasCredential: false`.
+      responses:
+        '200':
+          description: List of provider credential records.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderCredentialsListResponse' }
+
+  /v1/me/providers/{provider}:
+    parameters:
+      - in: path
+        name: provider
+        required: true
+        schema: { $ref: '#/components/schemas/ProviderID' }
+    put:
+      tags: [Me]
+      operationId: providerCredentialPut
+      summary: Upsert credentials for a provider.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderCredentialPutRequest' }
+      responses:
+        '200':
+          description: Updated record (verifiedAt + lastFailure* reset).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderCredentialDTO' }
+        '400':
+          description: Validation error (api_key_required / base_url_required / invalid_base_url).
+    delete:
+      tags: [Me]
+      operationId: providerCredentialDelete
+      summary: Drop credentials for a provider.
+      responses:
+        '204':
+          description: Row deleted (idempotent — 204 even if absent).
+
+  /v1/me/providers/{provider}/test:
+    parameters:
+      - in: path
+        name: provider
+        required: true
+        schema: { $ref: '#/components/schemas/ProviderID' }
+    post:
+      tags: [Me]
+      operationId: providerCredentialTest
+      summary: Probe the credential with a 1-token chat request.
+      description: |
+        Builds a one-off adapter using the stored credential and sends a
+        `max_tokens: 1` request. On 2xx the row's `verifiedAt` is stamped
+        and `lastFailure*` cleared. On any other outcome the row is
+        marked failed and a stable code is returned.
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderTestResponse' }
+        '400':
+          description: |
+            Stable code in `message`:
+            `no_credential` (no stored row) /
+            `unsupported_provider` (unknown path param).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '502':
+          description: |
+            Probe failed. Stable code in `message`:
+            `credit_exhausted` / `rate_limit` / `upstream_error` /
+            `upstream_rejected` / `network` / `tls_error` / `timeout`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  # ─────────────── Me — LLM routing preferences (HER-252) ────────────────
+
+  /v1/me/preferences/llm:
+    get:
+      tags: [Me]
+      operationId: llmPreferencesGet
+      summary: Get per-user primary model + fallback chain (HER-252).
+      description: |
+        Always returns 200. If no row exists, returns a deployment-default
+        primary so clients have something sensible to render.
+      responses:
+        '200':
+          description: Preference snapshot (real or default).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LLMPreferencesGetResponse' }
+    put:
+      tags: [Me]
+      operationId: llmPreferencesPut
+      summary: Upsert the primary model + ordered fallback chain.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LLMPreferencesPutRequest' }
+      responses:
+        '200':
+          description: Updated snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LLMPreferencesGetResponse' }
+        '400':
+          description: |
+            Validation error in `message`:
+            `primary_model_required` / `fallback_model_required`.
+
   # ───────────────────────────── Onboarding ─────────────────────────────
 
   /v1/onboarding:
@@ -2404,6 +2527,109 @@ components:
       required: [verifiedAt]
       properties:
         verifiedAt: { type: string, format: date-time }
+
+    # ── Provider credentials + LLM preferences (HER-252) ──
+
+    ProviderID:
+      type: string
+      enum: [xai, anthropic, openai, ollama, openRouter]
+      description: |
+        Wire identifier for an external LLM provider the user can attach
+        credentials to. `hermesGateway` is intentionally excluded — it's
+        deployment infrastructure, not user-credential surface.
+
+    ProviderCredentialKind:
+      type: string
+      enum: [apiKey, oauth, hostURL]
+
+    ProviderCredentialDTO:
+      type: object
+      required: [provider, kind, hasCredential]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        kind: { $ref: '#/components/schemas/ProviderCredentialKind' }
+        hasCredential: { type: boolean }
+        baseUrl: { type: string, format: uri }
+        label: { type: string }
+        verifiedAt: { type: string, format: date-time }
+        lastFailureAt: { type: string, format: date-time }
+        lastFailureCode:
+          type: string
+          description: |
+            Stable code from the last failed /test or runtime failover:
+            `credit_exhausted` / `rate_limit` / `upstream_error` /
+            `upstream_rejected` / `network` / `tls_error` / `timeout`.
+
+    ProviderCredentialsListResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderCredentialDTO' }
+
+    ProviderCredentialPutRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { $ref: '#/components/schemas/ProviderCredentialKind' }
+        apiKey: { type: string }
+        baseUrl: { type: string, format: uri }
+        label: { type: string }
+
+    ProviderTestResponse:
+      type: object
+      required: [verifiedAt]
+      properties:
+        verifiedAt: { type: string, format: date-time }
+        model: { type: string }
+
+    ModelRouteDTO:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+
+    LLMPreferencesGetResponse:
+      type: object
+      required: [primaryProvider, primaryModel, fallbackChain]
+      properties:
+        primaryProvider: { $ref: '#/components/schemas/ProviderID' }
+        primaryModel: { type: string }
+        fallbackChain:
+          type: array
+          items: { $ref: '#/components/schemas/ModelRouteDTO' }
+
+    LLMPreferencesPutRequest:
+      type: object
+      required: [primaryProvider, primaryModel, fallbackChain]
+      properties:
+        primaryProvider: { $ref: '#/components/schemas/ProviderID' }
+        primaryModel: { type: string }
+        fallbackChain:
+          type: array
+          items: { $ref: '#/components/schemas/ModelRouteDTO' }
+
+    ProviderFallbackNoticeDTO:
+      type: object
+      required: [originalProvider, originalModel, fallbackProvider, fallbackModel, reasonCode, userMessage]
+      description: |
+        Payload of the `fallback` SSE event emitted by streaming chat /
+        query endpoints when RoutedLLMTransport advances candidates on a
+        recoverable failure. Clients render `userMessage` verbatim as a
+        banner.
+      properties:
+        originalProvider: { $ref: '#/components/schemas/ProviderID' }
+        originalModel: { type: string }
+        fallbackProvider: { $ref: '#/components/schemas/ProviderID' }
+        fallbackModel: { type: string }
+        reasonCode:
+          type: string
+          description: |
+            `credit_exhausted` / `rate_limit` / `upstream_error` /
+            `network` / `upstream_rejected`.
+        userMessage: { type: string }
 
     # ── Onboarding ──
 
