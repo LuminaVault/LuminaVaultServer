@@ -209,7 +209,7 @@ actor SynthesisWorker: Service {
 
     // MARK: - Window math
 
-    struct Period: Sendable, Equatable {
+    struct Period: Equatable {
         let start: Date
         let end: Date
     }
@@ -331,5 +331,6 @@ private struct PatternsBody: Decodable {
         let headline: String
         let summary: String
     }
+
     let patterns: [Pattern]
 }
