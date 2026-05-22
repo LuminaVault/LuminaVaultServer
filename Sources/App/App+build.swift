@@ -476,6 +476,9 @@ func buildRouter(
     // HER-240c — Grok runtime proxy. Built alongside the xai bits so it
     // shares the same container manager instance.
     var grokController: GrokController?
+    // HER-241 — per-user Hermes messaging gateway configurator. Gated on
+    // the same SecretBox as BYO Hermes; gateway config is sealed at rest.
+    var hermesGatewaysController: HermesGatewaysController?
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
@@ -550,6 +553,17 @@ func buildRouter(
                     logger: Logger(label: "lv.grok-proxy"),
                 ),
                 logger: Logger(label: "lv.grok"),
+            )
+            // HER-241 — Hermes messaging gateway controller. Probes the
+            // user's Hermes `/v1/health` for reachability on /test; cannot
+            // verify per-gateway operational status (Hermes exposes no
+            // admin HTTP API yet).
+            let gatewaysLogger = Logger(label: "lv.hermes-gateways")
+            hermesGatewaysController = HermesGatewaysController(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                gatewayClient: HermesGatewayClient(logger: gatewaysLogger),
+                logger: gatewaysLogger,
             )
         } catch {
             fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
@@ -1378,6 +1392,21 @@ func buildRouter(
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         providersController.addRoutes(to: providersGroup)
+    }
+
+    // HER-241 — /v1/me/hermes-gateways (list / get / put / delete / test).
+    // Mounted alongside providers under the same JWT + rate-limit policy.
+    // `byoHermesMiddleware` is added when available so `/test` can read
+    // the user's resolved Hermes base URL + auth header from
+    // `ctx.hermesResolution`; without it /test returns
+    // `hermes_not_configured`.
+    if let hermesGatewaysController {
+        let hermesGatewaysBase = router.group("/v1/me/hermes-gateways")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        let hermesGatewaysGroup = byoHermesMiddleware
+            .map { hermesGatewaysBase.add(middleware: $0) } ?? hermesGatewaysBase
+        hermesGatewaysController.addRoutes(to: hermesGatewaysGroup)
     }
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,

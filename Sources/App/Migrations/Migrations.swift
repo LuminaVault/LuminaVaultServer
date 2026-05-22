@@ -54,4 +54,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M47_CreateUserLLMPreferences())
     await fluent.migrations.add(M48_CreateProviderFailoverEvents())
     await fluent.migrations.add(M49_CreateInsight())
+    await fluent.migrations.add(M50_CreateUserHermesGateways())
 }

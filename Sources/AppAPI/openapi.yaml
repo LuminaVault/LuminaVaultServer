@@ -924,6 +924,112 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  # ─────────────── Me — Hermes Messaging Gateways (HER-241) ────────────────
+
+  /v1/me/hermes-gateways:
+    get:
+      tags: [Me]
+      operationId: hermesGatewaysList
+      summary: List supported Hermes messaging gateways + per-user status (HER-241).
+      description: |
+        Returns one row per supported gateway (telegram, discord, slack,
+        whatsapp). Plaintext config is never echoed — only `hasConfig`
+        and metadata. Gateways with no stored row are returned with
+        `status: not_configured` and `hasConfig: false`.
+      responses:
+        '200':
+          description: List of gateway catalog entries with status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewaysListResponse' }
+
+  /v1/me/hermes-gateways/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { $ref: '#/components/schemas/HermesGatewayID' }
+    get:
+      tags: [Me]
+      operationId: hermesGatewayGet
+      summary: Get a single gateway's catalog entry + status.
+      responses:
+        '200':
+          description: Gateway catalog entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayCatalogEntry' }
+        '404':
+          description: Unsupported gateway id (`unsupported_gateway`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    put:
+      tags: [Me]
+      operationId: hermesGatewayPut
+      summary: Upsert encrypted config for a gateway.
+      description: |
+        Validates every required field for the chosen gateway. On
+        success the row is created or updated and `status` becomes
+        `configured`. `verifiedAt` and `lastFailure*` are reset so a
+        new /test call is required to confirm reachability.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesGatewayPutRequest' }
+      responses:
+        '200':
+          description: Updated catalog entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayCatalogEntry' }
+        '400':
+          description: |
+            Stable code in `message`:
+            `missing_field:<key>` (required field empty).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Me]
+      operationId: hermesGatewayDelete
+      summary: Drop a gateway's stored config.
+      responses:
+        '204':
+          description: Row deleted (idempotent — 204 even if absent).
+
+  /v1/me/hermes-gateways/{id}/test:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { $ref: '#/components/schemas/HermesGatewayID' }
+    post:
+      tags: [Me]
+      operationId: hermesGatewayTest
+      summary: Probe the user's Hermes server's `/v1/health` for reachability.
+      description: |
+        Hermes today exposes no gateway-admin HTTP API; this endpoint
+        only confirms the user's Hermes server is reachable and
+        responds 2xx on `/v1/health`. On success `verifiedAt` is
+        stamped; on failure `lastFailureCode` is recorded. The
+        gateway's own operational state must be checked via the
+        `hermes gateway status` CLI on the Hermes host.
+      responses:
+        '200':
+          description: Probe result (200 even on failure — see `ok`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayTestResponse' }
+        '400':
+          description: |
+            Stable code in `message`:
+            `hermes_not_configured` (user has no resolved Hermes endpoint).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   # ─────────────── Me — LLM routing preferences (HER-252) ────────────────
 
   /v1/me/preferences/llm:
@@ -2627,6 +2733,89 @@ components:
       properties:
         verifiedAt: { type: string, format: date-time }
         model: { type: string }
+
+    # ─── Hermes Gateways (HER-241) ──────────────────────────────────────
+
+    HermesGatewayID:
+      type: string
+      enum: [telegram, discord, slack, whatsapp]
+      description: |
+        Identifier for a Hermes messaging gateway the user can configure.
+        Today this is the MVP four; the broader Hermes list (Matrix,
+        Signal, Email, SMS, …) lands in follow-up tickets.
+
+    HermesGatewayStatus:
+      type: string
+      enum: [not_configured, configured, verified, error]
+      description: |
+        Lifecycle of a per-user gateway. `not_configured` means no row.
+        `configured` is the terminal state today — Hermes exposes no
+        HTTP API to confirm a gateway is actually live, so we cannot
+        promote past `configured` until upstream ships introspection.
+
+    HermesGatewayFieldKind:
+      type: string
+      enum: [text, secret, url]
+
+    HermesGatewayField:
+      type: object
+      required: [key, label, kind, isRequired]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        placeholder: { type: string }
+        kind: { $ref: '#/components/schemas/HermesGatewayFieldKind' }
+        isRequired: { type: boolean }
+
+    HermesGatewayCatalogEntry:
+      type: object
+      required: [id, displayName, iconSlug, description, requiredFields, status, hasConfig]
+      properties:
+        id: { $ref: '#/components/schemas/HermesGatewayID' }
+        displayName: { type: string }
+        iconSlug: { type: string }
+        description: { type: string }
+        requiredFields:
+          type: array
+          items: { $ref: '#/components/schemas/HermesGatewayField' }
+        status: { $ref: '#/components/schemas/HermesGatewayStatus' }
+        hasConfig: { type: boolean }
+        verifiedAt: { type: string, format: date-time }
+        lastFailureCode:
+          type: string
+          description: |
+            Stable code from the last failed /test probe:
+            `hermes_unauthorized` / `hermes_unreachable:<reason>`.
+
+    HermesGatewaysListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/HermesGatewayCatalogEntry' }
+
+    HermesGatewayPutRequest:
+      type: object
+      required: [config]
+      properties:
+        config:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Map of gateway field key → value. Required fields per
+            gateway are advertised in the catalog entry's
+            `requiredFields`. Secrets are sealed via SecretBox at rest
+            and never echoed back.
+
+    HermesGatewayTestResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        verifiedAt: { type: string, format: date-time }
+        errorCode: { type: string }
+        errorMessage: { type: string }
 
     ModelRouteDTO:
       type: object
