@@ -6,11 +6,6 @@ import LuminaVaultShared
 
 extension DeviceRegistrationResponse: ResponseEncodable {}
 
-struct DeviceRegistrationRequest: Codable {
-    let token: String
-    let platform: String
-}
-
 struct DeviceController {
     let fluent: Fluent
 
@@ -24,10 +19,7 @@ struct DeviceController {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: DeviceRegistrationRequest.self, context: ctx)
         guard !body.token.isEmpty else { throw HTTPError(.badRequest, message: "token required") }
-        let platform = body.platform.lowercased()
-        guard ["ios", "android"].contains(platform) else {
-            throw HTTPError(.badRequest, message: "platform must be ios or android")
-        }
+        let platform = body.platform.rawValue
         let tenantID = try user.requireID()
 
         let db = fluent.db()
