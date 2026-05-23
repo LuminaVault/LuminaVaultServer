@@ -28,18 +28,6 @@ extension OnboardingStateDTO {
     }
 }
 
-/// PATCH body. All fields optional; only `true` values are accepted (the flag
-/// is a one-way latch). A `false` value is rejected with `400`. Omitted
-/// fields are left untouched.
-struct OnboardingPatchRequest: Codable {
-    let signupCompleted: Bool?
-    let emailVerifiedCompleted: Bool?
-    let soulConfiguredCompleted: Bool?
-    let firstCaptureCompleted: Bool?
-    let firstKBCompileCompleted: Bool?
-    let firstQueryCompleted: Bool?
-}
-
 struct OnboardingController {
     let fluent: Fluent
 
