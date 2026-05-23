@@ -52,7 +52,7 @@ struct HermesGatewayAdapter: ProviderAdapter {
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
             .appendingPathComponent("completions")
-        var req = URLRequest(url: url)
+        var req = URLRequest(url: url, timeoutInterval: 90)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
