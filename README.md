@@ -253,8 +253,15 @@ Required env vars:
 | `JWT_KID` | Key ID in JOSE header for rotation |
 | `OAUTH_APPLE_CLIENTID` | Apple Sign-in Service ID (audience). MUST equal client SIWA bundle identifier. |
 | `OAUTH_GOOGLE_CLIENTID` | Google OAuth 2.0 iOS client ID (audience). MUST equal LuminaVaultClient `GID_CLIENT_ID` — server compares against ID token's `aud` claim; mismatch returns `401 OAuthError.invalidToken`. Empty disables `/v1/auth/oauth/google/exchange`. |
+| `OAUTH_X_CLIENTID` | X OAuth 2.0 client ID. Empty disables X sign-in exchange. |
 | `VAULT_ROOT_PATH` | Filesystem root for `tenants/<id>/raw/` |
 | `HERMES_GATEWAY_URL` | Hermes container endpoint |
+| `HERMES_API_KEY` | Bearer key shared with the Hermes container `API_SERVER_KEY`. Required for real gateway calls. |
+| `LV_SECRET_MASTER_KEY` | 32-byte base64 key enabling encrypted BYO Hermes, per-user provider credentials, and Hermes gateway settings. |
+| `POSTHOG_OTEL_TOKEN` | PostHog OpenTelemetry token consumed by the collector. |
+| `SENTRY_ORG_SLUG/SENTRY_PROJECT_SLUG/SENTRY_AUTH_TOKEN` | Backend Sentry export through the production OTel collector config. |
+| `APNS_*` | Push notification credentials and topic. `APNS_BUNDLE_ID` must match the iOS bundle receiving pushes. |
+| `REVENUECAT_WEBHOOK_SECRET` | Shared secret used to validate RevenueCat billing webhooks. |
 | `FLUENT_ENABLED` | Set `false` in tests to skip Fluent wiring |
 | `FLUENT_AUTOMIGRATE` | Set `false` to skip migrate() at boot |
 

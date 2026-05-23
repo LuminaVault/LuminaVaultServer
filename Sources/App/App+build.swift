@@ -459,7 +459,8 @@ func buildRouter(
     // When unset, every chat call falls through to the managed Hermes
     // default — identical to pre-BYO behaviour.
     let byoHermesLogger = Logger(label: "lv.byo-hermes")
-    let secretMasterKey = reader.string(forKey: "secret.masterKey", default: "")
+    let legacySecretMasterKey = reader.string(forKey: "secret.masterKey", default: "")
+    let secretMasterKey = reader.string(forKey: "lv.secretMasterKey", default: legacySecretMasterKey)
     let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
     let byoHermesAllowPrivate = reader.string(forKey: "byoHermes.allowPrivate", default: "false")
         .lowercased() == "true"

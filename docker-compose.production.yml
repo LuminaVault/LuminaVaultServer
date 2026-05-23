@@ -64,6 +64,16 @@ services:
       HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
+      HERMES_PER_TENANT_IMAGE: ${HERMES_PER_TENANT_IMAGE:-nousresearch/hermes-agent:latest}
+      HERMES_PER_TENANT_NETWORK: ${HERMES_PER_TENANT_NETWORK:-luminavault-hermes-net}
+      HERMES_PER_TENANT_DATA_ROOT_BASE: ${HERMES_PER_TENANT_DATA_ROOT_BASE:-/app/data/hermes-tenants}
+      HERMES_PER_TENANT_PORT_RANGE_START: ${HERMES_PER_TENANT_PORT_RANGE_START:-9000}
+      HERMES_PER_TENANT_PORT_RANGE_END: ${HERMES_PER_TENANT_PORT_RANGE_END:-9500}
+      HERMES_PER_TENANT_IDLE_TTL_SECONDS: ${HERMES_PER_TENANT_IDLE_TTL_SECONDS:-1800}
+      DOCKER_BINARY_PATH: ${DOCKER_BINARY_PATH:-/usr/bin/docker}
+      LV_SECRET_MASTER_KEY: ${LV_SECRET_MASTER_KEY:-}
+      LV_ENVIRONMENT: ${LV_ENVIRONMENT:-production}
+      BYO_HERMES_ALLOW_PRIVATE: ${BYO_HERMES_ALLOW_PRIVATE:-false}
       VAULT_ROOTPATH: /app/data/luminavault
       # --- CORS (prod MUST set explicit origins) ---
       CORS_ALLOWEDORIGINS: ${CORS_ALLOWEDORIGINS:?required}
@@ -90,6 +100,15 @@ services:
       LLM_PROVIDER_DEEPINFRA_BASEURL: ${LLM_PROVIDER_DEEPINFRA_BASEURL:-}
       LLM_PROVIDER_DEEPSEEKDIRECT_APIKEY: ${LLM_PROVIDER_DEEPSEEKDIRECT_APIKEY:-}
       LLM_PROVIDER_DEEPSEEKDIRECT_BASEURL: ${LLM_PROVIDER_DEEPSEEKDIRECT_BASEURL:-}
+      LLM_PROVIDER_XAI_APIKEY: ${LLM_PROVIDER_XAI_APIKEY:-}
+      LLM_PROVIDER_XAI_BASEURL: ${LLM_PROVIDER_XAI_BASEURL:-}
+      LLM_PROVIDER_OPENAI_APIKEY: ${LLM_PROVIDER_OPENAI_APIKEY:-}
+      LLM_PROVIDER_OPENAI_BASEURL: ${LLM_PROVIDER_OPENAI_BASEURL:-}
+      LLM_PROVIDER_OPENROUTER_APIKEY: ${LLM_PROVIDER_OPENROUTER_APIKEY:-}
+      LLM_PROVIDER_OPENROUTER_BASEURL: ${LLM_PROVIDER_OPENROUTER_BASEURL:-}
+      LLM_PROVIDER_ANTHROPIC_APIKEY: ${LLM_PROVIDER_ANTHROPIC_APIKEY:-}
+      LLM_PROVIDER_ANTHROPIC_BASEURL: ${LLM_PROVIDER_ANTHROPIC_BASEURL:-}
+      LLM_PROVIDER_OLLAMA_BASEURL: ${LLM_PROVIDER_OLLAMA_BASEURL:-}
       # --- Gemini (vision / multimodal fallback) ---
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # --- TTS ---
@@ -190,14 +209,20 @@ services:
 
   otel-collector:
     # HER-236: front door for all OTel signals — fans traces → jaeger,
-    # logs → PostHog, metrics → debug.
-    image: otel/opentelemetry-collector-contrib:0.111.0
+    # logs → PostHog, traces/logs → Sentry, metrics → debug.
+    image: otel/opentelemetry-collector-contrib:0.152.0
     restart: unless-stopped
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel-collector-config.production.yaml:/etc/otel-collector-config.yaml:ro
     environment:
       POSTHOG_OTEL_TOKEN: ${POSTHOG_OTEL_TOKEN:?required}
+      SENTRY_BASE_URL: ${SENTRY_BASE_URL:-https://sentry.io}
+      SENTRY_ORG_SLUG: ${SENTRY_ORG_SLUG:?required}
+      SENTRY_PROJECT_SLUG: ${SENTRY_PROJECT_SLUG:?required}
+      SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:?required}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-unknown}
     deploy:
       resources:
         limits:

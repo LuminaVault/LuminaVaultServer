@@ -107,7 +107,7 @@ services:
   otel-collector:
     # HER-236: front door for all OTel signals — fans traces → jaeger,
     # logs → PostHog, metrics → debug (future: prometheus exporter).
-    image: otel/opentelemetry-collector-contrib:0.111.0
+    image: otel/opentelemetry-collector-contrib:0.152.0
     container_name: hermes-otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otel-collector-config.yaml"]

@@ -216,21 +216,33 @@ git clone git@github.com:LuminaVault/LuminaVaultServer.git .
 cat > .env <<'EOF'
 POSTGRES_PASSWORD=...32-char-random...
 JWT_HMAC_SECRET=...32-char-random...
+LV_SECRET_MASTER_KEY=...base64-32-byte-secret...
 HERMES_GATEWAY_KIND=filesystem
 HERMES_GATEWAY_URL=http://hermes:8642
 HERMES_DATA_ROOT=/app/data/hermes
 HERMES_DEFAULT_MODEL=hermes-3
+HERMES_API_KEY=...32-byte-hex-shared-with-hermes...
 CORS_ALLOWEDORIGINS=https://app.luminavault.com,https://web.luminavault.com
+POSTHOG_OTEL_TOKEN=...
+SENTRY_BASE_URL=https://sentry.io
+SENTRY_ORG_SLUG=...
+SENTRY_PROJECT_SLUG=luminavault-server
+SENTRY_AUTH_TOKEN=...
+SENTRY_ENVIRONMENT=production
+SENTRY_RELEASE=manual
 WEBAUTHN_ENABLED=true
 WEBAUTHN_RELYINGPARTYID=luminavault.com
 WEBAUTHN_RELYINGPARTYORIGIN=https://app.luminavault.com
 APNS_ENABLED=true
-APNS_BUNDLEID=com.luminavault.ios
-APNS_TEAMID=ABCD123XYZ
+APNS_BUNDLEID=com.lumina.fernando
+APNS_TEAMID=84X9WYBF36
 APNS_KEYID=ABC123DEFG
 APNS_PRIVATEKEYPATH=/app/secrets/apns-key.p8
 APNS_ENVIRONMENT=production
+REVENUECAT_WEBHOOK_SECRET=...
 # --- Multi-provider auth ---
+OAUTH_APPLE_CLIENTID=com.lumina.fernando
+OAUTH_GOOGLE_CLIENTID=...ios-client-id.apps.googleusercontent.com
 OAUTH_X_CLIENTID=...x-oauth2-client-id...
 SMS_KIND=twilio
 TWILIO_ACCOUNTSID=ACxxxxxxxxxxxx
@@ -313,11 +325,23 @@ default; prod must set the ones marked **required**.
 | `JWT_KID` | `lv-default` | no | bump when rotating secret |
 | `OAUTH_APPLE_CLIENTID` | `""` | optional | Sign in with Apple audience |
 | `OAUTH_GOOGLE_CLIENTID` | `""` | optional | Google audience |
+| `OAUTH_X_CLIENTID` | `""` | optional | X OAuth client ID |
 | `VAULT_ROOTPATH` | `/tmp/luminavault` | yes | per-tenant filesystem root |
 | `HERMES_GATEWAYKIND` | `filesystem` | no | `logging` for tests, `filesystem` for prod |
 | `HERMES_GATEWAYURL` | `http://hermes:8642` | yes | OpenAI-compatible endpoint |
 | `HERMES_DATAROOT` | `/app/data/hermes` | yes | shared volume with hermes container |
 | `HERMES_DEFAULTMODEL` | `hermes-3` | yes | verify with `curl http://hermes:8642/v1/models` |
+| `HERMES_API_KEY` | `""` | **yes** | shared bearer key for app to Hermes gateway |
+| `LV_SECRET_MASTER_KEY` | `""` | recommended | enables BYO Hermes and encrypted user/provider credentials |
+| `LV_ENVIRONMENT` | `dev` | yes | `production` disables dev/private-network assumptions |
+| `BYO_HERMES_ALLOW_PRIVATE` | `false` | no | allow private IP BYO endpoints only in dev |
+| `POSTHOG_OTEL_TOKEN` | `""` | **yes** | backend log export through collector |
+| `SENTRY_BASE_URL` | `https://sentry.io` | yes | Sentry API base for OTel collector exporter |
+| `SENTRY_ORG_SLUG` | `""` | **yes** | Sentry org slug |
+| `SENTRY_PROJECT_SLUG` | `""` | **yes** | Sentry backend project slug |
+| `SENTRY_AUTH_TOKEN` | `""` | **yes** | org/project read token for collector exporter |
+| `SENTRY_ENVIRONMENT` | `production` | yes | Sentry environment tag |
+| `SENTRY_RELEASE` | `unknown` | recommended | git SHA or app version |
 | `CORS_ALLOWEDORIGINS` | `""` (`*`) | **yes for prod** | comma-separated; empty = wide-open dev mode |
 | `WEBAUTHN_ENABLED` | `false` | optional | passkey routes mounted only when `true` |
 | `WEBAUTHN_RELYINGPARTYID` | `""` | required if enabled | bare host, e.g. `luminavault.com` |
@@ -335,6 +359,14 @@ default; prod must set the ones marked **required**.
 | `TWILIO_AUTHTOKEN` | `""` | required if `twilio` | Twilio auth token. **Treat as a secret.** |
 | `TWILIO_FROMNUMBER` | `""` | required if `twilio` | E.164 sender number from Twilio console. |
 | `ADMIN_TOKEN` | `""` | recommended | Shared secret for `/v1/admin/*`. Empty disables admin endpoints (404). |
+| `REVENUECAT_WEBHOOK_SECRET` | `""` | yes for billing | RevenueCat webhook shared secret |
+| `BILLING_ENFORCEMENT_ENABLED` | `false` | yes when monetized | returns 402 for expired users on metered endpoints |
+| `LLM_PROVIDER_OPENAI_APIKEY` | `""` | optional | enables OpenAI chat/TTS fallback |
+| `LLM_PROVIDER_OPENROUTER_APIKEY` | `""` | optional | enables OpenRouter fallback |
+| `LLM_PROVIDER_ANTHROPIC_APIKEY` | `""` | optional | enables Anthropic fallback |
+| `LLM_PROVIDER_XAI_APIKEY` | `""` | optional | enables deployment-level XAI fallback |
+| `VISION_EMBED_PROVIDER_COHERE_APIKEY` | `""` | optional | enables visual search embedding endpoint |
+| `TRANSCRIBE_PROVIDER_GROQ_APIKEY` | `""` | optional | enables speech-to-text endpoint |
 
 `.env` files use `KEY=value` (uppercase, underscores). swift-configuration
 maps `OAUTH_APPLE_CLIENTID` → `oauth.apple.clientId`.
