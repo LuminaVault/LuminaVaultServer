@@ -100,7 +100,7 @@ enum HermesGatewayCatalog {
         ),
     ]
 
-    struct Entry: Sendable {
+    struct Entry {
         let displayName: String
         let iconSlug: String
         let description: String

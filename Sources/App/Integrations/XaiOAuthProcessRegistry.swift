@@ -11,7 +11,7 @@ import Foundation
 ///   * Background sweep on entries older than `ttl` (default 10 min) —
 ///     bounded so a forgotten session doesn't leak a docker subprocess.
 actor XaiOAuthProcessRegistry {
-    struct Entry: Sendable {
+    struct Entry {
         let handle: any StreamingExecHandle
         let createdAt: Date
     }

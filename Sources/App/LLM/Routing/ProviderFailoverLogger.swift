@@ -31,7 +31,7 @@ actor ProviderFailoverLogger {
         tenantID: UUID?,
     ) {
         Task { [self] in
-            await self.persist(notice: notice, tenantID: tenantID)
+            await persist(notice: notice, tenantID: tenantID)
         }
     }
 

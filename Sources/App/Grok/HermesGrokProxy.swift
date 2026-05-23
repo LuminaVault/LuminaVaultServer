@@ -14,7 +14,7 @@ import NIOFoundationCompat
 /// answer, vision caption) consumes a single-shot synthesised string.
 /// Streaming reuses the existing `RoutedLLMTransport` path and lands when
 /// a Grok-streamed surface (live agent loop) needs it.
-struct HermesGrokProxy: Sendable {
+struct HermesGrokProxy {
     enum Error: Swift.Error, Equatable {
         case nonZeroStatus(Int)
         case decodeFailed
@@ -112,10 +112,10 @@ struct HermesGrokProxy: Sendable {
 
     // MARK: - Transport
 
-    private func post<RequestBody: Encodable, Body: Decodable>(
+    private func post<Body: Decodable>(
         handle: HermesContainerHandle,
         path: String,
-        body: RequestBody,
+        body: some Encodable,
     ) async throws -> Body {
         var req = HTTPClientRequest(url: handle.baseURL + path)
         req.method = .POST
@@ -126,7 +126,7 @@ struct HermesGrokProxy: Sendable {
 
         let response = try await httpClient.execute(req, timeout: .seconds(timeoutSeconds))
         let bodyBytes = try await response.body.collect(upTo: 8 * 1024 * 1024)
-        guard (200..<300).contains(Int(response.status.code)) else {
+        guard (200 ..< 300).contains(Int(response.status.code)) else {
             logger.warning("hermes grok proxy non-2xx", metadata: [
                 "status": "\(response.status.code)",
                 "container": "\(handle.containerName)",
@@ -151,6 +151,7 @@ private struct ChatCompletionsRequest: Encodable {
         let role: String
         let content: String
     }
+
     let model: String
     let messages: [Message]
     let maxTokens: Int?
@@ -170,6 +171,7 @@ private struct VisionRequest: Encodable {
         let role: String
         let content: [VisionContentPart]
     }
+
     let model: String
     let messages: [Message]
 }
@@ -179,10 +181,12 @@ private struct ChatCompletionsResponse: Decodable {
         struct Message: Decodable { let content: String }
         let message: Message
     }
+
     struct Usage: Decodable {
         let promptTokens: Int
         let completionTokens: Int
     }
+
     let model: String?
     let choices: [Choice]
     let usage: Usage?
@@ -194,6 +198,7 @@ private struct ResponsesRequest: Encodable {
         let xSearch: XSearchParams
         enum CodingKeys: String, CodingKey { case type, xSearch = "x_search" }
     }
+
     struct XSearchParams: Encodable {
         let allowedXHandles: [String]?
         let excludedXHandles: [String]?
@@ -202,6 +207,7 @@ private struct ResponsesRequest: Encodable {
         let enableImageUnderstanding: Bool?
         let enableVideoUnderstanding: Bool?
     }
+
     let model: String
     let input: String
     let tools: [Tool]
@@ -213,6 +219,7 @@ private struct ResponsesAPIResponse: Decodable {
         let title: String?
         let publishedAt: Date?
     }
+
     let model: String?
     let output: String?
     let citations: [Citation]?

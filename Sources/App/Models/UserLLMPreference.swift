@@ -11,7 +11,7 @@ import Foundation
 final class UserLLMPreference: Model, TenantModel, @unchecked Sendable {
     static let schema = "user_llm_preferences"
 
-    struct FallbackStep: Codable, Hashable, Sendable {
+    struct FallbackStep: Codable, Hashable {
         let provider: String
         let model: String
     }

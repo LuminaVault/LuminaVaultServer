@@ -14,14 +14,14 @@ import SQLKit
 /// Concurrency: pure read service. `Fluent` is `Sendable` (wraps the
 /// connection pool); the struct holds no mutable state so a value-type
 /// implementation suffices — no `actor` needed.
-struct MemoryGraphService: Sendable {
+struct MemoryGraphService {
     let fluent: Fluent
 
     // ── Public defaults (mirror openapi.yaml). Controller is responsible
     //    for clamping; these are the canonical fallback values when a query
     //    param is absent.
     static let defaultLimit = 500
-    static let maxLimit = 2_000
+    static let maxLimit = 2000
     static let defaultSimilarity = 0.78
     static let defaultMaxEdgesPerNode = 8
     static let maxMaxEdgesPerNode = 50
@@ -195,7 +195,9 @@ struct MemoryGraphService: Sendable {
         maxEdgesPerNode: Int,
     ) -> [MemoryGraphEdgeDTO] {
         var byPair: [PairKey: MemoryGraphEdgeDTO] = [:]
-        for edge in tagEdges { byPair[PairKey(edge)] = edge }
+        for edge in tagEdges {
+            byPair[PairKey(edge)] = edge
+        }
         for edge in semanticEdges where byPair[PairKey(edge)] == nil {
             byPair[PairKey(edge)] = edge
         }
@@ -241,7 +243,9 @@ struct MemoryGraphService: Sendable {
     private struct PairKey: Hashable {
         let from: UUID
         let to: UUID
-        init(_ edge: MemoryGraphEdgeDTO) { self.from = edge.from; self.to = edge.to }
+        init(_ edge: MemoryGraphEdgeDTO) {
+            from = edge.from; to = edge.to
+        }
     }
 }
 

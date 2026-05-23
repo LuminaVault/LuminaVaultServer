@@ -15,7 +15,7 @@ actor UserCredentialStore {
     /// the decrypted plaintext (API key or OAuth refresh token), `baseURL`
     /// the optional per-user endpoint override (e.g. Ollama host URL).
     /// At least one is non-nil for a usable row.
-    struct ResolvedCredential: Sendable {
+    struct ResolvedCredential {
         let apiKey: String?
         let baseURL: URL?
         let label: String?

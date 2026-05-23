@@ -11,7 +11,7 @@ import Hummingbird
 
 /// GET /v1/integrations/xai — current state of the tenant's xAI Grok OAuth
 /// connection. `tier` mirrors the User row's tier column.
-struct XaiStatusResponse: Codable, Sendable, ResponseEncodable {
+struct XaiStatusResponse: Codable, ResponseEncodable {
     let connected: Bool
     let tier: String
     let xaiConnectedAt: Date?
@@ -20,7 +20,7 @@ struct XaiStatusResponse: Codable, Sendable, ResponseEncodable {
 /// POST /v1/integrations/xai/start — the server returns an `authorizeURL`
 /// the iOS client opens in a `WKWebView`. The opaque `sessionID` is echoed
 /// back in `complete`. Server-side TTL is 10 minutes.
-struct XaiStartResponse: Codable, Sendable, ResponseEncodable {
+struct XaiStartResponse: Codable, ResponseEncodable {
     let sessionID: String
     let authorizeURL: String
 }
@@ -28,7 +28,7 @@ struct XaiStartResponse: Codable, Sendable, ResponseEncodable {
 /// POST /v1/integrations/xai/complete — iOS posts the full callback URL it
 /// captured from `WKWebView.decidePolicyFor` (host `127.0.0.1`, port `56121`,
 /// path `/callback`, query `?code=…&state=…`).
-struct XaiCompleteRequest: Codable, Sendable {
+struct XaiCompleteRequest: Codable {
     let sessionID: String
     let callbackURL: String
 }

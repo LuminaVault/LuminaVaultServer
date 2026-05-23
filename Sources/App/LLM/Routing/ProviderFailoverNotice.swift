@@ -7,7 +7,7 @@ import LuminaVaultShared
 /// through `FailoverNoticeContext.sink` so controllers can yield a
 /// matching `.fallback` SSE event, and through
 /// `ProviderFailoverLogger` for `provider_failover_events` telemetry.
-struct ProviderFailoverNotice: Sendable {
+struct ProviderFailoverNotice {
     let originalProvider: ProviderKind
     let originalModel: String
     let fallbackProvider: ProviderKind
@@ -21,7 +21,7 @@ struct ProviderFailoverNotice: Sendable {
     /// Tag attached to `provider_failover_events.source` so ops can
     /// segment "managed default Hermes failures" vs "users running their
     /// own gateway". Tagged from `LLMRoutingContext.currentResolution`.
-    enum TelemetrySource: String, Sendable {
+    enum TelemetrySource: String {
         case hosted
         case byo
     }

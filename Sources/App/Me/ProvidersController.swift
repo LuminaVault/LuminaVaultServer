@@ -251,7 +251,7 @@ struct ProvidersController {
     /// Minimal `max_tokens: 1` ping payload per provider. Used by /test
     /// to validate auth without burning user credits.
     static func pingPayload(for provider: ProviderID) -> [String: Any] {
-        let model: String = switch provider {
+        let model = switch provider {
         case .xai: "grok-4"
         case .anthropic: "claude-sonnet-4.6"
         case .openai: "gpt-4o-mini"

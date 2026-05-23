@@ -13,7 +13,7 @@ import Testing
 /// covered by `MemoryGraphServiceTests`.
 @Suite(.serialized)
 struct MemoryGraphControllerTests {
-    private static let dim = 1_536
+    private static let dim = 1536
 
     private static func basis(_ axis: Int) -> [Float] {
         var v = [Float](repeating: 0, count: dim)

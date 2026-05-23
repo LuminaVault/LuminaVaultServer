@@ -6,7 +6,7 @@ import Hummingbird
 // graph churn). iOS client mirrors these shapes; both move to shared once
 // the package settles.
 
-struct GrokChatMessage: Codable, Sendable, Equatable {
+struct GrokChatMessage: Codable, Equatable {
     let role: String
     let content: String
 }
@@ -14,14 +14,14 @@ struct GrokChatMessage: Codable, Sendable, Equatable {
 /// POST /v1/grok/chat — minimal chat-completions style request. Streamed
 /// when `stream: true` (SSE). Mirrors the OpenAI/Hermes chat shape so the
 /// per-tenant Hermes container forwards it to xAI without translation.
-struct GrokChatRequest: Codable, Sendable {
+struct GrokChatRequest: Codable {
     let messages: [GrokChatMessage]
     let model: String?
     let stream: Bool?
     let maxTokens: Int?
 }
 
-struct GrokChatResponse: Codable, Sendable, ResponseEncodable {
+struct GrokChatResponse: Codable, ResponseEncodable {
     /// Pass-through synthesised reply text. Tool calls + reasoning chain
     /// are out of scope for the MVP shape; HER-240c follow-up will widen
     /// the response when client surfaces actually consume them.
@@ -30,14 +30,14 @@ struct GrokChatResponse: Codable, Sendable, ResponseEncodable {
     let usage: GrokUsage?
 }
 
-struct GrokUsage: Codable, Sendable, Equatable {
+struct GrokUsage: Codable, Equatable {
     let promptTokens: Int
     let completionTokens: Int
 }
 
 /// POST /v1/grok/x-search — Grok's `x_search` tool. Matches the params
 /// documented at hermes-agent.nousresearch.com/docs/user-guide/features/x-search.
-struct GrokXSearchRequest: Codable, Sendable {
+struct GrokXSearchRequest: Codable {
     let query: String
     let allowedXHandles: [String]?
     let excludedXHandles: [String]?
@@ -47,13 +47,13 @@ struct GrokXSearchRequest: Codable, Sendable {
     let enableVideoUnderstanding: Bool?
 }
 
-struct GrokXSearchCitation: Codable, Sendable, Equatable {
+struct GrokXSearchCitation: Codable, Equatable {
     let url: String
     let title: String?
     let publishedAt: Date?
 }
 
-struct GrokXSearchResponse: Codable, Sendable, ResponseEncodable {
+struct GrokXSearchResponse: Codable, ResponseEncodable {
     let answer: String
     let citations: [GrokXSearchCitation]
     let model: String
@@ -61,12 +61,12 @@ struct GrokXSearchResponse: Codable, Sendable, ResponseEncodable {
 
 /// POST /v1/grok/vision — multimodal request. `imageURLs` accepts public
 /// HTTPS image URLs; base64 data URIs land in a follow-up.
-struct GrokVisionRequest: Codable, Sendable {
+struct GrokVisionRequest: Codable {
     let prompt: String
     let imageURLs: [String]
 }
 
-struct GrokVisionResponse: Codable, Sendable, ResponseEncodable {
+struct GrokVisionResponse: Codable, ResponseEncodable {
     let answer: String
     let model: String
 }
@@ -75,12 +75,12 @@ struct GrokVisionResponse: Codable, Sendable, ResponseEncodable {
 /// has an upstream TTS provider configured; client surfaces the
 /// `"coming_soon"` error code as a placeholder UX. Body shape lands now
 /// so the iOS surface can wire up without churn later.
-struct GrokTTSRequest: Codable, Sendable {
+struct GrokTTSRequest: Codable {
     let text: String
     let voice: String?
 }
 
-struct GrokTTSResponse: Codable, Sendable, ResponseEncodable {
+struct GrokTTSResponse: Codable, ResponseEncodable {
     /// Base64-encoded audio bytes. MVP serves a single MP3/WAV blob;
     /// chunked streaming is a follow-up if/when xAI publishes the audio
     /// endpoint we can proxy to.

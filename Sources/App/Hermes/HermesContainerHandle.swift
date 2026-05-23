@@ -4,7 +4,7 @@ import Foundation
 /// the matching `HermesTenantContainer` row plus `apiServerKey` decrypted at
 /// construction time. Passed to callers that need to talk to the container
 /// (XaiOAuthService for `docker exec`, GrokController later for HTTP proxy).
-struct HermesContainerHandle: Sendable, Equatable {
+struct HermesContainerHandle: Equatable {
     let tenantID: UUID
     /// Docker container name. Format: `hermes-tenant-{tenantID}`.
     let containerName: String
@@ -16,21 +16,9 @@ struct HermesContainerHandle: Sendable, Equatable {
     let apiServerKey: String
     let xaiConnectedAt: Date?
 
-    init(
-        tenantID: UUID,
-        containerName: String,
-        port: Int,
-        apiServerKey: String,
-        xaiConnectedAt: Date?,
-    ) {
-        self.tenantID = tenantID
-        self.containerName = containerName
-        self.port = port
-        self.apiServerKey = apiServerKey
-        self.xaiConnectedAt = xaiConnectedAt
-    }
-
     /// Internal base URL used by the server to reach the container over the
     /// shared docker network. Container resolves by name on the network.
-    var baseURL: String { "http://\(containerName):8642" }
+    var baseURL: String {
+        "http://\(containerName):8642"
+    }
 }

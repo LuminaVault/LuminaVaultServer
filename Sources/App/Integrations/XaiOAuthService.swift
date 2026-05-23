@@ -11,7 +11,7 @@ import Logging
 ///                    flip `user.tier` to `premium`, stamp `xai_connected_at`
 ///   * `revoke`     → reverse of complete
 actor XaiOAuthService {
-    struct StartResult: Sendable {
+    struct StartResult {
         let sessionID: String
         let authorizeURL: String
         init(sessionID: String, authorizeURL: String) {
@@ -20,7 +20,7 @@ actor XaiOAuthService {
         }
     }
 
-    struct Status: Sendable {
+    struct Status {
         let connected: Bool
         let tier: String
         let xaiConnectedAt: Date?

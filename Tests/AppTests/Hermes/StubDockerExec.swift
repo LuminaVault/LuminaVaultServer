@@ -5,7 +5,7 @@ import Foundation
 /// `exec`, `isRunning`, and `ensureNetworkExists` invocation; returns canned
 /// results queued via `enqueue(_:for:)` or a global default.
 actor StubDockerExec: DockerExec {
-    struct Invocation: Sendable, Equatable {
+    struct Invocation: Equatable {
         let kind: String // "run" | "exec" | "isRunning" | "ensureNetwork"
         let args: [String]
         let container: String?

@@ -17,7 +17,7 @@ import Testing
 @Suite(.serialized)
 struct MemoryGraphServiceTests {
     /// Embedding dimensionality matches the pgvector column (1536).
-    private static let dim = 1_536
+    private static let dim = 1536
 
     /// Returns a vector with a single 1.0 at `axis` and zeros elsewhere.
     /// Two basis vectors on different axes have cosine similarity 0.0;
@@ -102,7 +102,7 @@ struct MemoryGraphServiceTests {
                 #expect(tagEdges.count == 1)
                 let edge = try #require(tagEdges.first)
                 let endpoints = Set([edge.from, edge.to])
-                #expect(endpoints == Set([try memA.requireID(), try memB.requireID()]))
+                #expect(try endpoints == Set([memA.requireID(), memB.requireID()]))
                 #expect(edge.tag == "swift")
                 #expect(edge.weight == 1.0)
             }
@@ -133,7 +133,7 @@ struct MemoryGraphServiceTests {
                 #expect(semanticEdges.count == 1)
                 let edge = try #require(semanticEdges.first)
                 let endpoints = Set([edge.from, edge.to])
-                #expect(endpoints == Set([try memA.requireID(), try memB.requireID()]))
+                #expect(try endpoints == Set([memA.requireID(), memB.requireID()]))
                 let sim = try #require(edge.similarity)
                 #expect(sim > 0.99)
             }
@@ -141,7 +141,7 @@ struct MemoryGraphServiceTests {
     }
 
     @Test
-    func `per-node edge cap prunes excess edges`() async throws {
+    func `per-node edge cap prunes excess edges`() throws {
         // Pure unit test of the cap algorithm — does not hit Postgres so the
         // Swift 6.3 frontend's region-analysis crash on closure-captured
         // `repo` (reproducible in this file's other DB-driven tests if any
@@ -149,14 +149,14 @@ struct MemoryGraphServiceTests {
         // is sidestepped entirely. The SQL paths for tag + semantic edge
         // production are already exercised by the other tests in this suite;
         // pruning is a pure-data transform and is verified here in isolation.
-        let n0 = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-        let n1 = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
-        let n2 = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
-        let n3 = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let n0 = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000000"))
+        let n1 = try #require(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+        let n2 = try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        let n3 = try #require(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
 
-        // All pairs (n0,n1), (n0,n2), (n0,n3), (n1,n2), (n1,n3), (n2,n3) with
-        // identical 1.0 similarity. With cap=2 every node must end up with
-        // degree ≤ 2 in the pruned set.
+        /// All pairs (n0,n1), (n0,n2), (n0,n3), (n1,n2), (n1,n3), (n2,n3) with
+        /// identical 1.0 similarity. With cap=2 every node must end up with
+        /// degree ≤ 2 in the pruned set.
         func edge(_ a: UUID, _ b: UUID, weight: Double = 1.0) -> MemoryGraphEdgeDTO {
             MemoryGraphEdgeDTO(from: a, to: b, kind: .semantic, tag: nil, similarity: weight, weight: weight)
         }

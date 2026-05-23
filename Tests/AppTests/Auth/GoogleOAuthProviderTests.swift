@@ -123,7 +123,7 @@ struct GoogleOAuthProviderTests {
     // MARK: - Tests
 
     @Test
-    func validToken_returnsIdentity() async throws {
+    func `valid token returns identity`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer)
         let info = try await fix.provider.verify(idToken: token)
@@ -133,7 +133,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func wrongAudience_throwsInvalidToken() async throws {
+    func `wrong audience throws invalid token`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
@@ -145,7 +145,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func wrongIssuer_throwsInvalidToken() async throws {
+    func `wrong issuer throws invalid token`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
@@ -157,7 +157,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func missingEmail_throwsMissingClaims() async throws {
+    func `missing email throws missing claims`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer, email: nil)
         await #expect(throws: OAuthError.missingClaims) {
@@ -166,7 +166,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func emptyEmail_throwsMissingClaims() async throws {
+    func `empty email throws missing claims`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer, email: "")
         await #expect(throws: OAuthError.missingClaims) {
@@ -175,7 +175,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func unverifiedEmail_throwsUnverifiedEmail() async throws {
+    func `unverified email throws unverified email`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer, emailVerified: false)
         await #expect(throws: OAuthError.unverifiedEmail) {
@@ -184,7 +184,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func missingEmailVerifiedClaim_throwsUnverifiedEmail() async throws {
+    func `missing email verified claim throws unverified email`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer, emailVerified: nil)
         await #expect(throws: OAuthError.unverifiedEmail) {
@@ -193,7 +193,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func expiredToken_throws() async throws {
+    func `expired token throws`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
@@ -205,7 +205,7 @@ struct GoogleOAuthProviderTests {
     }
 
     @Test
-    func validToken_acceptsCanonicalIssuer() async throws {
+    func `valid token accepts canonical issuer`() async throws {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(on: fix.signer, iss: "accounts.google.com")
         let info = try await fix.provider.verify(idToken: token)
