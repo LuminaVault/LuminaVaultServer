@@ -535,6 +535,22 @@ paths:
 
   # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
 
+  # ───────────────────────── Me — Suggestions (HER-37) ──────────────────
+
+  /v1/me/suggestions:
+    get:
+      tags: [Me]
+      operationId: meSuggestions
+      summary: Context-aware natural-language query suggestions (HER-37).
+      responses:
+        '200':
+          description: Suggestions list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestionsResponse' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   # ─────────────────── Skills (HER-247 / HER-177 / HER-178) ────────────
 
   /v1/skills:
@@ -1562,6 +1578,16 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemoGenerateResponse' }
+    get:
+      tags: [Memos]
+      operationId: memoList
+      summary: List memos saved under memos/<date>/<slug>.md for the caller (HER-37).
+      responses:
+        '200':
+          description: Memo list (most-recent first, max 200).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoListResponse' }
 
   # ─────────────────────────────── Vault ────────────────────────────────
 
@@ -3320,6 +3346,32 @@ components:
       properties:
         vaultFileId: { type: string, format: uuid }
         markdown: { type: string }
+
+    MemoSummaryDTO:
+      type: object
+      required: [id, title, path, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        path: { type: string }
+        createdAt: { type: string, format: date-time }
+        summary: { type: string }
+
+    MemoListResponse:
+      type: object
+      required: [memos]
+      properties:
+        memos:
+          type: array
+          items: { $ref: '#/components/schemas/MemoSummaryDTO' }
+
+    SuggestionsResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items: { type: string }
 
     # ── Vault ──
 
