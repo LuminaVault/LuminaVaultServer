@@ -25,6 +25,11 @@ struct HermesGatewayAdapter: ProviderAdapter {
     /// in scope. Required by Hermes when its api_server binds 0.0.0.0.
     let defaultAuthHeader: String?
 
+    /// Per-request timeout for LLM completions. Default URLSession is ~60s
+    /// which can truncate long responses. 90s gives headroom; the retry-once
+    /// wrapper handles transient timeouts on top of this.
+    static let requestTimeoutSeconds: TimeInterval = 90
+
     init(baseURL: URL, session: URLSession, logger: Logger, defaultAuthHeader: String? = nil) {
         self.baseURL = baseURL
         self.session = session
@@ -52,7 +57,7 @@ struct HermesGatewayAdapter: ProviderAdapter {
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
             .appendingPathComponent("completions")
-        var req = URLRequest(url: url, timeoutInterval: 90)
+        var req = URLRequest(url: url, timeoutInterval: Self.requestTimeoutSeconds)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
