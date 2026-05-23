@@ -63,6 +63,20 @@ struct RoutedHermesLLMService: HermesLLMService {
                     failureCounter.increment()
                     throw HTTPError(.badGateway, message: "llm upstream returned no choices")
                 }
+                // HER-XX — sanitize raw bash/Python stderr from the
+                // assistant content + capture structured tool-failure
+                // events for telemetry. Mirrors the legacy
+                // `DefaultHermesLLMService` path so behaviour is
+                // identical regardless of which transport routed the
+                // request.
+                let toolErrors = HermesToolErrorClassifier.classify(content: assistant.content)
+                HermesToolErrorClassifier.observe(
+                    errors: toolErrors,
+                    model: decoded.model,
+                    profile: profileUsername,
+                    logger: logger,
+                )
+                let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
                 successCounter.increment()
                 durationTimer.recordNanoseconds(
                     Int64(DispatchTime.now().uptimeNanoseconds - started),
@@ -71,7 +85,7 @@ struct RoutedHermesLLMService: HermesLLMService {
                 return ChatResponse(
                     id: decoded.id,
                     model: decoded.model,
-                    message: assistant,
+                    message: sanitized,
                     raw: decoded,
                 )
             } catch let httpErr as HTTPError {

@@ -92,10 +92,23 @@ struct DefaultHermesLLMService: HermesLLMService {
                 failureCounter.increment()
                 throw HTTPError(.badGateway, message: "hermes upstream returned no choices")
             }
+            // HER-XX — strip raw bash/Python stderr leaks from the
+            // assistant content before they ever hit the wire, and
+            // emit a structured log + metric per failed tool so the
+            // failure mode is observable without leaking implementation
+            // details to end users.
+            let toolErrors = HermesToolErrorClassifier.classify(content: assistant.content)
+            HermesToolErrorClassifier.observe(
+                errors: toolErrors,
+                model: raw.model,
+                profile: profileUsername,
+                logger: logger,
+            )
+            let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
             successCounter.increment()
             durationTimer.recordNanoseconds(Int64(DispatchTime.now().uptimeNanoseconds - started))
             logger.info("hermes reply ready model=\(raw.model) profile=\(profileUsername)")
-            return ChatResponse(id: raw.id, model: raw.model, message: assistant, raw: raw)
+            return ChatResponse(id: raw.id, model: raw.model, message: sanitized, raw: raw)
         }
     }
 }
