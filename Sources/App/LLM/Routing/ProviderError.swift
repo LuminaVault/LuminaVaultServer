@@ -43,11 +43,20 @@ enum ProviderError: Error {
     /// status codes.
     var reasonCode: String {
         switch self {
-        case .creditExhausted: "credit_exhausted"
-        case let .transient(_, status, _) where status == 429: "rate_limit"
-        case .transient: "upstream_error"
-        case .network: "network"
-        case .permanent: "upstream_rejected"
+        case .creditExhausted: return "credit_exhausted"
+        case let .transient(_, status, _) where status == 429: return "rate_limit"
+        case .transient: return "upstream_error"
+        case let .network(_, underlying):
+            if let urlError = underlying as? URLError {
+                switch urlError.code {
+                case .timedOut: return "upstream_timeout"
+                case .cannotConnectToHost, .notConnectedToInternet, .cannotFindHost, .dnsLookupFailed:
+                    return "upstream_unreachable"
+                default: return "network"
+                }
+            }
+            return "network"
+        case .permanent: return "upstream_rejected"
         }
     }
 
@@ -64,7 +73,10 @@ enum ProviderError: Error {
             return "\(providerName) is rate-limiting us."
         case .transient:
             return "\(providerName) is having trouble responding."
-        case .network:
+        case let .network(_, underlying):
+            if let urlError = underlying as? URLError, urlError.code == .timedOut {
+                return "\(providerName) timed out responding."
+            }
             return "Couldn't reach \(providerName)."
         case .permanent:
             return "\(providerName) rejected the request."
