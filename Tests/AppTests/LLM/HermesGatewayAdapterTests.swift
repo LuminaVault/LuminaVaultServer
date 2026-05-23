@@ -103,14 +103,16 @@ struct HermesGatewayAdapterTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "alice")
+        _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "alice", sessionID: nil)
 
         #expect(captured.requests.count == 1)
         let req = captured.requests[0]
         #expect(req.url?.host == "managed.hermes.test")
         #expect(req.url?.path == "/v1/chat/completions")
         #expect(req.value(forHTTPHeaderField: "Authorization") == nil)
-        #expect(req.value(forHTTPHeaderField: "X-Hermes-Profile") == "alice")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Key") == "alice")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Id") == nil)
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Profile") == nil)
     }
 
     // MARK: - HER-254 — managed default Bearer header
@@ -131,7 +133,7 @@ struct HermesGatewayAdapterTests {
             logger: Logger(label: "lv.test.adapter.her254"),
             defaultAuthHeader: "Bearer her254-key",
         )
-        _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "elise")
+        _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "elise", sessionID: nil)
 
         #expect(captured.requests.count == 1)
         #expect(captured.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer her254-key")
@@ -159,7 +161,7 @@ struct HermesGatewayAdapterTests {
             isUserOverride: true,
         )
         try await LLMRoutingContext.$currentResolution.withValue(override) {
-            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "fred")
+            _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "fred", sessionID: nil)
         }
 
         #expect(captured.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer user-token")
@@ -185,7 +187,7 @@ struct HermesGatewayAdapterTests {
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {
-            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "bob")
+            _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "bob", sessionID: nil)
         }
 
         #expect(captured.requests.count == 1)
@@ -194,7 +196,8 @@ struct HermesGatewayAdapterTests {
         #expect(req.url?.port == 8642)
         #expect(req.url?.path == "/v1/chat/completions")
         #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer my-secret-token")
-        #expect(req.value(forHTTPHeaderField: "X-Hermes-Profile") == "bob")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Key") == "bob")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Profile") == nil)
     }
 
     // MARK: - isUserOverride=false → managed default (no swap)
@@ -216,7 +219,7 @@ struct HermesGatewayAdapterTests {
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(nonOverride) {
-            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "carol")
+            _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "carol", sessionID: nil)
         }
 
         #expect(captured.requests.count == 1)
@@ -244,7 +247,7 @@ struct HermesGatewayAdapterTests {
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {
-            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "dave")
+            _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "dave", sessionID: nil)
         }
 
         let req = captured.requests[0]
@@ -271,10 +274,47 @@ struct HermesGatewayAdapterTests {
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {
-            _ = try await adapter.chatCompletions(payload: Self.payload, profileUsername: "eve")
+            _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "eve", sessionID: nil)
         }
 
         let req = captured.requests[0]
         #expect(req.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    // MARK: - HER-183 — X-Hermes-Session-Id conditional
+
+    @Test
+    func `non-nil sessionID sets X-Hermes-Session-Id header`() async throws {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            return (Self.okResponse(for: request.url!), Self.okBody)
+        }
+        defer { StubProtocol.handler = nil }
+
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        let conversationID = "11111111-2222-3333-4444-555555555555"
+        _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "alice", sessionID: conversationID)
+
+        let req = captured.requests[0]
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Key") == "alice")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Id") == conversationID)
+    }
+
+    @Test
+    func `empty sessionID omits the X-Hermes-Session-Id header`() async throws {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            return (Self.okResponse(for: request.url!), Self.okBody)
+        }
+        defer { StubProtocol.handler = nil }
+
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "alice", sessionID: "")
+
+        let req = captured.requests[0]
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Key") == "alice")
+        #expect(req.value(forHTTPHeaderField: "X-Hermes-Session-Id") == nil)
     }
 }

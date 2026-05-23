@@ -18,7 +18,7 @@ struct FollowUpGeneratorTests {
         """)
         let generator = makeGenerator(transport: transport)
         let out = await generator.generate(
-            profileUsername: "ferocious-fox",
+            sessionKey: "ferocious-fox",
             summary: "You slept 8h this week.",
             sources: [Self.hit("slept 9h Tuesday")],
         )
@@ -32,7 +32,7 @@ struct FollowUpGeneratorTests {
         """)
         let generator = makeGenerator(transport: transport, max: 3)
         let out = await generator.generate(
-            profileUsername: "u",
+            sessionKey: "u",
             summary: "s",
             sources: [Self.hit("hit")],
         )
@@ -46,7 +46,7 @@ struct FollowUpGeneratorTests {
         {"follow_ups": ["  Go deeper ", "", "   ", "Save"]}
         """)
         let generator = makeGenerator(transport: transport)
-        let out = await generator.generate(profileUsername: "u", summary: "s", sources: [])
+        let out = await generator.generate(sessionKey: "u", summary: "s", sources: [])
         #expect(out == ["Go deeper", "Save"])
     }
 
@@ -57,7 +57,7 @@ struct FollowUpGeneratorTests {
         let transport = StubFollowUpTransport(error: TestError.upstream)
         let generator = makeGenerator(transport: transport)
         let out = await generator.generate(
-            profileUsername: "u",
+            sessionKey: "u",
             summary: "s",
             sources: [Self.hit("h")],
         )
@@ -68,7 +68,7 @@ struct FollowUpGeneratorTests {
     func `returns empty array on malformed assistant JSON`() async {
         let transport = StubFollowUpTransport(plainContent: "not json at all")
         let generator = makeGenerator(transport: transport)
-        let out = await generator.generate(profileUsername: "u", summary: "s", sources: [])
+        let out = await generator.generate(sessionKey: "u", summary: "s", sources: [])
         #expect(out.isEmpty)
     }
 
@@ -76,7 +76,7 @@ struct FollowUpGeneratorTests {
     func `returns empty array on empty assistant content`() async {
         let transport = StubFollowUpTransport(plainContent: "")
         let generator = makeGenerator(transport: transport)
-        let out = await generator.generate(profileUsername: "u", summary: "s", sources: [])
+        let out = await generator.generate(sessionKey: "u", summary: "s", sources: [])
         #expect(out.isEmpty)
     }
 
@@ -86,7 +86,7 @@ struct FollowUpGeneratorTests {
         {"follow_ups": ["should not appear"]}
         """)
         let generator = makeGenerator(transport: transport)
-        let out = await generator.generate(profileUsername: "u", summary: "   ", sources: [])
+        let out = await generator.generate(sessionKey: "u", summary: "   ", sources: [])
         #expect(out.isEmpty)
         let calls = await transport.callCount
         #expect(calls == 0)
@@ -150,7 +150,7 @@ private actor StubFollowUpTransport: HermesChatTransport {
         response = .failure(error)
     }
 
-    nonisolated func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    nonisolated func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         try await record()
     }
 

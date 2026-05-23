@@ -356,7 +356,7 @@ actor SkillRunner {
     private func runAgent(
         skill: SkillManifest,
         tenantID: UUID,
-        profileUsername: String,
+        profileUsername _: String,
         trigger: SkillTrigger,
         mtokIn: inout Int,
         mtokOut: inout Int,
@@ -391,7 +391,7 @@ actor SkillRunner {
                 stream: false,
             )
             let payload = try JSONEncoder().encode(body)
-            let metadata = try await transport.chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername)
+            let metadata = try await transport.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: metadata.data)
             modelUsed = response.model
             let mtokInBefore = mtokIn

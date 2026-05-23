@@ -156,7 +156,8 @@ actor MemoGeneratorService {
 
     func generate(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String? = nil,
         topic: String,
         hint: String?,
         save: Bool,
@@ -167,7 +168,8 @@ actor MemoGeneratorService {
 
         let outcome = try await runAgent(
             tenantID: tenantID,
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
+            sessionID: sessionID,
             topic: topic,
             hint: hint,
         )
@@ -209,7 +211,8 @@ actor MemoGeneratorService {
 
     private func runAgent(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
         topic: String,
         hint: String?,
     ) async throws -> LoopOutcome {
@@ -250,7 +253,7 @@ actor MemoGeneratorService {
                 stream: false,
             )
             let payload = try JSONEncoder().encode(body)
-            let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+            let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
             guard let choice = response.choices.first else {
                 throw HTTPError(.badGateway, message: "hermes returned no choices")

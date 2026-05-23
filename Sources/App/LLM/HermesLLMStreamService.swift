@@ -31,8 +31,12 @@ struct ChatStreamChunk: Equatable {
 /// Uses `AsyncHTTPClient` rather than `URLSession.bytes(for:)` because
 /// the latter is not available on Linux's swift-corelibs-foundation.
 protocol HermesLLMStreamService: Sendable {
+    /// HER-183 — `sessionKey` is the tenant UUID string
+    /// (`X-Hermes-Session-Key`). `sessionID` is optional conversation
+    /// continuity (`X-Hermes-Session-Id`).
     func chatStream(
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
         request: ChatRequest,
     ) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
@@ -66,7 +70,8 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
     }
 
     func chatStream(
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
         request: ChatRequest,
     ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let baseURL = baseURL
@@ -98,7 +103,10 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 httpReq.method = .POST
                 httpReq.headers.add(name: "Content-Type", value: "application/json")
                 httpReq.headers.add(name: "Accept", value: "text/event-stream")
-                httpReq.headers.add(name: "X-Hermes-Profile", value: profileUsername)
+                httpReq.headers.add(name: "X-Hermes-Session-Key", value: sessionKey)
+                if let sessionID, !sessionID.isEmpty {
+                    httpReq.headers.add(name: "X-Hermes-Session-Id", value: sessionID)
+                }
                 if !apiKey.isEmpty {
                     httpReq.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
                 }

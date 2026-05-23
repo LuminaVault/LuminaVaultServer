@@ -44,11 +44,11 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         self.userCredentials = userCredentials
     }
 
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
-    func chatCompletionsWithMetadata(payload: Data, profileUsername _: String) async throws -> HermesChatTransportMetadata {
+    func chatCompletionsWithMetadata(payload: Data, sessionKey _: String, sessionID _: String?) async throws -> HermesChatTransportMetadata {
         // HER-252 — per-user credential lookup. Empty deployment env key
         // + present user key is the canonical BYO mode. Per-user base
         // URL override (e.g. Azure OpenAI proxy) takes precedence over

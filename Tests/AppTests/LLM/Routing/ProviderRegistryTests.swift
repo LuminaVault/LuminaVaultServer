@@ -67,7 +67,7 @@ struct ProviderRegistryTests {
 
         struct StubAdapter: ProviderAdapter {
             let kind: ProviderKind = .hermesGateway
-            func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+            func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
                 Data()
             }
         }

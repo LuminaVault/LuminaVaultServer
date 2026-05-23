@@ -118,7 +118,7 @@ struct MemoGeneratorTests {
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             let result = try await service.generate(
                 tenantID: tenantID,
-                profileUsername: "memo-test",
+                sessionKey: "memo-test",
                 topic: "drinks",
                 hint: nil,
                 save: true,
@@ -163,7 +163,7 @@ struct MemoGeneratorTests {
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             let result = try await service.generate(
                 tenantID: tenantID,
-                profileUsername: "memo-test",
+                sessionKey: "memo-test",
                 topic: "anything",
                 hint: nil,
                 save: false,
@@ -187,7 +187,7 @@ struct MemoGeneratorTests {
             await #expect(throws: (any Error).self) {
                 _ = try await service.generate(
                     tenantID: tenantID,
-                    profileUsername: "memo-test",
+                    sessionKey: "memo-test",
                     topic: "loop",
                     hint: nil,
                     save: false,
@@ -226,7 +226,7 @@ private actor ScriptedTransport: HermesChatTransport {
         steps = []; repeatingStep = repeating
     }
 
-    nonisolated func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    nonisolated func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         try await respond()
     }
 

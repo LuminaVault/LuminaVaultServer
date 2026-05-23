@@ -93,7 +93,7 @@ struct HermesMemoryServiceTests {
 
             let result = try await service.upsert(
                 tenantID: tenantID,
-                profileUsername: "alice",
+                sessionKey: "alice",
                 content: "I prefer tea over coffee.",
             )
 
@@ -105,10 +105,11 @@ struct HermesMemoryServiceTests {
             #expect(rows.count == 1)
             #expect(rows[0].content == "alice prefers tea over coffee")
 
-            // Verify the transport saw the X-Hermes-Profile header pinned to alice
+            // HER-183 — verify the transport saw X-Hermes-Session-Key pinned to alice
             let calls = await transport.calls
             #expect(calls.count == 2)
-            #expect(calls.allSatisfy { $0.profileUsername == "alice" })
+            #expect(calls.allSatisfy { $0.sessionKey == "alice" })
+            #expect(calls.allSatisfy { $0.sessionID == nil })
         }
     }
 
@@ -147,7 +148,7 @@ struct HermesMemoryServiceTests {
 
             let answer = try await service.search(
                 tenantID: tenantID,
-                profileUsername: "alice",
+                sessionKey: "alice",
                 query: "what does the user drink",
             )
 
@@ -174,7 +175,7 @@ struct HermesMemoryServiceTests {
             await #expect(throws: (any Error).self) {
                 _ = try await service.upsert(
                     tenantID: tenantID,
-                    profileUsername: "bob",
+                    sessionKey: "bob",
                     content: "remember anything",
                 )
             }
@@ -211,7 +212,7 @@ struct HermesMemoryServiceTests {
 
             let result = try await service.upsert(
                 tenantID: tenantID,
-                profileUsername: "alice",
+                sessionKey: "alice",
                 content: "I finished a 5k run.",
             )
 
@@ -250,7 +251,7 @@ struct HermesMemoryServiceTests {
 
             _ = try await service.upsert(
                 tenantID: tenantID,
-                profileUsername: "alice",
+                sessionKey: "alice",
                 content: "Meeting about Q3.",
             )
             let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
@@ -282,7 +283,7 @@ struct HermesMemoryServiceTests {
 
             let result = try await service.upsert(
                 tenantID: tenantID,
-                profileUsername: "alice",
+                sessionKey: "alice",
                 content: "Call mom Sunday.",
             )
             #expect(result.summary == "Saved.")
@@ -319,7 +320,7 @@ struct HermesMemoryServiceTests {
             await #expect(throws: (any Error).self) {
                 _ = try await service.upsert(
                     tenantID: tenantID,
-                    profileUsername: "carol",
+                    sessionKey: "carol",
                     content: "loop me",
                 )
             }
@@ -338,7 +339,8 @@ private actor ScriptedTransport: HermesChatTransport {
     }
 
     struct Call {
-        let profileUsername: String
+        let sessionKey: String
+        let sessionID: String?
         let payload: Data
     }
 
@@ -357,12 +359,12 @@ private actor ScriptedTransport: HermesChatTransport {
         repeatingStep = repeating
     }
 
-    nonisolated func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await record(payload: payload, profileUsername: profileUsername)
+    nonisolated func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await record(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
     }
 
-    private func record(payload: Data, profileUsername: String) throws -> Data {
-        calls.append(Call(profileUsername: profileUsername, payload: payload))
+    private func record(payload: Data, sessionKey: String, sessionID: String?) throws -> Data {
+        calls.append(Call(sessionKey: sessionKey, sessionID: sessionID, payload: payload))
         let step: Step
         if let repeating = repeatingStep {
             step = repeating

@@ -423,10 +423,21 @@ If step 3 returns `502 hermes upstream error`:
   profile dir? (Container side is `/opt/data`, host side is `./data/hermes`.)
 - `curl http://localhost:8642/v1/models` — does the gateway respond at all?
 
-The `X-Hermes-Profile: <username>` header is the assumption to verify against
-upstream Hermes if 502s persist. Swap to `model: "<username>/<base>"` or
-query `?profile=<username>` in `DefaultHermesLLMService` if that's how the
-real image expects per-profile routing.
+Per-tenant routing is controlled by two HTTP headers documented in Hermes'
+`gateway/platforms/api_server.py`:
+
+- `X-Hermes-Session-Key: <tenant-uuid>` — the LuminaVault `User.id` UUID
+  string. Scopes long-term memory per user. Sent on every outbound chat
+  call (HER-183).
+- `X-Hermes-Session-Id: <conversation-uuid>` — optional. Sent only when a
+  caller has a stable conversation context (e.g. `ConversationController`
+  on `/v1/conversations/:id/stream`). One-shot internal callers (memory
+  upsert, KB compile, memo gen) omit it. Enables Hermes session
+  continuity across multiple turns.
+
+The legacy `X-Hermes-Profile` header was removed in HER-183 — Hermes
+silently ignored it, which collapsed all users into the gateway's default
+profile. Verify both new headers are present if 502s persist.
 
 ---
 

@@ -76,10 +76,14 @@ struct LLMController {
         let finalIsDegraded = isDegraded
 
         return try await telemetry.observe("llm.chat") {
-            let response = try await service.chat(profileUsername: user.username, request: finalBody)
+            let userID = try user.requireID()
+            let response = try await service.chat(
+                sessionKey: userID.uuidString,
+                sessionID: finalBody.sessionID,
+                request: finalBody,
+            )
             // Push delivery is best-effort: never block the chat response.
             // Capture only what the detached task needs to be Sendable.
-            let userID = try user.requireID()
             let username = user.username
             let pushService = notificationService
             // HER-200 H2 — structured `Task` so the side-effects inherit

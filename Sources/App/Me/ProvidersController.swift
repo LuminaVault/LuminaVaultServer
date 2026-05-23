@@ -170,7 +170,7 @@ struct ProvidersController {
 
         do {
             let adapter = try buildAdapter(kind: kind, resolved: resolved)
-            _ = try await adapter.chatCompletionsWithMetadata(payload: payload, profileUsername: "")
+            _ = try await adapter.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
             // Success — stamp verified_at.
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
             return ProviderTestResponse(verifiedAt: Date(), model: pingPayload["model"] as? String)

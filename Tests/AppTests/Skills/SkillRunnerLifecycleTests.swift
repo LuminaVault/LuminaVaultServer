@@ -222,7 +222,7 @@ struct SkillRunnerLifecycleTests {
 /// Minimal `HermesChatTransport` stub for lifecycle tests that never invoke
 /// the chat path — `runAgent` is not exercised here.
 private struct NoopChatTransport: HermesChatTransport {
-    func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         Data()
     }
 }

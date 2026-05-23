@@ -26,8 +26,8 @@ struct HealthCorrelationServiceTests {
             cannedAssistantContent = s
         }
 
-        func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-            calls.append((payload, profileUsername))
+        func chatCompletions(payload: Data, sessionKey: String, sessionID _: String?) async throws -> Data {
+            calls.append((payload, sessionKey))
             let body: [String: Any] = [
                 "id": "stub-\(UUID().uuidString)",
                 "model": "stub-model",

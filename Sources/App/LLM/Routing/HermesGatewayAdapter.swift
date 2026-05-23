@@ -32,11 +32,11 @@ struct HermesGatewayAdapter: ProviderAdapter {
         self.defaultAuthHeader = defaultAuthHeader
     }
 
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let resolution = LLMRoutingContext.currentResolution
         let dispatchBaseURL: URL
         let authHeader: String?
@@ -55,7 +55,10 @@ struct HermesGatewayAdapter: ProviderAdapter {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+        req.setValue(sessionKey, forHTTPHeaderField: "X-Hermes-Session-Key")
+        if let sessionID, !sessionID.isEmpty {
+            req.setValue(sessionID, forHTTPHeaderField: "X-Hermes-Session-Id")
+        }
         if let authHeader, !authHeader.isEmpty {
             req.setValue(authHeader, forHTTPHeaderField: "Authorization")
         }

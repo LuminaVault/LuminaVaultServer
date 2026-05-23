@@ -14,16 +14,19 @@ import Foundation
 protocol ProviderAdapter: Sendable {
     var kind: ProviderKind { get }
 
-    /// Send a single chat-completions request. `profileUsername` is
-    /// threaded through for Hermes-style per-tenant profile routing; non-
-    /// Hermes providers may ignore it.
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata
+    /// Send a single chat-completions request.
+    /// - `sessionKey`: tenant UUID string. Forwarded as `X-Hermes-Session-Key`
+    ///   by Hermes-style adapters for per-tenant memory scoping. Non-Hermes
+    ///   providers ignore it.
+    /// - `sessionID`: optional conversation continuity ID. Forwarded as
+    ///   `X-Hermes-Session-Id` when non-nil. One-shot tool calls pass nil.
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata
 }
 
 extension ProviderAdapter {
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
-        let data = try await chatCompletions(payload: payload, profileUsername: profileUsername)
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
+        let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         return HermesChatTransportMetadata(data: data, headers: [:])
     }
 }

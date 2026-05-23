@@ -48,11 +48,11 @@ struct RoutedLLMTransport: HermesChatTransport {
         self.failoverLogger = failoverLogger
     }
 
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let requestedModel = Self.extractModel(from: payload)
         let user = await currentUser()
         let decision = await router.pick(forModel: requestedModel, capability: capability, user: user)
@@ -74,7 +74,7 @@ struct RoutedLLMTransport: HermesChatTransport {
             }
             let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
             do {
-                let metadata = try await adapter.chatCompletionsWithMetadata(payload: candidatePayload, profileUsername: profileUsername)
+                let metadata = try await adapter.chatCompletionsWithMetadata(payload: candidatePayload, sessionKey: sessionKey, sessionID: sessionID)
                 // HER-252 — successful candidate. If we got here by falling
                 // over from a prior failure, emit + log a notice describing
                 // the transition.

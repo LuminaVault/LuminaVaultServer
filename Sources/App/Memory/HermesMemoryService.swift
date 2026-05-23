@@ -23,9 +23,14 @@ struct MemorySearchAnswer {
 
 /// Abstracts the HTTP call to `<hermes>/v1/chat/completions` so tests can
 /// drive the agent loop without a live container.
+///
+/// HER-183 — `sessionKey` is the tenant UUID string (forwarded as
+/// `X-Hermes-Session-Key` for per-user memory scoping). `sessionID` is
+/// optional conversation continuity (`X-Hermes-Session-Id`); one-shot
+/// tool calls pass nil.
 protocol HermesChatTransport: Sendable {
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata
 }
 
 struct HermesChatTransportMetadata {
@@ -34,8 +39,8 @@ struct HermesChatTransportMetadata {
 }
 
 extension HermesChatTransport {
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
-        let data = try await chatCompletions(payload: payload, profileUsername: profileUsername)
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
+        let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         return HermesChatTransportMetadata(data: data, headers: [:])
     }
 }
@@ -55,11 +60,11 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
         self.apiKey = apiKey
     }
 
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
-    func chatCompletionsWithMetadata(payload: Data, profileUsername: String) async throws -> HermesChatTransportMetadata {
+    func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let url = baseURL
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
@@ -67,7 +72,10 @@ struct URLSessionHermesChatTransport: HermesChatTransport {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+        req.setValue(sessionKey, forHTTPHeaderField: "X-Hermes-Session-Key")
+        if let sessionID, !sessionID.isEmpty {
+            req.setValue(sessionID, forHTTPHeaderField: "X-Hermes-Session-Id")
+        }
         if !apiKey.isEmpty {
             req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
@@ -260,7 +268,8 @@ actor HermesMemoryService {
 
     func upsert(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String? = nil,
         content: String,
         metadata _: [String: String]? = nil,
     ) async throws -> MemoryUpsertResult {
@@ -280,7 +289,8 @@ actor HermesMemoryService {
         ]
         let outcome = try await runAgent(
             tenantID: tenantID,
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
+            sessionID: sessionID,
             messages: messages,
             allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract],
         )
@@ -292,7 +302,8 @@ actor HermesMemoryService {
 
     func search(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String? = nil,
         query: String,
         limit: Int = 5,
     ) async throws -> MemorySearchAnswer {
@@ -308,7 +319,8 @@ actor HermesMemoryService {
         ]
         let outcome = try await runAgent(
             tenantID: tenantID,
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
+            sessionID: sessionID,
             messages: messages,
             allowedTools: [.sessionSearch],
         )
@@ -347,7 +359,8 @@ actor HermesMemoryService {
 
     private func runAgent(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
         messages initial: [AgentMessage],
         allowedTools: [AvailableTool],
     ) async throws -> AgentOutcome {
@@ -364,7 +377,7 @@ actor HermesMemoryService {
                 stream: false,
             )
             let payload = try JSONEncoder().encode(body)
-            let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+            let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
             guard let choice = response.choices.first else {
                 throw HTTPError(.badGateway, message: "hermes returned no choices")

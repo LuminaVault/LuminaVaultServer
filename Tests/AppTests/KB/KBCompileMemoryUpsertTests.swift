@@ -219,7 +219,7 @@ private struct ScriptedChatTransport: HermesChatTransport {
         inbox = ScriptedChatTransportInbox(turns: turns)
     }
 
-    func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         let body = try await inbox.next()
         return Data(body.utf8)
     }

@@ -10,7 +10,10 @@ import Tracing
 #endif
 
 protocol HermesLLMService: Sendable {
-    func chat(profileUsername: String, request: ChatRequest) async throws -> ChatResponse
+    /// HER-183 — `sessionKey` is the tenant UUID string (sent as
+    /// `X-Hermes-Session-Key`). `sessionID` is optional conversation
+    /// continuity (`X-Hermes-Session-Id`); nil for one-shot calls.
+    func chat(sessionKey: String, sessionID: String?, request: ChatRequest) async throws -> ChatResponse
 }
 
 /// Outbound request body for the Hermes OpenAI-compatible gateway.
@@ -44,16 +47,18 @@ struct DefaultHermesLLMService: HermesLLMService {
         self.apiKey = apiKey
     }
 
-    func chat(profileUsername: String, request: ChatRequest) async throws -> ChatResponse {
+    func chat(sessionKey: String, sessionID: String?, request: ChatRequest) async throws -> ChatResponse {
         let started = DispatchTime.now().uptimeNanoseconds
         return try await withSpan("hermes.chat", ofKind: .client) { _ in
             let url = baseURL.appendingPathComponent("v1").appendingPathComponent("chat").appendingPathComponent("completions")
             var urlReq = URLRequest(url: url)
             urlReq.httpMethod = "POST"
             urlReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            // ASSUMPTION: upstream Hermes gateway routes per-profile traffic via this header.
-            // If wrong, swap to `model: "<username>/<base>"` or `?profile=` here.
-            urlReq.setValue(profileUsername, forHTTPHeaderField: "X-Hermes-Profile")
+            // HER-183 — per-tenant memory scoping on the Hermes gateway.
+            urlReq.setValue(sessionKey, forHTTPHeaderField: "X-Hermes-Session-Key")
+            if let sessionID, !sessionID.isEmpty {
+                urlReq.setValue(sessionID, forHTTPHeaderField: "X-Hermes-Session-Id")
+            }
             if !apiKey.isEmpty {
                 urlReq.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             }
@@ -101,13 +106,13 @@ struct DefaultHermesLLMService: HermesLLMService {
             HermesToolErrorClassifier.observe(
                 errors: toolErrors,
                 model: raw.model,
-                profile: profileUsername,
+                profile: sessionKey,
                 logger: logger,
             )
             let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
             successCounter.increment()
             durationTimer.recordNanoseconds(Int64(DispatchTime.now().uptimeNanoseconds - started))
-            logger.info("hermes reply ready model=\(raw.model) profile=\(profileUsername)")
+            logger.info("hermes reply ready model=\(raw.model) sessionKey=\(sessionKey)")
             return ChatResponse(id: raw.id, model: raw.model, message: sanitized, raw: raw)
         }
     }

@@ -29,7 +29,7 @@ struct RoutedLLMTransportTests {
             self.outcomes = outcomes
         }
 
-        func chatCompletions(payload: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
             calls.append(payload)
             guard !outcomes.isEmpty else {
                 throw ProviderError.transient(provider: kind, status: 0, body: "stub: outcomes exhausted")
@@ -80,7 +80,7 @@ struct RoutedLLMTransportTests {
             router: FixedRouter(decision: Self.decision(primary: .hermesGateway)),
             logger: Logger(label: "test"),
         )
-        let result = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+        let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "OK")
         let calls = await primary.calls.count
         #expect(calls == 1)
@@ -96,7 +96,7 @@ struct RoutedLLMTransportTests {
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
             logger: Logger(label: "test"),
         )
-        let result = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+        let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "FALLBACK")
         let primaryCalls = await primary.calls.count
         let fallbackCalls = await fallback.calls.count
@@ -114,7 +114,7 @@ struct RoutedLLMTransportTests {
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
             logger: Logger(label: "test"),
         )
-        _ = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+        _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         let primaryCalls = await primary.calls.count
         let fallbackCalls = await fallback.calls.count
         #expect(primaryCalls == 1)
@@ -132,7 +132,7 @@ struct RoutedLLMTransportTests {
             logger: Logger(label: "test"),
         )
         await #expect(throws: (any Error).self) {
-            _ = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+            _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         }
         let fallbackCalls = await fallback.calls.count
         #expect(fallbackCalls == 0, "permanent failures must NOT touch the fallback — payload is bad")
@@ -149,7 +149,7 @@ struct RoutedLLMTransportTests {
             logger: Logger(label: "test"),
         )
         await #expect(throws: (any Error).self) {
-            _ = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+            _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         }
         let primaryCalls = await primary.calls.count
         let fallbackCalls = await fallback.calls.count
@@ -166,7 +166,7 @@ struct RoutedLLMTransportTests {
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
             logger: Logger(label: "test"),
         )
-        let result = try await transport.chatCompletions(payload: Self.payload(), profileUsername: "alice")
+        let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "OK")
         let calls = await groq.calls.count
         #expect(calls == 1)
@@ -184,7 +184,7 @@ struct RoutedLLMTransportTests {
             )),
             logger: Logger(label: "test"),
         )
-        _ = try await transport.chatCompletions(payload: Self.payload(model: "ignored"), profileUsername: "alice")
+        _ = try await transport.chatCompletions(payload: Self.payload(model: "ignored"), sessionKey: "alice", sessionID: nil)
 
         let captured = await primary.calls.first
         let dict = try #require(captured.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })

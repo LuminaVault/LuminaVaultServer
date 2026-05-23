@@ -34,7 +34,8 @@ protocol ContextRouterSelector: Sendable {
 struct DefaultContextRouterSelector: ContextRouterSelector {
     let transport: any HermesChatTransport
     let model: String
-    let profileUsername: String
+    /// HER-183 — tenant UUID forwarded as `X-Hermes-Session-Key`.
+    let sessionKey: String
     let logger: Logger
 
     func selectSkill(
@@ -87,8 +88,8 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
             // Hard timeout per HER-172 latency budget. Cancel the upstream
             // call rather than block the user's chat.
             raw = try await withThrowingTaskGroup(of: Data.self) { group in
-                group.addTask { [transport, profileUsername] in
-                    try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+                group.addTask { [transport, sessionKey] in
+                    try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
                 }
                 group.addTask {
                     try? await Task.sleep(for: timeout)

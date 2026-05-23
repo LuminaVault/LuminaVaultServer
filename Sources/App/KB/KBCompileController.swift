@@ -40,7 +40,7 @@ struct KBCompileController {
             let started = ContinuousClock.now
             let result = try await service.compileExistingVaultFiles(
                 tenantID: tenantID,
-                profileUsername: user.username,
+                sessionKey: tenantID.uuidString,
                 rows: rows,
                 hint: nil,
                 runId: runId,

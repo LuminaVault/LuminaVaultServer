@@ -85,7 +85,7 @@ actor SynthesisWorker: Service {
         for user in users {
             let tenantID = try user.requireID()
             do {
-                if try await runWeeklyJob(tenantID: tenantID, profileUsername: user.username, window: window) {
+                if try await runWeeklyJob(tenantID: tenantID, sessionKey: tenantID.uuidString, window: window) {
                     inserted += 1
                 }
             } catch {
@@ -99,7 +99,7 @@ actor SynthesisWorker: Service {
     /// row was inserted, `false` when skipped (no memories or
     /// already-synthesised period).
     @discardableResult
-    func runWeeklyJob(tenantID: UUID, profileUsername: String, window: Period) async throws -> Bool {
+    func runWeeklyJob(tenantID: UUID, sessionKey: String, window: Period) async throws -> Bool {
         let existing = try await Insight.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$section == InsightSection.thisWeek.rawValue)
             .filter(\.$periodStart == window.start)
@@ -109,7 +109,7 @@ actor SynthesisWorker: Service {
         let rows = try await loadMemories(tenantID: tenantID, since: window.start, limit: memorySampleSize)
         guard !rows.isEmpty else { return false }
         guard let synth = await synthesise(
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
             prompt: Self.weeklyPrompt(for: rows, window: window),
         ) else { return false }
         let insight = Insight(
@@ -133,7 +133,7 @@ actor SynthesisWorker: Service {
         for user in users {
             let tenantID = try user.requireID()
             do {
-                inserted += try await runPatternJob(tenantID: tenantID, profileUsername: user.username, now: now)
+                inserted += try await runPatternJob(tenantID: tenantID, sessionKey: tenantID.uuidString, now: now)
             } catch {
                 logger.warning("synthesis.patterns tenant=\(tenantID) error: \(error)")
             }
@@ -144,7 +144,7 @@ actor SynthesisWorker: Service {
     /// Pattern job for a single tenant. Returns the number of rows
     /// inserted (0 to `maxPatternsPerRun`). Skips users whose most
     /// recent pattern row is less than 24h old.
-    func runPatternJob(tenantID: UUID, profileUsername: String, now: Date) async throws -> Int {
+    func runPatternJob(tenantID: UUID, sessionKey: String, now: Date) async throws -> Int {
         let cutoff = now.addingTimeInterval(-24 * 3600)
         if let recent = try await Insight.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$section == InsightSection.patterns.rawValue)
@@ -156,7 +156,7 @@ actor SynthesisWorker: Service {
         let rows = try await loadMemories(tenantID: tenantID, since: windowStart, limit: memorySampleSize)
         guard rows.count >= 3 else { return 0 }
         guard let patterns = await detectPatterns(
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
             prompt: Self.patternsPrompt(for: rows, max: maxPatternsPerRun),
         ), !patterns.isEmpty else { return 0 }
         var inserted = 0
@@ -183,18 +183,18 @@ actor SynthesisWorker: Service {
 
     /// Defensive wrapper. Returns `nil` on any failure so the
     /// surrounding job can log + continue.
-    private func synthesise(profileUsername: String, prompt: [ChatMessage]) async -> Synthesised? {
+    private func synthesise(sessionKey: String, prompt: [ChatMessage]) async -> Synthesised? {
         let body = OutboundBody(model: defaultModel, messages: prompt, temperature: 0.5, response_format: .init(type: "json_object"), stream: false)
         guard let payload = try? JSONEncoder().encode(body),
-              let response = try? await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+              let response = try? await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
         else { return nil }
         return Self.parseSynthesis(response: response)
     }
 
-    private func detectPatterns(profileUsername: String, prompt: [ChatMessage]) async -> [Synthesised]? {
+    private func detectPatterns(sessionKey: String, prompt: [ChatMessage]) async -> [Synthesised]? {
         let body = OutboundBody(model: defaultModel, messages: prompt, temperature: 0.5, response_format: .init(type: "json_object"), stream: false)
         guard let payload = try? JSONEncoder().encode(body),
-              let response = try? await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+              let response = try? await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
         else { return nil }
         return Self.parsePatterns(response: response)
     }
