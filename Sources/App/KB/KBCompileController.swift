@@ -9,6 +9,7 @@ struct KBCompileController {
     let service: KBCompileService
     let fluent: Fluent
     let achievements: AchievementsService?
+    let progress: any KBCompileProgressPublisher
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -21,37 +22,56 @@ struct KBCompileController {
         let tenantID = try user.requireID()
         let body = try await req.decode(as: KBCompileRequest.self, context: ctx)
 
+        let runId = UUID()
         let rows = try await resolveRows(tenantID: tenantID, body: body)
-        guard !rows.isEmpty else {
-            // Tap with nothing pending is a no-op success, not an error — keeps
-            // the "Sync & Learn" button idempotent across rapid taps.
-            return KBCompileResponse(memoriesIngested: 0, memoriesUpdated: 0, durationMs: 0)
-        }
 
-        let started = ContinuousClock.now
-        let result = try await service.compileExistingVaultFiles(
+        await progress.publish(
+            .started(.init(runId: runId, totalFiles: rows.count)),
             tenantID: tenantID,
-            profileUsername: user.username,
-            rows: rows,
-            hint: nil,
-        )
-        let elapsed = ContinuousClock.now - started
-        let elapsedMs = Int(
-            elapsed.components.seconds * 1000
-                + elapsed.components.attoseconds / 1_000_000_000_000_000,
         )
 
-        try await markFirstKBCompileCompleted(tenantID: tenantID)
-
-        if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .kbCompiled) }
+        guard !rows.isEmpty else {
+            let empty = KBCompileResponse(memoriesIngested: 0, memoriesUpdated: 0, durationMs: 0, runId: runId)
+            await progress.publish(.completed(.init(runId: runId, response: empty)), tenantID: tenantID)
+            return empty
         }
 
-        return KBCompileResponse(
-            memoriesIngested: result.memories.count,
-            memoriesUpdated: nil,
-            durationMs: elapsedMs,
-        )
+        do {
+            let started = ContinuousClock.now
+            let result = try await service.compileExistingVaultFiles(
+                tenantID: tenantID,
+                profileUsername: user.username,
+                rows: rows,
+                hint: nil,
+                runId: runId,
+            )
+            let elapsed = ContinuousClock.now - started
+            let elapsedMs = Int(
+                elapsed.components.seconds * 1000
+                    + elapsed.components.attoseconds / 1_000_000_000_000_000,
+            )
+
+            try await markFirstKBCompileCompleted(tenantID: tenantID)
+
+            if let achievements {
+                Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .kbCompiled) }
+            }
+
+            let response = KBCompileResponse(
+                memoriesIngested: result.memories.count,
+                memoriesUpdated: nil,
+                durationMs: elapsedMs,
+                runId: runId,
+            )
+            await progress.publish(.completed(.init(runId: runId, response: response)), tenantID: tenantID)
+            return response
+        } catch {
+            await progress.publish(
+                .error(.init(runId: runId, message: "\(error)")),
+                tenantID: tenantID,
+            )
+            throw error
+        }
     }
 
     private func resolveRows(tenantID: UUID, body: KBCompileRequest) async throws -> [VaultFile] {
