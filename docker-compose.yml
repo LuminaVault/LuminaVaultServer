@@ -106,7 +106,8 @@ services:
 
   otel-collector:
     # HER-236: front door for all OTel signals — fans traces → jaeger,
-    # logs → PostHog, metrics → debug (future: prometheus exporter).
+    # logs → debug (PostHog OTel logs returns 404 in cloud; revisit
+    # when the endpoint is enabled), metrics → debug (future: prometheus).
     image: otel/opentelemetry-collector-contrib:0.152.0
     container_name: hermes-otel-collector
     restart: unless-stopped

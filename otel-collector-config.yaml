@@ -14,10 +14,16 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
-  otlphttp/posthog:
-    logs_endpoint: https://us.i.posthog.com/otlp/v1/logs
-    headers:
-      Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
+  # PostHog's OTLP ingest currently only accepts traces; the logs path
+  # (`/otlp/v1/logs`) returns 404 and the collector drops every batch.
+  # Keep the exporter definition commented for future revival once
+  # PostHog Cloud exposes OTLP logs; routing logs to `debug` in the
+  # meantime so the pipeline still drains.
+  #
+  # otlphttp/posthog:
+  #   logs_endpoint: https://us.i.posthog.com/otlp/v1/logs
+  #   headers:
+  #     Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
   debug:
     verbosity: basic
 
@@ -35,7 +41,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/posthog]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
