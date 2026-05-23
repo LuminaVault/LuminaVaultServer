@@ -1,0 +1,67 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  resource/sentry:
+    attributes:
+      - key: deployment.environment
+        value: ${env:SENTRY_ENVIRONMENT}
+        action: upsert
+      - key: service.version
+        value: ${env:SENTRY_RELEASE}
+        action: upsert
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  otlphttp/posthog:
+    logs_endpoint: https://us.i.posthog.com/otlp/v1/logs
+    headers:
+      Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
+  sentry:
+    url: ${env:SENTRY_BASE_URL}
+    org_slug: ${env:SENTRY_ORG_SLUG}
+    auth_token: ${env:SENTRY_AUTH_TOKEN}
+    auto_create_projects: false
+    routing:
+      project_from_attribute: service.name
+      attribute_to_project_mapping:
+        luminavault: ${env:SENTRY_PROJECT_SLUG}
+        LuminaVaultServer: ${env:SENTRY_PROJECT_SLUG}
+    http:
+      timeout: 30s
+      tls:
+        insecure_skip_verify: false
+    timeout: 30s
+    sending_queue:
+      enabled: true
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/sentry, batch]
+      exporters: [otlp/jaeger, sentry]
+    logs:
+      receivers: [otlp]
+      processors: [resource/sentry, batch]
+      exporters: [otlphttp/posthog, sentry]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

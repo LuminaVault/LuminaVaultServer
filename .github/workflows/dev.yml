@@ -85,6 +85,12 @@ jobs:
             git clean -fd
             APP_IMAGE="${{ needs.build.outputs.app_image }}"
             POSTHOG_OTEL_TOKEN="${{ secrets.POSTHOG_OTEL_TOKEN }}"
+            SENTRY_BASE_URL="${{ secrets.SENTRY_BASE_URL }}"
+            SENTRY_ORG_SLUG="${{ secrets.SENTRY_ORG_SLUG }}"
+            SENTRY_PROJECT_SLUG="${{ secrets.SENTRY_PROJECT_SLUG }}"
+            SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}"
+            SENTRY_ENVIRONMENT="${{ secrets.SENTRY_ENVIRONMENT }}"
+            SENTRY_RELEASE="${{ github.sha }}"
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull "${APP_IMAGE}"
             if grep -q '^APP_IMAGE=' .env.development; then
@@ -100,6 +106,16 @@ jobs:
                 echo "POSTHOG_OTEL_TOKEN=${POSTHOG_OTEL_TOKEN}" >> .env.development
               fi
             fi
+            for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE; do
+              value="$(printenv "$key" || true)"
+              if [ -n "${value}" ]; then
+                if grep -q "^${key}=" .env.development; then
+                  sed -i "s|^${key}=.*|${key}=${value}|" .env.development
+                else
+                  echo "${key}=${value}" >> .env.development
+                fi
+              fi
+            done
             ln -sf /opt/obsidian-claudebrain/.env.development /opt/obsidian-claudebrain/.env
             export APP_IMAGE
             export APP_PORT=8081
