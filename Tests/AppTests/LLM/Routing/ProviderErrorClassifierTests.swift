@@ -6,7 +6,6 @@ import Testing
 /// classifier is on the chat hot path; misclassifying a 403 with a
 /// `insufficient_quota` body as `.permanent` would break failover, so
 /// every code branch + every credit marker gets a pinned test.
-@Suite
 struct ProviderErrorClassifierTests {
     private static func classify(_ status: Int, body: String? = nil) -> ProviderError {
         ProviderErrorClassifier.classify(
@@ -120,7 +119,6 @@ struct ProviderErrorClassifierTests {
 /// HER-252 — `ProviderError.userMessage` / `.reasonCode` are surfaced
 /// verbatim on SSE `.fallback` events and `provider_failover_events`
 /// rows. Pin the strings.
-@Suite
 struct ProviderErrorSurfaceTests {
     @Test
     func `creditExhausted carries provider name`() {

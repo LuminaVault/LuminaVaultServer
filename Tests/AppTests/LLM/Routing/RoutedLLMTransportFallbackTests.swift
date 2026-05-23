@@ -25,7 +25,7 @@ struct RoutedLLMTransportFallbackTests {
             self.outcomes = outcomes
         }
 
-        func chatCompletions(payload: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
             guard !outcomes.isEmpty else {
                 throw ProviderError.transient(provider: kind, status: 0, body: "stub exhausted")
             }

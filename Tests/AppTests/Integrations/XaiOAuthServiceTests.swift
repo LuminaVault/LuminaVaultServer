@@ -36,10 +36,10 @@ struct XaiOAuthServiceTests {
         backend: any XaiOAuthBackend,
     ) throws -> (XaiOAuthService, HermesContainerManager) {
         let docker = StubDockerExec()
-        let manager = HermesContainerManager(
+        let manager = try HermesContainerManager(
             docker: docker,
             fluent: fluent,
-            secretBox: try SecretBox(masterKeyBase64: masterKeyBase64),
+            secretBox: SecretBox(masterKeyBase64: masterKeyBase64),
             config: HermesContainerManager.Config(
                 image: "hermes:test",
                 network: "lvtest",
@@ -182,5 +182,7 @@ private func withSubmitFailure(backend: StubXaiOAuthBackend) async {
 }
 
 extension StubXaiOAuthBackend {
-    func setSubmitCallbackResult(_ value: Result<Bool, Error>) { submitCallbackResult = value }
+    func setSubmitCallbackResult(_ value: Result<Bool, Error>) {
+        submitCallbackResult = value
+    }
 }

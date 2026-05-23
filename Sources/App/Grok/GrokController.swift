@@ -81,7 +81,7 @@ struct GrokController {
         if ttsDisabled {
             throw HTTPError(.notImplemented, message: "tts_coming_soon")
         }
-        // TODO HER-240c follow-up — wire the upstream TTS provider when xAI's
+        // TODO: HER-240c follow-up — wire the upstream TTS provider when xAI's
         // audio endpoint goes public or LuminaVault flips an alt provider.
         throw HTTPError(.notImplemented, message: "tts_coming_soon")
     }
@@ -105,7 +105,7 @@ struct GrokController {
     private func mapProxyError(_ error: any Error) -> any Error {
         if let proxyErr = error as? HermesGrokProxy.Error {
             switch proxyErr {
-            case .nonZeroStatus(let code):
+            case let .nonZeroStatus(code):
                 logger.warning("grok proxy upstream \(code)")
                 return HTTPError(.badGateway, message: "grok_upstream_\(code)")
             case .decodeFailed:

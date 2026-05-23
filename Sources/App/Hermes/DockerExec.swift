@@ -59,18 +59,14 @@ protocol StreamingExecHandle: Sendable {
     func cancel() async
 }
 
-struct DockerResult: Sendable, Equatable {
+struct DockerResult: Equatable {
     let stdout: String
     let stderr: String
     let exitCode: Int32
 
-    init(stdout: String, stderr: String, exitCode: Int32) {
-        self.stdout = stdout
-        self.stderr = stderr
-        self.exitCode = exitCode
+    var ok: Bool {
+        exitCode == 0
     }
-
-    var ok: Bool { exitCode == 0 }
 }
 
 enum DockerExecError: Error, Equatable {

@@ -188,7 +188,8 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
     static func consumeAuthorizeURL(from lines: AsyncStream<String>) async throws -> String {
         for await line in lines {
             for prefix in authorizeURLLinePrefixes
-                where line.hasPrefix(prefix) || line.contains(prefix) {
+                where line.hasPrefix(prefix) || line.contains(prefix)
+            {
                 let trimmed = line.replacingOccurrences(of: prefix, with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
@@ -239,7 +240,7 @@ private func withTimeout<R: Sendable>(
 ) async throws -> R {
     try await withThrowingTaskGroup(of: TimeoutOutcome<R>.self) { group in
         group.addTask {
-            .completed(try await operation())
+            try await .completed(operation())
         }
         group.addTask {
             try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
@@ -259,7 +260,7 @@ private func withTimeout<R: Sendable>(
     }
 }
 
-private enum TimeoutOutcome<R: Sendable>: Sendable {
+private enum TimeoutOutcome<R: Sendable> {
     case completed(R)
     case timedOut
 }

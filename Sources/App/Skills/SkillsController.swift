@@ -44,7 +44,7 @@ struct SkillsController {
             .filter(\.$tenantID == tenantID)
             .all()
         let stateByKey: [String: SkillsState] = Dictionary(
-            uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
+            uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) },
         )
         let dailyCounts = try await dailyRunCounts(tenantID: tenantID, names: nil)
         let userTier = user.tier.isEmpty ? "trial" : user.tier
@@ -56,7 +56,7 @@ struct SkillsController {
                 manifest: manifest,
                 state: state,
                 dailyRunCount: dailyCounts[manifest.name] ?? 0,
-                userTier: userTier
+                userTier: userTier,
             )
         }
         return SkillListResponse(skills: skills)
@@ -110,7 +110,7 @@ struct SkillsController {
             manifest: manifest,
             state: state,
             dailyRunCount: counts[manifest.name] ?? 0,
-            userTier: userTier
+            userTier: userTier,
         )
     }
 
@@ -156,7 +156,7 @@ struct SkillsController {
                 error: row.error,
                 modelUsed: row.model_used,
                 mtokIn: row.mtok_in,
-                mtokOut: row.mtok_out
+                mtokOut: row.mtok_out,
             )
         }
 
@@ -170,7 +170,7 @@ struct SkillsController {
         GROUP BY day
         """).all(decoding: BucketRow.self)
         let bucketByDay: [Date: Int] = Dictionary(
-            uniqueKeysWithValues: buckets.map { ($0.day, $0.count) }
+            uniqueKeysWithValues: buckets.map { ($0.day, $0.count) },
         )
         var sparkline: [SkillSparklinePoint] = []
         sparkline.reserveCapacity(Self.sparklineDays)
@@ -216,7 +216,7 @@ struct SkillsController {
         manifest: SkillManifest,
         state: SkillsState?,
         dailyRunCount: Int,
-        userTier: String
+        userTier: String,
     ) -> LuminaVaultShared.SkillDTO {
         LuminaVaultShared.SkillDTO(
             id: "\(manifest.source.rawValue):\(manifest.name)",
@@ -234,7 +234,7 @@ struct SkillsController {
             dailyRunCount: dailyRunCount,
             dailyRunCap: manifest.dailyRunCap?.value(for: userTier) ?? 0,
             apnsCategory: state?.apnsCategory.flatMap { LuminaVaultShared.APNSCategory(rawValue: $0) },
-            bodyExcerpt: String(manifest.body.prefix(200))
+            bodyExcerpt: String(manifest.body.prefix(200)),
         )
     }
 
@@ -248,9 +248,8 @@ struct SkillsController {
     private func dailyRunCounts(tenantID: UUID, names: [String]?) async throws -> [String: Int] {
         guard let sql = fluent.db() as? any SQLDatabase else { return [:] }
         struct Row: Decodable { let name: String; let count: Int }
-        let rows: [Row]
-        if let names, !names.isEmpty {
-            rows = try await sql.raw("""
+        let rows: [Row] = if let names, !names.isEmpty {
+            try await sql.raw("""
             SELECT name, COUNT(*)::int AS count
             FROM skill_run_log
             WHERE tenant_id = \(bind: tenantID)
@@ -259,7 +258,7 @@ struct SkillsController {
             GROUP BY name
             """).all(decoding: Row.self)
         } else {
-            rows = try await sql.raw("""
+            try await sql.raw("""
             SELECT name, COUNT(*)::int AS count
             FROM skill_run_log
             WHERE tenant_id = \(bind: tenantID)

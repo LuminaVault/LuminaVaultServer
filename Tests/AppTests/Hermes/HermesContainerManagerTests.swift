@@ -42,10 +42,10 @@ struct HermesContainerManagerTests {
         portEnd: Int = 9100,
         now: @escaping @Sendable () -> Date = { Date() },
     ) throws -> HermesContainerManager {
-        HermesContainerManager(
+        try HermesContainerManager(
             docker: docker,
             fluent: fluent,
-            secretBox: try SecretBox(masterKeyBase64: masterKeyBase64),
+            secretBox: SecretBox(masterKeyBase64: masterKeyBase64),
             config: HermesContainerManager.Config(
                 image: "hermes:test",
                 network: "lvtest",
@@ -74,7 +74,7 @@ struct HermesContainerManagerTests {
 
             let first = try await manager.ensureRunning(tenantID: tenantID)
             #expect(first.containerName.hasPrefix("hermes-tenant-"))
-            #expect((9000..<9100).contains(first.port))
+            #expect((9000 ..< 9100).contains(first.port))
 
             let runInvocations = await docker.invocations.filter { $0.kind == "run" && $0.args.first == "run" }
             #expect(runInvocations.count == 1, "second call must not spawn a new container")

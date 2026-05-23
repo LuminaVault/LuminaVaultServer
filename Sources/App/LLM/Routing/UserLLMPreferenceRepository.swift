@@ -11,12 +11,12 @@ actor UserLLMPreferenceRepository {
     /// Wire-friendly snapshot returned to callers. Keeping it as a
     /// value type (not the Fluent model) avoids leaking the row's
     /// mutability beyond the actor.
-    struct Snapshot: Sendable, Equatable {
+    struct Snapshot: Equatable {
         let primaryProvider: ProviderKind
         let primaryModel: String
         let fallbackChain: [Step]
 
-        struct Step: Sendable, Equatable {
+        struct Step: Equatable {
             let provider: ProviderKind
             let model: String
         }

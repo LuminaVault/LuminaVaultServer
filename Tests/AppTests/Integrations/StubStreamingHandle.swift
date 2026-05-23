@@ -15,16 +15,20 @@ final class StubStreamingHandle: StreamingExecHandle, @unchecked Sendable {
         self.lines = AsyncStream { continuation in
             capturedContinuation = continuation
         }
-        self.continuation = capturedContinuation
+        continuation = capturedContinuation
         self.exitCode = exitCode
         // Drain initial lines synchronously so consumers can iterate
         // without yielding to the runloop first.
-        for line in lines { continuation.yield(line) }
+        for line in lines {
+            continuation.yield(line)
+        }
         // Leave the stream OPEN: tests close it explicitly via
         // `finishLines` so the consumer can choose when to terminate.
     }
 
-    func finishLines() { continuation.finish() }
+    func finishLines() {
+        continuation.finish()
+    }
 
     func wait() async throws -> Int32 {
         // Mirror real behaviour — wait until stream is finished, then

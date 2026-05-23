@@ -14,7 +14,7 @@ import Foundation
 /// access. The process pipe associated with an expired session is closed by
 /// the service when it observes the TTL elapsed.
 actor XaiOAuthSessionStore {
-    struct Session: Sendable {
+    struct Session {
         let sessionID: String
         let tenantID: UUID
         let authorizeURL: String

@@ -4,8 +4,8 @@ import Hummingbird
 import HummingbirdTesting
 import struct LuminaVaultShared.AuthResponse
 import struct LuminaVaultShared.HermesGatewayCatalogEntry
-import struct LuminaVaultShared.HermesGatewaysListResponse
 import enum LuminaVaultShared.HermesGatewayID
+import struct LuminaVaultShared.HermesGatewaysListResponse
 import enum LuminaVaultShared.HermesGatewayStatus
 import Testing
 

@@ -42,18 +42,6 @@ struct HermesGatewaysController {
     let gatewayClient: any HermesGatewayClienting
     let logger: Logger
 
-    init(
-        fluent: Fluent,
-        secretBox: SecretBox,
-        gatewayClient: any HermesGatewayClienting,
-        logger: Logger,
-    ) {
-        self.fluent = fluent
-        self.secretBox = secretBox
-        self.gatewayClient = gatewayClient
-        self.logger = logger
-    }
-
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: list)
         router.get(":id", use: getOne)
@@ -71,7 +59,9 @@ struct HermesGatewaysController {
             .filter(\.$tenantID == tenantID)
             .all()
         var byID: [String: UserHermesGateway] = [:]
-        for row in rows { byID[row.gatewayID] = row }
+        for row in rows {
+            byID[row.gatewayID] = row
+        }
 
         let entries = HermesGatewayID.allCases.map { id -> HermesGatewayCatalogEntry in
             let entry = HermesGatewayCatalog.entry(for: id)

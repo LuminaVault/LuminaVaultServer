@@ -31,16 +31,16 @@ import LuminaVaultShared
 protocol HermesGatewayClienting: Sendable {
     /// Probe the user's Hermes server's `/v1/health` endpoint.
     /// Returns the classified reachability result; never throws.
-    // TODO(HER-241 follow-up): add `setup(id:config:)` when Hermes
-    // ships an admin HTTP API for gateway management. Today this is
-    // CLI-only — see plan `.planning/HER-241` for the swap-in point.
+    /// TODO(HER-241 follow-up): add `setup(id:config:)` when Hermes
+    /// ships an admin HTTP API for gateway management. Today this is
+    /// CLI-only — see plan `.planning/HER-241` for the swap-in point.
     func health(
         baseURL: URL,
-        authHeader: String?
+        authHeader: String?,
     ) async -> HermesGatewayReachability
 }
 
-enum HermesGatewayReachability: Equatable, Sendable {
+enum HermesGatewayReachability: Equatable {
     case reachable
     case unauthorized
     case unreachable(reason: String)

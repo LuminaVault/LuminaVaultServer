@@ -43,7 +43,7 @@ actor SkillCatalog {
         let fm = FileManager.default
         guard let dirs = try? fm.contentsOfDirectory(
             at: resourceRoot,
-            includingPropertiesForKeys: [.isDirectoryKey]
+            includingPropertiesForKeys: [.isDirectoryKey],
         ) else {
             return []
         }

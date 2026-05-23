@@ -47,9 +47,8 @@ struct SessionsController {
 
         // HER-261 — `?workspace=<uuid>` scopes to that Space's conversations.
         // Absent => all workspaces.
-        let rows: [Row]
-        if let workspaceID {
-            rows = try await sql.raw("""
+        let rows: [Row] = if let workspaceID {
+            try await sql.raw("""
             SELECT c.id, c.title, c.updated_at, c.space_id,
                    COALESCE(m.cnt, 0)::int AS message_count,
                    (
@@ -71,7 +70,7 @@ struct SessionsController {
             LIMIT \(bind: limit)
             """).all(decoding: Row.self)
         } else {
-            rows = try await sql.raw("""
+            try await sql.raw("""
             SELECT c.id, c.title, c.updated_at, c.space_id,
                    COALESCE(m.cnt, 0)::int AS message_count,
                    (
@@ -102,7 +101,7 @@ struct SessionsController {
                 lastMessageAt: row.updated_at,
                 workspaceID: row.space_id,
                 pinned: false,
-                archived: false
+                archived: false,
             )
         }
         return SessionListResponse(sessions: sessions, nextCursor: nil)

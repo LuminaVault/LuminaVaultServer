@@ -23,7 +23,7 @@ struct KBCompileSpaceCountersTests {
             let spaceA = try await seedSpace(tenantID: tenantID, slug: Self.slug("a"), on: db)
             let spaceB = try await seedSpace(tenantID: tenantID, slug: Self.slug("b"), on: db)
 
-            for index in 0..<3 {
+            for index in 0 ..< 3 {
                 try await seedVaultFile(tenantID: tenantID, spaceID: spaceA, index: index, on: db)
                 try await seedVaultFile(tenantID: tenantID, spaceID: spaceB, index: index, on: db)
             }
