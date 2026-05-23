@@ -3,6 +3,7 @@ import FluentKit
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 import SQLKit
 
 #if canImport(FoundationNetworking)
@@ -52,6 +53,11 @@ actor KBCompileService {
     let maxFileSize: Int
     let maxBatchBytes: Int
     let maxToolIterations: Int
+    /// HER-288 — progress publisher used to fan-out `.preparing`,
+    /// `.thinking`, and `.memorySaved` events over the per-tenant WS
+    /// channel. Defaults to `NoopKBCompileProgressPublisher` so unit tests
+    /// and call-sites that don't care about progress need not wire one up.
+    let progress: any KBCompileProgressPublisher
 
     init(
         vaultPaths: VaultPathService,
@@ -63,6 +69,7 @@ actor KBCompileService {
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
         maxToolIterations: Int = 12,
+        progress: any KBCompileProgressPublisher = NoopKBCompileProgressPublisher(),
     ) {
         self.vaultPaths = vaultPaths
         self.transport = transport
@@ -73,6 +80,7 @@ actor KBCompileService {
         self.maxFileSize = maxFileSize
         self.maxBatchBytes = maxBatchBytes
         self.maxToolIterations = maxToolIterations
+        self.progress = progress
     }
 
     func compileExistingVaultFiles(
@@ -80,6 +88,7 @@ actor KBCompileService {
         profileUsername: String,
         rows: [VaultFile],
         hint: String?,
+        runId: UUID,
     ) async throws -> InternalKBCompileResult {
         guard !rows.isEmpty else { throw KBCompileError.noFiles }
 
@@ -118,11 +127,21 @@ actor KBCompileService {
         }
 
         logger.info("kb-compile processing \(rows.count) existing files (\(totalBytes) bytes) for tenant \(tenantID)")
+
+        // HER-288 — vault files are on disk, agent loop is about to start.
+        // Emit `.preparing` so subscribers can show a "thinking…" surface
+        // before the first model round-trip lands.
+        await progress.publish(
+            .preparing(.init(runId: runId)),
+            tenantID: tenantID,
+        )
+
         let summary = try await runCompileLoop(
             tenantID: tenantID,
             profileUsername: profileUsername,
             blocks: compiledTextBlocks,
             hint: hint,
+            runId: runId,
         )
         let completedAt = Date()
         try await markVaultFilesProcessed(ids: rowIDs, at: completedAt)
@@ -236,6 +255,7 @@ actor KBCompileService {
         profileUsername: String,
         blocks: [(path: String, content: String, contentType: String)],
         hint: String?,
+        runId: UUID,
     ) async throws -> CompileSummary {
         let systemPrompt = """
         You are Hermes' kb-compile agent. The user just dropped a batch of \
@@ -265,7 +285,17 @@ actor KBCompileService {
         let tools = [Self.memoryUpsertTool()]
         var collectedMemories: [InternalKBCompileMemoryRef] = []
 
+        // HER-288 — iteration is 1-indexed and emitted at the top of each
+        // round-trip so subscribers can render "thinking (1/N)" before the
+        // model call goes out, not after.
+        var iteration = 0
         for _ in 0 ..< maxToolIterations {
+            iteration += 1
+            await progress.publish(
+                .thinking(.init(runId: runId, iteration: iteration)),
+                tenantID: tenantID,
+            )
+
             let body = ChatPayload(
                 model: defaultModel,
                 messages: conversation,
@@ -289,6 +319,7 @@ actor KBCompileService {
                         tenantID: tenantID,
                         toolCall: call,
                         memories: &collectedMemories,
+                        runId: runId,
                     )
                     conversation.append(.init(
                         role: "tool",
@@ -311,6 +342,7 @@ actor KBCompileService {
         tenantID: UUID,
         toolCall: ToolCall,
         memories: inout [InternalKBCompileMemoryRef],
+        runId: UUID,
     ) async throws -> String {
         guard toolCall.function.name == "memory_upsert" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -328,6 +360,22 @@ actor KBCompileService {
             )
             let id = try saved.requireID()
             memories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
+
+            // HER-288 — emit the wire-shape DTO that the client also gets
+            // from `GET /v1/memory/{id}`. Tags default to [] (the agent
+            // loop does not author tags); geo anchor fields stay nil since
+            // kb-compile is server-side and has no device location.
+            let dto = MemoryDTO(
+                id: id,
+                content: saved.content,
+                tags: saved.tags ?? [],
+                createdAt: saved.createdAt,
+            )
+            await progress.publish(
+                .memorySaved(.init(runId: runId, memory: dto)),
+                tenantID: tenantID,
+            )
+
             return Self.encodeJSON(["status": "ok", "id": id.uuidString])
         } catch {
             return Self.toolErrorJSON("memory_upsert failed: \(error)")
