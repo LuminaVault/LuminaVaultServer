@@ -36,12 +36,22 @@ struct ChatToolError: Equatable, Sendable {
 /// extend with new patterns when Hermes adds a new failure shape.
 enum HermesToolErrorClassifier {
 
-    private static let toolReturnedErrorRegex = #/Tool ([A-Za-z0-9_.-]+) returned error \(.*?\): (.+)/#
-    private static let loopWarningRegex = #/same_tool_failure_warning; count=(\d+); ([A-Za-z0-9_.-]+) has failed/#
+    // Regex values are immutable and the literals here have no embedded
+    // captures with reference semantics — the values are safe to share
+    // across isolation domains. Swift 6 still flags them because
+    // `Regex<(Substring, Substring, Substring)>` does not auto-conform
+    // to `Sendable` (tuple-typed `Output` blocks the synthesised
+    // conformance). The `nonisolated(unsafe)` annotation is the
+    // documented escape hatch per CLAUDE.md §1.
+    nonisolated(unsafe) private static let toolReturnedErrorRegex =
+        #/Tool ([A-Za-z0-9_.-]+) returned error \(.*?\): (.+)/#
+    nonisolated(unsafe) private static let loopWarningRegex =
+        #/same_tool_failure_warning; count=(\d+); ([A-Za-z0-9_.-]+) has failed/#
 
     /// Patterns we always strip from user-facing content. Each line that
     /// matches any of these is removed (the surrounding lines are kept).
-    private static let stderrPatterns: [Regex<Substring>] = [
+    /// Same `nonisolated(unsafe)` rationale as the regex literals above.
+    nonisolated(unsafe) private static let stderrPatterns: [Regex<Substring>] = [
         try! Regex(#"/usr/bin/bash: line \d+: .*"#),
         try! Regex(#"/bin/bash: line \d+: .*"#),
         try! Regex(#"^.+?: command not found.*"#),
