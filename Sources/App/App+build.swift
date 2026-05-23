@@ -423,6 +423,11 @@ func buildRouter(
     meGroup.put("/me/privacy", use: updatePrivacyHandler(fluent: services.fluent))
     meGroup.get("/me/billing", use: meBillingHandler(enforcementEnabled: services.billingEnforcementEnabled))
 
+    // HER-216 — authenticated passkey management (list / revoke).
+    let webAuthnAuthedGroup = router.group("/v1/auth")
+        .add(middleware: jwtAuthenticator)
+    webAuthnService.addAuthenticatedRoutes(to: webAuthnAuthedGroup)
+
     let billingGroup = router.group("/v1/billing")
     RevenueCatWebhookController(
         fluent: services.fluent,

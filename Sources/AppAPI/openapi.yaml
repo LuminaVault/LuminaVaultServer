@@ -412,11 +412,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AuthResponse' }
 
-  /v1/auth/webauthn/register/options:
+  /v1/auth/webauthn/register/begin:
     post:
       tags: [Auth]
-      operationId: authWebAuthnRegisterOptions
-      summary: Get WebAuthn credential-creation options.
+      operationId: authWebAuthnRegisterBegin
+      summary: Begin WebAuthn passkey registration — returns PublicKeyCredentialCreationOptions.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnBeginRegistrationRequest' }
       responses:
         '200':
           description: PublicKeyCredentialCreationOptions JSON.
@@ -431,20 +437,24 @@ paths:
       tags: [Auth]
       operationId: authWebAuthnRegisterFinish
       summary: Finalise WebAuthn credential registration.
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/WebAuthnFinish' }
       responses:
-        '204':
+        '200':
           description: Credential registered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnFinishRegistrationResponse' }
 
-  /v1/auth/webauthn/authenticate/options:
+  /v1/auth/webauthn/authenticate/begin:
     post:
       tags: [Auth]
-      operationId: authWebAuthnAuthenticateOptions
-      summary: Get WebAuthn authentication options for a known user.
+      operationId: authWebAuthnAuthenticateBegin
+      summary: Begin WebAuthn passkey authentication — returns PublicKeyCredentialRequestOptions.
       security: []
       requestBody:
         required: true
@@ -475,6 +485,37 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  /v1/auth/webauthn/credentials:
+    get:
+      tags: [Auth]
+      operationId: authWebAuthnListCredentials
+      summary: List enrolled WebAuthn passkeys for the authenticated user.
+      responses:
+        '200':
+          description: Credential summaries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnCredentialListResponse' }
+        '401':
+          description: Not authenticated.
+
+  /v1/auth/webauthn/credentials/{credentialId}:
+    delete:
+      tags: [Auth]
+      operationId: authWebAuthnDeleteCredential
+      summary: Revoke a WebAuthn passkey for the authenticated user.
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema: { type: string }
+          description: Base64url credential ID.
+      responses:
+        '204':
+          description: Credential revoked.
+        '404':
+          description: Credential not found.
 
   # ──────────────────────────────── Me ──────────────────────────────────
 
@@ -2374,6 +2415,13 @@ components:
         email: { type: string, format: email }
         code: { type: string }
 
+    WebAuthnBeginRegistrationRequest:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string }
+        displayName: { type: string, nullable: true }
+
     WebAuthnAuthOptionsRequest:
       type: object
       required: [username]
@@ -2394,6 +2442,29 @@ components:
         Browser/iOS-returned PublicKeyCredential JSON. Forwarded verbatim
         to the relying-party library for verification.
       additionalProperties: true
+
+    WebAuthnFinishRegistrationResponse:
+      type: object
+      required: [credentialID]
+      properties:
+        credentialID: { type: string, description: "Base64url credential ID." }
+
+    WebAuthnCredentialSummary:
+      type: object
+      required: [id, createdAt]
+      properties:
+        id: { type: string, description: "Base64url credential ID." }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        nickname: { type: string, nullable: true }
+
+    WebAuthnCredentialListResponse:
+      type: object
+      required: [credentials]
+      properties:
+        credentials:
+          type: array
+          items: { $ref: '#/components/schemas/WebAuthnCredentialSummary' }
 
     # ── Me ──
 
