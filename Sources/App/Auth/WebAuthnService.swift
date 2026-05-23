@@ -43,6 +43,23 @@ extension WebAuthnBeginRegistrationResponse: ResponseEncodable {}
 extension WebAuthnFinishRegistrationResponse: ResponseEncodable {}
 extension WebAuthnBeginAuthenticationResponse: ResponseEncodable {}
 
+// HER-216 — credential-management DTOs.
+//
+// These mirror the wire types we ship in LuminaVaultShared once tagged
+// (>= 0.30.0). Keeping them inline here for now so the server compiles
+// before the shared package bump; replace with `LuminaVaultShared`
+// imports + delete this block after the tag lands.
+struct WebAuthnCredentialSummaryDTO: Codable {
+    let id: String
+    let createdAt: Date
+    let lastUsedAt: Date?
+    let nickname: String?
+}
+
+struct WebAuthnCredentialListResponse: Codable, ResponseEncodable {
+    let credentials: [WebAuthnCredentialSummaryDTO]
+}
+
 // MARK: - In-memory challenge store
 
 //
@@ -119,10 +136,56 @@ struct WebAuthnService {
 
     func addRoutes(to group: RouterGroup<AppRequestContext>) {
         guard enabled else { return }
+        // HER-216 — `/begin` is the canonical path; `/options` retained as
+        // deprecated alias for any in-flight client still on the older
+        // naming. Remove the alias once iOS ships HER-216 to TestFlight.
+        group.post("/webauthn/register/begin", use: beginRegistration)
         group.post("/webauthn/register/options", use: beginRegistration)
         group.post("/webauthn/register/finish", use: finishRegistration)
+        group.post("/webauthn/authenticate/begin", use: beginAuthentication)
         group.post("/webauthn/authenticate/options", use: beginAuthentication)
         group.post("/webauthn/authenticate/finish", use: finishAuthentication)
+    }
+
+    /// Authenticated routes: list / delete enrolled passkeys for the
+    /// current user. Mounted by `AuthController` under the JWT-protected
+    /// group so the `userID()` lookup is safe.
+    func addAuthenticatedRoutes(to group: RouterGroup<AppRequestContext>) {
+        guard enabled else { return }
+        group.get("/webauthn/credentials", use: listCredentials)
+        group.delete("/webauthn/credentials/:credentialId", use: deleteCredential)
+    }
+
+    @Sendable
+    func listCredentials(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnCredentialListResponse {
+        guard let userID = ctx.identity?.id else {
+            throw HTTPError(.unauthorized, message: "missing identity")
+        }
+        let rows = try await WebAuthnCredential.query(on: fluent.db(), tenantID: userID)
+            .all()
+        let summaries = rows.map {
+            WebAuthnCredentialSummaryDTO(
+                id: $0.credentialID,
+                createdAt: $0.createdAt ?? Date(),
+                lastUsedAt: $0.updatedAt,
+                nickname: nil,
+            )
+        }
+        return WebAuthnCredentialListResponse(credentials: summaries)
+    }
+
+    @Sendable
+    func deleteCredential(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        guard let userID = ctx.identity?.id else {
+            throw HTTPError(.unauthorized, message: "missing identity")
+        }
+        guard let credentialID = ctx.parameters.get("credentialId") else {
+            throw HTTPError(.badRequest, message: "missing credentialId")
+        }
+        try await WebAuthnCredential.query(on: fluent.db(), tenantID: userID)
+            .filter(\.$credentialID == credentialID)
+            .delete()
+        return Response(status: .noContent)
     }
 
     @Sendable
