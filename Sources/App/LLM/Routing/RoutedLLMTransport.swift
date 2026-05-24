@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import Metrics
 
 /// HER-165 — `HermesChatTransport` adapter that fans out to the routing
 /// foundation. Asks `ModelRouter` for a decision, walks the candidates,
@@ -105,6 +106,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 continue
             } catch let providerError as ProviderError {
                 logger.error("provider \(candidate.provider.rawValue) permanent: \(providerError)")
+                UpstreamErrorTelemetry.record(reasonCode: providerError.reasonCode, provider: candidate.provider.rawValue)
                 throw UpstreamErrorResponse(
                     reasonCode: providerError.reasonCode,
                     userMessage: providerError.userMessage,
@@ -117,6 +119,10 @@ struct RoutedLLMTransport: HermesChatTransport {
         }
         logger.error("all providers exhausted for decision \(decision.candidates)")
         if let lastFailedCandidate {
+            UpstreamErrorTelemetry.record(
+                reasonCode: lastFailedCandidate.error.reasonCode,
+                provider: lastFailedCandidate.route.provider.rawValue,
+            )
             throw UpstreamErrorResponse(
                 reasonCode: lastFailedCandidate.error.reasonCode,
                 userMessage: lastFailedCandidate.error.userMessage,
@@ -125,11 +131,13 @@ struct RoutedLLMTransport: HermesChatTransport {
         if lastRecoverable != nil {
             // Only unclassified (non-ProviderError) recoverable failures.
             // No typed reasonCode/userMessage available; emit generic.
+            UpstreamErrorTelemetry.record(reasonCode: "upstream_error", provider: "unknown")
             throw UpstreamErrorResponse(
                 reasonCode: "upstream_error",
                 userMessage: "LLM upstream failed.",
             )
         }
+        UpstreamErrorTelemetry.record(reasonCode: "no_providers", provider: "n/a")
         throw UpstreamErrorResponse(
             reasonCode: "no_providers",
             userMessage: "No LLM provider available.",
