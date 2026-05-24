@@ -24,13 +24,13 @@ struct InternalKBCompileMemoryRef: Codable {
     let content: String
 }
 
-struct InternalKBCompileResult {
+struct InternalMemoryCompileResult {
     let writtenFiles: [InternalKBCompileWrittenFile]
     let memories: [InternalKBCompileMemoryRef]
     let summary: String
 }
 
-enum KBCompileError: Error {
+enum MemoryCompileError: Error {
     case fileTooLarge(path: String, limit: Int)
     case noFiles
 }
@@ -43,7 +43,7 @@ enum KBCompileError: Error {
 /// per-user Hermes profile through `HermesMemoryService.runAgent`-style
 /// chat with `memory_upsert` exposed. The model decides which memories to
 /// persist; the service reports back the ones that landed.
-actor KBCompileService {
+actor MemoryCompileService {
     let vaultPaths: VaultPathService
     let transport: any HermesChatTransport
     let memories: MemoryRepository
@@ -55,9 +55,9 @@ actor KBCompileService {
     let maxToolIterations: Int
     /// HER-288 — progress publisher used to fan-out `.preparing`,
     /// `.thinking`, and `.memorySaved` events over the per-tenant WS
-    /// channel. Defaults to `NoopKBCompileProgressPublisher` so unit tests
+    /// channel. Defaults to `NoopMemoryCompileProgressPublisher` so unit tests
     /// and call-sites that don't care about progress need not wire one up.
-    let progress: any KBCompileProgressPublisher
+    let progress: any MemoryCompileProgressPublisher
 
     init(
         vaultPaths: VaultPathService,
@@ -69,7 +69,7 @@ actor KBCompileService {
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
         maxToolIterations: Int = 12,
-        progress: any KBCompileProgressPublisher = NoopKBCompileProgressPublisher(),
+        progress: any MemoryCompileProgressPublisher = NoopMemoryCompileProgressPublisher(),
     ) {
         self.vaultPaths = vaultPaths
         self.transport = transport
@@ -89,8 +89,8 @@ actor KBCompileService {
         rows: [VaultFile],
         hint: String?,
         runId: UUID,
-    ) async throws -> InternalKBCompileResult {
-        guard !rows.isEmpty else { throw KBCompileError.noFiles }
+    ) async throws -> InternalMemoryCompileResult {
+        guard !rows.isEmpty else { throw MemoryCompileError.noFiles }
 
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         var writtenFiles: [InternalKBCompileWrittenFile] = []
@@ -104,7 +104,7 @@ actor KBCompileService {
             let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)
             let payload = try Data(contentsOf: target)
             guard payload.count <= maxFileSize else {
-                throw KBCompileError.fileTooLarge(path: safeRelative, limit: maxFileSize)
+                throw MemoryCompileError.fileTooLarge(path: safeRelative, limit: maxFileSize)
             }
             totalBytes += payload.count
             guard totalBytes <= maxBatchBytes else {
@@ -155,7 +155,7 @@ actor KBCompileService {
             spaceIDs: Set(rows.compactMap(\.spaceID)),
             at: completedAt,
         )
-        return InternalKBCompileResult(
+        return InternalMemoryCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
             summary: summary.text,

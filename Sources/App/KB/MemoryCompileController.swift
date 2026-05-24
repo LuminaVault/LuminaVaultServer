@@ -5,11 +5,11 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-struct KBCompileController {
-    let service: KBCompileService
+struct MemoryCompileController {
+    let service: MemoryCompileService
     let fluent: Fluent
     let achievements: AchievementsService?
-    let progress: any KBCompileProgressPublisher
+    let progress: any MemoryCompileProgressPublisher
     let logger: Logger
 
     /// POST `/v1/kb-compile` — heavy Hermes loop. Wired separately from the

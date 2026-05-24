@@ -97,6 +97,10 @@ extension RateLimitPolicy {
     /// still degrading gracefully if the route is ever called unauth'd.
     static let chatByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
     static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
+    /// HER-240 / spec ticket #2: identical policy to kbCompileByUser, exposed
+    /// under the new memory-compile name. Both coexist until the legacy
+    /// /v1/kb-compile alias is retired.
+    static let memoryCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
     static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
     static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
     /// HER-91: vault export streams the entire tenant tree. Expensive on

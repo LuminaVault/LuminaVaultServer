@@ -21,7 +21,7 @@ import Testing
 ///   * Two new rows landed under the caller's tenant in `memories`.
 ///   * `vault_files.processed_at` flipped on the seeded row.
 @Suite(.serialized)
-struct KBCompileMemoryUpsertTests {
+struct MemoryCompileMemoryUpsertTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {

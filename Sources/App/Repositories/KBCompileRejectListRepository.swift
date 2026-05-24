@@ -5,7 +5,7 @@ import HummingbirdFluent
 import SQLKit
 
 /// HER-290 — durable `(tenant_id, content_hash)` reject-list. Used by:
-/// * `KBCompileService` at compile-start to skip already-rejected content
+/// * `MemoryCompileService` at compile-start to skip already-rejected content
 ///   (see `loadRejectedHashes`).
 /// * `MemoryController.patch` when a user rejects a memory.
 struct KBCompileRejectListRepository {

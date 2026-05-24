@@ -4,12 +4,12 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-@Suite("WebSocketKBCompileProgressPublisher")
-struct KBCompileProgressPublisherTests {
+@Suite("WebSocketMemoryCompileProgressPublisher")
+struct MemoryCompileProgressPublisherTests {
     @Test func `publish encodes envelope and broadcasts`() async throws {
         let manager = ConnectionManager()
         let tenantID = try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
-        let publisher = WebSocketKBCompileProgressPublisher(
+        let publisher = WebSocketMemoryCompileProgressPublisher(
             connectionManager: manager,
             logger: Logger(label: "test.lv.kb-compile.publisher"),
         )

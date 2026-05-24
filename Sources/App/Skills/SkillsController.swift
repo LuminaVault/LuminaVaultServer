@@ -20,7 +20,7 @@ extension LuminaVaultShared.SkillDTO: ResponseEncodable {}
 struct SkillsController {
     let runner: SkillRunner
     let catalog: SkillCatalog
-    let kbCompileController: KBCompileController
+    let memoryCompileController: MemoryCompileController
     let fluent: HummingbirdFluent.Fluent
     let enforcementEnabled: Bool
     let logger: Logger
@@ -201,7 +201,7 @@ struct SkillsController {
         switch invocation.kind {
         case .kbCompile:
             let startedAt = Date()
-            let response = try await kbCompileController.compile(user: user, body: KBCompileRequest())
+            let response = try await memoryCompileController.compile(user: user, body: KBCompileRequest())
             let endedAt = Date()
             return SkillRunResponse(
                 id: UUID(),

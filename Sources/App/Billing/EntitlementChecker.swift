@@ -33,6 +33,7 @@ enum Capability: String, CaseIterable {
     case skillBuiltinRun
     case skillVaultRun
     case kbCompile
+    case memoryCompile
     case privacyBYOKey
     case privacyContextRouter
     case mlxOnDevice
@@ -94,7 +95,7 @@ enum EntitlementChecker {
 
         case .capture, .healthIngest, .chat,
              .memoryQuery, .memoGenerator,
-             .skillBuiltinRun, .kbCompile:
+             .skillBuiltinRun, .kbCompile, .memoryCompile:
             switch effective {
             case .trial, .pro, .ultimate: true
             case .lapsed, .archived: false

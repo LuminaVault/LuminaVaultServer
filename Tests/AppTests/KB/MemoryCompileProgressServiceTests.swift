@@ -7,7 +7,7 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-/// HER-288 Task 6 — drives `KBCompileService.compileExistingVaultFiles`
+/// HER-288 Task 6 — drives `MemoryCompileService.compileExistingVaultFiles`
 /// against a scripted `HermesChatTransport` and asserts the *service-level*
 /// progress events fire in the right order:
 ///
@@ -20,7 +20,7 @@ import Testing
 /// Pattern mirrors `KBCompileSpaceCountersTests` — go around `buildApplication`
 /// and call the service directly so the suite stays focused on the service
 /// contract.
-@Suite("KBCompileService progress ordering")
+@Suite("MemoryCompileService progress ordering")
 struct KBCompileProgressServiceTests {
     @Test func `happy path emits preparing then thinking then memory saved`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.happy") { fluent in
@@ -64,7 +64,7 @@ struct KBCompileProgressServiceTests {
                 Self.contentTurn(text: "Stored 1 memory from this batch."),
             ])
 
-            let service = KBCompileService(
+            let service = MemoryCompileService(
                 vaultPaths: vaultPaths,
                 transport: transport,
                 memories: MemoryRepository(fluent: fluent),
@@ -140,7 +140,7 @@ struct KBCompileProgressServiceTests {
             let recorder = RecordingProgressPublisher()
             let transport = ThrowingChatTransport()
 
-            let service = KBCompileService(
+            let service = MemoryCompileService(
                 vaultPaths: vaultPaths,
                 transport: transport,
                 memories: MemoryRepository(fluent: fluent),
@@ -280,7 +280,7 @@ struct KBCompileProgressServiceTests {
 /// ordering. Actor isolation gives us automatic thread-safety on the
 /// `events` array; the protocol's `publish(_:tenantID:)` is `async` so
 /// actor isolation satisfies the requirement cleanly.
-actor RecordingProgressPublisher: KBCompileProgressPublisher {
+actor RecordingProgressPublisher: MemoryCompileProgressPublisher {
     private var events: [KBCompileProgressEvent] = []
 
     func publish(_ event: KBCompileProgressEvent, tenantID _: UUID) async {
@@ -322,11 +322,20 @@ private struct ScriptedChatTransport: HermesChatTransport {
         let body = try await inbox.next()
         return Data(body.utf8)
     }
+
+    func chatCompletionsWithMetadata(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> HermesChatTransportMetadata {
+        let body = try await inbox.next()
+        return HermesChatTransportMetadata(data: Data(body.utf8), headers: [:])
+    }
 }
 
 /// `HermesChatTransport` that always throws. Used to drive the error path.
 private struct ThrowingChatTransport: HermesChatTransport {
     func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
+        throw HTTPError(.badGateway, message: "scripted transport failure")
+    }
+
+    func chatCompletionsWithMetadata(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> HermesChatTransportMetadata {
         throw HTTPError(.badGateway, message: "scripted transport failure")
     }
 }

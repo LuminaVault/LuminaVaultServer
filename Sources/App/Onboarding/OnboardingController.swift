@@ -20,8 +20,10 @@ extension OnboardingStateDTO {
             soulConfiguredCompletedAt: row.soulConfiguredCompletedAt,
             firstCaptureCompleted: row.firstCaptureCompleted,
             firstCaptureCompletedAt: row.firstCaptureCompletedAt,
-            firstKBCompileCompleted: row.firstKBCompileCompleted,
-            firstKBCompileCompletedAt: row.firstKBCompileCompletedAt,
+            // HER-240 / spec ticket #2 — wire DTO field name preserved for
+            // iOS compat; source-of-truth is the new memory_compile column.
+            firstKBCompileCompleted: row.firstMemoryCompileCompleted,
+            firstKBCompileCompletedAt: row.firstMemoryCompileCompletedAt,
             firstQueryCompleted: row.firstQueryCompleted,
             firstQueryCompletedAt: row.firstQueryCompletedAt,
         )
@@ -77,7 +79,11 @@ struct OnboardingController {
             row.firstCaptureCompleted = true
             row.firstCaptureCompletedAt = now
         }
-        if body.firstKBCompileCompleted == true, !row.firstKBCompileCompleted {
+        if body.firstKBCompileCompleted == true, !row.firstMemoryCompileCompleted {
+            // HER-240 / spec ticket #2 — dual-write both columns so a
+            // rollback to the legacy code path still sees up-to-date state.
+            row.firstMemoryCompileCompleted = true
+            row.firstMemoryCompileCompletedAt = now
             row.firstKBCompileCompleted = true
             row.firstKBCompileCompletedAt = now
         }

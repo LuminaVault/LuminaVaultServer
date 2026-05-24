@@ -22,7 +22,7 @@ import Testing
 /// Coverage of memory upserts via the `memory_upsert` tool would need a
 /// stub that emits tool-call JSON. Out of scope for the first pass.
 @Suite(.serialized)
-struct KBCompileHappyPathTests {
+struct MemoryCompileHappyPathTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {

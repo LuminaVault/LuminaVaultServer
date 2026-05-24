@@ -48,7 +48,7 @@ extension Capability {
         case .skillVaultRun, .privacyBYOKey, .privacyContextRouter, .mlxOnDevice:
             true
         case .vaultRead, .vaultExport, .capture, .healthIngest, .chat,
-             .memoryQuery, .memoGenerator, .skillBuiltinRun, .kbCompile:
+             .memoryQuery, .memoGenerator, .skillBuiltinRun, .kbCompile, .memoryCompile:
             false
         }
     }

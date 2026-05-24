@@ -28,6 +28,14 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
     @Field(key: "first_kb_compile_completed") var firstKBCompileCompleted: Bool
     @OptionalField(key: "first_kb_compile_completed_at") var firstKBCompileCompletedAt: Date?
 
+    /// HER-240 / spec ticket #2 — backed by M52 columns. The server reads
+    /// from these going forward; the legacy `firstKBCompileCompleted` pair
+    /// is dual-written for one milestone so a rollback can still see fresh
+    /// state. Wire-format DTO field stays `firstKBCompileCompleted` to
+    /// preserve iOS client compatibility.
+    @Field(key: "first_memory_compile_completed") var firstMemoryCompileCompleted: Bool
+    @OptionalField(key: "first_memory_compile_completed_at") var firstMemoryCompileCompletedAt: Date?
+
     @Field(key: "first_query_completed") var firstQueryCompleted: Bool
     @OptionalField(key: "first_query_completed_at") var firstQueryCompletedAt: Date?
 
@@ -44,6 +52,7 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
         soulConfiguredCompleted = false
         firstCaptureCompleted = false
         firstKBCompileCompleted = false
+        firstMemoryCompileCompleted = false
         firstQueryCompleted = false
     }
 }

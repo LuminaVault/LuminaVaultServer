@@ -64,6 +64,16 @@ struct EntitlementCheckerTests {
         }
     }
 
+    @Test
+    func `memory compile allowed for active tiers`() {
+        for tier in [UserTier.trial, .pro, .ultimate] {
+            #expect(EntitlementChecker.entitled(tier: tier, override: .none, for: .memoryCompile))
+        }
+        for tier in [UserTier.lapsed, .archived] {
+            #expect(!EntitlementChecker.entitled(tier: tier, override: .none, for: .memoryCompile))
+        }
+    }
+
     // MARK: - Ultimate-only capabilities
 
     @Test

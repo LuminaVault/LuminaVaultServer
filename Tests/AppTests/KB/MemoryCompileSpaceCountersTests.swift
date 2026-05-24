@@ -7,11 +7,11 @@ import SQLKit
 import Testing
 
 /// Verifies the M38 denormalised counters (`note_count`, `last_compiled_at`)
-/// land correctly after `KBCompileService.refreshSpaceCounters`. We bypass
+/// land correctly after `MemoryCompileService.refreshSpaceCounters`. We bypass
 /// the agent loop by calling the helper directly — the goal is to assert
 /// the SQL, not the LLM pipeline.
 @Suite(.serialized)
-struct KBCompileSpaceCountersTests {
+struct MemoryCompileSpaceCountersTests {
     @Test
     func `refreshSpaceCounters writes note_count and last_compiled_at per space`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.counters.basic") { fluent in
@@ -135,10 +135,10 @@ struct KBCompileSpaceCountersTests {
 
     // MARK: - Helpers
 
-    private func makeService(fluent: Fluent) -> KBCompileService {
+    private func makeService(fluent: Fluent) -> MemoryCompileService {
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-kbcounters-\(UUID().uuidString)", isDirectory: true)
-        return KBCompileService(
+        return MemoryCompileService(
             vaultPaths: VaultPathService(rootPath: tmpRoot.path),
             transport: NoOpChatTransport(),
             memories: MemoryRepository(fluent: fluent),
