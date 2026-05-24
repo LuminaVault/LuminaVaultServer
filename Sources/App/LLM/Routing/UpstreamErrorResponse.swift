@@ -14,7 +14,7 @@ import Hummingbird
 /// Status mapping:
 ///   - `upstream_timeout`  → 504 Gateway Timeout
 ///   - everything else     → 502 Bad Gateway
-struct UpstreamErrorResponse: Error, HTTPResponseError, Sendable {
+struct UpstreamErrorResponse: Error, HTTPResponseError {
     let reasonCode: String
     let userMessage: String
     let retryAfterMs: Int?
@@ -34,8 +34,8 @@ struct UpstreamErrorResponse: Error, HTTPResponseError, Sendable {
     /// `ProviderError.reasonCode` cases.
     var status: HTTPResponse.Status {
         switch reasonCode {
-        case "upstream_timeout": return .gatewayTimeout
-        default: return .badGateway
+        case "upstream_timeout": .gatewayTimeout
+        default: .badGateway
         }
     }
 

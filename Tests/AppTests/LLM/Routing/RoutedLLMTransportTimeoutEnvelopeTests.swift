@@ -17,7 +17,7 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
             self.error = error
         }
 
-        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
             throw error
         }
     }
@@ -33,7 +33,7 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
             self.kind = kind
         }
 
-        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
             throw OpaqueError()
         }
     }
@@ -67,7 +67,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
@@ -87,7 +88,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
@@ -104,7 +106,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
@@ -121,7 +124,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
@@ -145,7 +149,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
@@ -170,7 +175,8 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         do {
             _ = try await transport.chatCompletions(
                 payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {

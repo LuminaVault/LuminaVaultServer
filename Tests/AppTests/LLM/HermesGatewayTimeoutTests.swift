@@ -15,8 +15,13 @@ struct HermesGatewayTimeoutTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> Result<(HTTPURLResponse, Data), URLError>)?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.handler else {
@@ -55,7 +60,7 @@ struct HermesGatewayTimeoutTests {
         )
     }
 
-    private static let okResponse: HTTPURLResponse = HTTPURLResponse(
+    private static let okResponse: HTTPURLResponse = .init(
         url: URL(string: "https://managed.hermes.test/v1/chat/completions")!,
         statusCode: 200,
         httpVersion: "HTTP/1.1",
@@ -74,7 +79,7 @@ struct HermesGatewayTimeoutTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.makeAdapter(session: Self.stubSession())
-        _ = try await adapter.chatCompletions(payload: Self.nonStreamPayload, profileUsername: "alice")
+        _ = try await adapter.chatCompletions(payload: Self.nonStreamPayload, sessionKey: "alice", sessionID: nil)
 
         let req = try #require(captured.requests.first)
         #expect(req.timeoutInterval == HermesGatewayAdapter.requestTimeoutSeconds, "must match adapter's request timeout constant")
@@ -96,7 +101,8 @@ struct HermesGatewayTimeoutTests {
         let adapter = Self.makeAdapter(session: Self.stubSession())
         let data = try await adapter.chatCompletions(
             payload: Self.nonStreamPayload,
-            profileUsername: "alice",
+            sessionKey: "alice",
+            sessionID: nil,
         )
         #expect(captured.attempts == 2, "must retry exactly once after timeout")
         #expect(data == Self.okBody)
@@ -116,7 +122,8 @@ struct HermesGatewayTimeoutTests {
         await #expect(throws: ProviderError.self) {
             _ = try await adapter.chatCompletions(
                 payload: Self.nonStreamPayload,
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         #expect(captured.attempts == 2, "exactly two attempts before throwing")
@@ -137,7 +144,8 @@ struct HermesGatewayTimeoutTests {
         await #expect(throws: ProviderError.self) {
             _ = try await adapter.chatCompletions(
                 payload: streamPayload,
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         #expect(captured.attempts == 1, "streamed requests must not retry")
@@ -157,7 +165,8 @@ struct HermesGatewayTimeoutTests {
         await #expect(throws: ProviderError.self) {
             _ = try await adapter.chatCompletions(
                 payload: Self.nonStreamPayload,
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         #expect(captured.attempts == 1, "only timedOut triggers retry, not other URLErrors")

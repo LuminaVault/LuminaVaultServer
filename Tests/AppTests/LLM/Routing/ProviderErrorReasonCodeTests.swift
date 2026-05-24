@@ -2,7 +2,6 @@
 import Foundation
 import Testing
 
-@Suite
 struct ProviderErrorReasonCodeTests {
     @Test
     func `timeout URLError maps to upstream_timeout reason code`() {

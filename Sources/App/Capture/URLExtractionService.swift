@@ -1,10 +1,11 @@
 import Foundation
 
 /// HER-274 — pulls unique HTTP(S) URLs out of chat text so the auto-
-/// save-link post-processor can capture each one. `NSDataDetector`
-/// gives us robust detection across pasted-with-trailing-paren,
-/// inline-in-markdown, and bare-URL inputs without us hand-rolling a
-/// regex that drifts.
+/// save-link post-processor can capture each one. Uses a portable
+/// `NSRegularExpression` pattern (rather than Darwin-only
+/// `NSDataDetector`) so it compiles on swift-corelibs-foundation and
+/// CI's Linux test job. The pattern handles pasted-with-trailing-paren,
+/// inline-in-markdown, and bare-URL inputs.
 ///
 /// Output is order-preserving + deduplicated by **normalized URL**:
 ///   - lowercased scheme + host
@@ -16,30 +17,31 @@ import Foundation
 /// Non-public hosts (RFC 1918, localhost, link-local) are filtered
 /// out via the existing `URLEnricherGuard.isPublic` check so the
 /// chat path can't be tricked into capturing internal links.
-struct URLExtractionService: Sendable {
+struct URLExtractionService {
     /// Hard cap so a single chat turn full of URLs can't fan out
     /// hundreds of capture writes. Caller still gets the first N.
     static let maxURLsPerExtraction = 32
 
-    struct ExtractedURL: Sendable, Equatable {
+    struct ExtractedURL: Equatable {
         let raw: String
         let normalized: String
     }
 
     func extract(from text: String) -> [ExtractedURL] {
         guard !text.isEmpty else { return [] }
-        guard let detector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.link.rawValue
-        ) else {
+        let pattern = #"(?i)https?://[^\s()<>]+(?:\([^\s()<>]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return []
         }
         let range = NSRange(text.startIndex ..< text.endIndex, in: text)
-        let matches = detector.matches(in: text, options: [], range: range)
+        let matches = regex.matches(in: text, options: [], range: range)
 
         var seen: Set<String> = []
         var out: [ExtractedURL] = []
         for match in matches {
-            guard let url = match.url else { continue }
+            guard let matchRange = Range(match.range, in: text) else { continue }
+            let urlString = String(text[matchRange])
+            guard let url = URL(string: urlString) else { continue }
             guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { continue }
             guard URLEnricherGuard.isPublic(url) else { continue }
             let normalized = Self.normalize(url)
