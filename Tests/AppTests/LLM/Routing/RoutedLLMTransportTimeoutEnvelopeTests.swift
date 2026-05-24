@@ -73,8 +73,26 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         } catch let err as UpstreamErrorResponse {
             #expect(err.reasonCode == "upstream_timeout")
             #expect(err.status == .gatewayTimeout)
+            #expect(err.retryAfterMs == 2000, "upstream_timeout envelope must include retry_after_ms hint")
         } catch {
             Issue.record("wrong error type: \(error)")
+        }
+    }
+
+    @Test
+    func `non-timeout exhaustion does NOT include retry_after_ms`() async throws {
+        let transport = Self.makeTransport(
+            error: .network(provider: .hermesGateway, underlying: URLError(.cannotConnectToHost)),
+        )
+        do {
+            _ = try await transport.chatCompletions(
+                payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
+                profileUsername: "alice",
+            )
+            Issue.record("expected throw")
+        } catch let err as UpstreamErrorResponse {
+            #expect(err.reasonCode == "upstream_unreachable")
+            #expect(err.retryAfterMs == nil, "non-timeout codes carry no retry hint")
         }
     }
 

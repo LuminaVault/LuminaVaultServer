@@ -15,6 +15,18 @@ import Logging
 /// `user_hermes_config`) instead of the managed default. The override
 /// also injects the decrypted `Authorization` header. Falls back to the
 /// adapter's construction-time `baseURL` when no override is in scope.
+///
+/// HER-240 — Per-request `URLRequest.timeoutInterval` is `requestTimeoutSeconds`
+/// (90s). `chatCompletionsWithMetadata` retries once on `URLError.timedOut`
+/// for non-streamed payloads, with a 2s sleep between attempts. Streamed
+/// payloads never retry — partial output may have shipped to the client.
+///
+/// Interaction with `RoutedLLMTransport`: the dispatcher fails over to the
+/// next candidate on any recoverable `ProviderError`, so a timed-out request
+/// can incur up to 2 × N upstream attempts where N is the routing decision's
+/// candidate count. With a 3-candidate decision that is 6 attempts and up
+/// to ~12s of accumulated retry-sleep before the final `UpstreamErrorResponse`
+/// is thrown. Acceptable for current candidate counts; revisit if N grows.
 struct HermesGatewayAdapter: ProviderAdapter {
     let kind: ProviderKind = .hermesGateway
     let baseURL: URL

@@ -38,7 +38,6 @@ struct HermesGatewayTimeoutTests {
 
     private final class Captured: @unchecked Sendable {
         var requests: [URLRequest] = []
-        /// Populated by retry tests in Tasks 2-5; unused by Task 1.
         var attempts: Int = 0
     }
 
@@ -63,7 +62,6 @@ struct HermesGatewayTimeoutTests {
         headerFields: ["Content-Type": "application/json"],
     )!
     private static let okBody = Data(#"{"choices":[]}"#.utf8)
-    /// Used by Task 1 timeout test; Tasks 3-4 add a streaming counterpart.
     private static let nonStreamPayload = Data(#"{"model":"hermes-3","messages":[],"stream":false}"#.utf8)
 
     @Test

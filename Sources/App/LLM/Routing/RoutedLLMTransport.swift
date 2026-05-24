@@ -110,6 +110,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 throw UpstreamErrorResponse(
                     reasonCode: providerError.reasonCode,
                     userMessage: providerError.userMessage,
+                    retryAfterMs: Self.retryHint(for: providerError.reasonCode),
                 )
             } catch {
                 lastRecoverable = error
@@ -126,6 +127,7 @@ struct RoutedLLMTransport: HermesChatTransport {
             throw UpstreamErrorResponse(
                 reasonCode: lastFailedCandidate.error.reasonCode,
                 userMessage: lastFailedCandidate.error.userMessage,
+                retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode),
             )
         }
         if lastRecoverable != nil {
@@ -235,5 +237,9 @@ struct RoutedLLMTransport: HermesChatTransport {
                 mtokOut = (usage["completion_tokens"] as? Int) ?? 0
             }
         }
+    }
+
+    private static func retryHint(for reasonCode: String) -> Int? {
+        reasonCode == "upstream_timeout" ? UpstreamErrorResponse.timeoutRetryHintMs : nil
     }
 }

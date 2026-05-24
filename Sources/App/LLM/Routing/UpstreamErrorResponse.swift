@@ -25,6 +25,11 @@ struct UpstreamErrorResponse: Error, HTTPResponseError, Sendable {
         self.retryAfterMs = retryAfterMs
     }
 
+    /// Hint emitted on `upstream_timeout` envelopes so clients know how
+    /// long to wait before retrying. Matches the adapter's per-request
+    /// retry sleep so client + server back off in lockstep.
+    static let timeoutRetryHintMs: Int = 2000
+
     /// Reason code → HTTP status mapping. Keep in sync with
     /// `ProviderError.reasonCode` cases.
     var status: HTTPResponse.Status {
