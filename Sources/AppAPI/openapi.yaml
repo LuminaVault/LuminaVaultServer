@@ -1831,10 +1831,10 @@ paths:
 
   # ─────────────────────────────── KB ───────────────────────────────────
 
-  /v1/kb-compile:
+  /v1/memory-compile:
     post:
       tags: [KB]
-      operationId: kbCompile
+      operationId: memoryCompile
       summary: Compile vault rows through the Hermes learning loop ("Sync & Learn").
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -1851,8 +1851,13 @@ paths:
 
         Tap-with-nothing-pending is a no-op success: `memoriesIngested: 0` and
         no side effects. First successful compile flips
-        `OnboardingState.firstKBCompileCompleted` and emits the `kb_compiled`
-        achievement event.
+        `OnboardingState.firstKBCompileCompleted` (wire-format field name
+        preserved for backward compat) and emits the `kb_compiled` achievement
+        event.
+
+        HER-240 / spec ticket #2 — renamed from `/v1/kb-compile`. The legacy
+        path returns 308 Permanent Redirect to this one through one milestone
+        for client-migration safety.
       requestBody:
         required: true
         content:
@@ -1865,10 +1870,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/KBCompileResponse' }
 
-  /v1/kb-compile/pending:
+  /v1/memory-compile/pending:
     get:
       tags: [KB]
-      operationId: kbCompilePending
+      operationId: memoryCompilePending
       summary: Cheap count of vault rows with `processed_at` IS NULL (HER-293).
       description: |
         Drives the disabled state and microcopy of the iOS "Sync & Learn"
@@ -1879,12 +1884,50 @@ paths:
         Tenant-scoped via the standard auth middleware. Backed by a single
         indexed `COUNT(*)` against `vault_files` filtered by tenant + NULL
         `processed_at`, so the endpoint is cheap to poll on screen focus.
+
+        HER-240 / spec ticket #2 — renamed from `/v1/kb-compile/pending`.
+        Legacy path 308-redirects to this one for one milestone.
       responses:
         '200':
           description: Pending count.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/KBCompilePendingResponse' }
+
+  /v1/kb-compile:
+    post:
+      tags: [KB]
+      operationId: kbCompileLegacy
+      deprecated: true
+      summary: Deprecated. Use POST /v1/memory-compile.
+      description: |
+        Returns 308 Permanent Redirect to `/v1/memory-compile`. Kept one
+        milestone after the rename for client-migration safety. Will be
+        removed once telemetry shows zero callers remaining.
+      responses:
+        '308':
+          description: Permanent redirect to the canonical path.
+          headers:
+            Location:
+              schema: { type: string }
+              description: Always `/v1/memory-compile`.
+
+  /v1/kb-compile/pending:
+    get:
+      tags: [KB]
+      operationId: kbCompilePendingLegacy
+      deprecated: true
+      summary: Deprecated. Use GET /v1/memory-compile/pending.
+      description: |
+        Returns 308 Permanent Redirect to `/v1/memory-compile/pending`.
+        Kept one milestone after the rename for client-migration safety.
+      responses:
+        '308':
+          description: Permanent redirect to the canonical path.
+          headers:
+            Location:
+              schema: { type: string }
+              description: Always `/v1/memory-compile/pending`.
 
   # ─────────────────────────────── Spaces ───────────────────────────────
 
