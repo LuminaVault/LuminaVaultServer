@@ -1250,7 +1250,17 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '502':
-          description: Upstream provider failure (`hermes_unreachable` for BYO).
+          description: LLM upstream rejected, was unreachable, or all providers exhausted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpstreamError'
+        '504':
+          description: LLM upstream timed out. Safe to retry once after retry_after_ms.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpstreamError'
 
   /v1/transcribe:
     post:
@@ -2312,6 +2322,35 @@ components:
       properties:
         error: { type: string }
         message: { type: string }
+
+    UpstreamError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - upstream_timeout
+                - upstream_unreachable
+                - upstream_rejected
+                - upstream_error
+                - rate_limit
+                - credit_exhausted
+                - network
+                - no_providers
+              description: Machine-readable reason code. Stable; clients localize via this.
+            message:
+              type: string
+              description: Human-readable explanation safe to display.
+            retry_after_ms:
+              type: integer
+              format: int32
+              minimum: 0
+              description: Optional client hint for retry delay in milliseconds.
 
     # ── Auth ──
 
