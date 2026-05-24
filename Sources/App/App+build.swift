@@ -457,12 +457,23 @@ func buildRouter(
     guard let hermesURL = URL(string: services.hermesGatewayURL) else {
         fatalError("invalid hermes.gatewayUrl: \(services.hermesGatewayURL)")
     }
-    // HER-254 — Bearer token guard. Empty key is the HER-242 degraded path
-    // (signup still succeeds via HermesProfileService.ensureSoft); upstream
-    // chat/memo/KB will 401 against a gateway that enforces auth.
+    // HER-186 / HER-254 — Bearer token guard. The central Hermes
+    // `api_server` enforces `API_SERVER_KEY`; Hummingbird must send
+    // `Authorization: Bearer <key>` on every outbound call (wired in
+    // `HermesGatewayAdapter`, `URLSessionHermesChatTransport`,
+    // `DefaultHermesLLMStreamService`). Fail closed in any non-dev
+    // profile so a missing key cannot silently degrade prod to
+    // unauthenticated traffic.
+    let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
     if services.hermesAPIKey.isEmpty {
+        if lvEnvironment != "dev" {
+            fatalError(
+                "HERMES_API_KEY required when LV_ENVIRONMENT=\(lvEnvironment). "
+                    + "Run `make hermes-bootstrap` and restart the stack.",
+            )
+        }
         Logger(label: "lv.hermes").warning(
-            "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated; the central api_server platform refuses to bind 0.0.0.0 without it. Run `make hermes-bootstrap` and restart the stack.",
+            "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.",
         )
     }
 
@@ -474,7 +485,6 @@ func buildRouter(
     let byoHermesLogger = Logger(label: "lv.byo-hermes")
     let legacySecretMasterKey = reader.string(forKey: "secret.masterKey", default: "")
     let secretMasterKey = reader.string(forKey: "lv.secretMasterKey", default: legacySecretMasterKey)
-    let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
     let byoHermesAllowPrivate = reader.string(forKey: "byoHermes.allowPrivate", default: "false")
         .lowercased() == "true"
     var byoHermesController: HermesConfigController?

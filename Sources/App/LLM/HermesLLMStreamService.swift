@@ -99,18 +99,13 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 )
                 let payloadData = try JSONEncoder().encode(payload)
 
-                var httpReq = HTTPClientRequest(url: url.absoluteString)
-                httpReq.method = .POST
-                httpReq.headers.add(name: "Content-Type", value: "application/json")
-                httpReq.headers.add(name: "Accept", value: "text/event-stream")
-                httpReq.headers.add(name: "X-Hermes-Session-Key", value: sessionKey)
-                if let sessionID, !sessionID.isEmpty {
-                    httpReq.headers.add(name: "X-Hermes-Session-Id", value: sessionID)
-                }
-                if !apiKey.isEmpty {
-                    httpReq.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
-                }
-                httpReq.body = .bytes(payloadData)
+                let httpReq = Self.makeStreamRequest(
+                    url: url,
+                    sessionKey: sessionKey,
+                    sessionID: sessionID,
+                    apiKey: apiKey,
+                    payloadData: payloadData,
+                )
 
                 let response = try await httpClient.execute(httpReq, timeout: requestTimeout)
                 guard (200 ..< 300).contains(Int(response.status.code)) else {
@@ -155,6 +150,35 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         }
         continuation.onTermination = { _ in work.cancel() }
         return stream
+    }
+
+    /// HER-186 — builds the streaming chat-completions request with all
+    /// headers attached. Extracted so the header wiring (notably the
+    /// `Authorization: Bearer` injection and the HER-183 session
+    /// headers) can be unit-tested without standing up an `HTTPClient`.
+    /// Empty `apiKey` skips the `Authorization` header so
+    /// dev / un-gated upstreams keep working; nil or empty `sessionID`
+    /// skips `X-Hermes-Session-Id` (one-shot internal callers).
+    static func makeStreamRequest(
+        url: URL,
+        sessionKey: String,
+        sessionID: String?,
+        apiKey: String,
+        payloadData: Data,
+    ) -> HTTPClientRequest {
+        var httpReq = HTTPClientRequest(url: url.absoluteString)
+        httpReq.method = .POST
+        httpReq.headers.add(name: "Content-Type", value: "application/json")
+        httpReq.headers.add(name: "Accept", value: "text/event-stream")
+        httpReq.headers.add(name: "X-Hermes-Session-Key", value: sessionKey)
+        if let sessionID, !sessionID.isEmpty {
+            httpReq.headers.add(name: "X-Hermes-Session-Id", value: sessionID)
+        }
+        if !apiKey.isEmpty {
+            httpReq.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
+        }
+        httpReq.body = .bytes(payloadData)
+        return httpReq
     }
 
     /// Parses one `data: ...` SSE record. Returns `true` when the
