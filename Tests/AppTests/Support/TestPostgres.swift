@@ -26,6 +26,16 @@ func testJSONDecoder() -> JSONDecoder {
     return d
 }
 
+/// HER-273 — mirror of `testJSONDecoder` for outbound request bodies.
+/// Tests that encode `LuminaVaultShared` DTOs into request payloads
+/// need the matching `.iso8601` strategy because the controller layer
+/// decodes with the same convention.
+func testJSONEncoder() -> JSONEncoder {
+    let e = JSONEncoder()
+    e.dateEncodingStrategy = .iso8601
+    return e
+}
+
 /// Centralized Postgres test config. Reads env so the same test suite runs
 /// in two environments:
 ///

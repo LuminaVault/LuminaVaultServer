@@ -58,6 +58,8 @@ tags:
     description: Health-data ingest (HER-146) + read (HER-202).
   - name: Skills
     description: Skills hub (HER-247), Today outputs (HER-177), Automations (HER-178).
+  - name: Profiles
+    description: Multi-Hermes-persona CRUD per user (HER-273).
   - name: WebSocket
   - name: Admin
   - name: Dashboard
@@ -2244,6 +2246,157 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TierOverrideResponse' }
 
+  # ─────────────── Hermes Profiles — multi-agent (HER-273) ─────────────
+
+  /v1/profiles:
+    get:
+      tags: [Profiles]
+      operationId: profilesList
+      summary: List the caller's Hermes personas.
+      description: |
+        Returns every persona owned by the authed tenant plus the slug
+        of the row currently flagged as default (`activeSlug`). The
+        default persona is the one used when a chat request omits
+        `X-Hermes-Profile`.
+      responses:
+        '200':
+          description: Persona list + active slug.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesProfilesListResponse' }
+    post:
+      tags: [Profiles]
+      operationId: profilesCreate
+      summary: Create a new Hermes persona.
+      description: |
+        Slug must match `^[a-z0-9][a-z0-9-]{0,31}$`. `systemPrompt` is
+        used verbatim as the persona's seed system prompt unless
+        `templateSlug` is also set, in which case the template body
+        wins (templates: `personal-assistant`, `stocks-tracker`,
+        `news-curator`, `tv-and-movies`, `tech-and-programming`).
+        First persona for a tenant is auto-flagged as default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesProfileCreateRequest' }
+      responses:
+        '200':
+          description: Created persona.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesProfileDTO' }
+        '400':
+          description: |
+            Stable codes in `message`:
+            `invalid_slug`, `invalid_label`, `system_prompt_too_long`,
+            `template_not_found`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Slug already exists for this tenant (`slug_already_exists`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/profiles/{slug}:
+    parameters:
+      - in: path
+        name: slug
+        required: true
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,31}$' }
+    get:
+      tags: [Profiles]
+      operationId: profilesGet
+      summary: Get a single persona by slug.
+      responses:
+        '200':
+          description: Persona detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesProfileDTO' }
+        '404':
+          description: Unknown persona (`profile_not_found`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    patch:
+      tags: [Profiles]
+      operationId: profilesPatch
+      summary: Update a persona's label / system prompt / enabled skills.
+      description: |
+        Slug and default flag are immutable here; use
+        `POST /v1/profiles/{slug}/activate` to switch the default.
+        Any unset field is left unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesProfilePatchRequest' }
+      responses:
+        '200':
+          description: Updated persona.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesProfileDTO' }
+        '400':
+          description: |
+            Stable codes in `message`:
+            `invalid_label`, `system_prompt_too_long`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Unknown persona (`profile_not_found`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Profiles]
+      operationId: profilesDelete
+      summary: Delete a non-default persona.
+      responses:
+        '204':
+          description: Row deleted.
+        '404':
+          description: Unknown persona (`profile_not_found`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Cannot delete the default persona (`cannot_delete_default`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/profiles/{slug}/activate:
+    parameters:
+      - in: path
+        name: slug
+        required: true
+        schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,31}$' }
+    post:
+      tags: [Profiles]
+      operationId: profilesActivate
+      summary: Set this persona as the tenant's default.
+      description: |
+        Atomically clears the prior default and flags this slug.
+        Subsequent chat requests with no `X-Hermes-Profile` header
+        will resolve to this slug. Idempotent: activating the
+        already-default persona is a no-op.
+      responses:
+        '200':
+          description: Activation acknowledged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesProfileActivateResponse' }
+        '404':
+          description: Unknown persona (`profile_not_found`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
 components:
 
   securitySchemes:
@@ -2913,6 +3066,69 @@ components:
         verifiedAt: { type: string, format: date-time }
         errorCode: { type: string }
         errorMessage: { type: string }
+
+    # ─── Hermes Profiles (HER-273) ──────────────────────────────────
+
+    HermesProfileDTO:
+      type: object
+      required: [id, slug, label, systemPrompt, isDefault, skillsEnabled, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,31}$' }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        systemPrompt: { type: string }
+        isDefault: { type: boolean }
+        skillsEnabled:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    HermesProfilesListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/HermesProfileDTO' }
+        activeSlug:
+          type: string
+          description: Slug of the persona currently flagged as the tenant default.
+
+    HermesProfileCreateRequest:
+      type: object
+      required: [slug, label]
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,31}$' }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        systemPrompt: { type: string }
+        templateSlug:
+          type: string
+          description: |
+            Optional preset SOUL template slug. Wins over `systemPrompt`
+            when both are set. Catalogue: `personal-assistant`,
+            `stocks-tracker`, `news-curator`, `tv-and-movies`,
+            `tech-and-programming`. Replaced by HER-273-B5 once
+            `/v1/soul/templates` ships.
+        skillsEnabled:
+          type: array
+          items: { type: string }
+
+    HermesProfilePatchRequest:
+      type: object
+      properties:
+        label: { type: string, minLength: 1, maxLength: 80 }
+        systemPrompt: { type: string }
+        skillsEnabled:
+          type: array
+          items: { type: string }
+
+    HermesProfileActivateResponse:
+      type: object
+      required: [slug, activatedAt]
+      properties:
+        slug: { type: string }
+        activatedAt: { type: string, format: date-time }
 
     ModelRouteDTO:
       type: object
