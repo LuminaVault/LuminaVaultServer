@@ -18,10 +18,18 @@ services:
       retries: 5
 
   hermes:
-    image: nousresearch/hermes-agent:latest
+    # HER-276 — custom image bakes `hermes-skills/` (kb-compile, kb-ingest,
+    # kb-import, kb-merge-vault, kb-output) at `/opt/baked-skills`. The
+    # entrypoint seeds them into `/opt/data/skills/` on each start
+    # (no-clobber), so a fresh `docker compose up --build` ships the
+    # full kb-* catalog without a manual `cp`.
+    build:
+      context: .
+      dockerfile: docker/hermes.Dockerfile
+    image: luminavault-hermes:local
     container_name: hermes-agent
     restart: unless-stopped
-    command: gateway run
+    command: ["gateway", "run"]
     ports:
       - "8642:8642" # OpenAI-compatible gateway (Hummingbird calls this)
     volumes:
