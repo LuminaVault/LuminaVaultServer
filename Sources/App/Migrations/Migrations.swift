@@ -57,6 +57,10 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M50_CreateUserHermesGateways())
     await fluent.migrations.add(M51_CreateUserHermesProfiles())
     await fluent.migrations.add(M52_AddUserAutoSaveLinks())
+<<<<<<< HEAD
     await fluent.migrations.add(M53_AddMemoryReviewState())
     await fluent.migrations.add(M54_CreateKBCompileRejectList())
+=======
+    await fluent.migrations.add(M53_AddFirstMemoryCompileCompleted())
+>>>>>>> 45bfbc9 (feat(migration): M52 add first_memory_compile_completed columns + backfill)
 }
