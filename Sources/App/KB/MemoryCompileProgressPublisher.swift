@@ -6,13 +6,13 @@ import LuminaVaultShared
 /// the deployment wires up. The default production impl emits to the
 /// per-tenant /v1/ws broadcast channel; tests use Noop or a recording
 /// publisher.
-protocol KBCompileProgressPublisher: Sendable {
+protocol MemoryCompileProgressPublisher: Sendable {
     func publish(_ event: KBCompileProgressEvent, tenantID: UUID) async
 }
 
 /// Drops every event. Used in unit tests that don't care about WS, and as
 /// a safety default when no concrete publisher is wired.
-struct NoopKBCompileProgressPublisher: KBCompileProgressPublisher {
+struct NoopMemoryCompileProgressPublisher: MemoryCompileProgressPublisher {
     init() {}
     func publish(_: KBCompileProgressEvent, tenantID _: UUID) async {}
 }
@@ -21,7 +21,7 @@ struct NoopKBCompileProgressPublisher: KBCompileProgressPublisher {
 /// open WS connections via `ConnectionManager`. Encode/transport failures
 /// are logged at warning level and swallowed — a sick WS path must never
 /// break kb-compile.
-struct WebSocketKBCompileProgressPublisher: KBCompileProgressPublisher {
+struct WebSocketMemoryCompileProgressPublisher: MemoryCompileProgressPublisher {
     private let connectionManager: ConnectionManager
     private let logger: Logger
     private let encoder: JSONEncoder

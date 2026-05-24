@@ -280,7 +280,7 @@ struct KBCompileProgressServiceTests {
 /// ordering. Actor isolation gives us automatic thread-safety on the
 /// `events` array; the protocol's `publish(_:tenantID:)` is `async` so
 /// actor isolation satisfies the requirement cleanly.
-actor RecordingProgressPublisher: KBCompileProgressPublisher {
+actor RecordingProgressPublisher: MemoryCompileProgressPublisher {
     private var events: [KBCompileProgressEvent] = []
 
     func publish(_ event: KBCompileProgressEvent, tenantID _: UUID) async {

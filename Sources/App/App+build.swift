@@ -1192,7 +1192,7 @@ func buildRouter(
     vaultController.addExportRoute(to: vaultExportGroup)
 
     // kb-compile (write batch + Hermes learning loop) — protected.
-    let kbCompileProgressPublisher = WebSocketKBCompileProgressPublisher(
+    let memoryCompileProgressPublisher = WebSocketMemoryCompileProgressPublisher(
         connectionManager: ConnectionManager.shared,
         logger: Logger(label: "lv.kb-compile.progress"),
     )
@@ -1203,13 +1203,13 @@ func buildRouter(
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.kb-compile"),
-        progress: kbCompileProgressPublisher,
+        progress: memoryCompileProgressPublisher,
     )
     let kbCompileController = MemoryCompileController(
         service: kbCompileService,
         fluent: services.fluent,
         achievements: achievementsService,
-        progress: kbCompileProgressPublisher,
+        progress: memoryCompileProgressPublisher,
         logger: Logger(label: "lv.kb-compile.controller"),
     )
     // HER-293 — `GET /v1/kb-compile/pending` is a cheap COUNT(*) probe

@@ -55,9 +55,9 @@ actor MemoryCompileService {
     let maxToolIterations: Int
     /// HER-288 — progress publisher used to fan-out `.preparing`,
     /// `.thinking`, and `.memorySaved` events over the per-tenant WS
-    /// channel. Defaults to `NoopKBCompileProgressPublisher` so unit tests
+    /// channel. Defaults to `NoopMemoryCompileProgressPublisher` so unit tests
     /// and call-sites that don't care about progress need not wire one up.
-    let progress: any KBCompileProgressPublisher
+    let progress: any MemoryCompileProgressPublisher
 
     init(
         vaultPaths: VaultPathService,
@@ -69,7 +69,7 @@ actor MemoryCompileService {
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
         maxToolIterations: Int = 12,
-        progress: any KBCompileProgressPublisher = NoopKBCompileProgressPublisher(),
+        progress: any MemoryCompileProgressPublisher = NoopMemoryCompileProgressPublisher(),
     ) {
         self.vaultPaths = vaultPaths
         self.transport = transport
