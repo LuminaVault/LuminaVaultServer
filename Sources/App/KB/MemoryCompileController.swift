@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-struct KBCompileController {
+struct MemoryCompileController {
     let service: KBCompileService
     let fluent: Fluent
     let achievements: AchievementsService?

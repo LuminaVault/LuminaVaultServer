@@ -1205,7 +1205,7 @@ func buildRouter(
         logger: Logger(label: "lv.kb-compile"),
         progress: kbCompileProgressPublisher,
     )
-    let kbCompileController = KBCompileController(
+    let kbCompileController = MemoryCompileController(
         service: kbCompileService,
         fluent: services.fluent,
         achievements: achievementsService,
