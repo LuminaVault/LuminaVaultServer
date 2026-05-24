@@ -4,6 +4,7 @@ import FluentPostgresDriver
 import Foundation
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import SQLKit
 import Testing
 

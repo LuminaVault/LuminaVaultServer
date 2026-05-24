@@ -1,6 +1,7 @@
 @testable import App
 import Foundation
 import Logging
+import LuminaVaultShared
 import Testing
 
 /// HER-161 — full routing matrix coverage for `TableModelRouter`.

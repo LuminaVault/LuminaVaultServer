@@ -2,6 +2,7 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import SQLKit
 
 // MARK: - Budget decision

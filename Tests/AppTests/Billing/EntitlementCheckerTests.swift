@@ -1,5 +1,6 @@
 @testable import App
 import Foundation
+import LuminaVaultShared
 import Testing
 
 /// Pure-function tests for `EntitlementChecker`. No DB, no Hummingbird,
