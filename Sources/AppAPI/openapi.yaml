@@ -1331,6 +1331,17 @@ paths:
         - in: query
           name: offset
           schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: tag
+          schema: { type: string }
+          description: HER-18 — filter to memories carrying this tag.
+        - in: query
+          name: reviewState
+          schema: { type: string }
+          description: |
+            HER-290 — comma-separated subset of `auto | pending | approved | rejected`
+            (e.g. `pending` or `pending,approved`). When omitted, the default
+            returns all states except `rejected`.
       responses:
         '200':
           description: Memory page.
@@ -3440,7 +3451,7 @@ components:
 
     MemoryDTO:
       type: object
-      required: [id, content]
+      required: [id, content, reviewState]
       properties:
         id: { type: string, format: uuid }
         content: { type: string }
@@ -3454,6 +3465,15 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         sourceVaultFileId: { type: string, format: uuid }
+        reviewState:
+          type: string
+          enum: [auto, pending, approved, rejected]
+          description: |
+            HER-290 — moderation state. `auto` for manual upserts + backfill;
+            `pending` for kb-compile-produced memories awaiting approve/reject;
+            `approved` / `rejected` after the user acts. Reject also lands the
+            content hash on the per-tenant `kb_compile_reject_list` so future
+            compile runs skip the same content.
 
     MemoryListResponse:
       type: object
@@ -3507,6 +3527,14 @@ components:
         tags:
           type: array
           items: { type: string }
+        reviewState:
+          type: string
+          enum: [approved, rejected]
+          description: |
+            HER-290 — only `pending → approved` and `pending → rejected`
+            transitions are legal. Other source/target combinations return
+            422. On `rejected` the server records the source + content_hash
+            so future kb-compile runs skip the same content.
 
     MemoryLineageResponse:
       type: object
@@ -3828,7 +3856,7 @@ components:
 
     KBCompileResponse:
       type: object
-      required: [memoriesIngested, runId]
+      required: [memoriesIngested, runId, pendingMemoryIds]
       properties:
         memoriesIngested: { type: integer }
         memoriesUpdated: { type: integer }
@@ -3840,6 +3868,14 @@ components:
             HER-288 — UUID correlation handle. Same value appears in every
             kb-compile WS progress event (`KBCompileProgressEvent`) emitted
             during this run.
+        pendingMemoryIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: |
+            HER-290 — IDs of the freshly-saved memories this run produced
+            that are now awaiting approve/reject. Empty when the compile
+            short-circuited (no pending vault files) or when the agent
+            decided nothing was worth persisting.
 
     KBCompilePendingResponse:
       type: object

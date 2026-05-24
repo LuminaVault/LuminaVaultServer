@@ -92,6 +92,7 @@ struct KBCompileController {
                 memoriesUpdated: nil,
                 durationMs: elapsedMs,
                 runId: runId,
+                pendingMemoryIds: result.memories.map(\.id),
             )
             await progress.publish(.completed(.init(runId: runId, response: response)), tenantID: tenantID)
             return response

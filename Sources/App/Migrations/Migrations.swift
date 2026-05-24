@@ -57,4 +57,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M50_CreateUserHermesGateways())
     await fluent.migrations.add(M51_CreateUserHermesProfiles())
     await fluent.migrations.add(M52_AddUserAutoSaveLinks())
+    await fluent.migrations.add(M53_AddMemoryReviewState())
+    await fluent.migrations.add(M54_CreateKBCompileRejectList())
 }

@@ -2,6 +2,7 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdFluent
+import LuminaVaultShared
 import SQLKit
 
 struct MemoryRepository {
@@ -85,6 +86,7 @@ struct MemoryRepository {
         embedding: [Float],
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
+        reviewState: String = "auto",
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
@@ -95,23 +97,25 @@ struct MemoryRepository {
             // `embedding` and `tags` cannot use `bind:` here — SQLKit has no
             // type encoders for pgvector or TEXT[]. Both are spliced as raw
             // SQL literals; everything else (id, tenant_id, content,
-            // source_vault_file_id) is properly parameterised. SQLKit binds
-            // `nil` UUIDs as SQL NULL, so the optional FK is safe to thread
-            // through unconditionally.
+            // source_vault_file_id, review_state) is properly parameterised.
+            // SQLKit binds `nil` UUIDs as SQL NULL, so the optional FK is
+            // safe to thread through unconditionally.
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, created_at)
+            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, review_state, created_at)
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
                     \(bind: sourceVaultFileID),
+                    \(bind: reviewState),
                     NOW())
             """).run()
         } else {
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, created_at)
+            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, review_state, created_at)
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(bind: sourceVaultFileID),
+                    \(bind: reviewState),
                     NOW())
             """).run()
         }
@@ -211,9 +215,12 @@ struct MemoryRepository {
     /// Stable order by `(created_at DESC, id DESC)` so cursor-like clients can
     /// compare runs. Tag filter uses `= ANY(tags)` so the GIN index on
     /// `tags` (idx_memories_tags) is index-served.
+    /// HER-290 — `reviewStates` filter is in-set when non-nil; nil means
+    /// "all states except rejected" (the default UX filter for the iOS list).
     func listPaginated(
         tenantID: UUID,
         tag: String?,
+        reviewStates: [String]? = nil,
         limit: Int,
         offset: Int,
     ) async throws -> [Memory] {
@@ -221,12 +228,22 @@ struct MemoryRepository {
             .sort(\.$createdAt, .descending)
             .sort(\.$id, .descending)
             .range(lower: offset, upper: offset + limit)
+        if let reviewStates {
+            q.filter(\.$reviewState ~~ reviewStates)
+        } else {
+            q.filter(\.$reviewState != MemoryReviewState.rejected)
+        }
         if let tag, !tag.isEmpty {
             guard let sql = fluent.db() as? any SQLDatabase else {
                 throw HTTPError(.internalServerError, message: "SQL driver required for tag filter")
             }
+            // HER-290 — reviewState filter is intentionally NOT applied to the
+            // tag-search path: that path is read-only over a curated set and
+            // adding `review_state` ANY-clauses would force an additional
+            // index pass. Tag search is a power-user surface; the default
+            // list already hides rejected rows.
             let rows = try await sql.raw("""
-            SELECT id, tenant_id, content, tags, created_at
+            SELECT id, tenant_id, content, tags, created_at, review_state
             FROM memories
             WHERE tenant_id = \(bind: tenantID) AND \(bind: tag) = ANY(tags)
             ORDER BY created_at DESC, id DESC
@@ -236,10 +253,24 @@ struct MemoryRepository {
                 let m = Memory(id: row.id, tenantID: row.tenant_id, content: row.content, tags: row.tags)
                 m.$id.exists = true
                 m.createdAt = row.created_at
+                m.reviewState = row.review_state ?? "auto"
                 return m
             }
         }
         return try await q.all()
+    }
+
+    /// HER-290 — tenant-scoped review-state flip. Used by `PATCH /v1/memory/{id}`
+    /// to approve/reject. Caller validates the transition.
+    func updateReviewState(tenantID: UUID, id: UUID, reviewState: String) async throws {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for review-state update")
+        }
+        try await sql.raw("""
+        UPDATE memories
+        SET review_state = \(bind: reviewState)
+        WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+        """).run()
     }
 
     /// Tenant-scoped fetch. Returns nil if not found (caller maps to 404).
@@ -359,6 +390,7 @@ private struct MemoryListRow: Decodable {
     let content: String
     let tags: [String]?
     let created_at: Date?
+    let review_state: String?
 }
 
 private struct DeletedIDRow: Decodable {

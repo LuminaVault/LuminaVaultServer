@@ -55,6 +55,7 @@ extension MemoryDTO {
             lng: memory.lng,
             accuracyM: memory.accuracyM,
             placeName: memory.placeName,
+            reviewState: memory.reviewState,
         )
     }
 }
@@ -73,6 +74,9 @@ struct MemoryController {
     let achievements: AchievementsService?
     /// HER-235 — derives the read-only memory graph on request.
     let graphService: MemoryGraphService
+    /// HER-290 — durable `(tenant_id, content_hash)` reject list used to dedup
+    /// memories the user has already rejected.
+    let rejectListRepository: KBCompileRejectListRepository
 
     private static let defaultLimit = 20
     private static let maxLimit = 100
@@ -182,9 +186,27 @@ struct MemoryController {
         let offset = max(0, req.uri.queryParameters["offset"].flatMap { Int($0) } ?? 0)
         let tag = req.uri.queryParameters["tag"].map { String($0) }
 
+        // HER-290 — `reviewState` is comma-separated to keep the call-site
+        // ergonomic (`?reviewState=pending,approved`). Empty / missing means
+        // "all states except rejected" so the iOS list view doesn't show
+        // user-rejected memories by default.
+        let reviewStates: [String]?
+        if let raw = req.uri.queryParameters["reviewState"], !raw.isEmpty {
+            let parts = raw.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+            let known = Set(MemoryReviewState.all)
+            let filtered = parts.filter { known.contains($0) }
+            guard !filtered.isEmpty else {
+                throw HTTPError(.badRequest, message: "reviewState must be a comma-separated subset of \(MemoryReviewState.all)")
+            }
+            reviewStates = filtered
+        } else {
+            reviewStates = nil
+        }
+
         let rows = try await repository.listPaginated(
             tenantID: tenantID,
             tag: tag,
+            reviewStates: reviewStates,
             limit: limit,
             offset: offset,
         )
@@ -221,8 +243,8 @@ struct MemoryController {
         let tenantID = try user.requireID()
         let body = try await req.decode(as: MemoryPatchRequest.self, context: ctx)
 
-        guard body.content != nil || body.tags != nil else {
-            throw HTTPError(.badRequest, message: "patch body must include content and/or tags")
+        guard body.content != nil || body.tags != nil || body.reviewState != nil else {
+            throw HTTPError(.badRequest, message: "patch body must include content, tags, or reviewState")
         }
 
         if let content = body.content {
@@ -239,6 +261,37 @@ struct MemoryController {
         if let tags = body.tags {
             let updated = try await repository.updateTags(tenantID: tenantID, id: id, tags: tags)
             guard updated else { throw HTTPError(.notFound, message: "memory not found") }
+        }
+
+        // HER-290 — only `pending → approved` and `pending → rejected` are
+        // legal transitions. Anything else is 422 so clients can't accidentally
+        // un-reject a memory or stamp `auto` rows pending out-of-band.
+        if let target = body.reviewState {
+            guard let current = try await repository.find(tenantID: tenantID, id: id) else {
+                throw HTTPError(.notFound, message: "memory not found")
+            }
+            let legal = current.reviewState == "pending"
+                && (target == MemoryReviewState.approved || target == MemoryReviewState.rejected)
+            guard legal else {
+                throw HTTPError(
+                    .unprocessableContent,
+                    message: "reviewState transition \(current.reviewState) → \(target) not allowed",
+                )
+            }
+            try await repository.updateReviewState(
+                tenantID: tenantID,
+                id: id,
+                reviewState: target,
+            )
+            if target == MemoryReviewState.rejected {
+                // Append `(tenant_id, content_hash)` so the next kb-compile
+                // run skips re-learning the same content.
+                try await rejectListRepository.record(
+                    tenantID: tenantID,
+                    contentHash: KBCompileService.contentHash(current.content),
+                    vaultFileID: current.sourceVaultFileID,
+                )
+            }
         }
 
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
