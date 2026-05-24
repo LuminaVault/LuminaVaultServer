@@ -1211,6 +1211,15 @@ func buildRouter(
         progress: kbCompileProgressPublisher,
         logger: Logger(label: "lv.kb-compile.controller"),
     )
+    // HER-293 — `GET /v1/kb-compile/pending` is a cheap COUNT(*) probe
+    // behind the iOS "Sync & Learn" disabled-state UX (HER-108). Registered
+    // on a jwt-only group so polling on screen-focus does NOT consume the
+    // kb-compile rate limit or hit the entitlement gate the heavy POST
+    // sits behind.
+    let kbCompilePendingGroup = router.group("/v1/kb-compile")
+        .add(middleware: jwtAuthenticator)
+    kbCompileController.addPendingRoutes(to: kbCompilePendingGroup)
+
     // HER-223 — kb-compile fires the heaviest Hermes traffic; must route
     // to the user's gateway when one is configured.
     let kbCompileBase = router.group("/v1/kb-compile")
@@ -1220,7 +1229,7 @@ func buildRouter(
     let kbCompileGroup = kbCompileWithByo
         .add(middleware: EntitlementMiddleware(requires: .kbCompile, enforcementEnabled: services.billingEnforcementEnabled))
         .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
-    kbCompileController.addRoutes(to: kbCompileGroup)
+    kbCompileController.addCompileRoutes(to: kbCompileGroup)
 
     // Spaces routes — service is constructed alongside `vaultInitService`
     // above so first-run vault create can seed defaults.
