@@ -2,7 +2,7 @@ import FluentKit
 import SQLKit
 
 /// HER-290 — durable record of `(tenant_id, content_hash)` pairs the user
-/// has rejected via memory review. `KBCompileService` consults this table
+/// has rejected via memory review. `MemoryCompileService` consults this table
 /// at the start of each compile run and skips `memory_upsert` calls whose
 /// content hash matches a rejected entry — so the user isn't shown the
 /// same "shall we learn this?" again across repeated runs.

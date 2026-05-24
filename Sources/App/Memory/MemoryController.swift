@@ -288,7 +288,7 @@ struct MemoryController {
                 // run skips re-learning the same content.
                 try await rejectListRepository.record(
                     tenantID: tenantID,
-                    contentHash: KBCompileService.contentHash(current.content),
+                    contentHash: MemoryCompileService.contentHash(current.content),
                     vaultFileID: current.sourceVaultFileID,
                 )
             }
