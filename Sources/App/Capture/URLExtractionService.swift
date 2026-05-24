@@ -16,12 +16,12 @@ import Foundation
 /// Non-public hosts (RFC 1918, localhost, link-local) are filtered
 /// out via the existing `URLEnricherGuard.isPublic` check so the
 /// chat path can't be tricked into capturing internal links.
-struct URLExtractionService: Sendable {
+struct URLExtractionService {
     /// Hard cap so a single chat turn full of URLs can't fan out
     /// hundreds of capture writes. Caller still gets the first N.
     static let maxURLsPerExtraction = 32
 
-    struct ExtractedURL: Sendable, Equatable {
+    struct ExtractedURL: Equatable {
         let raw: String
         let normalized: String
     }
@@ -29,7 +29,7 @@ struct URLExtractionService: Sendable {
     func extract(from text: String) -> [ExtractedURL] {
         guard !text.isEmpty else { return [] }
         guard let detector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.link.rawValue
+            types: NSTextCheckingResult.CheckingType.link.rawValue,
         ) else {
             return []
         }

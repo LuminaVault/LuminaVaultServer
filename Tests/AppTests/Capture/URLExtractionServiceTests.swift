@@ -5,7 +5,6 @@ import Testing
 /// HER-274 — pure unit tests for the chat-message URL extractor.
 /// Deterministic + no DB, so they run regardless of Postgres docker
 /// state.
-@Suite
 struct URLExtractionServiceTests {
     private let svc = URLExtractionService()
 
