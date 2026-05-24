@@ -99,7 +99,39 @@ struct KBCompileControllerTests {
                 #expect(body.memoriesIngested == 0)
                 #expect(body.memoriesUpdated == 0)
                 #expect(body.durationMs == 0)
+                // HER-288 — empty-rows short-circuit still produces a fresh runId
+                // that clients can use to correlate WS events.
+                #expect(body.runId.uuidString.count == 36)
             }
+        }
+    }
+
+    // MARK: - HER-288 — runId correlation
+
+    @Test
+    func `each compile response carries a unique runId`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+
+            func compileRunId() async throws -> UUID {
+                try await client.execute(
+                    uri: "/v1/kb-compile",
+                    method: .post,
+                    headers: [
+                        .authorization: "Bearer \(auth.accessToken)",
+                        .contentType: "application/json",
+                    ],
+                    body: Self.compileBody(KBCompileRequest()),
+                ) { response in
+                    let body = try Self.decodeCompileResponse(response.body)
+                    return body.runId
+                }
+            }
+
+            let runIdA = try await compileRunId()
+            let runIdB = try await compileRunId()
+            #expect(runIdA != runIdB)
         }
     }
 
