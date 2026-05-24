@@ -65,6 +65,10 @@ struct URLEnrichmentService {
                 markdown += "## Transcript\n\(transcript)\n\n"
             }
 
+            if let body = metadata.body, !body.isEmpty {
+                markdown += "## Content\n\(body)\n\n"
+            }
+
             guard let row = try await VaultFile.find(vaultFileID, on: db) else {
                 throw HTTPError(.notFound, message: "VaultFile not found")
             }
