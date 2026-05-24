@@ -417,6 +417,14 @@ func buildRouter(
 
     // Protected (JWT-required) routes
     let jwtAuthenticator = JWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent)
+    // HER-273 — resolve active Hermes persona from inbound
+    // `X-Hermes-Profile: <slug>` header. Lazy-creates a "default"
+    // persona row when a pre-B1 tenant first touches a wired route.
+    let hermesProfileMiddleware = HermesProfileMiddleware(
+        fluent: services.fluent,
+        profiles: hermesProfileService,
+        logger: Logger(label: "lv.hermes-profile"),
+    )
     let meGroup = router.group("/v1/auth")
         .add(middleware: jwtAuthenticator)
     meGroup.get("/me", use: meHandler)
@@ -1078,7 +1086,10 @@ func buildRouter(
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
+    // HER-273 — apply persona resolver AFTER auth + Hermes resolution
+    // so the session-key prefix can pick up the resolved Hermes profile.
     let conversationsGroup = conversationsWithByo
+        .add(middleware: hermesProfileMiddleware)
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     conversationController.addRoutes(to: conversationsGroup)
 
@@ -1240,6 +1251,18 @@ func buildRouter(
     )
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
+
+    // HER-273 — `/v1/profiles` CRUD for multi-Hermes-persona setups.
+    // No SecretBox or BYO middleware: profiles are plaintext-by-design
+    // (label + system prompt + skill enable list), tenant-scoped via
+    // jwtAuthenticator. `X-Hermes-Profile` routing is layered on top
+    // by `HermesProfileMiddleware` on the chat/memory groups.
+    let profilesController = ProfilesController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.profiles"),
+    )
+    let profilesGroup = router.group("/v1/profiles").add(middleware: jwtAuthenticator)
+    profilesController.addRoutes(to: profilesGroup)
 
     // HER-37 Slice D — synthesis worker. Off by default so local + CI
     // builds don't fire real Hermes traffic. Enable in production via

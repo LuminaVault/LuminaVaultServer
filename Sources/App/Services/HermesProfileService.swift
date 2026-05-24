@@ -92,6 +92,67 @@ struct HermesProfileService {
         try await HermesProfile.query(on: fluent.db(), tenantID: tenantID).first()
     }
 
+    /// HER-273 — best-effort fetch used by `HermesProfileMiddleware`.
+    /// Triggers soft provisioning if the row is missing, then returns
+    /// whatever is on disk (may be `nil` if the gateway is degraded).
+    func ensureSoftAndFind(for user: User, logger: Logger) async throws -> HermesProfile? {
+        if let existing = try await find(for: user), existing.status == "ready" {
+            return existing
+        }
+        await ensureSoft(for: user, logger: logger)
+        return try await find(for: user)
+    }
+
+    /// HER-273 — lazy-create the per-tenant `"default"` persona row.
+    /// First-touch on `HermesProfileMiddleware` for a tenant that
+    /// signed up before B1 shipped, or whose default was deleted
+    /// against the partial unique index expectation. Idempotent.
+    @discardableResult
+    func ensureDefaultPersona(tenantID: UUID) async throws -> UserHermesProfile {
+        if let existing = try await UserHermesProfile.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$isDefault == true)
+            .first()
+        {
+            return existing
+        }
+        // No default row. Promote any existing slug (oldest first) or
+        // seed a fresh one. Both branches are race-safe against the
+        // partial unique index because we set is_default inside the
+        // same transaction.
+        return try await fluent.db().transaction { db in
+            if let oldest = try await UserHermesProfile.query(on: db, tenantID: tenantID)
+                .sort(\.$createdAt, .ascending)
+                .first()
+            {
+                oldest.isDefault = true
+                try await oldest.save(on: db)
+                return oldest
+            }
+            let seed = UserHermesProfile(
+                tenantID: tenantID,
+                slug: "default",
+                label: "Default",
+                systemPrompt: HermesProfileService.defaultSeedPrompt,
+                isDefault: true,
+                skillsEnabled: [],
+            )
+            try await seed.save(on: db)
+            return seed
+        }
+    }
+
+    /// HER-273 — fallback persona seed when a tenant has no
+    /// `UserHermesProfile` rows yet. Mirrors HER-273-B5's
+    /// `personal-assistant` template (intentional duplication — B5
+    /// will replace this with a `SOULService.template(.personalAssistant)`
+    /// lookup once the template catalog ships).
+    static let defaultSeedPrompt = """
+    You are Hermes — a personal assistant. Tone: warm, concise.
+
+    ## Behavior
+    - ALWAYS save any link mentioned in chat to the user's vault. Confirm the save in your reply with the destination filename.
+    """
+
     private func reserveProvisioningRow(tenantID: UUID) async throws -> HermesProfile {
         if let existing = try await find(tenantID: tenantID) {
             existing.status = "provisioning"
