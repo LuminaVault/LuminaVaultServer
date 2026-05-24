@@ -7,7 +7,6 @@ import Testing
 /// sits on every chat response path, so each pattern + sanitization rule
 /// gets a pinned test.
 struct HermesToolErrorClassifierTests {
-
     // MARK: - classify(content:)
 
     @Test
