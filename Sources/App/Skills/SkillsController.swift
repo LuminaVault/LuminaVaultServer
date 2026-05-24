@@ -7,17 +7,20 @@ import LuminaVaultShared
 import SQLKit
 
 extension SkillListResponse: ResponseEncodable {}
+extension SkillRunResponse: ResponseEncodable {}
 extension SkillRunsResponse: ResponseEncodable {}
 extension LuminaVaultShared.SkillDTO: ResponseEncodable {}
 
 /// HTTP surface for the skills runtime.
 ///
-/// HER-148/169 — `POST /v1/skills/:name/run` remains a 501 stub.
+/// HER-148/169 — `POST /v1/skills/:name/run` executes enabled catalog
+/// skills; `POST /v1/skills/slash` maps chat commands to skills.
 /// HER-247 — adds list / patch / runs endpoints that back the
 /// iOS Skills hub UI (Settings → Skills).
 struct SkillsController {
     let runner: SkillRunner
     let catalog: SkillCatalog
+    let kbCompileController: KBCompileController
     let fluent: HummingbirdFluent.Fluent
     let enforcementEnabled: Bool
     let logger: Logger
@@ -28,6 +31,7 @@ struct SkillsController {
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
+        router.post("/slash", use: runSlashCommand)
         router.patch("/:name", use: patch)
         router.get("/:name/runs", use: runs)
         router.post("/:name/run", use: runSkill)
@@ -184,22 +188,92 @@ struct SkillsController {
         return SkillRunsResponse(runs: runDTOs, sparkline: sparkline, nextCursor: nil)
     }
 
-    // MARK: - POST /v1/skills/:name/run (HER-148 / HER-169 stub kept)
+    // MARK: - POST /v1/skills/slash
 
     @Sendable
-    func runSkill(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+    func runSlashCommand(_ req: Request, ctx: AppRequestContext) async throws -> SkillRunResponse {
+        let user = try ctx.requireIdentity()
+        let body = try await req.decode(as: SkillSlashCommandRequest.self, context: ctx)
+        guard let invocation = SlashCommandParser.parse(body.command) else {
+            throw HTTPError(.badRequest, message: "slash command must start with /")
+        }
+
+        switch invocation.kind {
+        case .kbCompile:
+            let startedAt = Date()
+            let response = try await kbCompileController.compile(user: user, body: KBCompileRequest())
+            let endedAt = Date()
+            return SkillRunResponse(
+                id: UUID(),
+                skillName: "kb-compile",
+                status: .success,
+                markdown: Self.kbCompileMarkdown(response),
+                startedAt: startedAt,
+                endedAt: endedAt,
+            )
+        case let .help(markdown):
+            let now = Date()
+            return SkillRunResponse(
+                id: UUID(),
+                skillName: "slash-help",
+                status: .success,
+                markdown: markdown,
+                startedAt: now,
+                endedAt: now,
+            )
+        case let .skill(name):
+            return try await runSkill(
+                name: name,
+                user: user,
+                input: invocation.input,
+                arguments: invocation.arguments,
+            )
+        }
+    }
+
+    // MARK: - POST /v1/skills/:name/run
+
+    @Sendable
+    func runSkill(_ req: Request, ctx: AppRequestContext) async throws -> SkillRunResponse {
         let user = try ctx.requireIdentity()
         guard let name = ctx.parameters.get("name") else {
             throw HTTPError(.badRequest, message: "skill name required")
         }
+        let body = await (try? req.decode(as: SkillRunRequest.self, context: ctx)) ?? SkillRunRequest()
+        return try await runSkill(
+            name: String(name),
+            user: user,
+            input: body.input,
+            arguments: body.arguments ?? [:],
+        )
+    }
+
+    private func runSkill(
+        name: String,
+        user: User,
+        input: String?,
+        arguments: [String: String],
+    ) async throws -> SkillRunResponse {
+        let tenantID = try user.requireID()
+        guard let manifest = try await catalog.manifest(named: name, for: tenantID) else {
+            throw HTTPError(.notFound, message: "no skill named \(name)")
+        }
         if enforcementEnabled {
-            let manifest = try await catalog.manifest(named: String(name), for: user.requireID())
-            let capability: Capability = manifest?.source == .vault ? .skillVaultRun : .skillBuiltinRun
+            let capability: Capability = manifest.source == .vault ? .skillVaultRun : .skillBuiltinRun
             guard user.entitled(for: capability) else {
                 throw EntitlementDeniedError(capability: capability)
             }
         }
-        throw HTTPError(.notImplemented, message: "HER-148 scaffold — SkillRunner lands in HER-169")
+        let result = try await runner.run(
+            skill: manifest,
+            tenantID: tenantID,
+            tier: user.tier.isEmpty ? "trial" : user.tier,
+            profileUsername: user.username,
+            trigger: .manual,
+            input: input,
+            arguments: arguments,
+        )
+        return Self.response(from: result, skillName: manifest.name)
     }
 
     static func capExceededHTTPError(_ error: SkillRunCapExceededError) -> HTTPError {
@@ -236,6 +310,29 @@ struct SkillsController {
             apnsCategory: state?.apnsCategory.flatMap { LuminaVaultShared.APNSCategory(rawValue: $0) },
             bodyExcerpt: String(manifest.body.prefix(200)),
         )
+    }
+
+    private static func response(from result: SkillRunResult, skillName: String) -> SkillRunResponse {
+        SkillRunResponse(
+            id: result.runID,
+            skillName: skillName,
+            status: result.status == "ok" ? .success : .error,
+            markdown: result.markdown,
+            modelUsed: result.modelUsed,
+            mtokIn: result.mtokIn,
+            mtokOut: result.mtokOut,
+            startedAt: result.startedAt,
+            endedAt: result.endedAt,
+        )
+    }
+
+    private static func kbCompileMarkdown(_ response: KBCompileResponse) -> String {
+        if response.memoriesIngested == 0 {
+            return "KB compile finished. No pending vault files needed ingestion."
+        }
+        let updated = response.memoriesUpdated.map { "\n- Memories updated: \($0)" } ?? ""
+        let duration = response.durationMs.map { "\n- Duration: \($0) ms" } ?? ""
+        return "KB compile finished.\n\n- Memories ingested: \(response.memoriesIngested)\(updated)\(duration)"
     }
 
     private static func parseLimit(_ req: Request) -> Int {

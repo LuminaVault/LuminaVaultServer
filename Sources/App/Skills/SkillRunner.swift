@@ -19,6 +19,7 @@ enum SkillTrigger: Hashable {
 struct SkillRunResult: Codable, Hashable {
     let runID: UUID
     let status: String // "ok" | "error"
+    let markdown: String
     let error: String?
     let modelUsed: String?
     let mtokIn: Int
@@ -151,6 +152,8 @@ actor SkillRunner {
         tier: String,
         profileUsername: String,
         trigger: SkillTrigger,
+        input: String? = nil,
+        arguments: [String: String] = [:],
     ) async throws -> SkillRunResult {
         let startedAt = Date()
         let runID = UUID()
@@ -176,6 +179,8 @@ actor SkillRunner {
                 tenantID: tenantID,
                 profileUsername: profileUsername,
                 trigger: trigger,
+                input: input,
+                arguments: arguments,
                 mtokIn: &mtokIn,
                 mtokOut: &mtokOut,
                 modelUsed: &modelUsed,
@@ -191,6 +196,7 @@ actor SkillRunner {
             let result = SkillRunResult(
                 runID: runID,
                 status: "ok",
+                markdown: outcome.summary,
                 error: nil,
                 modelUsed: modelUsed,
                 mtokIn: mtokIn,
@@ -208,6 +214,7 @@ actor SkillRunner {
             let result = SkillRunResult(
                 runID: runID,
                 status: "error",
+                markdown: "",
                 error: message,
                 modelUsed: modelUsed,
                 mtokIn: mtokIn,
@@ -358,6 +365,8 @@ actor SkillRunner {
         tenantID: UUID,
         profileUsername _: String,
         trigger: SkillTrigger,
+        input: String?,
+        arguments: [String: String],
         mtokIn: inout Int,
         mtokOut: inout Int,
         modelUsed: inout String?,
@@ -375,6 +384,7 @@ actor SkillRunner {
             """),
             .init(role: "user", content: """
             Trigger: \(Self.triggerDescription(trigger))
+            \(Self.inputDescription(input, arguments: arguments))
 
             Skill body:
             \(skill.body)
@@ -723,6 +733,21 @@ actor SkillRunner {
         case .cron: "cron"
         case let .event(name, payload): "event:\(name) payload:\(payload)"
         }
+    }
+
+    private static func inputDescription(_ input: String?, arguments: [String: String]) -> String {
+        var lines: [String] = []
+        if let input, !input.isEmpty {
+            lines.append("Input: \(input)")
+        }
+        if !arguments.isEmpty {
+            let rendered = arguments
+                .sorted(by: { $0.key < $1.key })
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: "\n")
+            lines.append("Arguments:\n\(rendered)")
+        }
+        return lines.isEmpty ? "" : "\n" + lines.joined(separator: "\n\n")
     }
 
     private static func validateRelativePath(_ path: String) throws -> String {

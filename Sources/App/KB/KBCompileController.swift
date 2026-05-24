@@ -42,8 +42,15 @@ struct KBCompileController {
     @Sendable
     func compile(_ req: Request, ctx: AppRequestContext) async throws -> KBCompileResponse {
         let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
         let body = try await req.decode(as: KBCompileRequest.self, context: ctx)
+        return try await compile(user: user, body: body)
+    }
+
+    /// Programmatic entry point used by `SkillsController` slash-command
+    /// dispatch (feature/chat-skill-slash-commands). Same body as the HTTP
+    /// route, just without the `Request` decode hop.
+    func compile(user: User, body: KBCompileRequest) async throws -> KBCompileResponse {
+        let tenantID = try user.requireID()
 
         let runId = UUID()
         let rows = try await resolveRows(tenantID: tenantID, body: body)

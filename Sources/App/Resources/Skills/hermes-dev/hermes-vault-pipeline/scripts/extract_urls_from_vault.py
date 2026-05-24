@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""
+Extract unique X/Twitter and GitHub URLs from vault Raw/ files for re-processing.
+
+Use when multi_link_poller.py was previously skipped or failed, and you want
+to re-feed URLs that haven't been processed yet. Handles deduplication against
+the poller's state file to avoid duplicates.
+
+Output: one URL per line to stdout.
+"""
+
+import argparse, hashlib, json, re, sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+HOME = Path.home()
+VAULT_ROOTS = [
+    HOME / "obsidian-vault" / "FACorreia",
+    Path("/opt/data/obsidian-vault/FACorreia"),
+]
+STATE_FILE = HOME / ".hermes" / "state" / "multi_link_poller_state.json"
+URL_PATTERNS = [
+    (re.compile(r'https?://(?:x\.com|twitter\.com|fixupx\.com)/[^\s)\]]+'), 'x'),
+    (re.compile(r'https?://github\.com/[^\s)\]]+'), 'github'),
+]
+
+def load_state():
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {"processed_urls": {}}
+
+def find_raw_dirs():
+    """Return existing Raw/ directories from all known vault roots."""
+    for root in VAULT_ROOTS:
+        raw = root / "Raw"
+        if raw.exists():
+            yield raw
+
+def extract_urls_from_file(path: Path, patterns):
+    text = path.read_text(errors='ignore')
+    for pattern, kind in patterns:
+        for m in pattern.finditer(text):
+            yield m.group(0).rstrip(').,;')
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--days", type=int, default=7, help="look back this many days (default: 7)")
+    parser.add_argument("--vault", choices=["home", "canonical", "both"], default="both",
+                        help="which vault root to scan (default: both)")
+    args = parser.parse_args()
+
+    state = load_state()
+    processed_hashes = set(state.get("processed_urls", {}).keys())
+    cutoff = datetime.now() - timedelta(days=args.days)
+
+    # Determine which Raw/ dirs to scan
+    raw_dirs = []
+    if args.vault in ("home", "both"):
+        raw_dirs.append(HOME / "obsidian-vault" / "FACorreia" / "Raw")
+    if args.vault in ("canonical", "both"):
+        raw_dirs.append(Path("/opt/data/obsidian-vault/FACorreia/raw"))
+
+    seen_urls = set()
+    for raw_dir in raw_dirs:
+        if not raw_dir.exists():
+            print(f"[skip] {raw_dir} does not exist", file=sys.stderr)
+            continue
+        for md_file in raw_dir.rglob("*.md"):
+            try:
+                mtime = datetime.fromtimestamp(md_file.stat().st_mtime)
+            except Exception:
+                continue
+            if mtime < cutoff:
+                continue
+            for url in extract_urls_from_file(md_file, URL_PATTERNS):
+                url_h = hashlib.sha256(url.encode()).hexdigest()[:16]
+                if url_h in processed_hashes:
+                    continue  # already handled by poller
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    print(url)
+
+if __name__ == "__main__":
+    main()

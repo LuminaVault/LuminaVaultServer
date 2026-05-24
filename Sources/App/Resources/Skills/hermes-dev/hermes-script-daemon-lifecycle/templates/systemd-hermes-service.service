@@ -1,0 +1,167 @@
+# Systemd Hermes Daemon Template
+
+## Overview
+
+Use systemd user services to manage Hermes Python daemons reliably. This replaces wrapper scripts and nohup with proper process supervision, automatic restarts, and journald logging.
+
+## Unit File Template
+
+Save as `~/.config/systemd/user/hermes-<name>.service`:
+
+```ini
+[Unit]
+Description=Hermes %i Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+# If running as yourself, use:
+# User=1000
+# Group=1000
+
+WorkingDirectory=/opt/data/home/.hermes
+EnvironmentFile=/opt/data/.env
+
+# Main daemon start
+ExecStart=/usr/bin/python3 -u /opt/data/home/.hermes/scripts/%i.py
+
+# Optional: pre/post hooks
+# ExecStartPre=/opt/data/home/.hermes/scripts/healthcheck-%i.sh
+# ExecStopPost=/opt/data/home/.hermes/scripts/cleanup-%i.sh
+
+# Logging to both journald and file
+StandardOutput=journal
+StandardError=journal
+
+# Capture logs to file too (optional)
+# StandardOutput=append:/opt/data/home/.hermes/logs/%i_%Y%m%d.log
+# StandardError=append:/opt/data/home/.hermes/logs/%i_%Y%m%d.log
+
+# Restart policy
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# Resource limits (tune per script)
+# MemoryLimit=500M
+# CPUQuota=50%
+
+[Install]
+WantedBy=default.target
+```
+
+## Per-Script Customization
+
+For `x_link_poller_v2.py` → unit name: `hermes-x-link-poller.service`
+
+```bash
+# Template the unit file
+cat > ~/.config/systemd/user/hermes-x-link-poller.service <<'EOF'
+[Unit]
+Description=Hermes X Link Poller v2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=1000
+WorkingDirectory=/opt/data/home/.hermes
+EnvironmentFile=/opt/data/.env
+ExecStart=/usr/bin/python3 -u /opt/data/home/.hermes/scripts/x_link_poller_v2.py
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+```
+
+## Enabling & Managing
+
+```bash
+# Reload systemd user manager
+systemctl --user daemon-reload
+
+# Enable at login (creates symlink)
+systemctl --user enable hermes-x-link-poller.service
+
+# Start immediately
+systemctl --user start hermes-x-link-poller.service
+
+# Check status
+systemctl --user status hermes-x-link-poller.service
+# Green "active (running)" = good
+
+# View logs (journald)
+journalctl --user -u hermes-x-link-poller.service -f
+
+# Stop
+systemctl --user stop hermes-x-link-poller.service
+
+# Disable autostart
+systemctl --user disable hermes-x-link-poller.service
+
+# Restart
+systemctl --user restart hermes-x-link-poller.service
+```
+
+## User vs System Services
+
+- **User services** (`--user`): Run in your user session, access XDG dirs, easier for dev
+- **System services** (`/etc/systemd/system/`): Run as root or dedicated user, start at boot before login
+
+For Hermes daemons, use **user services** unless you need boot-early availability without login.
+
+## Common Gotchas
+
+| Problem | Fix |
+|---------|-----|
+| `Failed to connect to bus: No such file or directory` | `export XDG_RUNTIME_DIR=/run/user/$(id -u)` |
+| `Unit hermes-xxx.service not found` | Run `systemctl --user daemon-reload` after editing |
+| `Access denied` on vault/log paths | Ensure `User=` has write permission to those paths |
+| Environment variables not loaded | Ensure `EnvironmentFile=/opt/data/.env` exists and is readable |
+| Service dies immediately | Check `journalctl --user -u hermes-xxx.service -n 50` for stderr |
+
+## Migration: Wrapper → systemd
+
+**Before** (wrapper with deadlock):
+```bash
+# /opt/data/home/.hermes/scripts/start-x-poller.sh
+while true; do
+  python3 x_link_poller_v2.py | tee -a log
+  sleep 120
+done
+```
+
+**After** (systemd, no wrapper):
+```bash
+# 1. Remove wrapper script or disable it
+# 2. Install unit file as shown above
+systemctl --user enable --now hermes-x-link-poller.service
+```
+
+The Python script's internal `while True` + `time.sleep(300)` is now managed by systemd's `Restart=on-failure`.
+
+## Verification
+
+```bash
+# Should show exactly one process chain:
+#   systemd → python3 → script internals
+ps -eo pid,ppid,stat,cmd | grep hermes | grep -v grep
+
+# No orphan accumulation
+# No wrapper process lingering
+# Journald shows cyclical "Sleeping 300s" messages
+```
+
+## Notes
+
+- Systemd tracks process via cgroup, so even if Python respawns subprocesses, they're contained
+- Logs go to `journalctl --user` by default; can also tee to file if needed
+- `RestartSec=10` = 10s backoff between restarts if script crashes
+- `StartLimitBurst=3` = fail after 3 restarts in 300s, prevents crash loops

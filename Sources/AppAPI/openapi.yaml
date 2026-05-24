@@ -2042,6 +2042,29 @@ paths:
 
   # ─────────────────────────────── Skills ───────────────────────────────
 
+  /v1/skills/slash:
+    post:
+      tags: [Skills]
+      operationId: skillsSlash
+      summary: Dispatch a chat slash command to a skill or built-in service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillSlashCommandRequest' }
+      responses:
+        '200':
+          description: Slash command completed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillRunResponse' }
+        '400':
+          description: Not a slash command.
+        '402':
+          description: Tier entitlement or daily-cap exhaustion.
+        '404':
+          description: Unknown skill.
+
   /v1/skills/{name}/run:
     post:
       tags: [Skills]
@@ -4031,16 +4054,34 @@ components:
     SkillRunRequest:
       type: object
       properties:
-        args:
+        input:
+          type: string
+        arguments:
           type: object
-          additionalProperties: true
+          additionalProperties: { type: string }
+        save:
+          type: boolean
 
     SkillRunResponse:
       type: object
-      required: [runId, status]
+      required: [id, skillName, status, markdown, startedAt]
       properties:
-        runId: { type: string, format: uuid }
-        status: { type: string, enum: [queued, running, completed, failed] }
+        id: { type: string, format: uuid }
+        skillName: { type: string }
+        status: { $ref: '#/components/schemas/SkillRunStatus' }
+        markdown: { type: string }
+        savedPath: { type: [string, 'null'] }
+        modelUsed: { type: [string, 'null'] }
+        mtokIn: { type: [integer, 'null'] }
+        mtokOut: { type: [integer, 'null'] }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+
+    SkillSlashCommandRequest:
+      type: object
+      required: [command]
+      properties:
+        command: { type: string }
 
     # ── Admin ──
 
