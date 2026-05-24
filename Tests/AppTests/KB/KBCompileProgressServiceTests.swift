@@ -322,11 +322,20 @@ private struct ScriptedChatTransport: HermesChatTransport {
         let body = try await inbox.next()
         return Data(body.utf8)
     }
+
+    func chatCompletionsWithMetadata(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> HermesChatTransportMetadata {
+        let body = try await inbox.next()
+        return HermesChatTransportMetadata(data: Data(body.utf8), headers: [:])
+    }
 }
 
 /// `HermesChatTransport` that always throws. Used to drive the error path.
 private struct ThrowingChatTransport: HermesChatTransport {
     func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
+        throw HTTPError(.badGateway, message: "scripted transport failure")
+    }
+
+    func chatCompletionsWithMetadata(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> HermesChatTransportMetadata {
         throw HTTPError(.badGateway, message: "scripted transport failure")
     }
 }
