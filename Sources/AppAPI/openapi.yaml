@@ -3374,11 +3374,83 @@ components:
 
     KBCompileResponse:
       type: object
-      required: [memoriesIngested]
+      required: [memoriesIngested, runId]
       properties:
         memoriesIngested: { type: integer }
         memoriesUpdated: { type: integer }
         durationMs: { type: integer }
+        runId:
+          type: string
+          format: uuid
+          description: |
+            HER-288 — UUID correlation handle. Same value appears in every
+            kb-compile WS progress event (`KBCompileProgressEvent`) emitted
+            during this run.
+
+    KBCompileStartedDTO:
+      type: object
+      required: [runId, totalFiles]
+      properties:
+        runId: { type: string, format: uuid }
+        totalFiles: { type: integer }
+
+    KBCompilePreparingDTO:
+      type: object
+      required: [runId]
+      properties:
+        runId: { type: string, format: uuid }
+
+    KBCompileThinkingDTO:
+      type: object
+      required: [runId, iteration]
+      properties:
+        runId: { type: string, format: uuid }
+        iteration: { type: integer, minimum: 1 }
+
+    KBCompileMemorySavedDTO:
+      type: object
+      required: [runId, memory]
+      properties:
+        runId: { type: string, format: uuid }
+        memory: { $ref: '#/components/schemas/MemoryDTO' }
+
+    KBCompileCompletedDTO:
+      type: object
+      required: [runId, response]
+      properties:
+        runId: { type: string, format: uuid }
+        response: { $ref: '#/components/schemas/KBCompileResponse' }
+
+    KBCompileErrorDTO:
+      type: object
+      required: [runId, message]
+      properties:
+        runId: { type: string, format: uuid }
+        message: { type: string }
+
+    KBCompileProgressEvent:
+      type: object
+      description: |
+        HER-288 — message sent over `/v1/ws` while a kb-compile run is in
+        flight. WebSocket messages aren't formalized in OpenAPI 3.0; this
+        component exists for client codegen + contract documentation.
+        Server emits one started, one preparing, one or more thinking,
+        zero or more memorySaved, then exactly one completed or error.
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [started, preparing, thinking, memorySaved, completed, error]
+        payload:
+          description: |
+            Shape depends on `type` — refer to the corresponding `KBCompile*DTO`.
+          oneOf:
+            - $ref: '#/components/schemas/KBCompileStartedDTO'
+            - $ref: '#/components/schemas/KBCompilePreparingDTO'
+            - $ref: '#/components/schemas/KBCompileThinkingDTO'
+            - $ref: '#/components/schemas/KBCompileMemorySavedDTO'
+            - $ref: '#/components/schemas/KBCompileCompletedDTO'
+            - $ref: '#/components/schemas/KBCompileErrorDTO'
 
     # ── Spaces ──
 
