@@ -42,6 +42,10 @@ final class User: Model, @unchecked Sendable {
     /// `false` for new accounts until `POST /v1/vault/create` succeeds; M37
     /// backfills existing users to `true` so legacy installs skip the gate.
     @Field(key: "vault_initialized") var vaultInitialized: Bool
+    /// HER-274 — opt-out for the chat auto-save-link post-processor.
+    /// Default `true`; URLs mentioned in chat get captured to vault.
+    /// Toggle via `PUT /v1/me/privacy { autoSaveLinks: false }`.
+    @Field(key: "auto_save_links") var autoSaveLinks: Bool
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -51,6 +55,7 @@ final class User: Model, @unchecked Sendable {
         timezone = "UTC"
         isAdmin = false
         vaultInitialized = false
+        autoSaveLinks = true
     }
 
     init(
@@ -82,5 +87,6 @@ final class User: Model, @unchecked Sendable {
         timezone = "UTC"
         isAdmin = false
         vaultInitialized = false
+        autoSaveLinks = true
     }
 }

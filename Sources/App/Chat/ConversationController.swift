@@ -28,6 +28,11 @@ struct ConversationController {
     /// HER-37 Slice C — optional. When nil the SSE stream emits an empty
     /// `.followUps([])` event for back-compat.
     let followUpGenerator: FollowUpGenerator?
+    /// HER-274 — auto-save-link post-processor dependencies. `nil` when
+    /// the global `AUTO_SAVE_LINKS_ENABLED` feature flag is off, in
+    /// which case `streamReply` skips URL extraction entirely.
+    let linkCapture: LinkCaptureService?
+    let urlExtractor: URLExtractionService
     let defaultModel: String
     let logger: Logger
 
@@ -37,6 +42,8 @@ struct ConversationController {
         embeddings: any EmbeddingService,
         streamService: any HermesLLMStreamService,
         followUpGenerator: FollowUpGenerator? = nil,
+        linkCapture: LinkCaptureService? = nil,
+        urlExtractor: URLExtractionService = URLExtractionService(),
         defaultModel: String,
         logger: Logger,
     ) {
@@ -45,6 +52,8 @@ struct ConversationController {
         self.embeddings = embeddings
         self.streamService = streamService
         self.followUpGenerator = followUpGenerator
+        self.linkCapture = linkCapture
+        self.urlExtractor = urlExtractor
         self.defaultModel = defaultModel
         self.logger = logger
     }
@@ -165,6 +174,15 @@ struct ConversationController {
         let hitDTOs = hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }
+        // HER-274 — capture inputs needed by the auto-save-link post-
+        // processor BEFORE the Task closure copies them. The user's
+        // `autoSaveLinks` flag is read on the request (no caching), so
+        // a /v1/me/privacy toggle takes effect on the next chat turn.
+        let autoSaveEnabled = user.autoSaveLinks
+        let linkCapture = linkCapture
+        let urlExtractor = urlExtractor
+        let userContent = content
+        let conversationIDValue = conversationID
 
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
@@ -214,6 +232,44 @@ struct ConversationController {
                     try await conversation.save(on: fluent.db())
                 } catch {
                     logger.error("assistant turn persist failed: \(error)")
+                }
+
+                // HER-274 — auto-save-link post-processor. Inspects the
+                // user prompt + assistant reply, dedupes URLs across
+                // both, and emits one `.linkSaved` event per capture.
+                // Skipped when the global flag is off or the user has
+                // opted out via /v1/me/privacy. Capture failures are
+                // logged-and-skipped: this is a side-effect, not part
+                // of the chat contract.
+                if let linkCapture, autoSaveEnabled {
+                    var seen: Set<String> = []
+                    func captureOne(rawURL: String, fromUser: Bool) async {
+                        do {
+                            let captured = try await linkCapture.captureLink(
+                                tenantID: tenantID,
+                                url: rawURL,
+                                note: "Auto-saved from chat \(conversationIDValue.uuidString)",
+                            )
+                            continuation.yield(.linkSaved(LinkSavedDTO(
+                                url: rawURL,
+                                vaultPath: captured.relativePath,
+                                capturedAt: Date(),
+                                fromUserMessage: fromUser,
+                            )))
+                        } catch {
+                            logger.warning("auto-save-link skip url=\(rawURL) error=\(error)")
+                        }
+                    }
+                    for extracted in urlExtractor.extract(from: userContent) {
+                        if seen.insert(extracted.normalized).inserted {
+                            await captureOne(rawURL: extracted.raw, fromUser: true)
+                        }
+                    }
+                    for extracted in urlExtractor.extract(from: assistantBuffer) {
+                        if seen.insert(extracted.normalized).inserted {
+                            await captureOne(rawURL: extracted.raw, fromUser: false)
+                        }
+                    }
                 }
 
                 // HER-37 Slice C — best-effort follow-ups, defensive ([]).

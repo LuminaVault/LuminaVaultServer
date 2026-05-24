@@ -2631,12 +2631,22 @@ components:
         isVerified: { type: boolean }
         privacyNoCNOrigin: { type: boolean }
         contextRouting: { type: boolean }
+        autoSaveLinks:
+          type: boolean
+          description: |
+            HER-274 — gates the chat auto-save-link post-processor. When
+            `true` (default), URLs detected in chat prompts and replies
+            are auto-captured to the vault and surfaced as `link_saved`
+            SSE events.
 
     UpdatePrivacyRequest:
       type: object
       properties:
         privacyNoCNOrigin: { type: boolean }
         contextRouting: { type: boolean }
+        autoSaveLinks:
+          type: boolean
+          description: HER-274 — opt out of the chat auto-save-link behavior.
 
     MeBillingResponse:
       type: object
@@ -3545,12 +3555,34 @@ components:
         - `follow_ups` — `array<string>` (server-generated follow-up chips)
         - `done` — no payload (stream terminator)
         - `error` — `string` (stream-level error; client surfaces and aborts)
+        - `fallback` — `ProviderFallbackNoticeDTO` (HER-252 routing failover)
+        - `link_saved` — `LinkSavedDTO` (HER-274 auto-saved chat link)
       properties:
         type:
           type: string
-          enum: [source, token, summary, follow_ups, done, error]
+          enum: [source, token, summary, follow_ups, done, error, fallback, link_saved]
         payload:
           description: Case-specific payload; absent for `done`.
+
+    LinkSavedDTO:
+      type: object
+      required: [url, vaultPath, capturedAt, fromUserMessage]
+      description: |
+        HER-274 — payload of the `link_saved` SSE event. One emitted per
+        unique URL the server auto-captured to the vault while processing
+        a chat turn, after tokens and before `.done`.
+      properties:
+        url: { type: string, format: uri }
+        vaultPath:
+          type: string
+          description: Tenant-relative vault path (e.g. `captures/2026-05-24-103045-news-ycombinator-com.md`).
+        capturedAt: { type: string, format: date-time }
+        fromUserMessage:
+          type: boolean
+          description: |
+            `true` when the URL appeared in the user prompt; `false` when
+            it appeared only in the assistant reply. Drives client toast
+            copy variant.
 
     # ── Conversations (HER-37 multi-turn chat) ──
 

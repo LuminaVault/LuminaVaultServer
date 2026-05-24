@@ -1022,7 +1022,10 @@ func buildRouter(
         fluent: services.fluent,
         logger: Logger(label: "lv.capture"),
     )
-    let captureController = CaptureController(
+    // HER-274 — shared by `CaptureController` (Safari share extension)
+    // and `ConversationController` (chat auto-save-link post-processor).
+    // Same vault file shape and enrichment pipeline either way.
+    let linkCaptureService = LinkCaptureService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         eventBus: eventBus,
@@ -1030,6 +1033,11 @@ func buildRouter(
         enrichmentService: urlEnrichmentService,
         logger: Logger(label: "lv.capture"),
     )
+    let captureController = CaptureController(service: linkCaptureService)
+    // HER-274 — global kill-switch for the chat auto-save-link
+    // post-processor. Defaults ON. Per-user opt-out lives on the
+    // `users.auto_save_links` column (PATCH /v1/me/privacy).
+    let autoSaveLinksEnabled = reader.string(forKey: "autoSaveLinks.enabled", default: "true").lowercased() == "true"
     let captureGroup = router.group("/v1/capture")
         .add(middleware: jwtAuthenticator)
         .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
@@ -1081,6 +1089,7 @@ func buildRouter(
         embeddings: DeterministicEmbeddingService(),
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
+        linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations"),
     )
@@ -1745,6 +1754,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         isVerified: user.isVerified,
         privacyNoCNOrigin: user.privacyNoCNOrigin,
         contextRouting: user.contextRouting,
+        autoSaveLinks: user.autoSaveLinks,
     )
 }
 
@@ -1765,6 +1775,9 @@ private func updatePrivacyHandler(
         if let routing = body.contextRouting {
             user.contextRouting = routing
         }
+        if let autoSave = body.autoSaveLinks {
+            user.autoSaveLinks = autoSave
+        }
         try await user.save(on: fluent.db())
         return try MeResponse(
             userId: user.requireID(),
@@ -1773,6 +1786,7 @@ private func updatePrivacyHandler(
             isVerified: user.isVerified,
             privacyNoCNOrigin: user.privacyNoCNOrigin,
             contextRouting: user.contextRouting,
+            autoSaveLinks: user.autoSaveLinks,
         )
     }
 }
