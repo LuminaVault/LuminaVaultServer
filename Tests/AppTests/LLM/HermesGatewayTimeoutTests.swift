@@ -81,4 +81,87 @@ struct HermesGatewayTimeoutTests {
         let req = try #require(captured.requests.first)
         #expect(req.timeoutInterval == HermesGatewayAdapter.requestTimeoutSeconds, "must match adapter's request timeout constant")
     }
+
+    @Test
+    func `non-stream payload retries once on URLError timedOut`() async throws {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            captured.attempts += 1
+            if captured.attempts == 1 {
+                return .failure(URLError(.timedOut))
+            }
+            return .success((Self.okResponse, Self.okBody))
+        }
+        defer { StubProtocol.handler = nil }
+
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        let data = try await adapter.chatCompletions(
+            payload: Self.nonStreamPayload,
+            profileUsername: "alice",
+        )
+        #expect(captured.attempts == 2, "must retry exactly once after timeout")
+        #expect(data == Self.okBody)
+    }
+
+    @Test
+    func `non-stream payload throws after second timeout`() async {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            captured.attempts += 1
+            return .failure(URLError(.timedOut))
+        }
+        defer { StubProtocol.handler = nil }
+
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        await #expect(throws: ProviderError.self) {
+            _ = try await adapter.chatCompletions(
+                payload: Self.nonStreamPayload,
+                profileUsername: "alice",
+            )
+        }
+        #expect(captured.attempts == 2, "exactly two attempts before throwing")
+    }
+
+    @Test
+    func `stream payload does NOT retry on timedOut`() async {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            captured.attempts += 1
+            return .failure(URLError(.timedOut))
+        }
+        defer { StubProtocol.handler = nil }
+
+        let streamPayload = Data(#"{"model":"hermes-3","messages":[],"stream":true}"#.utf8)
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        await #expect(throws: ProviderError.self) {
+            _ = try await adapter.chatCompletions(
+                payload: streamPayload,
+                profileUsername: "alice",
+            )
+        }
+        #expect(captured.attempts == 1, "streamed requests must not retry")
+    }
+
+    @Test
+    func `non-timeout URLError does NOT retry`() async {
+        let captured = Captured()
+        StubProtocol.handler = { request in
+            captured.requests.append(request)
+            captured.attempts += 1
+            return .failure(URLError(.cannotConnectToHost))
+        }
+        defer { StubProtocol.handler = nil }
+
+        let adapter = Self.makeAdapter(session: Self.stubSession())
+        await #expect(throws: ProviderError.self) {
+            _ = try await adapter.chatCompletions(
+                payload: Self.nonStreamPayload,
+                profileUsername: "alice",
+            )
+        }
+        #expect(captured.attempts == 1, "only timedOut triggers retry, not other URLErrors")
+    }
 }

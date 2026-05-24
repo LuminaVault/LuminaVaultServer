@@ -53,7 +53,31 @@ struct HermesGatewayAdapter: ProviderAdapter {
             authHeader = defaultAuthHeader
         }
 
-        let url = dispatchBaseURL
+        let isStream = Self.isStreaming(payload: payload)
+        do {
+            return try await dispatch(payload: payload, profileUsername: profileUsername, baseURL: dispatchBaseURL, authHeader: authHeader)
+        } catch let error as ProviderError {
+            // Retry-once on timeout for non-streamed payloads only.
+            guard case let .network(_, underlying) = error,
+                  let urlError = underlying as? URLError,
+                  urlError.code == .timedOut,
+                  !isStream
+            else {
+                throw error
+            }
+            logger.warning("hermes upstream timed out; retrying once after 2s")
+            try await Task.sleep(for: .seconds(2))
+            return try await dispatch(payload: payload, profileUsername: profileUsername, baseURL: dispatchBaseURL, authHeader: authHeader)
+        }
+    }
+
+    private func dispatch(
+        payload: Data,
+        profileUsername: String,
+        baseURL: URL,
+        authHeader: String?,
+    ) async throws -> HermesChatTransportMetadata {
+        let url = baseURL
             .appendingPathComponent("v1")
             .appendingPathComponent("chat")
             .appendingPathComponent("completions")
@@ -71,7 +95,6 @@ struct HermesGatewayAdapter: ProviderAdapter {
         do {
             (data, response) = try await session.data(for: req)
         } catch {
-            // Network-layer failure → recoverable for the dispatcher.
             throw ProviderError.network(provider: kind, underlying: error)
         }
 
@@ -92,5 +115,18 @@ struct HermesGatewayAdapter: ProviderAdapter {
         let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
         logger.error("hermes upstream \(error.reasonCode) status=\(status)")
         throw error
+    }
+
+    /// Cheap parse of the `stream` field from the chat-completions payload.
+    /// Returns false (default) if unparseable.
+    private static func isStreaming(payload: Data) -> Bool {
+        guard
+            let any = try? JSONSerialization.jsonObject(with: payload),
+            let dict = any as? [String: Any],
+            let stream = dict["stream"] as? Bool
+        else {
+            return false
+        }
+        return stream
     }
 }
