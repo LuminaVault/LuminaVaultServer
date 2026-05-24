@@ -1148,6 +1148,10 @@ func buildRouter(
     vaultController.addExportRoute(to: vaultExportGroup)
 
     // kb-compile (write batch + Hermes learning loop) — protected.
+    let kbCompileProgressPublisher = WebSocketKBCompileProgressPublisher(
+        connectionManager: ConnectionManager.shared,
+        logger: Logger(label: "lv.kb-compile.progress"),
+    )
     let kbCompileService = KBCompileService(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
@@ -1155,11 +1159,13 @@ func buildRouter(
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.kb-compile"),
+        progress: kbCompileProgressPublisher,
     )
     let kbCompileController = KBCompileController(
         service: kbCompileService,
         fluent: services.fluent,
         achievements: achievementsService,
+        progress: kbCompileProgressPublisher,
         logger: Logger(label: "lv.kb-compile.controller"),
     )
     // HER-223 — kb-compile fires the heaviest Hermes traffic; must route

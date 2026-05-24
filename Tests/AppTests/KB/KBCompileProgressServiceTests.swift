@@ -83,7 +83,7 @@ struct KBCompileProgressServiceTests {
                 runId: runId,
             )
 
-            let observed = recorder.snapshot()
+            let observed = await recorder.snapshot()
             let types: [String] = observed.map(Self.label(of:))
 
             // Service emits `.preparing` first, before the agent loop kicks
@@ -161,7 +161,7 @@ struct KBCompileProgressServiceTests {
                 )
             }
 
-            let observed = recorder.snapshot()
+            let observed = await recorder.snapshot()
             let types = observed.map(Self.label(of:))
 
             // Service must NEVER emit terminal envelopes — those belong to
@@ -277,23 +277,18 @@ struct KBCompileProgressServiceTests {
 // MARK: - Recording publisher
 
 /// Captures every published event in order so the suite can assert
-/// ordering. `NSLock` keeps the array safe across the actor-hop calls the
-/// service makes when it awaits `progress.publish(...)` — the publisher
-/// itself is `Sendable` but `events` is mutable state, so we serialise.
-final class RecordingProgressPublisher: KBCompileProgressPublisher, @unchecked Sendable {
-    private let lock = NSLock()
+/// ordering. Actor isolation gives us automatic thread-safety on the
+/// `events` array; the protocol's `publish(_:tenantID:)` is `async` so
+/// actor isolation satisfies the requirement cleanly.
+actor RecordingProgressPublisher: KBCompileProgressPublisher {
     private var events: [KBCompileProgressEvent] = []
 
     func publish(_ event: KBCompileProgressEvent, tenantID _: UUID) async {
-        lock.lock()
-        defer { lock.unlock() }
         events.append(event)
     }
 
     func snapshot() -> [KBCompileProgressEvent] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
+        events
     }
 }
 
