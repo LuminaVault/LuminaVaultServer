@@ -6,7 +6,7 @@ import Logging
 import LuminaVaultShared
 
 struct MemoryCompileController {
-    let service: KBCompileService
+    let service: MemoryCompileService
     let fluent: Fluent
     let achievements: AchievementsService?
     let progress: any KBCompileProgressPublisher

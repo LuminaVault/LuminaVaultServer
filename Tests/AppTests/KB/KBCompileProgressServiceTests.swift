@@ -7,7 +7,7 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-/// HER-288 Task 6 — drives `KBCompileService.compileExistingVaultFiles`
+/// HER-288 Task 6 — drives `MemoryCompileService.compileExistingVaultFiles`
 /// against a scripted `HermesChatTransport` and asserts the *service-level*
 /// progress events fire in the right order:
 ///
@@ -20,7 +20,7 @@ import Testing
 /// Pattern mirrors `KBCompileSpaceCountersTests` — go around `buildApplication`
 /// and call the service directly so the suite stays focused on the service
 /// contract.
-@Suite("KBCompileService progress ordering")
+@Suite("MemoryCompileService progress ordering")
 struct KBCompileProgressServiceTests {
     @Test func `happy path emits preparing then thinking then memory saved`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.happy") { fluent in
@@ -64,7 +64,7 @@ struct KBCompileProgressServiceTests {
                 Self.contentTurn(text: "Stored 1 memory from this batch."),
             ])
 
-            let service = KBCompileService(
+            let service = MemoryCompileService(
                 vaultPaths: vaultPaths,
                 transport: transport,
                 memories: MemoryRepository(fluent: fluent),
@@ -140,7 +140,7 @@ struct KBCompileProgressServiceTests {
             let recorder = RecordingProgressPublisher()
             let transport = ThrowingChatTransport()
 
-            let service = KBCompileService(
+            let service = MemoryCompileService(
                 vaultPaths: vaultPaths,
                 transport: transport,
                 memories: MemoryRepository(fluent: fluent),

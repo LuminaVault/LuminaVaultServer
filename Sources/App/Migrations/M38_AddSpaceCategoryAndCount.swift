@@ -8,11 +8,11 @@ import SQLKit
 ///   spaces. Indexed on `(tenant_id, category)` so the filter is cheap.
 /// - `note_count` — denormalized count of vault_files in the space. Default
 ///   0 until first KB compile touches the space; thereafter
-///   `KBCompileService.refreshSpaceCounters` recomputes it as part of every
+///   `MemoryCompileService.refreshSpaceCounters` recomputes it as part of every
 ///   compile run, so the value self-heals on subsequent compiles.
 /// - `last_compiled_at` — timestamp of the last KB compile run that
 ///   included this Space. Written alongside `note_count` by
-///   `KBCompileService.refreshSpaceCounters`. NULL until first compile.
+///   `MemoryCompileService.refreshSpaceCounters`. NULL until first compile.
 ///
 /// Idempotent via `ADD COLUMN IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`.
 struct M38_AddSpaceCategoryAndCount: AsyncMigration {

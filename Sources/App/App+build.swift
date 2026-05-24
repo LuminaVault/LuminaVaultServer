@@ -23,7 +23,7 @@ import Tracing
 /// - Parameters:
 ///   - reader: configuration reader.
 ///   - kbCompileTransportOverride: when non-nil, substitutes for
-///     `routedTransport` inside `KBCompileService`. Test-only escape hatch
+///     `routedTransport` inside `MemoryCompileService`. Test-only escape hatch
 ///     for happy-path coverage that needs a deterministic chat backend.
 ///     Production callers leave this `nil`.
 func buildApplication(
@@ -1196,7 +1196,7 @@ func buildRouter(
         connectionManager: ConnectionManager.shared,
         logger: Logger(label: "lv.kb-compile.progress"),
     )
-    let kbCompileService = KBCompileService(
+    let kbCompileService = MemoryCompileService(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
