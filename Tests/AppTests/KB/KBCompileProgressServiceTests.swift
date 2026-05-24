@@ -22,7 +22,7 @@ import Testing
 /// contract.
 @Suite("KBCompileService progress ordering")
 struct KBCompileProgressServiceTests {
-    @Test func happyPathEmitsPreparingThenThinkingThenMemorySaved() async throws {
+    @Test func `happy path emits preparing then thinking then memory saved`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.happy") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
@@ -77,7 +77,7 @@ struct KBCompileProgressServiceTests {
             let runId = UUID()
             _ = try await service.compileExistingVaultFiles(
                 tenantID: tenantID,
-                profileUsername: "test-user",
+                sessionKey: "test-user",
                 rows: [row],
                 hint: nil,
                 runId: runId,
@@ -110,7 +110,7 @@ struct KBCompileProgressServiceTests {
         }
     }
 
-    @Test func errorPathBubblesUpAndServiceEmitsNoCompletion() async throws {
+    @Test func `error path bubbles up and service emits no completion`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.error") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
@@ -154,7 +154,7 @@ struct KBCompileProgressServiceTests {
             await #expect(throws: (any Error).self) {
                 _ = try await service.compileExistingVaultFiles(
                     tenantID: tenantID,
-                    profileUsername: "test-user",
+                    sessionKey: "test-user",
                     rows: [row],
                     hint: nil,
                     runId: runId,
@@ -221,12 +221,12 @@ struct KBCompileProgressServiceTests {
 
     private static func runId(of event: KBCompileProgressEvent) -> UUID {
         switch event {
-        case .started(let p): p.runId
-        case .preparing(let p): p.runId
-        case .thinking(let p): p.runId
-        case .memorySaved(let p): p.runId
-        case .completed(let p): p.runId
-        case .error(let p): p.runId
+        case let .started(p): p.runId
+        case let .preparing(p): p.runId
+        case let .thinking(p): p.runId
+        case let .memorySaved(p): p.runId
+        case let .completed(p): p.runId
+        case let .error(p): p.runId
         }
     }
 
@@ -299,7 +299,9 @@ actor RecordingProgressPublisher: KBCompileProgressPublisher {
 /// signals the agent loop ran more turns than the test scripted.
 private actor ScriptedChatTransportInbox {
     private var turns: [String]
-    init(turns: [String]) { self.turns = turns }
+    init(turns: [String]) {
+        self.turns = turns
+    }
 
     func next() throws -> String {
         guard !turns.isEmpty else { throw ScriptedChatTransportError.exhausted }
@@ -316,7 +318,7 @@ private struct ScriptedChatTransport: HermesChatTransport {
         inbox = ScriptedChatTransportInbox(turns: turns)
     }
 
-    func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         let body = try await inbox.next()
         return Data(body.utf8)
     }
@@ -324,7 +326,7 @@ private struct ScriptedChatTransport: HermesChatTransport {
 
 /// `HermesChatTransport` that always throws. Used to drive the error path.
 private struct ThrowingChatTransport: HermesChatTransport {
-    func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         throw HTTPError(.badGateway, message: "scripted transport failure")
     }
 }

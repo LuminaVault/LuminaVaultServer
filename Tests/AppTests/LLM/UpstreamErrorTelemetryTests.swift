@@ -13,15 +13,19 @@ struct UpstreamErrorTelemetryTests {
             let factory = self
             return StubCounter(label: label, dimensions: dimensions, factory: factory)
         }
+
         func makeRecorder(label _: String, dimensions _: [(String, String)], aggregate _: Bool) -> RecorderHandler {
             StubRecorder()
         }
+
         func makeTimer(label _: String, dimensions _: [(String, String)]) -> TimerHandler {
             StubTimer()
         }
+
         func makeMeter(label _: String, dimensions _: [(String, String)]) -> MeterHandler {
             StubMeter()
         }
+
         func destroyCounter(_: CounterHandler) {}
         func destroyRecorder(_: RecorderHandler) {}
         func destroyTimer(_: TimerHandler) {}
@@ -37,9 +41,11 @@ struct UpstreamErrorTelemetryTests {
             self.dimensions = dimensions
             self.factory = factory
         }
+
         func increment(by: Int64) {
             factory.counterIncrements.append((label, dimensions, by))
         }
+
         func reset() {}
     }
 
@@ -47,14 +53,16 @@ struct UpstreamErrorTelemetryTests {
         func record(_: Int64) {}
         func record(_: Double) {}
     }
+
     final class StubTimer: TimerHandler, @unchecked Sendable {
         func recordNanoseconds(_: Int64) {}
     }
+
     final class StubMeter: MeterHandler, @unchecked Sendable {
         func set(_: Int64) {}
         func set(_: Double) {}
-        func increment(by: Double) {}
-        func decrement(by: Double) {}
+        func increment(by _: Double) {}
+        func decrement(by _: Double) {}
     }
 
     @Test

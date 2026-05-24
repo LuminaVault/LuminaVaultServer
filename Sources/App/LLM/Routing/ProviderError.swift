@@ -51,16 +51,16 @@ enum ProviderError: Error {
     /// labels and iOS localization roots. Add new variants; do not rename.
     var reasonCode: String {
         switch self {
-        case .creditExhausted: return "credit_exhausted"
-        case let .transient(_, status, _) where status == 429: return "rate_limit"
-        case .transient: return "upstream_error"
+        case .creditExhausted: "credit_exhausted"
+        case let .transient(_, status, _) where status == 429: "rate_limit"
+        case .transient: "upstream_error"
         case let .network(_, underlying):
             switch Self.underlyingKind(of: underlying) {
-            case .timeout: return "upstream_timeout"
-            case .unreachable: return "upstream_unreachable"
-            case .other: return "network"
+            case .timeout: "upstream_timeout"
+            case .unreachable: "upstream_unreachable"
+            case .other: "network"
             }
-        case .permanent: return "upstream_rejected"
+        case .permanent: "upstream_rejected"
         }
     }
 

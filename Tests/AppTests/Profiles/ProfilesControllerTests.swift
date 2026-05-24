@@ -96,7 +96,7 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks", templateSlug: "stocks-tracker")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks", templateSlug: "stocks-tracker")),
             ) { response -> HermesProfileDTO in
                 #expect(response.status == .ok)
                 return try Self.decodeDTO(response.body)
@@ -109,7 +109,7 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "news", label: "News")),
+                body: Self.createBody(.init(slug: "news", label: "News")),
             ) { response -> HermesProfileDTO in
                 #expect(response.status == .ok)
                 return try Self.decodeDTO(response.body)
@@ -127,13 +127,13 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks 2")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks 2")),
             ) { response in
                 #expect(response.status == .conflict)
             }
@@ -149,7 +149,7 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "Has Spaces!", label: "x")),
+                body: Self.createBody(.init(slug: "Has Spaces!", label: "x")),
             ) { #expect($0.status == .badRequest) }
         }
     }
@@ -163,13 +163,13 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles/stocks",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.patchBody(.init(label: "Stocks Pro", systemPrompt: "Focus on options flow.")),
+                body: Self.patchBody(.init(label: "Stocks Pro", systemPrompt: "Focus on options flow.")),
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeDTO(response.body)
@@ -188,13 +188,13 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "news", label: "News")),
+                body: Self.createBody(.init(slug: "news", label: "News")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles/news/activate",
@@ -230,7 +230,7 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles/stocks",
@@ -249,13 +249,13 @@ struct ProfilesControllerTests {
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "stocks", label: "Stocks")),
+                body: Self.createBody(.init(slug: "stocks", label: "Stocks")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: try Self.createBody(.init(slug: "news", label: "News")),
+                body: Self.createBody(.init(slug: "news", label: "News")),
             ) { #expect($0.status == .ok) }
             try await client.execute(
                 uri: "/v1/profiles/news",

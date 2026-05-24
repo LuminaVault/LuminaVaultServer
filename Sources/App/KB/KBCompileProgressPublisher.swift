@@ -14,7 +14,7 @@ protocol KBCompileProgressPublisher: Sendable {
 /// a safety default when no concrete publisher is wired.
 struct NoopKBCompileProgressPublisher: KBCompileProgressPublisher {
     init() {}
-    func publish(_ event: KBCompileProgressEvent, tenantID: UUID) async {}
+    func publish(_: KBCompileProgressEvent, tenantID _: UUID) async {}
 }
 
 /// Encodes the event as JSON text and broadcasts to all of the tenant's

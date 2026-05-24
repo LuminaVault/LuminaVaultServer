@@ -14,7 +14,7 @@ import Logging
 /// `ConversationController.streamReply` invokes it directly per URL
 /// detected by `URLExtractionService` once the assistant turn is
 /// persisted.
-struct LinkCaptureService: Sendable {
+struct LinkCaptureService {
     let vaultPaths: VaultPathService
     let fluent: Fluent
     let eventBus: EventBus?
@@ -27,7 +27,7 @@ struct LinkCaptureService: Sendable {
         case nonPublicHost
     }
 
-    struct CapturedLink: Sendable {
+    struct CapturedLink {
         let fileID: UUID
         let relativePath: String
     }

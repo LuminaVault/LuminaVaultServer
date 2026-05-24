@@ -1,14 +1,14 @@
+@testable import App
 import Foundation
 import Logging
-import Testing
-@testable import App
 import LuminaVaultShared
+import Testing
 
 @Suite("WebSocketKBCompileProgressPublisher")
 struct KBCompileProgressPublisherTests {
-    @Test func publishEncodesEnvelopeAndBroadcasts() async throws {
+    @Test func `publish encodes envelope and broadcasts`() async throws {
         let manager = ConnectionManager()
-        let tenantID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        let tenantID = try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
         let publisher = WebSocketKBCompileProgressPublisher(
             connectionManager: manager,
             logger: Logger(label: "test.lv.kb-compile.publisher"),
@@ -25,7 +25,7 @@ struct KBCompileProgressPublisherTests {
         #expect(connections.isEmpty)
     }
 
-    @Test func encodedShapeIsTaggedEnvelope() throws {
+    @Test func `encoded shape is tagged envelope`() throws {
         let event: KBCompileProgressEvent = .preparing(.init(runId: UUID()))
         let data = try JSONEncoder().encode(event)
         let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
