@@ -122,6 +122,14 @@ struct RoutedLLMTransport: HermesChatTransport {
                 userMessage: lastFailedCandidate.error.userMessage,
             )
         }
+        if lastRecoverable != nil {
+            // Only unclassified (non-ProviderError) recoverable failures.
+            // No typed reasonCode/userMessage available; emit generic.
+            throw UpstreamErrorResponse(
+                reasonCode: "upstream_error",
+                userMessage: "LLM upstream failed.",
+            )
+        }
         throw UpstreamErrorResponse(
             reasonCode: "no_providers",
             userMessage: "No LLM provider available.",

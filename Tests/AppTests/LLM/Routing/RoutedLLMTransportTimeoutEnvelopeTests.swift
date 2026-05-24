@@ -22,6 +22,22 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
         }
     }
 
+    /// Throws non-ProviderError to exercise the unclassified-error path
+    /// in RoutedLLMTransport (catches via the generic `catch` branch,
+    /// sets `lastRecoverable` without `lastFailedCandidate`).
+    actor UnclassifiedStubAdapter: ProviderAdapter {
+        nonisolated let kind: ProviderKind
+        private struct OpaqueError: Error {}
+
+        init(kind: ProviderKind) {
+            self.kind = kind
+        }
+
+        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+            throw OpaqueError()
+        }
+    }
+
     struct FixedRouter: ModelRouter {
         let decision: RouteDecision
         func pick(forModel _: String?, capability _: LLMCapabilityLevel, user _: User?) async -> RouteDecision {
@@ -116,6 +132,31 @@ struct RoutedLLMTransportTimeoutEnvelopeTests {
             Issue.record("expected throw")
         } catch let err as UpstreamErrorResponse {
             #expect(err.reasonCode == "no_providers")
+            #expect(err.status == .badGateway)
+        }
+    }
+
+    @Test
+    func `exhausted unclassified errors throw UpstreamErrorResponse with upstream_error`() async throws {
+        let adapter = UnclassifiedStubAdapter(kind: .hermesGateway)
+        let registry = ProviderRegistry(adapters: [adapter], logger: Logger(label: "test"))
+        let decision = RouteDecision(
+            primary: ModelRoute(provider: .hermesGateway, modelID: "hermes-3"),
+            fallbacks: [],
+        )
+        let transport = RoutedLLMTransport(
+            registry: registry,
+            router: FixedRouter(decision: decision),
+            logger: Logger(label: "test"),
+        )
+        do {
+            _ = try await transport.chatCompletions(
+                payload: Data(#"{"model":"hermes-3","messages":[]}"#.utf8),
+                profileUsername: "alice",
+            )
+            Issue.record("expected throw")
+        } catch let err as UpstreamErrorResponse {
+            #expect(err.reasonCode == "upstream_error")
             #expect(err.status == .badGateway)
         }
     }
