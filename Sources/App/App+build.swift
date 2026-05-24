@@ -1191,46 +1191,67 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .vaultExportByUser, storage: rateLimitStorage))
     vaultController.addExportRoute(to: vaultExportGroup)
 
-    // kb-compile (write batch + Hermes learning loop) — protected.
+    // memory-compile (write batch + Hermes learning loop) — protected.
+    // HER-240 / spec ticket #2: legacy /v1/kb-compile route 308-redirects
+    // to /v1/memory-compile (registered below) until iOS clients migrate.
     let memoryCompileProgressPublisher = WebSocketMemoryCompileProgressPublisher(
         connectionManager: ConnectionManager.shared,
-        logger: Logger(label: "lv.kb-compile.progress"),
+        logger: Logger(label: "lv.memory-compile.progress"),
     )
-    let kbCompileService = MemoryCompileService(
+    let memoryCompileService = MemoryCompileService(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: DeterministicEmbeddingService(),
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.kb-compile"),
+        logger: Logger(label: "lv.memory-compile"),
         progress: memoryCompileProgressPublisher,
     )
-    let kbCompileController = MemoryCompileController(
-        service: kbCompileService,
+    let memoryCompileController = MemoryCompileController(
+        service: memoryCompileService,
         fluent: services.fluent,
         achievements: achievementsService,
         progress: memoryCompileProgressPublisher,
-        logger: Logger(label: "lv.kb-compile.controller"),
+        logger: Logger(label: "lv.memory-compile.controller"),
     )
-    // HER-293 — `GET /v1/kb-compile/pending` is a cheap COUNT(*) probe
+    // HER-293 — `GET /v1/memory-compile/pending` is a cheap COUNT(*) probe
     // behind the iOS "Sync & Learn" disabled-state UX (HER-108). Registered
     // on a jwt-only group so polling on screen-focus does NOT consume the
-    // kb-compile rate limit or hit the entitlement gate the heavy POST
+    // memory-compile rate limit or hit the entitlement gate the heavy POST
     // sits behind.
-    let kbCompilePendingGroup = router.group("/v1/kb-compile")
+    let memoryCompilePendingGroup = router.group("/v1/memory-compile")
         .add(middleware: jwtAuthenticator)
-    kbCompileController.addPendingRoutes(to: kbCompilePendingGroup)
+    memoryCompileController.addPendingRoutes(to: memoryCompilePendingGroup)
 
-    // HER-223 — kb-compile fires the heaviest Hermes traffic; must route
-    // to the user's gateway when one is configured.
-    let kbCompileBase = router.group("/v1/kb-compile")
+    // HER-223 — memory-compile fires the heaviest Hermes traffic; must
+    // route to the user's gateway when one is configured.
+    let memoryCompileBase = router.group("/v1/memory-compile")
         .add(middleware: jwtAuthenticator)
         .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
-    let kbCompileWithByo = byoHermesMiddleware.map { kbCompileBase.add(middleware: $0) } ?? kbCompileBase
-    let kbCompileGroup = kbCompileWithByo
-        .add(middleware: EntitlementMiddleware(requires: .kbCompile, enforcementEnabled: services.billingEnforcementEnabled))
-        .add(middleware: RateLimitMiddleware(policy: .kbCompileByUser, storage: rateLimitStorage))
-    kbCompileController.addCompileRoutes(to: kbCompileGroup)
+    let memoryCompileWithByo = byoHermesMiddleware.map { memoryCompileBase.add(middleware: $0) } ?? memoryCompileBase
+    let memoryCompileGroup = memoryCompileWithByo
+        .add(middleware: EntitlementMiddleware(requires: .memoryCompile, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .memoryCompileByUser, storage: rateLimitStorage))
+    memoryCompileController.addCompileRoutes(to: memoryCompileGroup)
+
+    // HER-240 / spec ticket #2: legacy aliases. Permanent redirect to the
+    // canonical paths. Logged at warn level so we can find stragglers
+    // before retiring the alias next milestone.
+    let kbCompileAliasLogger = Logger(label: "lv.memory-compile.legacy-alias")
+    router.post("/v1/kb-compile") { _, _ -> Response in
+        kbCompileAliasLogger.warning("legacy POST /v1/kb-compile hit — caller should migrate to /v1/memory-compile")
+        return Response(
+            status: .permanentRedirect,
+            headers: [.location: "/v1/memory-compile"],
+        )
+    }
+    router.get("/v1/kb-compile/pending") { _, _ -> Response in
+        kbCompileAliasLogger.warning("legacy GET /v1/kb-compile/pending hit — caller should migrate to /v1/memory-compile/pending")
+        return Response(
+            status: .permanentRedirect,
+            headers: [.location: "/v1/memory-compile/pending"],
+        )
+    }
 
     // Spaces routes — service is constructed alongside `vaultInitService`
     // above so first-run vault create can seed defaults.
@@ -1568,7 +1589,7 @@ func buildRouter(
     SkillsController(
         runner: skillRunner,
         catalog: skillCatalog,
-        kbCompileController: kbCompileController,
+        memoryCompileController: memoryCompileController,
         fluent: services.fluent,
         enforcementEnabled: services.billingEnforcementEnabled,
         logger: skillsLogger,
