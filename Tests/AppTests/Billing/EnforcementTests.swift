@@ -62,7 +62,12 @@ struct EnforcementTests {
         }
     }
 
-    private static func setBillingState(userID: UUID, tier: UserTier, override: TierOverride = .none) async throws {
+    /// `UserTier` is defined in both `App` (internal) and `LuminaVaultShared`
+    /// (public, since v0.29.0) with identical cases — duplicate is tracked
+    /// for consolidation. Qualify with the shared module here so the test
+    /// resolves unambiguously; `User.tier` is `String` so rawValue is the
+    /// only thing crossing the boundary.
+    private static func setBillingState(userID: UUID, tier: LuminaVaultShared.UserTier, override: TierOverride = .none) async throws {
         try await withTestFluent(label: "test.billing.enforcement") { fluent in
             let user = try #require(try await User.find(userID, on: fluent.db()))
             user.tier = tier.rawValue
