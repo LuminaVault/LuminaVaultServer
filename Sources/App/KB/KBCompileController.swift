@@ -12,8 +12,32 @@ struct KBCompileController {
     let progress: any KBCompileProgressPublisher
     let logger: Logger
 
-    func addRoutes(to router: RouterGroup<AppRequestContext>) {
+    /// POST `/v1/kb-compile` — heavy Hermes loop. Wired separately from the
+    /// pending probe so it can stack idempotency / entitlement / rate-limit
+    /// middleware without those costs leaking onto the cheap GET probe.
+    func addCompileRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: compile)
+    }
+
+    /// HER-293 — GET `/v1/kb-compile/pending`. Intentionally registered on a
+    /// jwt-only group so the iOS client can poll on screen-focus without
+    /// burning the kb-compile rate limit or hitting the entitlement gate.
+    func addPendingRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get("pending", use: pending)
+    }
+
+    /// HER-293 — cheap `COUNT(*)` of vault rows with `processed_at IS NULL`
+    /// for the caller's tenant. Drives the iOS "Sync & Learn" disabled state
+    /// (HER-108) so the user doesn't tap into the empty no-op response.
+    /// Tenant scoping flows from the standard `tenantID:` query helper.
+    @Sendable
+    func pending(_: Request, ctx: AppRequestContext) async throws -> KBCompilePendingResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+        let count = try await VaultFile.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$processedAt == nil)
+            .count()
+        return KBCompilePendingResponse(pendingFiles: count)
     }
 
     @Sendable
@@ -101,3 +125,4 @@ struct KBCompileController {
 }
 
 extension KBCompileResponse: ResponseEncodable {}
+extension KBCompilePendingResponse: ResponseEncodable {}

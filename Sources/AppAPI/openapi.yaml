@@ -1844,6 +1844,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/KBCompileResponse' }
 
+  /v1/kb-compile/pending:
+    get:
+      tags: [KB]
+      operationId: kbCompilePending
+      summary: Cheap count of vault rows with `processed_at` IS NULL (HER-293).
+      description: |
+        Drives the disabled state and microcopy of the iOS "Sync & Learn"
+        button (HER-108). Returns `{ pendingFiles: 0 }` when nothing is
+        pending so the client can disable the CTA instead of letting users
+        tap into the empty `memoriesIngested: 0` no-op response.
+
+        Tenant-scoped via the standard auth middleware. Backed by a single
+        indexed `COUNT(*)` against `vault_files` filtered by tenant + NULL
+        `processed_at`, so the endpoint is cheap to poll on screen focus.
+      responses:
+        '200':
+          description: Pending count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KBCompilePendingResponse' }
+
   # ─────────────────────────────── Spaces ───────────────────────────────
 
   /v1/spaces:
@@ -3822,6 +3843,14 @@ components:
             - $ref: '#/components/schemas/KBCompileMemorySavedDTO'
             - $ref: '#/components/schemas/KBCompileCompletedDTO'
             - $ref: '#/components/schemas/KBCompileErrorDTO'
+
+    KBCompilePendingResponse:
+      type: object
+      required: [pendingFiles]
+      properties:
+        pendingFiles:
+          type: integer
+          description: HER-293 — vault rows with `processed_at` IS NULL for the caller's tenant.
 
     # ── Spaces ──
 
