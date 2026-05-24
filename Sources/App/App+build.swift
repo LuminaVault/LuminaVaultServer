@@ -1515,8 +1515,8 @@ func buildRouter(
 
     // Skills runtime (HER-148) — generic skill runner, per-tenant catalog,
     // cron scheduler, in-process event bus, optional context router.
-    // Scaffold only: handler returns 501 until HER-169 lands. CronScheduler
-    // drives the kb-compile skill on its declared cron schedule.
+    // Manual runs are live through /v1/skills/:name/run and chat slash
+    // commands dispatch through /v1/skills/slash.
     // HER-193 — per-skill daily run cap guard. Reads cap values from
     // each manifest's `metadata.daily_run_cap`; SkillRunner calls
     // checkAndIncrement before LLM dispatch and recordFailure on error
@@ -1558,6 +1558,7 @@ func buildRouter(
     SkillsController(
         runner: skillRunner,
         catalog: skillCatalog,
+        kbCompileController: kbCompileController,
         fluent: services.fluent,
         enforcementEnabled: services.billingEnforcementEnabled,
         logger: skillsLogger,

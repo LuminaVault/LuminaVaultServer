@@ -1,0 +1,355 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes kb-compile Pipeline — Data Flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #020617;
+      --card: #0f172a;
+      --text: #f8fafc;
+      --muted: #64748b;
+      --blue: #3b82f6;
+      --cyan: #22d3ee;
+      --emerald: #34d399;
+      --violet: #a78bfa;
+      --orange: #fb923c;
+      --amber: #fbbf24;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      padding: 40px 20px;
+      line-height: 1.6;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 30px; }
+
+    .step {
+      display: flex;
+      margin-bottom: 30px;
+      position: relative;
+    }
+    .step-number {
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      flex-shrink: 0;
+      margin-right: 20px;
+    }
+    .step-content {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .step-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .step-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .tech-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+    .tag.blue { background: rgba(59,130,246,0.2); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+    .tag.cyan { background: rgba(34,211,238,0.2); color: var(--cyan); border: 1px solid rgba(34,211,238,0.3); }
+    .tag.emerald { background: rgba(52,211,153,0.2); color: var(--emerald); border: 1px solid rgba(52,211,153,0.3); }
+    .tag.violet { background: rgba(167,139,250,0.2); color: var(--violet); border: 1px solid rgba(167,139,250,0.3); }
+    .tag.orange { background: rgba(251,146,60,0.2); color: var(--orange); border: 1px solid rgba(251,146,60,0.3); }
+
+    /* Connector line */
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 30px;
+      top: 60px;
+      width: 2px;
+      height: calc(100% + 30px);
+      background: linear-gradient(to bottom, var(--cyan), transparent);
+    }
+
+    .input-output {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .io-box {
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 11px;
+    }
+    .io-label {
+      font-weight: 600;
+      color: var(--cyan);
+      margin-bottom: 5px;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+    .io-content {
+      color: var(--muted);
+      font-family: monospace;
+    }
+    code { font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
+
+    @media (max-width: 768px) {
+      .step { flex-direction: column; }
+      .step-number { margin-bottom: 10px; }
+      .step:not(:last-child)::after { display: none; }
+      .input-output { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>kb-compile Pipeline — How Your Life Gets Indexed</h1>
+    <p class="subtitle">From raw vault files to queryable knowledge graph</p>
+
+    <!-- Step 1 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #22d3ee, #3b82f6);">1</div>
+      <div class="step-content">
+        <div class="step-title">📂 Scan Vault Files</div>
+        <div class="step-desc">Recursively walk all space folders. Read markdown, images, PDFs, plain text. Filter by modification time since last compile.</div>
+        <div class="tech-tag tag.blue">File I/O</div>
+        <div class="tech-tag tag.cyan">Incremental</div>
+        <div class="input-output">
+          <div class="io-box">
+            <div class="io-label">Input</div>
+            <div class="io-content">
+              /spaces/ai/notes/<br>
+              /spaces/stockplan/<br>
+              /spaces/personal/
+            </div>
+          </div>
+          <div class="io-box">
+            <div class="io-label">Output</div>
+            <div class="io-content">
+              Raw file queue:<br>
+              • 1,247 markdown<br>
+              • 456 images<br>
+              • 23 PDFs<br>
+              • Last compile: 2h ago
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #34d399, #22d3ee);">2</div>
+      <div class="step-content">
+        <div class="step-title">🔍 Extract Content</div>
+        <div class="step-desc">
+          <strong>Markdown:</strong> Strip frontmatter, extract headings, code blocks, links<br>
+          <strong>Images:</strong> OCR (Tesseract) + Vision API (GPT-4V) for description<br>
+          <strong>PDFs:</strong> PyMuPDF → text + metadata<br>
+          <strong>Screenshots:</strong> Plugin pipeline (excalidraw → SVG → text)
+        </div>
+        <div class="tech-tag tag.emerald">OCR</div>
+        <div class="tech-tag tag.cyan">Multimodal</div>
+        <div class="tech-tag tag.blue">PyMuPDF</div>
+        <div class="input-output">
+          <div class="io-box">
+            <div class="io-label">Intermediate</div>
+            <div class="io-content">
+              Plain text chunks:<br>
+              • 45,321 sentences<br>
+              • 12,400 entities detected<br>
+              • Key phrases: "StockPlan", "revenue", "API"
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #a78bfa, #34d399);">3</div>
+      <div class="step-content">
+        <div class="step-title">🧠 Entity & Relationship Extraction</div>
+        <div class="step-desc">
+          LLM (Claude 3.5 Sonnet) analyzes each chunk. Identifies:<br>
+          • <strong>Entities:</strong> People, companies, projects, dates, amounts<br>
+          • <strong>Relations:</strong> "Fernando works on StockPlan", "Meeting on 2026-04-27"<br>
+          • <strong>Sentiment & importance:</strong> Priority signals, action items<br>
+          Stores in knowledge graph (edges table).
+        </div>
+        <div class="tech-tag tag.violet">LLM NER</div>
+        <div class="tech-tag tag.emerald">Graph DB</div>
+        <div class="input-output">
+          <div class="io-box">
+            <div class="io-label">Graph Output</div>
+            <div class="io-content">
+              Nodes: 15,421<br>
+              Edges: 48,293<br>
+              Entity types: 12<br>
+              (Person, Org, Project, Date, Amount, Tech, etc.)
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #fbbf24, #a78bfa);">4</div>
+      <div class="step-content">
+        <div class="step-title">📊 Embedding Generation (Vectorization)</div>
+        <div class="step-desc">
+          Each text chunk → embedding vector via OpenAI text-embedding-3-small or local sentence-transformers.<br>
+          <strong>Batching:</strong> 100 chunks/API call for efficiency.<br>
+          <strong>Dimensionality:</strong> 1536-d vectors stored in pgvector.<br>
+          <strong>Indexing:</strong> HNSW index built for cosine similarity search.
+        </div>
+        <div class="tech-tag tag.orange">OpenAI Embeddings</div>
+        <div class="tech-tag tag.violet">pgvector</div>
+        <div class="input-output">
+          <div class="io-box">
+            <div class="io-label">Vectors</div>
+            <div class="io-content">
+              • 45,321 vectors<br>
+              • 1536 dimensions each<br>
+              • Size on disk: ~280 MB<br>
+              • Index build time: 45s
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #34d399, #fbbf24);">5</div>
+      <div class="step-content">
+        <div class="step-title">🏗️ Build Compressed Context</div>
+        <div class="step-desc">
+          Hermes runs <code>kb-compile</code> strategy:<br>
+          1. Cluster similar concepts (e.g., all "StockPlan" mentions)<br>
+          2. Summarize each cluster into digest paragraphs<br>
+          3. Build timeline of events (chronological narrative)<br>
+          4. Extract patterns (recurring meetings, weekly goals, etc.)<br>
+          5. Compress to ~20K tokens (Claude context window budget).<br>
+          <strong>Result:</strong> A <code>compressed_context.json</code> that captures your life in ~15 minutes of reading.
+        </div>
+        <div class="tech-tag tag.emerald">Hermes kb-compile</div>
+        <div class="tech-tag tag.orange">Summarization</div>
+        <div class="input-output">
+          <div class="io-box">
+            <div class="io-label">Context Blob</div>
+            <div class="io-content">
+              compressed_context.json<br>
+              └─ summary: "You are Fernando... StockPlan... Newsletter...<br>
+              └─ timeline: [Event(date=2026-04-27, type=meeting, ...)]<br>
+              └─ entities: {Person: [...], Project: [...], Financial: [...]}<br>
+              └─ patterns: "Works on StockPlan M-Th, publishes Thu 10am"<br>
+              Size: ~20K tokens
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step">
+      <div class="step-number" style="background: linear-gradient(135deg, #22d3ee, #34d399);">6</div>
+      <div class="step-content">
+        <div class="step-title">💾 Store & Cache</div>
+        <div class="step-desc">
+          • <strong>PostgreSQL:</strong> Store entities, edges, file metadata (source of truth)<br>
+          • <strong>Redis:</strong> Cache <code>compressed_context.json</code> (TTL 1h)<br>
+          • <strong>S3:</code> Upload original files (images, PDFs) for later retrieval<br>
+          • <strong>Event stream:</strong> Log compilation event for audit/analytics
+        </div>
+        <div class="tech-tag tag.blue">PostgreSQL</div>
+        <div class="tech-tag tag.cyan">Redis</div>
+        <div class="tech-tag tag.emerald">S3</div>
+      </div>
+    </div>
+
+    <!-- Step 7 (Query) -->
+    <div class="step" style="border-top: 2px dashed var(--orange); padding-top: 30px;">
+      <div class="step-number" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">7→</div>
+      <div class="step-content">
+        <div class="step-title">🔎 Query Time: kb-query "When did I last discuss StockPlan revenue?"</div>
+        <div class="step-desc">
+          <strong>Step A:</strong> Embed query → vector search → find relevant chunks<br>
+          <strong>Step B:</strong> Fetch compressed_context (cached or compile if stale)<br>
+          <strong>Step C:</strong> Inject relevant facts into LLM prompt<br>
+          <strong>Step D:</strong> "Based on your notes, you discussed revenue on April 27th in your daily standup. You mentioned targeting $50K MRR by Q3."
+        </div>
+        <div class="tech-tag tag.orange">RAG (Retrieval-Augmented Generation)</div>
+        <div class="tech-tag tag.violet">Semantic Search</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top: 50px; background: var(--card); padding: 25px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+    <h3 style="color: var(--emerald); margin-bottom: 15px;">📈 Pipeline Stats (Typical)</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; font-size: 12px;">
+      <div>
+        <strong style="color: var(--cyan);">Files Scanned:</strong><br>
+        1,247 markdown + 456 images + 23 PDFs
+      </div>
+      <div>
+        <strong style="color: var(--violet);">Entities Extracted:</strong><br>
+        12,400 people/orgs/dates/amounts
+      </div>
+      <div>
+        <strong style="color: var(--orange);">Embeddings Generated:</strong><br>
+        45,321 vectors (1536-d each)
+      </div>
+      <div>
+        <strong style="color: var(--emerald);">Context Size:</strong><br>
+        ~20K tokens (~15 pages of text)
+      </div>
+      <div>
+        <strong style="color: var(--blue);">Compile Time:</strong><br>
+        3–5 minutes (incremental)
+      </div>
+      <div>
+        <strong style="color: var(--cyan);">Query Latency:</strong><br>
+        800ms p50, 1.2s p95
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 30px; padding: 20px; background: rgba(251,146,60,0.1); border: 1px solid rgba(251,146,60,0.3); border-radius: 8px;">
+    <h4 style="color: var(--orange); margin-bottom: 10px;">🧠 Key Insights</h4>
+    <ul style="color: var(--muted); font-size: 12px; padding-left: 20px; line-height: 1.8;">
+      <li><strong>Incremental compile:</strong> Only new/modified files since last run → 90% faster on subsequent runs</li>
+      <li><strong>Compression is key:</strong> Raw vault texts might be 500K tokens. Compressed to 20K = 25× context reduction while preserving signal.</li>
+      <li><strong>Entity resolution:</strong> "Fernando", "Drácarỳs", "fernando@fandemicapp.com" → same Person node. This is the magic.</li>
+      <li><strong>Query routing:</strong> Simple queries ("latest meeting notes?") use vector search only. Complex queries ("What's my pattern on Mondays?") use graph traversal + LLM synthesis.</li>
+      <li><strong>Caching layers:</strong> Query result → Redis (5 min), context → Redis (1h), embeddings → pgvector + HNSW (persistent).</li>
+    </ul>
+  </div>
+</body>
+</html>

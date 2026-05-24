@@ -1,0 +1,57 @@
+# Investment Research Profile Template
+
+Save this as `~/.hermes/scripts/investment-research/config/investment_profile.json`
+
+```yaml
+user_profile:
+  name: "[Your Name]"
+  risk_appetite: "moderate"  # Options: conservative, moderate, moderate-to-aggressive, aggressive
+  time_horizon: "long-term"  # Options: short-term, medium-term, long-term
+  liquidity_needs: "medium"  # Options: low, medium, high
+  tax_considerations: "tax-efficient"  # Options: tax-efficient, standard, tax-advantaged
+  circle_of_confidence: ["yourself", "Hermes", "selected analysts"]
+
+investment_theses:
+  thesis_1: "Thesis 1 statement"
+  thesis_2: "Thesis 2 statement"
+  thesis_3: "Thesis 3 statement"
+
+current_positions:
+  equities: [
+    {"ticker": "NVDA", "position": 15.4, "rationale": "AI chip monopoly, ecosystem growth"},
+    {"ticker": "MSFT", "position": 12.1, "rationale": "Cloud infrastructure, AI integration"}
+  ]
+  crypto: [
+    {"asset": "BTC", "position": 10.5, "rationale": "Store of value, institutional adoption"},
+    {"asset": "ETH", "position": 8.2, "rationale": "Smart contract platform, DeFi ecosystem"}
+  ]
+  prediction_markets: [
+    {"platform": "Polymarket", "position": 7.3, "rationale": "Information aggregation, hedging"}
+  ]
+
+target_allocation:
+  equities: "40-50%"
+  crypto: "15-25%"
+  prediction_markets: "5-10%"
+  cash: "10-15%"
+  alternatives: "5-10%"
+
+thought_leaders:
+  macro: ["Stanley Druckenmiller", "Ray Dalio", "Paul Tudor Jones"]
+  tech: ["Cathie Wood", "Dan Ives", "Gene Munster"]
+  crypto: ["Michael Saylor", "Vitalik Buterin", "Andreas Antonopoulos"]
+
+stress_test_scenarios:
+  - "2008-style financial crisis"
+  - "2020 COVID crash"
+  - "2022 inflation shock"
+  - "Interest rate surge"
+  - "Geopolitical conflict escalation"
+
+monitoring:
+  earnings_calendar: true
+  institutional_flows: true
+  insider_trading: true
+  economic_indicators: ["CPI", "PPI", "GDP", "Unemployment", "Fed Funds Rate"]
+  sector_rotations: ["Technology", "Healthcare", "Financials", "Energy", "Consumer Staples"]
+```

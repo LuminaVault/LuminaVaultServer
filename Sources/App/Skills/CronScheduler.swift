@@ -131,9 +131,6 @@ actor CronScheduler: Service {
         var status = "ok"
         var errorString: String?
         do {
-            // SkillRunner.run is the HER-169 hand-off point; it currently
-            // throws .notImplemented but the scheduler doesn't care — we
-            // just log + persist the failure and advance last_run_at.
             _ = try await runner.run(
                 skill: pair.manifest,
                 tenantID: pair.tenantID,
