@@ -105,9 +105,9 @@ struct RoutedLLMTransport: HermesChatTransport {
                 continue
             } catch let providerError as ProviderError {
                 logger.error("provider \(candidate.provider.rawValue) permanent: \(providerError)")
-                throw HTTPError(
-                    .badGateway,
-                    message: "llm upstream rejected request (\(candidate.provider.rawValue))",
+                throw UpstreamErrorResponse(
+                    reasonCode: providerError.reasonCode,
+                    userMessage: providerError.userMessage,
                 )
             } catch {
                 lastRecoverable = error
@@ -116,10 +116,16 @@ struct RoutedLLMTransport: HermesChatTransport {
             }
         }
         logger.error("all providers exhausted for decision \(decision.candidates)")
-        if let lastRecoverable {
-            throw HTTPError(.badGateway, message: "llm upstream unavailable: \(lastRecoverable)")
+        if let lastFailedCandidate {
+            throw UpstreamErrorResponse(
+                reasonCode: lastFailedCandidate.error.reasonCode,
+                userMessage: lastFailedCandidate.error.userMessage,
+            )
         }
-        throw HTTPError(.badGateway, message: "llm upstream unavailable: no providers")
+        throw UpstreamErrorResponse(
+            reasonCode: "no_providers",
+            userMessage: "No LLM provider available.",
+        )
     }
 
     /// HER-252 — publish a `ProviderFailoverNotice` to both the SSE sink
