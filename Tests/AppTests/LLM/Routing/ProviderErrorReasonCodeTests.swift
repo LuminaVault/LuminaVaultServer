@@ -22,6 +22,7 @@ struct ProviderErrorReasonCodeTests {
     func `notConnectedToInternet URLError maps to upstream_unreachable`() {
         let err = ProviderError.network(provider: .hermesGateway, underlying: URLError(.notConnectedToInternet))
         #expect(err.reasonCode == "upstream_unreachable")
+        #expect(err.userMessage == "Couldn't reach Hermes.")
     }
 
     @Test
@@ -36,5 +37,27 @@ struct ProviderErrorReasonCodeTests {
         struct SomeOtherError: Error {}
         let err = ProviderError.network(provider: .hermesGateway, underlying: SomeOtherError())
         #expect(err.reasonCode == "network")
+        #expect(err.userMessage == "Couldn't reach Hermes.")
+    }
+
+    @Test
+    func `cannotFindHost URLError maps to upstream_unreachable`() {
+        let err = ProviderError.network(provider: .hermesGateway, underlying: URLError(.cannotFindHost))
+        #expect(err.reasonCode == "upstream_unreachable")
+        #expect(err.userMessage == "Couldn't reach Hermes.")
+    }
+
+    @Test
+    func `dnsLookupFailed URLError maps to upstream_unreachable`() {
+        let err = ProviderError.network(provider: .hermesGateway, underlying: URLError(.dnsLookupFailed))
+        #expect(err.reasonCode == "upstream_unreachable")
+        #expect(err.userMessage == "Couldn't reach Hermes.")
+    }
+
+    @Test
+    func `networkConnectionLost URLError maps to upstream_unreachable`() {
+        let err = ProviderError.network(provider: .hermesGateway, underlying: URLError(.networkConnectionLost))
+        #expect(err.reasonCode == "upstream_unreachable")
+        #expect(err.userMessage == "Couldn't reach Hermes.")
     }
 }
