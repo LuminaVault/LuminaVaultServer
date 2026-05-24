@@ -67,7 +67,7 @@ struct HermesGatewayAdapter: ProviderAdapter {
 
         let isStream = Self.isStreaming(payload: payload)
         do {
-            return try await dispatch(payload: payload, profileUsername: profileUsername, baseURL: dispatchBaseURL, authHeader: authHeader)
+            return try await dispatch(payload: payload, sessionKey: sessionKey, sessionID: sessionID, baseURL: dispatchBaseURL, authHeader: authHeader)
         } catch let error as ProviderError {
             // Retry-once on timeout for non-streamed payloads only.
             guard case let .network(_, underlying) = error,
@@ -79,13 +79,14 @@ struct HermesGatewayAdapter: ProviderAdapter {
             }
             logger.warning("hermes upstream timed out; retrying once after 2s")
             try await Task.sleep(for: .seconds(2))
-            return try await dispatch(payload: payload, profileUsername: profileUsername, baseURL: dispatchBaseURL, authHeader: authHeader)
+            return try await dispatch(payload: payload, sessionKey: sessionKey, sessionID: sessionID, baseURL: dispatchBaseURL, authHeader: authHeader)
         }
     }
 
     private func dispatch(
         payload: Data,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
         baseURL: URL,
         authHeader: String?,
     ) async throws -> HermesChatTransportMetadata {

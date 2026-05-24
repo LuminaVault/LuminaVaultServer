@@ -128,6 +128,10 @@ actor KBCompileService {
 
         logger.info("kb-compile processing \(rows.count) existing files (\(totalBytes) bytes) for tenant \(tenantID)")
 
+        // HER-290 — load the tenant's reject list once per compile so we can
+        // dedup `memory_upsert` calls whose content the user already rejected.
+        let rejectedHashes = try await loadRejectedHashes(tenantID: tenantID)
+
         // HER-288 — vault files are on disk, agent loop is about to start.
         // Emit `.preparing` so subscribers can show a "thinking…" surface
         // before the first model round-trip lands.
@@ -142,6 +146,7 @@ actor KBCompileService {
             blocks: compiledTextBlocks,
             hint: hint,
             runId: runId,
+            rejectedHashes: rejectedHashes,
         )
         let completedAt = Date()
         try await markVaultFilesProcessed(ids: rowIDs, at: completedAt)
@@ -256,6 +261,7 @@ actor KBCompileService {
         blocks: [(path: String, content: String, contentType: String)],
         hint: String?,
         runId: UUID,
+        rejectedHashes: Set<String>,
     ) async throws -> CompileSummary {
         let systemPrompt = """
         You are Hermes' kb-compile agent. The user just dropped a batch of \
@@ -320,6 +326,7 @@ actor KBCompileService {
                         toolCall: call,
                         memories: &collectedMemories,
                         runId: runId,
+                        rejectedHashes: rejectedHashes,
                     )
                     conversation.append(.init(
                         role: "tool",
@@ -343,6 +350,7 @@ actor KBCompileService {
         toolCall: ToolCall,
         memories: inout [InternalKBCompileMemoryRef],
         runId: UUID,
+        rejectedHashes: Set<String>,
     ) async throws -> String {
         guard toolCall.function.name == "memory_upsert" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -352,11 +360,24 @@ actor KBCompileService {
         }
         do {
             let args = try JSONDecoder().decode(MemoryUpsertArgs.self, from: argsData)
+
+            // HER-290 — if the user previously rejected this exact content,
+            // suppress the insert and tell the agent so it doesn't retry.
+            let hash = Self.contentHash(args.content)
+            if rejectedHashes.contains(hash) {
+                logger.info("kb-compile skipped rejected memory hash for tenant \(tenantID)")
+                return Self.encodeJSON([
+                    "status": "skipped",
+                    "reason": "user previously rejected this memory; do not propose it again",
+                ])
+            }
+
             let embedding = try await embeddings.embed(args.content)
             let saved = try await self.memories.create(
                 tenantID: tenantID,
                 content: args.content,
                 embedding: embedding,
+                reviewState: "pending",
             )
             let id = try saved.requireID()
             memories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
@@ -370,6 +391,7 @@ actor KBCompileService {
                 content: saved.content,
                 tags: saved.tags ?? [],
                 createdAt: saved.createdAt,
+                reviewState: saved.reviewState,
             )
             await progress.publish(
                 .memorySaved(.init(runId: runId, memory: dto)),
@@ -380,6 +402,25 @@ actor KBCompileService {
         } catch {
             return Self.toolErrorJSON("memory_upsert failed: \(error)")
         }
+    }
+
+    // MARK: - HER-290 reject-list helpers
+
+    /// SHA256 hex digest of UTF-8 content. Stable across whitespace-equal
+    /// inputs; matches what `M54_CreateKBCompileRejectList` rows store.
+    static func contentHash(_ content: String) -> String {
+        let digest = SHA256.hash(data: Data(content.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Tenant-scoped `(content_hash)` set for the rejected list, loaded once
+    /// at the top of `compileExistingVaultFiles` and threaded through the
+    /// agent loop. Empty when the tenant has never rejected anything.
+    private func loadRejectedHashes(tenantID: UUID) async throws -> Set<String> {
+        let rows = try await KBCompileRejectListEntry.query(on: memories.fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .all()
+        return Set(rows.map(\.contentHash))
     }
 
     // MARK: - Tool schema

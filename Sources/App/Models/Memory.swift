@@ -30,10 +30,17 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "accuracy_m") var accuracyM: Double?
     @OptionalField(key: "place_name") var placeName: String?
 
+    /// HER-290 — moderation state. See `MemoryReviewState` in LuminaVaultShared
+    /// for the legal values (auto | pending | approved | rejected). Rows
+    /// existing before M53 get backfilled to "auto" via the migration default;
+    /// kb-compile-produced rows default to "pending" via the service path.
+    @Field(key: "review_state") var reviewState: String
+
     init() {
         score = 0
         accessCount = 0
         queryHitCount = 0
+        reviewState = "auto"
     }
 
     init(
@@ -46,6 +53,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         lng: Double? = nil,
         accuracyM: Double? = nil,
         placeName: String? = nil,
+        reviewState: String = "auto",
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -56,6 +64,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         self.lng = lng
         self.accuracyM = accuracyM
         self.placeName = placeName
+        self.reviewState = reviewState
         score = 0
         accessCount = 0
         queryHitCount = 0
