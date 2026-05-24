@@ -1,17 +1,12 @@
 import Foundation
+import LuminaVaultShared
 
 // MARK: - Tier model
 
-/// Subscription tier. Persisted on `users.tier` as a TEXT column with
-/// CHECK constraint (M15_AddTierFields). String-backed so the raw value
-/// hits the DB unchanged.
-enum UserTier: String, Codable, CaseIterable {
-    case trial
-    case pro
-    case ultimate
-    case lapsed
-    case archived
-}
+// `UserTier` is sourced from `LuminaVaultShared` (HER-185). The
+// historical server-local duplicate was removed in HER-183 cleanup
+// because it shadowed the shared one and broke test-target builds
+// once both modules were in scope.
 
 /// Ops-set override that lets us grant entitlement bypassing RevenueCat
 /// (TestFlight users, internal team, support cases). Always wins over

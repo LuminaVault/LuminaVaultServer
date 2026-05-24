@@ -155,11 +155,12 @@ struct ConversationController {
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4,
         )
-        let chunks = streamService.chatStream(profileUsername: user.username, request: chatRequest)
+        let sessionKey = tenantID.uuidString
+        let sessionID = conversationID.uuidString
+        let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
         let fluent = fluent
         let logger = logger
         let followUpGenerator = followUpGenerator
-        let profileUsername = user.username
         let sourceIDs = hits.map(\.id)
         let hitDTOs = hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -218,7 +219,8 @@ struct ConversationController {
                 // HER-37 Slice C — best-effort follow-ups, defensive ([]).
                 let followUps: [String] = if let followUpGenerator {
                     await followUpGenerator.generate(
-                        profileUsername: profileUsername,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID,
                         summary: assistantBuffer,
                         sources: hitDTOs,
                     )

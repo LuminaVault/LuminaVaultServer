@@ -43,12 +43,12 @@ extension WebAuthnBeginRegistrationResponse: ResponseEncodable {}
 extension WebAuthnFinishRegistrationResponse: ResponseEncodable {}
 extension WebAuthnBeginAuthenticationResponse: ResponseEncodable {}
 
-// HER-216 — credential-management DTOs.
-//
-// These mirror the wire types we ship in LuminaVaultShared once tagged
-// (>= 0.30.0). Keeping them inline here for now so the server compiles
-// before the shared package bump; replace with `LuminaVaultShared`
-// imports + delete this block after the tag lands.
+/// HER-216 — credential-management DTOs.
+///
+/// These mirror the wire types we ship in LuminaVaultShared once tagged
+/// (>= 0.30.0). Keeping them inline here for now so the server compiles
+/// before the shared package bump; replace with `LuminaVaultShared`
+/// imports + delete this block after the tag lands.
 struct WebAuthnCredentialSummaryDTO: Codable {
     let id: String
     let createdAt: Date
@@ -157,7 +157,7 @@ struct WebAuthnService {
     }
 
     @Sendable
-    func listCredentials(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnCredentialListResponse {
+    func listCredentials(_: Request, ctx: AppRequestContext) async throws -> WebAuthnCredentialListResponse {
         guard let userID = ctx.identity?.id else {
             throw HTTPError(.unauthorized, message: "missing identity")
         }
@@ -175,7 +175,7 @@ struct WebAuthnService {
     }
 
     @Sendable
-    func deleteCredential(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    func deleteCredential(_: Request, ctx: AppRequestContext) async throws -> Response {
         guard let userID = ctx.identity?.id else {
             throw HTTPError(.unauthorized, message: "missing identity")
         }

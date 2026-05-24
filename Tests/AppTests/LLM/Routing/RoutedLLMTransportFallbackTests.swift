@@ -25,7 +25,7 @@ struct RoutedLLMTransportFallbackTests {
             self.outcomes = outcomes
         }
 
-        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
             guard !outcomes.isEmpty else {
                 throw ProviderError.transient(provider: kind, status: 0, body: "stub exhausted")
             }
@@ -76,7 +76,8 @@ struct RoutedLLMTransportFallbackTests {
         let result = try await FailoverNoticeContext.$sink.withValue(sink) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         #expect(String(data: result, encoding: .utf8) == "FALLBACK")
@@ -116,7 +117,8 @@ struct RoutedLLMTransportFallbackTests {
         _ = try await FailoverNoticeContext.$sink.withValue(sink) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"claude-sonnet-4.6\",\"messages\":[]}".utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         try await Task.sleep(for: .milliseconds(50))
@@ -157,7 +159,8 @@ struct RoutedLLMTransportFallbackTests {
         _ = try await FailoverNoticeContext.$sink.withValue(sink) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
-                profileUsername: "alice",
+                sessionKey: "alice",
+                sessionID: nil,
             )
         }
         try await Task.sleep(for: .milliseconds(50))

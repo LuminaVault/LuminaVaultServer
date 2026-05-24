@@ -194,7 +194,7 @@ struct KBCompileSpaceCountersTests {
 }
 
 private actor NoOpChatTransport: HermesChatTransport {
-    nonisolated func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    nonisolated func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         throw NSError(domain: "noop", code: -1)
     }
 }

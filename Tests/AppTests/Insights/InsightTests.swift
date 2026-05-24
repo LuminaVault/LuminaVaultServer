@@ -159,9 +159,9 @@ struct InsightTests {
 
             let now = Date()
             let window = SynthesisWorker.weeklyWindow(endingAt: now)
-            let first = try await worker.runWeeklyJob(tenantID: tenantID, profileUsername: "u", window: window)
+            let first = try await worker.runWeeklyJob(tenantID: tenantID, sessionKey: "u", window: window)
             #expect(first == true)
-            let again = try await worker.runWeeklyJob(tenantID: tenantID, profileUsername: "u", window: window)
+            let again = try await worker.runWeeklyJob(tenantID: tenantID, sessionKey: "u", window: window)
             #expect(again == false)
             let calls = await transport.callCount
             #expect(calls == 1)
@@ -196,7 +196,7 @@ struct InsightTests {
                 logger: Logger(label: "test.synth"),
             )
 
-            let inserted = try await worker.runPatternJob(tenantID: tenantID, profileUsername: "u", now: Date())
+            let inserted = try await worker.runPatternJob(tenantID: tenantID, sessionKey: "u", now: Date())
             #expect(inserted == 0)
             let calls = await transport.callCount
             #expect(calls == 0)
@@ -226,7 +226,7 @@ struct InsightTests {
                 maxPatternsPerRun: 2,
             )
 
-            let inserted = try await worker.runPatternJob(tenantID: tenantID, profileUsername: "u", now: Date())
+            let inserted = try await worker.runPatternJob(tenantID: tenantID, sessionKey: "u", now: Date())
             #expect(inserted == 2)
             let count = try await Insight.query(on: fluent.db(), tenantID: tenantID).count()
             #expect(count == 2)
@@ -252,7 +252,7 @@ struct InsightTests {
             )
             let result = try await worker.runWeeklyJob(
                 tenantID: tenantID,
-                profileUsername: "u",
+                sessionKey: "u",
                 window: SynthesisWorker.weeklyWindow(endingAt: Date()),
             )
             #expect(result == false)
@@ -297,7 +297,7 @@ private actor StubSynthTransport: HermesChatTransport {
         response = .failure(error)
     }
 
-    nonisolated func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    nonisolated func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         try await record()
     }
 

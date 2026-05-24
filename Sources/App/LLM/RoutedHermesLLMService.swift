@@ -31,7 +31,7 @@ struct RoutedHermesLLMService: HermesLLMService {
         self.logger = logger
     }
 
-    func chat(profileUsername: String, request: ChatRequest) async throws -> ChatResponse {
+    func chat(sessionKey: String, sessionID: String?, request: ChatRequest) async throws -> ChatResponse {
         let started = DispatchTime.now().uptimeNanoseconds
 
         let payload = ChatCompletionPayload(
@@ -56,7 +56,8 @@ struct RoutedHermesLLMService: HermesLLMService {
             do {
                 let response = try await transport.chatCompletions(
                     payload: data,
-                    profileUsername: profileUsername,
+                    sessionKey: sessionKey,
+                    sessionID: sessionID,
                 )
                 let decoded = try JSONDecoder().decode(HermesUpstreamResponse.self, from: response)
                 guard let assistant = decoded.choices.first?.message else {
@@ -73,7 +74,7 @@ struct RoutedHermesLLMService: HermesLLMService {
                 HermesToolErrorClassifier.observe(
                     errors: toolErrors,
                     model: decoded.model,
-                    profile: profileUsername,
+                    profile: sessionKey,
                     logger: logger,
                 )
                 let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
@@ -81,7 +82,7 @@ struct RoutedHermesLLMService: HermesLLMService {
                 durationTimer.recordNanoseconds(
                     Int64(DispatchTime.now().uptimeNanoseconds - started),
                 )
-                logger.info("llm reply ready model=\(decoded.model) profile=\(profileUsername)")
+                logger.info("llm reply ready model=\(decoded.model) sessionKey=\(sessionKey)")
                 return ChatResponse(
                     id: decoded.id,
                     model: decoded.model,

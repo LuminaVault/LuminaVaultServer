@@ -20,9 +20,10 @@ struct MemoController {
     func generate(_ req: Request, ctx: AppRequestContext) async throws -> MemoResponse {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: MemoRequest.self, context: ctx)
+        let tenantID = try user.requireID()
         let result = try await service.generate(
-            tenantID: user.requireID(),
-            profileUsername: user.username,
+            tenantID: tenantID,
+            sessionKey: tenantID.uuidString,
             topic: body.topic,
             hint: body.hint,
             save: body.save ?? true,

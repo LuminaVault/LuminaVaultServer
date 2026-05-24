@@ -164,7 +164,7 @@ struct KBCompileHappyPathTests {
 /// `choices[0].message`, sees no `tool_calls`, and exits with the message
 /// `content` as the summary.
 private struct StubHermesChatTransport: HermesChatTransport {
-    func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+    func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         Data("""
         {
           "id": "test-1",

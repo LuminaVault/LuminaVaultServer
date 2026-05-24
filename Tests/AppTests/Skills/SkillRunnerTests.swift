@@ -296,7 +296,8 @@ private actor SkillScriptedTransport: HermesChatTransport {
     }
 
     struct Call {
-        let profileUsername: String
+        let sessionKey: String
+        let sessionID: String?
         let payload: Data
     }
 
@@ -310,19 +311,20 @@ private actor SkillScriptedTransport: HermesChatTransport {
         self.metadata = metadata
     }
 
-    nonisolated func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    nonisolated func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
     nonisolated func chatCompletionsWithMetadata(
         payload: Data,
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String?,
     ) async throws -> HermesChatTransportMetadata {
-        try await record(payload: payload, profileUsername: profileUsername)
+        try await record(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
     }
 
-    private func record(payload: Data, profileUsername: String) throws -> HermesChatTransportMetadata {
-        calls.append(.init(profileUsername: profileUsername, payload: payload))
+    private func record(payload: Data, sessionKey: String, sessionID: String?) throws -> HermesChatTransportMetadata {
+        calls.append(.init(sessionKey: sessionKey, sessionID: sessionID, payload: payload))
         guard index < steps.count else {
             throw SkillScriptedTransportError.scriptExhausted
         }

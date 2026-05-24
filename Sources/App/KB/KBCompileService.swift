@@ -85,7 +85,7 @@ actor KBCompileService {
 
     func compileExistingVaultFiles(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
         rows: [VaultFile],
         hint: String?,
         runId: UUID,
@@ -138,7 +138,7 @@ actor KBCompileService {
 
         let summary = try await runCompileLoop(
             tenantID: tenantID,
-            profileUsername: profileUsername,
+            sessionKey: sessionKey,
             blocks: compiledTextBlocks,
             hint: hint,
             runId: runId,
@@ -252,7 +252,7 @@ actor KBCompileService {
 
     private func runCompileLoop(
         tenantID: UUID,
-        profileUsername: String,
+        sessionKey: String,
         blocks: [(path: String, content: String, contentType: String)],
         hint: String?,
         runId: UUID,
@@ -305,7 +305,7 @@ actor KBCompileService {
                 stream: false,
             )
             let payload = try JSONEncoder().encode(body)
-            let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+            let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
             guard let choice = response.choices.first else {
                 throw HTTPError(.badGateway, message: "hermes returned no choices")

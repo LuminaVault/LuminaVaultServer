@@ -111,7 +111,7 @@ actor HealthCorrelationService {
 
         // 4) Ask Hermes.
         let prompt = Self.buildUserPrompt(events: events, memories: recentMemories, now: now)
-        let synthesis = try await callHermes(prompt: prompt, profileUsername: user.username)
+        let synthesis = try await callHermes(prompt: prompt, sessionKey: tenantID.uuidString)
         let trimmed = synthesis.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return .skippedNoSynthesis
@@ -171,7 +171,7 @@ actor HealthCorrelationService {
         let choices: [Choice]
     }
 
-    private func callHermes(prompt: String, profileUsername: String) async throws -> String {
+    private func callHermes(prompt: String, sessionKey: String) async throws -> String {
         let body = OAIChatRequestBody(
             model: defaultModel,
             messages: [
@@ -182,7 +182,7 @@ actor HealthCorrelationService {
             stream: false,
         )
         let payload = try JSONEncoder().encode(body)
-        let raw = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+        let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
         let response = try JSONDecoder().decode(OAIChatResponseBody.self, from: raw)
         return response.choices.first?.message.content ?? ""
     }

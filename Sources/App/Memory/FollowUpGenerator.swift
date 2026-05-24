@@ -33,7 +33,8 @@ struct FollowUpGenerator {
 
     /// Returns 0–`maxFollowUps` follow-up chip strings. Never throws.
     func generate(
-        profileUsername: String,
+        sessionKey: String,
+        sessionID: String? = nil,
         summary: String,
         sources: [QueryHitDTO],
     ) async -> [String] {
@@ -63,7 +64,7 @@ struct FollowUpGenerator {
 
         let response: Data
         do {
-            response = try await transport.chatCompletions(payload: payload, profileUsername: profileUsername)
+            response = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         } catch {
             logger.warning("follow-up generator upstream failed: \(error)")
             return []

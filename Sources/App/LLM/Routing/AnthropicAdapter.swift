@@ -46,13 +46,14 @@ struct AnthropicAdapter: ProviderAdapter {
         self.userCredentials = userCredentials
     }
 
-    func chatCompletions(payload: Data, profileUsername: String) async throws -> Data {
-        try await chatCompletionsWithMetadata(payload: payload, profileUsername: profileUsername).data
+    func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
+        try await chatCompletionsWithMetadata(payload: payload, sessionKey: sessionKey, sessionID: sessionID).data
     }
 
     func chatCompletionsWithMetadata(
         payload: Data,
-        profileUsername _: String,
+        sessionKey _: String,
+        sessionID _: String?,
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the inbound OpenAI payload.
         guard

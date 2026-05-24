@@ -1,6 +1,7 @@
 @testable import App
 import Foundation
 import Logging
+import LuminaVaultShared
 import Testing
 
 /// HER-161 — full routing matrix coverage for `TableModelRouter`.
@@ -19,7 +20,7 @@ struct ModelRouterTests {
 
     private struct StubAdapter: ProviderAdapter {
         let kind: ProviderKind
-        func chatCompletions(payload _: Data, profileUsername _: String) async throws -> Data {
+        func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
             Data()
         }
     }

@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import ServiceLifecycle
 
 struct LapseArchiverSummary: Codable, ResponseEncodable {

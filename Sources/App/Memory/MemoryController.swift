@@ -117,7 +117,7 @@ struct MemoryController {
         let tenantID = try user.requireID()
         let result = try await service.upsert(
             tenantID: tenantID,
-            profileUsername: user.username,
+            sessionKey: tenantID.uuidString,
             content: body.content,
         )
         // HER-207 — geo passthrough. The agent-driven upsert path doesn't
@@ -151,9 +151,10 @@ struct MemoryController {
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
+        let tenantID = try user.requireID()
         let answer = try await service.search(
-            tenantID: user.requireID(),
-            profileUsername: user.username,
+            tenantID: tenantID,
+            sessionKey: tenantID.uuidString,
             query: body.query,
             limit: body.limit ?? 5,
         )

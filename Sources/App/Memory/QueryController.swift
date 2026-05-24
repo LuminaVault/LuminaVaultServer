@@ -59,7 +59,7 @@ struct QueryController {
         let tenantID = try user.requireID()
         let answer = try await service.search(
             tenantID: tenantID,
-            profileUsername: user.username,
+            sessionKey: tenantID.uuidString,
             query: body.query,
             limit: body.limit ?? 5,
         )
@@ -75,7 +75,7 @@ struct QueryController {
         let followUps: [String]?
         if let followUpGenerator {
             let ups = await followUpGenerator.generate(
-                profileUsername: user.username,
+                sessionKey: tenantID.uuidString,
                 summary: answer.summary,
                 sources: hits,
             )
@@ -104,7 +104,8 @@ struct QueryController {
         }
         let tenantID = try user.requireID()
         let limit = max(1, min(body.limit ?? 5, 25))
-        let profileUsername = user.username
+        let sessionKey = tenantID.uuidString
+        let sessionID = body.sessionID
         let userQuery = body.query
 
         // Retrieve up-front. If retrieval itself fails, surface a 502
@@ -126,7 +127,7 @@ struct QueryController {
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4,
         )
-        let chunks = streamService.chatStream(profileUsername: profileUsername, request: chatRequest)
+        let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
         let logger = logger
         let followUpGenerator = followUpGenerator
         let hitDTOs = hits.map {
@@ -171,7 +172,8 @@ struct QueryController {
                 //    it can never abort the parent stream.
                 let followUps: [String] = if let followUpGenerator {
                     await followUpGenerator.generate(
-                        profileUsername: profileUsername,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID,
                         summary: assistantBuffer,
                         sources: hitDTOs,
                     )

@@ -1,14 +1,14 @@
 import Foundation
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 import Metrics
 
 /// Categorised view of a single Hermes tool-call failure surfaced in the
 /// assistant content stream. Used for structured logging + metrics today;
 /// can be added to the wire `ChatResponse` once `LuminaVaultShared` is
 /// bumped (CLAUDE.md §3 — wire DTOs live there).
-struct ChatToolError: Equatable, Sendable {
-    enum Category: String, Sendable {
+struct ChatToolError: Equatable {
+    enum Category: String {
         case notInstalled
         case permissionDenied
         case timeout
@@ -35,23 +35,22 @@ struct ChatToolError: Equatable, Sendable {
 /// The classifier is intentionally regex-driven and stateless — easy to
 /// extend with new patterns when Hermes adds a new failure shape.
 enum HermesToolErrorClassifier {
-
-    // Regex values are immutable and the literals here have no embedded
-    // captures with reference semantics — the values are safe to share
-    // across isolation domains. Swift 6 still flags them because
-    // `Regex<(Substring, Substring, Substring)>` does not auto-conform
-    // to `Sendable` (tuple-typed `Output` blocks the synthesised
-    // conformance). The `nonisolated(unsafe)` annotation is the
-    // documented escape hatch per CLAUDE.md §1.
-    nonisolated(unsafe) private static let toolReturnedErrorRegex =
+    /// Regex values are immutable and the literals here have no embedded
+    /// captures with reference semantics — the values are safe to share
+    /// across isolation domains. Swift 6 still flags them because
+    /// `Regex<(Substring, Substring, Substring)>` does not auto-conform
+    /// to `Sendable` (tuple-typed `Output` blocks the synthesised
+    /// conformance). The `nonisolated(unsafe)` annotation is the
+    /// documented escape hatch per CLAUDE.md §1.
+    private nonisolated(unsafe) static let toolReturnedErrorRegex =
         #/Tool ([A-Za-z0-9_.-]+) returned error \(.*?\): (.+)/#
-    nonisolated(unsafe) private static let loopWarningRegex =
+    private nonisolated(unsafe) static let loopWarningRegex =
         #/same_tool_failure_warning; count=(\d+); ([A-Za-z0-9_.-]+) has failed/#
 
     /// Patterns we always strip from user-facing content. Each line that
     /// matches any of these is removed (the surrounding lines are kept).
     /// Same `nonisolated(unsafe)` rationale as the regex literals above.
-    nonisolated(unsafe) private static let stderrPatterns: [Regex<Substring>] = [
+    private nonisolated(unsafe) static let stderrPatterns: [Regex<Substring>] = [
         try! Regex(#"/usr/bin/bash: line \d+: .*"#),
         try! Regex(#"/bin/bash: line \d+: .*"#),
         try! Regex(#"^.+?: command not found.*"#),

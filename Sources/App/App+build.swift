@@ -755,11 +755,11 @@ func buildRouter(
     // Constructed unconditionally; the middleware short-circuits when the
     // flag is false OR the entitlement check fails, so wiring it here
     // does not affect Free/Trial users in any way.
-    let contextRouterSelectorFactory: @Sendable (UUID, String) -> any ContextRouterSelector = { _, username in
+    let contextRouterSelectorFactory: @Sendable (UUID, String) -> any ContextRouterSelector = { tenantID, _ in
         DefaultContextRouterSelector(
             transport: routedTransport,
             model: services.hermesDefaultModel,
-            profileUsername: username,
+            sessionKey: tenantID.uuidString,
             logger: Logger(label: "lv.context-router"),
         )
     }
