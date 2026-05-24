@@ -62,7 +62,7 @@ struct EnforcementTests {
         }
     }
 
-    private static func setBillingState(userID: UUID, tier: UserTier, override: TierOverride = .none) async throws {
+    private static func setBillingState(userID: UUID, tier: LuminaVaultShared.UserTier, override: TierOverride = .none) async throws {
         try await withTestFluent(label: "test.billing.enforcement") { fluent in
             let user = try #require(try await User.find(userID, on: fluent.db()))
             user.tier = tier.rawValue

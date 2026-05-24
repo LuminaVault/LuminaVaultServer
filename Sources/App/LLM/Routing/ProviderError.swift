@@ -41,13 +41,26 @@ enum ProviderError: Error {
     /// (`provider_failover_events.error_code`) and SSE `.fallback`
     /// notices so clients can localize the message without parsing
     /// status codes.
+    ///
+    /// HER-240 — `.network` distinguishes:
+    /// - `upstream_timeout` — `URLError.timedOut` (e.g. LLM stalled past adapter timeout)
+    /// - `upstream_unreachable` — connection-failure URLErrors (DNS, no route, dropped link)
+    /// - `network` — any other URLError or non-URLError underlying
+    ///
+    /// These string keys are STABLE — clients consume them as telemetry
+    /// labels and iOS localization roots. Add new variants; do not rename.
     var reasonCode: String {
         switch self {
-        case .creditExhausted: "credit_exhausted"
-        case let .transient(_, status, _) where status == 429: "rate_limit"
-        case .transient: "upstream_error"
-        case .network: "network"
-        case .permanent: "upstream_rejected"
+        case .creditExhausted: return "credit_exhausted"
+        case let .transient(_, status, _) where status == 429: return "rate_limit"
+        case .transient: return "upstream_error"
+        case let .network(_, underlying):
+            switch Self.underlyingKind(of: underlying) {
+            case .timeout: return "upstream_timeout"
+            case .unreachable: return "upstream_unreachable"
+            case .other: return "network"
+            }
+        case .permanent: return "upstream_rejected"
         }
     }
 
@@ -64,10 +77,39 @@ enum ProviderError: Error {
             return "\(providerName) is rate-limiting us."
         case .transient:
             return "\(providerName) is having trouble responding."
-        case .network:
-            return "Couldn't reach \(providerName)."
+        case let .network(_, underlying):
+            switch Self.underlyingKind(of: underlying) {
+            case .timeout: return "\(providerName) timed out responding."
+            case .unreachable, .other: return "Couldn't reach \(providerName)."
+            }
         case .permanent:
             return "\(providerName) rejected the request."
+        }
+    }
+
+    // MARK: - URLError classification
+
+    /// Coarse classification of a `.network` case's underlying error.
+    /// Single source of truth for `reasonCode` and `userMessage`.
+    private enum URLErrorKind {
+        case timeout
+        case unreachable
+        case other
+    }
+
+    private static func underlyingKind(of underlying: any Error) -> URLErrorKind {
+        guard let urlError = underlying as? URLError else { return .other }
+        switch urlError.code {
+        case .timedOut:
+            return .timeout
+        case .cannotConnectToHost,
+             .notConnectedToInternet,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .networkConnectionLost:
+            return .unreachable
+        default:
+            return .other
         }
     }
 }
