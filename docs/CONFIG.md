@@ -30,8 +30,26 @@ The prod compose declares these as `${VAR:?required}` — container start fails 
 - `CORS_ALLOWEDORIGINS` (comma-separated list, no spaces inside URLs)
 - `POSTHOG_OTEL_TOKEN` (production compose requires it for backend log export)
 - `SENTRY_ORG_SLUG`, `SENTRY_PROJECT_SLUG`, `SENTRY_AUTH_TOKEN` (production compose requires them for backend Sentry export)
+- `HERMES_API_KEY` (32+ bytes; gates the central Hermes gateway — see "Hermes gateway authentication" below)
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
+
+### Hermes gateway authentication
+
+`HERMES_API_KEY` (32+ bytes; `openssl rand -hex 32`) is shared between two containers:
+
+- The `hermes` service reads it as `API_SERVER_KEY` and enforces Bearer auth on `:8642`. Without it the central `api_server` refuses to bind `0.0.0.0`.
+- The `app` (Hummingbird) container reads it as `HERMES_APIKEY` and attaches `Authorization: Bearer …` to every outbound call (`HermesGatewayAdapter`, `URLSessionHermesChatTransport`, `DefaultHermesLLMStreamService`).
+
+If `LV_ENVIRONMENT` is anything other than `dev` and the key is unset, the Hummingbird app refuses to boot (HER-186 fail-closed). In dev (`LV_ENVIRONMENT=dev`, the default) an empty key is allowed and logs a warning — outbound calls go unauthenticated, which is fine against a dev Hermes that also runs without `API_SERVER_KEY`.
+
+Bootstrap and rotation:
+
+```sh
+make hermes-bootstrap        # generates a fresh key into .env
+```
+
+To rotate: regenerate the key, update the env-secret store, and restart both containers in the same change so they never disagree. Dedicated rotation tooling is tracked separately.
 
 ### Sentry backend telemetry
 
