@@ -9,13 +9,26 @@ struct URLEnrichmentService {
     let vaultPaths: VaultPathService
     let fluent: Fluent
     let logger: Logger
+    /// HER-240 / spec ticket #3 — tier-2 post-processor. When configured,
+    /// runs after the primary enricher to fill in `body` if metadata was
+    /// shallow. Nil disables silently.
+    let jinaEnricher: JinaEnricher?
 
-    /// Register the enrichers in order of priority
+    /// Register the enrichers in order of priority. Jina is NOT in this
+    /// list — it runs as a tier-2 post-processor (`applyJinaIfShallow`)
+    /// instead of as a primary winner-takes-all match.
     private let enrichers: [any URLEnricher] = [
         YouTubeEnricher(),
         XEnricher(),
         GenericOGEnricher(),
     ]
+
+    init(vaultPaths: VaultPathService, fluent: Fluent, logger: Logger, jinaEnricher: JinaEnricher? = nil) {
+        self.vaultPaths = vaultPaths
+        self.fluent = fluent
+        self.logger = logger
+        self.jinaEnricher = jinaEnricher
+    }
 
     func enrichAndRewrite(vaultFileID: UUID, urlString: String, tenantID: UUID) async {
         let db = fluent.db()
@@ -35,7 +48,8 @@ struct URLEnrichmentService {
             }
 
             logger.info("enrichment started tenant=\(tenantID) file=\(vaultFileID) url=\(urlString)")
-            let metadata = try await enricher.enrich(url: url)
+            let primary = try await enricher.enrich(url: url)
+            let metadata = await applyJinaIfShallow(metadata: primary, url: url, tenantID: tenantID)
 
             // Format the new markdown
             var markdown = ""
@@ -102,6 +116,30 @@ struct URLEnrichmentService {
                 }
                 try? await row.save(on: db)
             }
+        }
+    }
+
+    /// HER-240 / spec ticket #3 — tier-2 post-processor. Runs `JinaEnricher`
+    /// when the primary enricher returned a thin description (< 500 chars,
+    /// transcript also < 500 chars) and no body already. Merges jina's body
+    /// into the metadata; on jina failure (rate-limit, network, etc.)
+    /// returns the primary metadata unchanged so the capture still lands.
+    private func applyJinaIfShallow(metadata: EnrichedMetadata, url: URL, tenantID: UUID) async -> EnrichedMetadata {
+        guard let jinaEnricher else { return metadata }
+        if metadata.body?.isEmpty == false { return metadata }
+        let descLen = metadata.description?.count ?? 0
+        let transcriptLen = metadata.transcript?.count ?? 0
+        if descLen >= 500 || transcriptLen >= 500 { return metadata }
+
+        do {
+            let jina = try await jinaEnricher.enrich(url: url)
+            var merged = metadata
+            merged.body = jina.body
+            logger.info("jina tier-2 enrichment merged tenant=\(tenantID) body_chars=\(jina.body?.count ?? 0)")
+            return merged
+        } catch {
+            logger.warning("jina tier-2 enrichment failed; using primary tenant=\(tenantID) error=\(error)")
+            return metadata
         }
     }
 }

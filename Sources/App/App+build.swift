@@ -159,6 +159,7 @@ func buildApplication(
         ttsCharactersDaily: Int64(reader.int(forKey: "tts.charactersDaily", default: 1_000_000)),
         emailKind: reader.string(forKey: "email.kind", default: "logging"),
         emailResendAPIKey: reader.string(forKey: "email.resend.apiKey", isSecret: true, default: ""),
+        jinaAPIKey: reader.string(forKey: "jina.apiKey", isSecret: true, default: ""),
         emailFromAddress: reader.string(forKey: "email.fromAddress", default: ""),
         emailReplyTo: reader.string(forKey: "email.replyTo", default: ""),
         hermesPerTenantImage: reader.string(forKey: "hermes.perTenant.image", default: "nousresearch/hermes-agent:latest"),
@@ -1028,10 +1029,20 @@ func buildRouter(
     memoryController.addReadRoutes(to: memoryReadGroup)
 
     // HER-149: URL capture with async enrichment (YouTube oEmbed, X scraper, GenericOG).
+    // HER-240 / spec ticket #3: optional jina.ai tier-2 post-processor for
+    // full-page markdown when the primary enricher's metadata is shallow.
+    let jinaEnricher: JinaEnricher? = services.jinaAPIKey.isEmpty
+        ? nil
+        : JinaEnricher(
+            session: URLSession(configuration: .ephemeral),
+            apiKey: services.jinaAPIKey,
+            logger: Logger(label: "lv.capture.jina"),
+        )
     let urlEnrichmentService = URLEnrichmentService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         logger: Logger(label: "lv.capture"),
+        jinaEnricher: jinaEnricher,
     )
     // HER-274 — shared by `CaptureController` (Safari share extension)
     // and `ConversationController` (chat auto-save-link post-processor).
