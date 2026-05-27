@@ -50,6 +50,10 @@ enum HermesToolErrorClassifier {
     /// Patterns we always strip from user-facing content. Each line that
     /// matches any of these is removed (the surrounding lines are kept).
     /// Same `nonisolated(unsafe)` rationale as the regex literals above.
+    /// Force-tries are safe: every pattern is a compile-time constant
+    /// known to parse cleanly. A failure would be a programmer error
+    /// caught in the test suite, not a runtime condition.
+    // swiftlint:disable force_try
     private nonisolated(unsafe) static let stderrPatterns: [Regex<Substring>] = [
         try! Regex(#"/usr/bin/bash: line \d+: .*"#),
         try! Regex(#"/bin/bash: line \d+: .*"#),
@@ -59,6 +63,7 @@ enum HermesToolErrorClassifier {
         try! Regex(#"^Errno \d+.*"#),
         try! Regex(#"^Traceback \(most recent call last\):.*"#),
     ]
+    // swiftlint:enable force_try
 
     /// Classify any structured tool errors present in `content`.
     static func classify(content: String?) -> [ChatToolError] {
