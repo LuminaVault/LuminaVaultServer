@@ -1,0 +1,4 @@
+# Default owner for all paths.
+# Branch protection does not require approvals (solo dev), but CODEOWNERS
+# still drives PR reviewer auto-assignment and filtering.
+* @fernandocorreia316
