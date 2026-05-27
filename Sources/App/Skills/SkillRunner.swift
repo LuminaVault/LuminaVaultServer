@@ -360,6 +360,7 @@ actor SkillRunner {
         }
     }
 
+    // swiftlint:disable:next function_parameter_count
     private func runAgent(
         skill: SkillManifest,
         tenantID: UUID,
