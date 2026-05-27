@@ -16,8 +16,9 @@ After protection lands, push to `main`/`dev` is only possible via a PR merge tha
   - Required approvals: **0** (solo dev — CI is the gate, not human eyes)
   - Dismiss stale approvals when new commits are pushed: ON
 - **Require status checks to pass before merging**: ON
-  - Required checks: `lint`, `test` (job names from `.github/workflows/ci.yml`)
+  - Required checks: `lint` (job names from `.github/workflows/ci.yml`)
   - Require branches to be up to date before merging: ON
+  - **`test` is NOT yet required** — the `swift test` job has been failing on main for 30+ consecutive runs (Linux Swift 6.3 runtime SIGILL + missing migration ordering). Promote `test` to required only after the test infra is repaired. Add `"test"` back to the `contexts` array in the JSON payloads when stable.
 - **Require conversation resolution before merging**: ON
 - **Restrict who can push to matching branches**: not required (no direct push allowed anyway)
 - **Allow force pushes**: OFF
