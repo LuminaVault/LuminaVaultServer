@@ -11,6 +11,7 @@ on:
       - '.swiftformat'
       - '.github/workflows/**'
   pull_request:
+    branches: [main, dev]
     paths:
       - 'Sources/**'
       - 'Tests/**'
