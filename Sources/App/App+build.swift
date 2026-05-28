@@ -583,11 +583,10 @@ func buildRouter(
                 logger: xaiLogger,
             )
             // HER-240c — Grok runtime proxy shares the container manager.
-            // `.singleton` ELG so the HTTPClient lifecycle is bounded by
-            // the process; explicit shutdown lands when we put ServiceGroup
-            // wrappers around the third-party HTTP transports as a
-            // codebase-wide cleanup.
-            let grokHTTPClient = HTTPClient(eventLoopGroupProvider: .singleton)
+            // Use the AsyncHTTPClient-managed shared client so the process
+            // never deinits an un-shutdown HTTPClient (which preconditions
+            // and SIGILLs on Linux at process exit, taking CI tests with it).
+            let grokHTTPClient = HTTPClient.shared
             grokController = GrokController(
                 containerManager: containerManager,
                 proxy: HermesGrokProxy(
