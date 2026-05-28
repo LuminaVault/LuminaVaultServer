@@ -11,7 +11,7 @@ import SQLKit
 struct M53_AddMemoryReviewState: AsyncMigration {
     func prepare(on database: any Database) async throws {
         try await database.schema(Memory.schema)
-            .field("review_state", .string, .required, .sql(.default("auto")))
+            .field("review_state", .string, .required, .sql(.default(SQLLiteral.string("auto"))))
             .update()
 
         guard let sql = database as? any SQLDatabase else { return }

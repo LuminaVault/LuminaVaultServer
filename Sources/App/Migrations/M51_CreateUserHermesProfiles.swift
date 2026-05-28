@@ -20,7 +20,7 @@ struct M51_CreateUserHermesProfiles: AsyncMigration {
             .field("label", .string, .required)
             .field("system_prompt", .string, .required)
             .field("is_default", .bool, .required, .sql(.default(false)))
-            .field("skills_enabled", .array(of: .string), .required, .sql(.default(SQLLiteral.string("[]"))))
+            .field("skills_enabled", .array(of: .string), .required, .sql(.default(SQLLiteral.string("{}"))))
             .field("created_at", .datetime)
             .field("updated_at", .datetime)
             .unique(on: "tenant_id", "slug")

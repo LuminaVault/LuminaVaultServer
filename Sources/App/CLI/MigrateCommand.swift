@@ -38,14 +38,20 @@ func runMigrateCommand(reader: ConfigReader) async throws {
     )
     await registerMigrations(on: fluent)
 
-    if revert {
-        logger.info("migrate --revert starting")
-        try await fluent.revert()
-        logger.info("migrate --revert done")
-    } else {
-        logger.info("migrate starting")
-        try await fluent.migrate()
-        logger.info("migrate done")
+    do {
+        if revert {
+            logger.info("migrate --revert starting")
+            try await fluent.revert()
+            logger.info("migrate --revert done")
+        } else {
+            logger.info("migrate starting")
+            try await fluent.migrate()
+            logger.info("migrate done")
+        }
+    } catch {
+        logger.error("Migration command failed", metadata: ["error": .string("\(error)")])
+        try? await fluent.shutdown()
+        throw error
     }
 
     try await fluent.shutdown()

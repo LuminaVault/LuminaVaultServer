@@ -71,10 +71,16 @@ func buildApplication(
             )),
             as: .psql,
         )
-        await registerMigrations(on: fluent)
-        let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
-        if autoMigrateStr.lowercased() != "false" {
-            try await fluent.migrate()
+        do {
+            await registerMigrations(on: fluent)
+            let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
+            if autoMigrateStr.lowercased() != "false" {
+                try await fluent.migrate()
+            }
+        } catch {
+            fluentLogger.error("Failed to run migrations during boot", metadata: ["error": .string("\(error)")])
+            try? await fluent.shutdown()
+            throw error
         }
     }
 

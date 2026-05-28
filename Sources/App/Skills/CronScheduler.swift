@@ -176,7 +176,13 @@ actor CronScheduler: Service {
     /// + vault manifests; we filter to enabled rows only and join with
     /// the user's timezone + tier.
     private func loadEnabledPairs() async throws -> [DuePair] {
-        let users = try await User.query(on: fluent.db()).all()
+        guard !fluent.databases.ids().isEmpty else { return [] }
+        let users: [User]
+        do {
+            users = try await User.query(on: fluent.db()).all()
+        } catch {
+            return []
+        }
         var pairs: [DuePair] = []
         for user in users {
             let tenantID = try user.requireID()
@@ -220,15 +226,21 @@ actor CronScheduler: Service {
         status: String,
         error: String?,
     ) async throws {
-        let row = try await SkillsState.query(on: fluent.db())
-            .filter(\.$tenantID == pair.tenantID)
-            .filter(\.$source == pair.source)
-            .filter(\.$name == pair.skillName)
-            .first() ?? SkillsState(
-                tenantID: pair.tenantID,
-                source: pair.source,
-                name: pair.skillName,
-            )
+        guard !fluent.databases.ids().isEmpty else { return }
+        let row: SkillsState
+        do {
+            row = try await SkillsState.query(on: fluent.db())
+                .filter(\.$tenantID == pair.tenantID)
+                .filter(\.$source == pair.source)
+                .filter(\.$name == pair.skillName)
+                .first() ?? SkillsState(
+                    tenantID: pair.tenantID,
+                    source: pair.source,
+                    name: pair.skillName,
+                )
+        } catch {
+            return
+        }
         row.lastRunAt = now
         row.lastStatus = status
         row.lastError = error

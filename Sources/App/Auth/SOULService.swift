@@ -133,7 +133,7 @@ struct SOULService {
     private func atomicWrite(data: Data, to target: URL) throws {
         let fm = FileManager.default
         let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
-        try data.write(to: tmp, options: .atomic)
+        try data.write(to: tmp)
         if fm.fileExists(atPath: target.path) {
             try fm.removeItem(at: target)
         }
