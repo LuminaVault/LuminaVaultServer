@@ -372,7 +372,7 @@ actor MemoryCompileService {
                 ])
             }
 
-            let embedding = try await embeddings.embed(args.content)
+            let embedding = try await embeddings.embed(args.content, tenantID: tenantID)
             let saved = try await self.memories.create(
                 tenantID: tenantID,
                 content: args.content,

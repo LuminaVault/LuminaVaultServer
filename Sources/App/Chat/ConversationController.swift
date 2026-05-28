@@ -152,7 +152,7 @@ struct ConversationController {
             .all()
 
         // Retrieve grounding memories on the latest user turn.
-        let queryEmbedding = try await embeddings.embed(content)
+        let queryEmbedding = try await embeddings.embed(content, tenantID: tenantID)
         let hits = try await memories.semanticSearch(
             tenantID: tenantID,
             queryEmbedding: queryEmbedding,

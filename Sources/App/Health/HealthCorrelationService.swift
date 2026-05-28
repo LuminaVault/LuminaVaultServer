@@ -118,7 +118,7 @@ actor HealthCorrelationService {
         }
 
         // 5) Persist as a tagged memory so it shows up in semantic search.
-        let embedding = try await embeddings.embed(trimmed)
+        let embedding = try await embeddings.embed(trimmed, tenantID: tenantID)
         let memory = try await memories.create(
             tenantID: tenantID,
             content: trimmed,
