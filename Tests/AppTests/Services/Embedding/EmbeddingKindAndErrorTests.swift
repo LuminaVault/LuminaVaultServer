@@ -6,8 +6,8 @@ import Testing
 /// Kept hermetic (no HTTP / no fluent) so they run on every CI minute.
 @Suite("EmbeddingProviderKind + Error")
 struct EmbeddingKindAndErrorTests {
-    @Test("kind init accepts canonical + aliased + case-insensitive inputs")
-    func kindParsing() {
+    @Test
+    func `kind init accepts canonical + aliased + case-insensitive inputs`() {
         #expect(EmbeddingProviderKind(rawConfigValue: "openai") == .openai)
         #expect(EmbeddingProviderKind(rawConfigValue: "OpenAI") == .openai)
         #expect(EmbeddingProviderKind(rawConfigValue: "  nomic  ") == .nomic)
@@ -21,8 +21,8 @@ struct EmbeddingKindAndErrorTests {
         #expect(EmbeddingProviderKind(rawConfigValue: "") == nil)
     }
 
-    @Test("error recoverability matrix")
-    func errorRecoverability() {
+    @Test
+    func `error recoverability matrix`() {
         #expect(EmbeddingProviderError.transient(reason: "x").isRecoverable)
         #expect(EmbeddingProviderError.network(reason: "x").isRecoverable)
         #expect(!EmbeddingProviderError.permanent(reason: .authRejected).isRecoverable)

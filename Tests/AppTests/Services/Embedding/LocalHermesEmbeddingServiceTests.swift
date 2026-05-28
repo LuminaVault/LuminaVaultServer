@@ -16,8 +16,14 @@ import Testing
 struct LocalHermesEmbeddingServiceTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for r: URLRequest) -> URLRequest { r }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for r: URLRequest) -> URLRequest {
+            r
+        }
+
         override func startLoading() {
             guard let h = Self.handler else {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))
@@ -48,8 +54,8 @@ struct LocalHermesEmbeddingServiceTests {
         )
     }
 
-    @Test("nil resolver → permanent endpointMissing")
-    func nilResolverEndpointMissing() async {
+    @Test
+    func `nil resolver → permanent endpointMissing`() async {
         let svc = LocalHermesEmbeddingService(
             resolveHandle: { _ in nil },
             session: makeSession(),
@@ -59,14 +65,14 @@ struct LocalHermesEmbeddingServiceTests {
             Issue.record("expected throw")
         } catch let e as EmbeddingProviderError {
             #expect(!e.isRecoverable)
-            if case .permanent(let r) = e { #expect(r == .endpointMissing) } else { Issue.record("wrong case") }
+            if case let .permanent(r) = e { #expect(r == .endpointMissing) } else { Issue.record("wrong case") }
         } catch {
             Issue.record("wrong type: \(error)")
         }
     }
 
-    @Test("404 from container → permanent endpointMissing")
-    func http404EndpointMissing() async {
+    @Test
+    func `404 from container → permanent endpointMissing`() async {
         StubProtocol.handler = { req in
             let resp = HTTPURLResponse(url: req.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
             return (resp, Data())
@@ -81,14 +87,14 @@ struct LocalHermesEmbeddingServiceTests {
             _ = try await svc.embed("x", tenantID: UUID())
             Issue.record("expected throw")
         } catch let e as EmbeddingProviderError {
-            if case .permanent(let r) = e { #expect(r == .endpointMissing) } else { Issue.record("wrong case") }
+            if case let .permanent(r) = e { #expect(r == .endpointMissing) } else { Issue.record("wrong case") }
         } catch {
             Issue.record("wrong type: \(error)")
         }
     }
 
-    @Test("768-dim response zero-pads to 1536")
-    func paddedResponse() async throws {
+    @Test
+    func `768-dim response zero-pads to 1536`() async throws {
         let vec = (0 ..< 768).map { _ in Float(0.3) }
         let json: [String: Any] = ["data": [["embedding": vec]]]
         let body = try JSONSerialization.data(withJSONObject: json)

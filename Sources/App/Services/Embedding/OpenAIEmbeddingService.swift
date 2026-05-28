@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import Logging
 
 /// HER-134 — text-embedding-3-small backed by OpenAI's `/v1/embeddings`.

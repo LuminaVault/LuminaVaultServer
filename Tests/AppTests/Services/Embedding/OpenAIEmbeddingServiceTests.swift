@@ -15,8 +15,14 @@ struct OpenAIEmbeddingServiceTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for r: URLRequest) -> URLRequest { r }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for r: URLRequest) -> URLRequest {
+            r
+        }
+
         override func startLoading() {
             guard let handler = Self.handler else {
                 client?.urlProtocol(self, didFailWithError: URLError(.unknown))
@@ -46,20 +52,20 @@ struct OpenAIEmbeddingServiceTests {
         return try! JSONSerialization.data(withJSONObject: json)
     }
 
-    @Test("request shape: POST /v1/embeddings, model + dimensions, Bearer auth")
-    func requestShape() async throws {
+    @Test
+    func `request shape: POST /v1/embeddings, model + dimensions, Bearer auth`() async throws {
         nonisolated(unsafe) var captured: URLRequest?
         StubProtocol.handler = { req in
             captured = req
-            let body = self.okPayload()
+            let body = okPayload()
             let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (resp, body)
         }
         defer { StubProtocol.handler = nil }
 
-        let svc = OpenAIEmbeddingService(
+        let svc = try OpenAIEmbeddingService(
             apiKey: "sk-test",
-            baseURL: URL(string: "https://api.example.com")!,
+            baseURL: #require(URL(string: "https://api.example.com")),
             model: "text-embedding-3-small",
             session: makeSession(),
         )
@@ -94,22 +100,22 @@ struct OpenAIEmbeddingServiceTests {
         #expect(decoded["encoding_format"] as? String == "float")
     }
 
-    @Test("missing API key throws .permanent(.missingAPIKey)")
-    func missingKey() async {
+    @Test
+    func `missing API key throws .permanent(.missingAPIKey)`() async {
         let svc = OpenAIEmbeddingService(apiKey: "", session: makeSession())
         await #expect(throws: EmbeddingProviderError.self) {
             _ = try await svc.embed("x", tenantID: UUID())
         }
     }
 
-    @Test("HTTP 429 → .transient (fallback eligible)")
-    func transientOn429() async {
+    @Test
+    func `HTTP 429 → .transient (fallback eligible)`() async throws {
         StubProtocol.handler = { req in
             let resp = HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!
             return (resp, Data())
         }
         defer { StubProtocol.handler = nil }
-        let svc = OpenAIEmbeddingService(apiKey: "sk", baseURL: URL(string: "https://api.example.com")!, session: makeSession())
+        let svc = try OpenAIEmbeddingService(apiKey: "sk", baseURL: #require(URL(string: "https://api.example.com")), session: makeSession())
         do {
             _ = try await svc.embed("x", tenantID: UUID())
             Issue.record("expected throw")
@@ -120,14 +126,14 @@ struct OpenAIEmbeddingServiceTests {
         }
     }
 
-    @Test("HTTP 401 → .permanent(.authRejected)")
-    func permanentOn401() async {
+    @Test
+    func `HTTP 401 → .permanent(.authRejected)`() async throws {
         StubProtocol.handler = { req in
             let resp = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
             return (resp, Data())
         }
         defer { StubProtocol.handler = nil }
-        let svc = OpenAIEmbeddingService(apiKey: "sk", baseURL: URL(string: "https://api.example.com")!, session: makeSession())
+        let svc = try OpenAIEmbeddingService(apiKey: "sk", baseURL: #require(URL(string: "https://api.example.com")), session: makeSession())
         do {
             _ = try await svc.embed("x", tenantID: UUID())
             Issue.record("expected throw")
@@ -138,22 +144,24 @@ struct OpenAIEmbeddingServiceTests {
         }
     }
 
-    @Test("usage callback receives token count from response")
-    func usageCallbackFires() async throws {
+    @Test
+    func `usage callback receives token count from response`() async throws {
         StubProtocol.handler = { req in
             let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (resp, self.okPayload(tokens: 42))
+            return (resp, okPayload(tokens: 42))
         }
         defer { StubProtocol.handler = nil }
 
         actor Captured {
             var value: (UUID, Int64)?
-            func set(_ v: (UUID, Int64)) { value = v }
+            func set(_ v: (UUID, Int64)) {
+                value = v
+            }
         }
         let cap = Captured()
-        let svc = OpenAIEmbeddingService(
+        let svc = try OpenAIEmbeddingService(
             apiKey: "sk",
-            baseURL: URL(string: "https://api.example.com")!,
+            baseURL: #require(URL(string: "https://api.example.com")),
             session: makeSession(),
             usageCallback: { tid, tok in await cap.set((tid, tok)) },
         )

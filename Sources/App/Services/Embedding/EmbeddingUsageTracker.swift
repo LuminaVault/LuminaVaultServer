@@ -35,7 +35,7 @@ actor EmbeddingUsageTracker: EmbeddingService {
 
     func embed(_ text: String, tenantID: UUID) async throws -> [Float] {
         if monthlyCap > 0 {
-            let used = (try? await usage.tokensThisMonth(tenantID: tenantID)) ?? 0
+            let used = await (try? usage.tokensThisMonth(tenantID: tenantID)) ?? 0
             if used >= monthlyCap {
                 logger.warning("embedding cap exceeded: tenant=\(tenantID) used=\(used) cap=\(monthlyCap)")
                 throw EmbeddingProviderError.capExceeded(tenantID: tenantID, monthlyTokens: used, cap: monthlyCap)

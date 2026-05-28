@@ -8,7 +8,7 @@ import HummingbirdFluent
 /// The Postgres unique index on `(tenant_id, year_month)` enforces single-
 /// row-per-month at the DB layer; on the rare insert/insert race we retry
 /// once and let the update path win.
-struct EmbeddingUsageRepository: Sendable {
+struct EmbeddingUsageRepository {
     let fluent: Fluent
 
     func tokensThisMonth(tenantID: UUID, now: Date = .init()) async throws -> Int64 {

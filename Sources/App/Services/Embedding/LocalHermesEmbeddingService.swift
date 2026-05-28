@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import Logging
 
 /// HER-134 — calls the per-tenant Hermes container at

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import Logging
 
 /// HER-134 — Nomic Atlas API embedding adapter. `nomic-embed-text-v1.5`

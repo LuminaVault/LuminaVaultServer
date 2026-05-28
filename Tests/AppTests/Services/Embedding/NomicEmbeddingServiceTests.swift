@@ -7,8 +7,8 @@ import Testing
 /// HTTP path only has to assert the request body shape.
 @Suite("NomicEmbeddingService")
 struct NomicEmbeddingServiceTests {
-    @Test("padToTarget zero-pads short vectors to 1536")
-    func padShort() {
+    @Test
+    func `padToTarget zero-pads short vectors to 1536`() {
         let input = [Float](repeating: 0.7, count: 768)
         let padded = NomicEmbeddingService.padToTarget(input)
         #expect(padded.count == 1536)
@@ -16,15 +16,15 @@ struct NomicEmbeddingServiceTests {
         #expect(padded.suffix(768).allSatisfy { $0 == 0 })
     }
 
-    @Test("padToTarget passes through exact-length vectors unchanged")
-    func padPassthrough() {
+    @Test
+    func `padToTarget passes through exact-length vectors unchanged`() {
         let input = [Float](repeating: 0.1, count: 1536)
         let padded = NomicEmbeddingService.padToTarget(input)
         #expect(padded == input)
     }
 
-    @Test("padToTarget truncates oversize vectors (defensive)")
-    func padTruncate() {
+    @Test
+    func `padToTarget truncates oversize vectors (defensive)`() {
         let input = [Float](repeating: 0.5, count: 2000)
         let padded = NomicEmbeddingService.padToTarget(input)
         #expect(padded.count == 1536)

@@ -3,7 +3,7 @@ import Foundation
 /// HER-134 — selectable text-embedding providers. `deterministic` is the
 /// hash-based dev/test stub that ships in `DeterministicEmbeddingService`;
 /// the other three back the protocol with real HTTP impls.
-enum EmbeddingProviderKind: String, CaseIterable, Sendable, Hashable {
+enum EmbeddingProviderKind: String, CaseIterable, Hashable {
     case openai
     case hermesLocal
     case nomic

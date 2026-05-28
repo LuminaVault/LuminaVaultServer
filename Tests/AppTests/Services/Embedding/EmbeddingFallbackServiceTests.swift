@@ -27,8 +27,8 @@ struct EmbeddingFallbackServiceTests {
         }
     }
 
-    @Test("permanent error from primary rethrows immediately — no fallback")
-    func permanentShortCircuits() async {
+    @Test
+    func `permanent error from primary rethrows immediately — no fallback`() async {
         let primary = ScriptedService(label: "p", result: .failure(.permanent(reason: .authRejected)))
         let fb = ScriptedService(label: "f", result: .success([Float](repeating: 1, count: 1536)))
         let chain = EmbeddingFallbackService(
@@ -43,8 +43,8 @@ struct EmbeddingFallbackServiceTests {
         #expect(fb.callCount == 0)
     }
 
-    @Test("transient primary advances to fallback")
-    func transientAdvances() async throws {
+    @Test
+    func `transient primary advances to fallback`() async throws {
         let primary = ScriptedService(label: "p", result: .failure(.transient(reason: "503")))
         let fb = ScriptedService(label: "f", result: .success([Float](repeating: 0.5, count: 1536)))
         let chain = EmbeddingFallbackService(
@@ -58,8 +58,8 @@ struct EmbeddingFallbackServiceTests {
         #expect(fb.callCount == 1)
     }
 
-    @Test("all-recoverable chain rethrows last error")
-    func allFail() async {
+    @Test
+    func `all-recoverable chain rethrows last error`() async {
         let primary = ScriptedService(label: "p", result: .failure(.transient(reason: "p")))
         let fb = ScriptedService(label: "f", result: .failure(.network(reason: "f")))
         let chain = EmbeddingFallbackService(
