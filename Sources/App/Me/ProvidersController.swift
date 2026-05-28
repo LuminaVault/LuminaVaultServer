@@ -9,9 +9,9 @@ import LuminaVaultShared
     import FoundationNetworking
 #endif
 
-extension ProviderCredentialDTO: ResponseEncodable {}
-extension ProviderCredentialsListResponse: ResponseEncodable {}
-extension ProviderTestResponse: ResponseEncodable {}
+extension ProviderCredentialDTO: @retroactive ResponseEncodable {}
+extension ProviderCredentialsListResponse: @retroactive ResponseEncodable {}
+extension ProviderTestResponse: @retroactive ResponseEncodable {}
 
 /// HER-252 — `/v1/me/providers` GET/PUT/DELETE + `POST /test`.
 ///

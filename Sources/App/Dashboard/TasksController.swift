@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension TaskListResponse: ResponseEncodable {}
+extension TaskListResponse: @retroactive ResponseEncodable {}
 
 /// `GET /v1/tasks` — list active/queued/completed/failed server-side
 /// operations for the authenticated tenant.

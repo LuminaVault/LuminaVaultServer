@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension SkillOutputListResponse: ResponseEncodable {}
+extension SkillOutputListResponse: @retroactive ResponseEncodable {}
 
 /// `GET /v1/skills/outputs` — Today-tab skill outputs feed.
 ///

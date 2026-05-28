@@ -8,9 +8,9 @@ import LuminaVaultShared
 
 // MARK: - Server-side conformances
 
-extension VaultUploadResponse: ResponseEncodable {}
-extension VaultFileDTO: ResponseEncodable {}
-extension VaultFileListResponse: ResponseEncodable {}
+extension VaultUploadResponse: @retroactive ResponseEncodable {}
+extension VaultFileDTO: @retroactive ResponseEncodable {}
+extension VaultFileListResponse: @retroactive ResponseEncodable {}
 
 // MARK: - Server-local request DTOs
 

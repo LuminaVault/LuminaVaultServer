@@ -3,8 +3,8 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension AchievementsListResponse: ResponseEncodable {}
-extension AchievementsRecentResponse: ResponseEncodable {}
+extension AchievementsListResponse: @retroactive ResponseEncodable {}
+extension AchievementsRecentResponse: @retroactive ResponseEncodable {}
 
 /// `GET /v1/achievements` and `GET /v1/achievements/recent` — read-only
 /// views over `achievement_progress` for the JWT-authenticated tenant.

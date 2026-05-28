@@ -4,8 +4,8 @@ import Hummingbird
 import HummingbirdFluent
 import LuminaVaultShared
 
-extension MemoResponse: ResponseEncodable {}
-extension MemoListResponse: ResponseEncodable {}
+extension MemoResponse: @retroactive ResponseEncodable {}
+extension MemoListResponse: @retroactive ResponseEncodable {}
 
 struct MemoController {
     let service: MemoGeneratorService

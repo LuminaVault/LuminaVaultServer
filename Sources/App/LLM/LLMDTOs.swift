@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 import LuminaVaultShared
 
-extension ChatResponse: ResponseEncodable {}
+extension ChatResponse: @retroactive ResponseEncodable {}
 
 // HER-213: TTSRequest pruned from LuminaVaultShared v0.11.0 (server
 // negotiates voice catalog; no client-stable contract yet). Server-local.

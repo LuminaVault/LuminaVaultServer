@@ -8,7 +8,7 @@ import SQLKit
 
 // MARK: - Server-side conformances
 
-extension HealthIngestResponse: ResponseEncodable {}
+extension HealthIngestResponse: @retroactive ResponseEncodable {}
 // HER-118: HealthEventDTO + HealthListResponse + HealthDailyResponse are
 // shared wire types (LuminaVaultShared v0.38.0); server-side
 // ResponseEncodable conformances live here so the read handlers can
@@ -16,9 +16,9 @@ extension HealthIngestResponse: ResponseEncodable {}
 // HealthDTOs.swift were removed in HER-118 — the `metadata` field they
 // carried is not consumed by any client surface; sample metadata is
 // retained on the DB row (`HealthEvent.metadata`) for future read needs.
-extension HealthEventDTO: ResponseEncodable {}
-extension HealthListResponse: ResponseEncodable {}
-extension HealthDailyResponse: ResponseEncodable {}
+extension HealthEventDTO: @retroactive ResponseEncodable {}
+extension HealthListResponse: @retroactive ResponseEncodable {}
+extension HealthDailyResponse: @retroactive ResponseEncodable {}
 
 // HER-202 — non-throwing accessor mirroring `Memory.savedID`
 // (`Sources/App/Memory/MemoryController.swift:29-39`). Fluent's `id`

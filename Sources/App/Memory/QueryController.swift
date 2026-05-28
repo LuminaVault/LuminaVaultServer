@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension QueryResponse: ResponseEncodable {}
+extension QueryResponse: @retroactive ResponseEncodable {}
 
 /// Natural-language query against the user's memories. The non-streaming
 /// path is a thin wrapper on top of `HermesMemoryService.search` and

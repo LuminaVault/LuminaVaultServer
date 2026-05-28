@@ -6,10 +6,10 @@ import Logging
 import LuminaVaultShared
 import SQLKit
 
-extension SkillListResponse: ResponseEncodable {}
-extension SkillRunResponse: ResponseEncodable {}
-extension SkillRunsResponse: ResponseEncodable {}
-extension LuminaVaultShared.SkillDTO: ResponseEncodable {}
+extension SkillListResponse: @retroactive ResponseEncodable {}
+extension SkillRunResponse: @retroactive ResponseEncodable {}
+extension SkillRunsResponse: @retroactive ResponseEncodable {}
+extension LuminaVaultShared.SkillDTO: @retroactive ResponseEncodable {}
 
 /// HTTP surface for the skills runtime.
 ///

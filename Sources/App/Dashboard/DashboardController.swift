@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension DashboardStatsResponse: ResponseEncodable {}
+extension DashboardStatsResponse: @retroactive ResponseEncodable {}
 
 struct DashboardController {
     let fluent: HummingbirdFluent.Fluent
