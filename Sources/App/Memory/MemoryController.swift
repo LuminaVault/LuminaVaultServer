@@ -5,14 +5,14 @@ import LuminaVaultShared
 
 // MARK: - Server-side conformances + convenience
 
-extension MemoryUpsertResponse: ResponseEncodable {}
-extension MemorySearchResponse: ResponseEncodable {}
-extension MemorySearchHitDTO: ResponseEncodable {}
-extension MemoryListResponse: ResponseEncodable {}
-extension MemoryLineageResponse: ResponseEncodable {}
-extension MemoryLineageSourceDTO: ResponseEncodable {}
-extension MemoryDTO: ResponseEncodable {}
-extension MemoryGraphResponse: ResponseEncodable {}
+extension MemoryUpsertResponse: @retroactive ResponseEncodable {}
+extension MemorySearchResponse: @retroactive ResponseEncodable {}
+extension MemorySearchHitDTO: @retroactive ResponseEncodable {}
+extension MemoryListResponse: @retroactive ResponseEncodable {}
+extension MemoryLineageResponse: @retroactive ResponseEncodable {}
+extension MemoryLineageSourceDTO: @retroactive ResponseEncodable {}
+extension MemoryDTO: @retroactive ResponseEncodable {}
+extension MemoryGraphResponse: @retroactive ResponseEncodable {}
 
 // HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
 // four optional geo fields. The server-local definition has been removed.

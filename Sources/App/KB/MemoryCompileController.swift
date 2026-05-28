@@ -131,5 +131,5 @@ struct MemoryCompileController {
     }
 }
 
-extension KBCompileResponse: ResponseEncodable {}
-extension KBCompilePendingResponse: ResponseEncodable {}
+extension KBCompileResponse: @retroactive ResponseEncodable {}
+extension KBCompilePendingResponse: @retroactive ResponseEncodable {}

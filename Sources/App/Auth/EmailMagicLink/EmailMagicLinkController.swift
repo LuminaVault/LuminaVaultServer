@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension EmailMagicStartResponse: ResponseEncodable {}
+extension EmailMagicStartResponse: @retroactive ResponseEncodable {}
 
 extension AuthError {
     static let invalidEmail = HTTPError(.badRequest, message: "email looks invalid")

@@ -3,7 +3,7 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 
-extension SoulResponse: ResponseEncodable {}
+extension SoulResponse: @retroactive ResponseEncodable {}
 
 /// HER-85: SOUL.md CRUD surface.
 ///

@@ -6,7 +6,7 @@ import LuminaVaultShared
 
 // MARK: - Server-side conformances + helpers
 
-extension OnboardingStateDTO: ResponseEncodable {}
+extension OnboardingStateDTO: @retroactive ResponseEncodable {}
 
 /// Server-only helper to create an OnboardingStateDTO from a Fluent row.
 extension OnboardingStateDTO {

@@ -6,7 +6,7 @@ import Logging
 import LuminaVaultShared
 import SQLKit
 
-extension SessionListResponse: ResponseEncodable {}
+extension SessionListResponse: @retroactive ResponseEncodable {}
 
 /// `GET /v1/sessions` — list chat-history sessions for the OS Shell
 /// Sessions tab (HER-245 / HER-259). Joins `conversations` (HER-37)

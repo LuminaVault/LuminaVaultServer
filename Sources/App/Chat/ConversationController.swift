@@ -7,9 +7,9 @@ import LuminaVaultShared
 
 // MARK: - Server-side response conformances
 
-extension ConversationDTO: ResponseEncodable {}
-extension ConversationListResponse: ResponseEncodable {}
-extension ConversationDetailResponse: ResponseEncodable {}
+extension ConversationDTO: @retroactive ResponseEncodable {}
+extension ConversationListResponse: @retroactive ResponseEncodable {}
+extension ConversationDetailResponse: @retroactive ResponseEncodable {}
 
 /// HER-37 — multi-turn chat persistence + streaming assistant turns.
 /// Owns `/v1/conversations` (CRUD) and

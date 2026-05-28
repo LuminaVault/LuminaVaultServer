@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension LLMPreferencesGetResponse: ResponseEncodable {}
+extension LLMPreferencesGetResponse: @retroactive ResponseEncodable {}
 
 /// HER-252 — `/v1/me/preferences/llm` GET + PUT. Row absent ⇒ GET
 /// returns a default response built from the deployment's static

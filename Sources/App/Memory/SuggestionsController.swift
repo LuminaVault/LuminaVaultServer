@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 import LuminaVaultShared
 
-extension SuggestionsResponse: ResponseEncodable {}
+extension SuggestionsResponse: @retroactive ResponseEncodable {}
 
 /// GET /v1/me/suggestions — surfaces context-aware natural-language query
 /// prompts above the "Ask Lumina" input bar on the iOS client.

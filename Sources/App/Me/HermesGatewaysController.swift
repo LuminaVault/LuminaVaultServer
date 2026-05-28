@@ -5,9 +5,9 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension HermesGatewayCatalogEntry: ResponseEncodable {}
-extension HermesGatewaysListResponse: ResponseEncodable {}
-extension HermesGatewayTestResponse: ResponseEncodable {}
+extension HermesGatewayCatalogEntry: @retroactive ResponseEncodable {}
+extension HermesGatewaysListResponse: @retroactive ResponseEncodable {}
+extension HermesGatewayTestResponse: @retroactive ResponseEncodable {}
 
 /// HER-241 — `/v1/me/hermes-gateways` GET / GET-one / PUT / DELETE /
 /// POST-test.

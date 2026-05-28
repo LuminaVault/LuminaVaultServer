@@ -5,8 +5,8 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension InsightListResponse: ResponseEncodable {}
-extension InsightDTO: ResponseEncodable {}
+extension InsightListResponse: @retroactive ResponseEncodable {}
+extension InsightDTO: @retroactive ResponseEncodable {}
 
 /// HER-37 Slice D — proactive findings surface ("what Lumina noticed").
 ///

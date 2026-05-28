@@ -5,7 +5,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension APNSCategoryPrefsResponse: ResponseEncodable {}
+extension APNSCategoryPrefsResponse: @retroactive ResponseEncodable {}
 
 /// HER-179 — `GET/PUT /v1/me/apns-categories`. Per-tenant opt-out for
 /// the three APNS notification categories (`chat`, `nudge`, `digest`).

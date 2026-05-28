@@ -4,7 +4,7 @@ import Hummingbird
 import HummingbirdFluent
 import LuminaVaultShared
 
-extension DeviceRegistrationResponse: ResponseEncodable {}
+extension DeviceRegistrationResponse: @retroactive ResponseEncodable {}
 
 struct DeviceController {
     let fluent: Fluent

@@ -212,4 +212,4 @@ struct PhoneAuthController {
 
 // MARK: - Shared conformance
 
-extension PhoneStartResponse: ResponseEncodable {}
+extension PhoneStartResponse: @retroactive ResponseEncodable {}
