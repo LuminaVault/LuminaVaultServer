@@ -509,6 +509,11 @@ func buildRouter(
     // HER-241 — per-user Hermes messaging gateway configurator. Gated on
     // the same SecretBox as BYO Hermes; gateway config is sealed at rest.
     var hermesGatewaysController: HermesGatewaysController?
+    // HER-134 — LocalHermes text-embedding adapter resolves the running
+    // per-tenant container via `HermesContainerManager.handle`. Outside
+    // the BYO branch we leave the resolver no-op; LocalHermes then falls
+    // through with `.endpointMissing` and the chain advances.
+    var localHermesHandleResolver: LocalHermesEmbeddingService.HandleResolver = { _ in nil }
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
@@ -554,6 +559,13 @@ func buildRouter(
                 ),
                 logger: Logger(label: "lv.hermes-tenant"),
             )
+            // HER-134 — wire LocalHermes text embedding to the live
+            // container manager. `handle` is read-only; if the tenant has
+            // no running container the LocalHermes adapter surfaces
+            // `.endpointMissing` and the fallback chain advances.
+            localHermesHandleResolver = { tenantID in
+                try await containerManager.handle(tenantID: tenantID)
+            }
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
@@ -1004,11 +1016,10 @@ func buildRouter(
     // protocol. LocalHermes handle resolver is a no-op for the scaffold —
     // it falls through with `.endpointMissing` until follow-up ticket
     // wires the per-tenant container manager into this scope.
-    let noopHermesResolver: LocalHermesEmbeddingService.HandleResolver = { _ in nil }
     let embeddingRegistry = EmbeddingProviderRegistry.bootstrap(
         reader: reader,
         fluent: services.fluent,
-        hermesHandleResolver: noopHermesResolver,
+        hermesHandleResolver: localHermesHandleResolver,
         logger: Logger(label: "lv.embedding.registry"),
     )
     let embeddingService: any EmbeddingService = embeddingRegistry.active
