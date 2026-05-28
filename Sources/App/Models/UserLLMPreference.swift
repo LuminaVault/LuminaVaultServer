@@ -16,8 +16,16 @@ final class UserLLMPreference: Model, TenantModel, @unchecked Sendable {
         let model: String
     }
 
+    /// HER-300 — distinguishes server-managed default routing from
+    /// user-supplied API keys (BYOK). Mirrors the wire `LLMBrainMode`.
+    enum Mode: String, CaseIterable {
+        case managed
+        case byok
+    }
+
     @ID(key: .id) var id: UUID?
     @Field(key: "tenant_id") var tenantID: UUID
+    @Field(key: "mode") var mode: String
     @Field(key: "primary_provider") var primaryProvider: String
     @Field(key: "primary_model") var primaryModel: String
     @Field(key: "fallback_chain") var fallbackChain: [FallbackStep]

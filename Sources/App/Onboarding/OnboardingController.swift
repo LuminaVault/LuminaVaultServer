@@ -26,6 +26,8 @@ extension OnboardingStateDTO {
             firstKBCompileCompletedAt: row.firstMemoryCompileCompletedAt,
             firstQueryCompleted: row.firstQueryCompleted,
             firstQueryCompletedAt: row.firstQueryCompletedAt,
+            brainConfiguredCompleted: row.brainConfiguredCompleted,
+            brainConfiguredCompletedAt: row.brainConfiguredCompletedAt,
         )
     }
 }
@@ -58,6 +60,7 @@ struct OnboardingController {
         try rejectFalse(body.firstCaptureCompleted, field: "firstCaptureCompleted")
         try rejectFalse(body.firstKBCompileCompleted, field: "firstKBCompileCompleted")
         try rejectFalse(body.firstQueryCompleted, field: "firstQueryCompleted")
+        try rejectFalse(body.brainConfiguredCompleted, field: "brainConfiguredCompleted")
 
         let now = Date()
         let db = fluent.db()
@@ -90,6 +93,10 @@ struct OnboardingController {
         if body.firstQueryCompleted == true, !row.firstQueryCompleted {
             row.firstQueryCompleted = true
             row.firstQueryCompletedAt = now
+        }
+        if body.brainConfiguredCompleted == true, !row.brainConfiguredCompleted {
+            row.brainConfiguredCompleted = true
+            row.brainConfiguredCompletedAt = now
         }
 
         try await row.save(on: db)

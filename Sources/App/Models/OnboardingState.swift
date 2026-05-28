@@ -39,6 +39,11 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
     @Field(key: "first_query_completed") var firstQueryCompleted: Bool
     @OptionalField(key: "first_query_completed_at") var firstQueryCompletedAt: Date?
 
+    /// HER-300 — flipped true when user completes "Choose Your Brain"
+    /// (managed default accepted or first BYOK key saved).
+    @Field(key: "brain_configured_completed") var brainConfiguredCompleted: Bool
+    @OptionalField(key: "brain_configured_completed_at") var brainConfiguredCompletedAt: Date?
+
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -54,5 +59,6 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
         firstKBCompileCompleted = false
         firstMemoryCompileCompleted = false
         firstQueryCompleted = false
+        brainConfiguredCompleted = false
     }
 }

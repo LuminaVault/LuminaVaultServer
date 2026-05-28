@@ -12,6 +12,7 @@ actor UserLLMPreferenceRepository {
     /// value type (not the Fluent model) avoids leaking the row's
     /// mutability beyond the actor.
     struct Snapshot: Equatable {
+        let mode: UserLLMPreference.Mode
         let primaryProvider: ProviderKind
         let primaryModel: String
         let fallbackChain: [Step]
@@ -57,6 +58,7 @@ actor UserLLMPreferenceRepository {
     /// actor stores whatever it's given.
     func upsert(
         tenantID: UUID,
+        mode: UserLLMPreference.Mode,
         primaryProvider: ProviderKind,
         primaryModel: String,
         fallbackChain: [Snapshot.Step],
@@ -66,6 +68,7 @@ actor UserLLMPreferenceRepository {
             .first()
         let row = existing ?? UserLLMPreference()
         row.tenantID = tenantID
+        row.mode = mode.rawValue
         row.primaryProvider = primaryProvider.rawValue
         row.primaryModel = primaryModel
         row.fallbackChain = fallbackChain.map {
@@ -83,6 +86,10 @@ actor UserLLMPreferenceRepository {
 
     private static func decode(_ row: UserLLMPreference) -> Snapshot {
         Snapshot(
+            // HER-300 — fall back to .managed if a row somehow has a value
+            // outside the enum; managed is the "least surprising" default
+            // since it always routes through the shared gateway.
+            mode: UserLLMPreference.Mode(rawValue: row.mode) ?? .managed,
             primaryProvider: ProviderKind(rawValue: row.primaryProvider) ?? .hermesGateway,
             primaryModel: row.primaryModel,
             fallbackChain: row.fallbackChain.compactMap { step in

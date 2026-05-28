@@ -65,6 +65,11 @@ let dbTestReader = ConfigReader(providers: [
         // validation accepts 127.0.0.1 / docker-internal hosts. Prod
         // must leave this `false`.
         "byoHermes.allowPrivate": "true",
+        // HER-254 fail-closed bearer guard fatals when lv.environment != "dev"
+        // and hermes.apiKey is empty. Tests don't actually dial Hermes (the
+        // gateway is `logging` mode above), so a dummy bearer is sufficient
+        // to satisfy the guard.
+        "hermes.apiKey": "test-hermes-bearer-do-not-use",
         "lv.environment": "test",
     ]),
 ])
