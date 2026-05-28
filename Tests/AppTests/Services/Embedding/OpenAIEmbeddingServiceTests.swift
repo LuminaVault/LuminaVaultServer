@@ -49,6 +49,7 @@ struct OpenAIEmbeddingServiceTests {
             "data": [["embedding": vec]],
             "usage": ["total_tokens": tokens],
         ]
+        // swiftlint:disable:next force_try
         return try! JSONSerialization.data(withJSONObject: json)
     }
 
