@@ -53,6 +53,11 @@ struct LLMPreferencesControllerTests {
                 let prefs = try Self.decodePrefs(response.body)
                 #expect(prefs.mode == .managed)
                 #expect(prefs.fallbackChain.isEmpty)
+                // HER-300/2: default surfaced to iOS must be the managed
+                // OpenRouter route. Mirrors `hermes.defaultManagedModel`
+                // (default `qwen/qwen-2.5-72b-instruct`).
+                #expect(prefs.primaryProvider == .openRouter)
+                #expect(prefs.primaryModel == "qwen/qwen-2.5-72b-instruct")
             }
         }
     }

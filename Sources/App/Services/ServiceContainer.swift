@@ -29,6 +29,16 @@ struct ServiceContainer {
     /// Default model name when chat requests don't specify one. Verify via
     /// `GET http://hermes:8642/v1/models` against the running container.
     let hermesDefaultModel: String
+    /// HER-300: Default model surfaced to the iOS "Choose Your Brain" UI
+    /// and used when a user accepts the managed default (no BYOK). Must
+    /// match the `model.default` configured in `~/.hermes/config.yaml` on
+    /// the central Hermes container — mismatch shows a stale label in the
+    /// iOS UI but does not break routing.
+    let hermesDefaultManagedModel: String
+    /// HER-300: Provider hint shown alongside the managed default model
+    /// in the iOS UI (e.g. `openrouter`). Informational only; the actual
+    /// upstream is selected by Hermes' own config.
+    let hermesManagedProviderHint: String
     /// HER-254: Bearer token shared with the central Hermes container's
     /// `API_SERVER_KEY` env var. Required (empty = container refuses to
     /// bind to 0.0.0.0). Outbound HTTP clients send it as

@@ -21,8 +21,8 @@ struct LLMPreferencesController {
 
     init(
         repository: UserLLMPreferenceRepository,
-        defaultPrimaryProvider: ProviderID = .anthropic,
-        defaultPrimaryModel: String = "claude-sonnet-4.6",
+        defaultPrimaryProvider: ProviderID = .openRouter,
+        defaultPrimaryModel: String = "qwen/qwen-2.5-72b-instruct",
         logger: Logger,
     ) {
         self.repository = repository
