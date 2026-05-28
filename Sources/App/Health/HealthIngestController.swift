@@ -146,9 +146,8 @@ struct HealthIngestController {
 
         // Aggregation operator switches on a closed Swift-side set; the SQL
         // strings are otherwise identical and never carry user input.
-        let rows: [DailyAggregateRow]
-        if useSum {
-            rows = try await sql.raw("""
+        let rows: [DailyAggregateRow] = if useSum {
+            try await sql.raw("""
             SELECT date_trunc('day', recorded_at AT TIME ZONE 'UTC') AS day,
                    SUM(value_numeric) AS value,
                    COUNT(*) AS sample_count
@@ -162,7 +161,7 @@ struct HealthIngestController {
             ORDER BY day ASC
             """).all(decoding: DailyAggregateRow.self)
         } else {
-            rows = try await sql.raw("""
+            try await sql.raw("""
             SELECT date_trunc('day', recorded_at AT TIME ZONE 'UTC') AS day,
                    AVG(value_numeric) AS value,
                    COUNT(*) AS sample_count
