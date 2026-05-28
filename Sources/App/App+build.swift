@@ -124,6 +124,8 @@ func buildApplication(
         hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
         hermesDataRoot: reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes"),
         hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3"),
+        hermesDefaultManagedModel: reader.string(forKey: "hermes.defaultManagedModel", default: "qwen/qwen-2.5-72b-instruct"),
+        hermesManagedProviderHint: reader.string(forKey: "hermes.managedProviderHint", default: "openrouter"),
         hermesAPIKey: reader.string(forKey: "hermes.apiKey", isSecret: true, default: ""),
         webAuthnEnabled: reader.string(forKey: "webauthn.enabled", default: "false").lowercased() == "true",
         webAuthnRelyingPartyID: reader.string(forKey: "webauthn.relyingPartyId", default: ""),
@@ -1537,6 +1539,7 @@ func buildRouter(
     }
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,
+        defaultPrimaryModel: services.hermesDefaultManagedModel,
         logger: Logger(label: "lv.me.llm-prefs"),
     )
     let llmPrefsGroup = router.group("/v1/me/preferences/llm")
