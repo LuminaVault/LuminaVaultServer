@@ -4,11 +4,21 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 // MARK: - Server-side conformances
 
 extension HealthIngestResponse: ResponseEncodable {}
-// HER-213: HealthEventDTO + HealthListResponse conformances live in HealthDTOs.swift.
+// HER-118: HealthEventDTO + HealthListResponse + HealthDailyResponse are
+// shared wire types (LuminaVaultShared v0.38.0); server-side
+// ResponseEncodable conformances live here so the read handlers can
+// return them directly. The legacy server-local copies that lived in
+// HealthDTOs.swift were removed in HER-118 — the `metadata` field they
+// carried is not consumed by any client surface; sample metadata is
+// retained on the DB row (`HealthEvent.metadata`) for future read needs.
+extension HealthEventDTO: ResponseEncodable {}
+extension HealthListResponse: ResponseEncodable {}
+extension HealthDailyResponse: ResponseEncodable {}
 
 // HER-202 — non-throwing accessor mirroring `Memory.savedID`
 // (`Sources/App/Memory/MemoryController.swift:29-39`). Fluent's `id`
@@ -34,7 +44,6 @@ extension HealthEventDTO {
             valueText: row.valueText,
             unit: row.unit,
             source: row.source,
-            metadata: row.metadata,
         )
     }
 }
@@ -95,6 +104,122 @@ struct HealthIngestController {
     /// even on `lapsed` / `archived` tiers (export-window behaviour).
     func addReadRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
+        router.get("daily", use: daily)
+    }
+
+    /// HER-118 — per-day aggregation window for sparkline rendering. Sum
+    /// for accumulating metrics (`steps`, `active_energy`, `mindful_minutes`),
+    /// average for instantaneous metrics. Fills gap-days with
+    /// `value: 0, sampleCount: 0` so the response always has exactly `days`
+    /// chronological entries — the client renders sparklines without
+    /// local bucketing or gap-fill logic.
+    @Sendable
+    func daily(_ req: Request, ctx: AppRequestContext) async throws -> HealthDailyResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+
+        guard let typeRaw = req.uri.queryParameters["type"].map(String.init),
+              case let trimmed = typeRaw.trimmingCharacters(in: .whitespaces).lowercased(),
+              !trimmed.isEmpty
+        else {
+            throw HTTPError(.badRequest, message: "type query parameter required")
+        }
+        let type = trimmed
+
+        let requestedDays = req.uri.queryParameters["days"].flatMap { Int($0) } ?? Self.dailyDefaultDays
+        guard requestedDays >= 1, requestedDays <= Self.dailyMaxDays else {
+            throw HTTPError(.badRequest, message: "days must be between 1 and \(Self.dailyMaxDays)")
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        var utc = calendar
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let endOfDay = utc.startOfDay(for: Date()).addingTimeInterval(86400)
+        let startOfWindow = endOfDay.addingTimeInterval(-Double(requestedDays) * 86400)
+
+        let useSum = Self.sumAggregationTypes.contains(type)
+
+        let db = fluent.db()
+        guard let sql = db as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL database required for daily aggregation")
+        }
+
+        // Aggregation operator switches on a closed Swift-side set; the SQL
+        // strings are otherwise identical and never carry user input.
+        let rows: [DailyAggregateRow]
+        if useSum {
+            rows = try await sql.raw("""
+            SELECT date_trunc('day', recorded_at AT TIME ZONE 'UTC') AS day,
+                   SUM(value_numeric) AS value,
+                   COUNT(*) AS sample_count
+            FROM health_events
+            WHERE tenant_id = \(bind: tenantID)
+              AND event_type = \(bind: type)
+              AND recorded_at >= \(bind: startOfWindow)
+              AND recorded_at < \(bind: endOfDay)
+              AND value_numeric IS NOT NULL
+            GROUP BY day
+            ORDER BY day ASC
+            """).all(decoding: DailyAggregateRow.self)
+        } else {
+            rows = try await sql.raw("""
+            SELECT date_trunc('day', recorded_at AT TIME ZONE 'UTC') AS day,
+                   AVG(value_numeric) AS value,
+                   COUNT(*) AS sample_count
+            FROM health_events
+            WHERE tenant_id = \(bind: tenantID)
+              AND event_type = \(bind: type)
+              AND recorded_at >= \(bind: startOfWindow)
+              AND recorded_at < \(bind: endOfDay)
+              AND value_numeric IS NOT NULL
+            GROUP BY day
+            ORDER BY day ASC
+            """).all(decoding: DailyAggregateRow.self)
+        }
+
+        var indexed: [Date: HealthDayAggregateDTO] = [:]
+        for row in rows {
+            indexed[row.day] = HealthDayAggregateDTO(
+                date: row.day,
+                type: type,
+                value: row.value,
+                sampleCount: row.sample_count,
+            )
+        }
+
+        var days: [HealthDayAggregateDTO] = []
+        days.reserveCapacity(requestedDays)
+        for offset in 0 ..< requestedDays {
+            let bucket = startOfWindow.addingTimeInterval(Double(offset) * 86400)
+            days.append(indexed[bucket] ?? HealthDayAggregateDTO(
+                date: bucket,
+                type: type,
+                value: 0,
+                sampleCount: 0,
+            ))
+        }
+
+        return HealthDailyResponse(type: type, days: days)
+    }
+
+    /// HER-118 — event types whose daily aggregation is a sum rather than
+    /// an average. Accumulators: steps, active energy burned, mindful
+    /// minutes, and sleep session duration. Everything else (heart rate,
+    /// HRV, weight, blood oxygen, etc.) is averaged.
+    static let sumAggregationTypes: Set<String> = [
+        "steps",
+        "active_energy",
+        "mindful_minutes",
+        "sleep_session",
+    ]
+
+    private static let dailyDefaultDays = 7
+    private static let dailyMaxDays = 90
+
+    private struct DailyAggregateRow: Decodable {
+        let day: Date
+        let value: Double
+        let sample_count: Int
     }
 
     @Sendable

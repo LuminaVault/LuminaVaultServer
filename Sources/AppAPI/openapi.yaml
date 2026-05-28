@@ -2104,6 +2104,34 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HealthListResponse' }
 
+  /v1/health/daily:
+    get:
+      tags: [Health]
+      operationId: healthDaily
+      summary: Per-day aggregation window for a single event type (HER-118 sparkline source).
+      description: |
+        Returns a fixed-length chronological window of daily aggregates for the
+        given `type`. Sum aggregation for accumulating metrics (`steps`,
+        `active_energy`, `mindful_minutes`, `sleep_session`); average for
+        instantaneous metrics (`hr_bpm`, `hrv_ms`, `weight_kg`, `blood_oxygen`,
+        etc.). Gap-days are returned with `value: 0, sampleCount: 0` so the
+        client can render sparklines without local bucketing or gap-fill logic.
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema: { type: string }
+          description: Lowercased event type identifier.
+        - in: query
+          name: days
+          schema: { type: integer, minimum: 1, maximum: 90, default: 7 }
+      responses:
+        '200':
+          description: Daily aggregation window.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthDailyResponse' }
+
   # ─────────────────────────────── Skills ───────────────────────────────
 
   /v1/skills/slash:
@@ -4166,6 +4194,34 @@ components:
           items: { $ref: '#/components/schemas/HealthEventDTO' }
         limit: { type: integer }
         offset: { type: integer }
+
+    HealthDayAggregateDTO:
+      type: object
+      required: [date, type, value, sampleCount]
+      properties:
+        date:
+          type: string
+          format: date-time
+          description: Start of the day in UTC.
+        type: { type: string }
+        value:
+          type: number
+          format: double
+          description: Sum or average over the day per the metric's aggregation policy.
+        sampleCount:
+          type: integer
+          minimum: 0
+          description: Contributing sample count for this day. Zero indicates a gap-fill placeholder.
+
+    HealthDailyResponse:
+      type: object
+      required: [type, days]
+      properties:
+        type: { type: string }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/HealthDayAggregateDTO' }
+          description: Chronologically ascending; always exactly `days` entries long (gaps filled).
 
     # ── Skills ──
 
