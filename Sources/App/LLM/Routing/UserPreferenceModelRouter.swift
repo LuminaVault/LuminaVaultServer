@@ -41,6 +41,15 @@ struct UserPreferenceModelRouter: ModelRouter {
         guard let pref else {
             return tableDecision
         }
+        // HER-300 — `managed` users explicitly opted out of BYOK routing:
+        // delegate entirely to the static table (which already cascades
+        // through to the shared Hermes gateway), so we don't honour a
+        // primary/fallback chain that lacks user credentials. The pref
+        // row's `primaryModel` is preserved for the iOS UI but doesn't
+        // steer routing — Hermes' own default model wins for managed.
+        if pref.mode == .managed {
+            return tableDecision
+        }
 
         let primary = ModelRoute(provider: pref.primaryProvider, modelID: pref.primaryModel)
         let chain = pref.fallbackChain.map { ModelRoute(provider: $0.provider, modelID: $0.model) }

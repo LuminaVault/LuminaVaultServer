@@ -61,4 +61,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M54_CreateKBCompileRejectList())
     await fluent.migrations.add(M55_AddFirstMemoryCompileCompleted())
     await fluent.migrations.add(M56_CreateEmbeddingUsage())
+    await fluent.migrations.add(M57_AddModeToLLMPrefs())
+    await fluent.migrations.add(M58_AddOnboardingBrainConfigured())
 }

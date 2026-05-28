@@ -155,6 +155,62 @@ struct OnboardingTests {
         }
     }
 
+    // HER-300 — "Choose Your Brain" onboarding step.
+
+    @Test
+    func `brain configured starts false on new user`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let (token, _, _) = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/onboarding",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"],
+            ) { response in
+                let state = try Self.decodeOnboarding(response.body)
+                #expect(state.brainConfiguredCompleted == false)
+                #expect(state.brainConfiguredCompletedAt == nil)
+            }
+        }
+    }
+
+    @Test
+    func `patch latches brainConfiguredCompleted`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let (token, _, _) = try await Self.register(client: client)
+            let body = ByteBuffer(string: #"{"brainConfiguredCompleted":true}"#)
+            try await client.execute(
+                uri: "/v1/onboarding",
+                method: .patch,
+                headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+                body: body,
+            ) { response in
+                #expect(response.status == .ok)
+                let state = try Self.decodeOnboarding(response.body)
+                #expect(state.brainConfiguredCompleted == true)
+                #expect(state.brainConfiguredCompletedAt != nil)
+            }
+        }
+    }
+
+    @Test
+    func `patch rejects brainConfiguredCompleted false`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let (token, _, _) = try await Self.register(client: client)
+            let body = ByteBuffer(string: #"{"brainConfiguredCompleted":false}"#)
+            try await client.execute(
+                uri: "/v1/onboarding",
+                method: .patch,
+                headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+                body: body,
+            ) { response in
+                #expect(response.status == .badRequest)
+            }
+        }
+    }
+
     @Test
     func `get is stable across calls`() async throws {
         let app = try await buildApplication(reader: dbTestReader)

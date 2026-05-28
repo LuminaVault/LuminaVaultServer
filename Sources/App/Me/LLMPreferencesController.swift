@@ -41,6 +41,7 @@ struct LLMPreferencesController {
         let tenantID = try ctx.requireTenantID()
         let snapshot = try await repository.get(tenantID: tenantID)
         return snapshot.flatMap(Self.toWire) ?? LLMPreferencesGetResponse(
+            mode: .managed,
             primaryProvider: defaultPrimaryProvider,
             primaryModel: defaultPrimaryModel,
             fallbackChain: [],
@@ -68,6 +69,7 @@ struct LLMPreferencesController {
         do {
             snapshot = try await repository.upsert(
                 tenantID: tenantID,
+                mode: Self.toModelMode(body.mode),
                 primaryProvider: Self.toKind(body.primaryProvider),
                 primaryModel: body.primaryModel,
                 fallbackChain: body.fallbackChain.map {
@@ -103,6 +105,20 @@ struct LLMPreferencesController {
         }
     }
 
+    private static func toModelMode(_ wire: LLMBrainMode) -> UserLLMPreference.Mode {
+        switch wire {
+        case .managed: .managed
+        case .byok: .byok
+        }
+    }
+
+    private static func toWireMode(_ model: UserLLMPreference.Mode) -> LLMBrainMode {
+        switch model {
+        case .managed: .managed
+        case .byok: .byok
+        }
+    }
+
     private static func toWire(_ snapshot: UserLLMPreferenceRepository.Snapshot) -> LLMPreferencesGetResponse? {
         guard let primary = snapshot.primaryProvider.toShared() else {
             return nil
@@ -112,6 +128,7 @@ struct LLMPreferencesController {
             return ModelRouteDTO(provider: id, model: step.model)
         }
         return LLMPreferencesGetResponse(
+            mode: toWireMode(snapshot.mode),
             primaryProvider: primary,
             primaryModel: snapshot.primaryModel,
             fallbackChain: chain,
