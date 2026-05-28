@@ -300,7 +300,7 @@ actor MemoGeneratorService {
         }
         do {
             let args = try JSONDecoder().decode(SessionSearchArgs.self, from: argsData)
-            let queryEmbedding = try await embeddings.embed(args.query)
+            let queryEmbedding = try await embeddings.embed(args.query, tenantID: tenantID)
             let hits = try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,

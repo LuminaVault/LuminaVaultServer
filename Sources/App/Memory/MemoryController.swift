@@ -251,7 +251,7 @@ struct MemoryController {
             guard !content.isEmpty else {
                 throw HTTPError(.badRequest, message: "content cannot be empty")
             }
-            let embedding = try await embeddings.embed(content)
+            let embedding = try await embeddings.embed(content, tenantID: tenantID)
             let updated = try await repository.updateContent(
                 tenantID: tenantID, id: id, content: content, embedding: embedding,
             )

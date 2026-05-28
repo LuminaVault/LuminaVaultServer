@@ -424,7 +424,7 @@ actor HermesMemoryService {
         case "memory_upsert":
             do {
                 let args = try decoder.decode(MemoryUpsertArgs.self, from: argsData)
-                let embedding = try await embeddings.embed(args.content)
+                let embedding = try await embeddings.embed(args.content, tenantID: tenantID)
                 let saved = try await memories.create(
                     tenantID: tenantID,
                     content: args.content,
@@ -461,7 +461,7 @@ actor HermesMemoryService {
         case "session_search":
             do {
                 let args = try decoder.decode(SessionSearchArgs.self, from: argsData)
-                let embedding = try await embeddings.embed(args.query)
+                let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,

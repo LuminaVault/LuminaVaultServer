@@ -473,7 +473,7 @@ actor SkillRunner {
         case AvailableTool.sessionSearch.rawValue:
             do {
                 let args = try decoder.decode(SessionSearchArgs.self, from: argsData)
-                let embedding = try await embeddings.embed(args.query)
+                let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,
@@ -545,7 +545,7 @@ actor SkillRunner {
     }
 
     private func persistMemory(tenantID: UUID, content: String, sourceVaultFileID: UUID?) async throws -> Memory {
-        let embedding = try await embeddings.embed(content)
+        let embedding = try await embeddings.embed(content, tenantID: tenantID)
         return try await memories.create(
             tenantID: tenantID,
             content: content,

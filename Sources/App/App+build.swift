@@ -509,6 +509,11 @@ func buildRouter(
     // HER-241 — per-user Hermes messaging gateway configurator. Gated on
     // the same SecretBox as BYO Hermes; gateway config is sealed at rest.
     var hermesGatewaysController: HermesGatewaysController?
+    // HER-134 — LocalHermes text-embedding adapter resolves the running
+    // per-tenant container via `HermesContainerManager.handle`. Outside
+    // the BYO branch we leave the resolver no-op; LocalHermes then falls
+    // through with `.endpointMissing` and the chain advances.
+    var localHermesHandleResolver: LocalHermesEmbeddingService.HandleResolver = { _ in nil }
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
@@ -554,6 +559,13 @@ func buildRouter(
                 ),
                 logger: Logger(label: "lv.hermes-tenant"),
             )
+            // HER-134 — wire LocalHermes text embedding to the live
+            // container manager. `handle` is read-only; if the tenant has
+            // no running container the LocalHermes adapter surfaces
+            // `.endpointMissing` and the fallback chain advances.
+            localHermesHandleResolver = { tenantID in
+                try await containerManager.handle(tenantID: tenantID)
+            }
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
@@ -995,11 +1007,28 @@ func buildRouter(
         routingLogger.warning("tts disabled: llm.provider.openai.apiKey is empty")
     }
 
+    // HER-134 — text-embedding registry. Selectable provider via
+    // `EMBEDDING_PROVIDER` env (openai|hermesLocal|nomic|deterministic),
+    // optional fallback chain via `EMBEDDING_FALLBACK_CHAIN`, monthly per-
+    // tenant token cap via `EMBEDDING_MONTHLY_TOKEN_CAP_DEFAULT`. The
+    // returned `active` is already wrapped in the usage tracker + fallback
+    // chain so consumers keep depending on the bare `EmbeddingService`
+    // protocol. LocalHermes handle resolver is a no-op for the scaffold —
+    // it falls through with `.endpointMissing` until follow-up ticket
+    // wires the per-tenant container manager into this scope.
+    let embeddingRegistry = EmbeddingProviderRegistry.bootstrap(
+        reader: reader,
+        fluent: services.fluent,
+        hermesHandleResolver: localHermesHandleResolver,
+        logger: Logger(label: "lv.embedding.registry"),
+    )
+    let embeddingService: any EmbeddingService = embeddingRegistry.active
+
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         eventBus: eventBus,
         logger: Logger(label: "lv.memory"),
@@ -1007,7 +1036,7 @@ func buildRouter(
     let memoryController = MemoryController(
         service: memoryService,
         repository: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         achievements: achievementsService,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
@@ -1085,7 +1114,7 @@ func buildRouter(
         service: memoryService,
         achievements: achievementsService,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
@@ -1103,7 +1132,7 @@ func buildRouter(
     let conversationController = ConversationController(
         fluent: services.fluent,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
@@ -1123,7 +1152,7 @@ func buildRouter(
     let memoGenerator = MemoGeneratorService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         defaultModel: services.hermesDefaultModel,
@@ -1208,7 +1237,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memory-compile"),
         progress: memoryCompileProgressPublisher,
@@ -1410,7 +1439,7 @@ func buildRouter(
     let healthCorrelationService = HealthCorrelationService(
         transport: routedTransport,
         fluent: services.fluent,
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         memories: MemoryRepository(fluent: services.fluent),
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.health-correlate"),
@@ -1566,7 +1595,7 @@ func buildRouter(
         catalog: skillCatalog,
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: DeterministicEmbeddingService(),
+        embeddings: embeddingService,
         apns: pushService,
         defaultModel: services.hermesDefaultModel,
         fluent: services.fluent,

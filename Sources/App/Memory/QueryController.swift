@@ -111,7 +111,7 @@ struct QueryController {
         // Retrieve up-front. If retrieval itself fails, surface a 502
         // through the normal HTTP path — easier to debug than a
         // partial SSE stream.
-        let queryEmbedding = try await embeddings.embed(userQuery)
+        let queryEmbedding = try await embeddings.embed(userQuery, tenantID: tenantID)
         let hits = try await memories.semanticSearch(
             tenantID: tenantID,
             queryEmbedding: queryEmbedding,
