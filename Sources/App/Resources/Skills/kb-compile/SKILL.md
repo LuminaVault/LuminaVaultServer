@@ -2,6 +2,8 @@
 name: kb-compile
 description: Compile all uncompiled raw/ content into the wiki. Writes source summaries, creates/updates concept articles with Obsidian backlinks, and updates the index. Run after /kb-ingest to process new content.
 trigger: /kb-compile
+metadata:
+  capability: medium
 ---
 
 ## Environment Reality
