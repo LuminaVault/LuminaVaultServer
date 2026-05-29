@@ -193,24 +193,25 @@ struct AccountDeletionTests {
 
             // 5) Verify cascade in DB directly. We can't reach the app's Fluent
             // handle from the test, so spin up an ephemeral one against the
-            // same test database.
-            let fluent = try await Self.openTestFluent()
-            defer { Task { try? await fluent.shutdown() } }
-
-            try await Self.expectEmpty(table: "users", tenantColumn: "id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "refresh_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "password_reset_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "mfa_challenges", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "oauth_identities", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "memories", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "hermes_profiles", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "device_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "webauthn_credentials", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "spaces", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "vault_files", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "health_events", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "email_verification_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
-            try await Self.expectEmpty(table: "onboarding_state", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+            // same test database. HER-310 — `withTestFluent` guarantees
+            // shutdown completes before returning (avoids AsyncKit pool
+            // assertion at process exit).
+            try await withTestFluent(label: "test.account.delete") { fluent in
+                try await Self.expectEmpty(table: "users", tenantColumn: "id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "refresh_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "password_reset_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "mfa_challenges", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "oauth_identities", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "memories", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "hermes_profiles", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "device_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "webauthn_credentials", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "spaces", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "vault_files", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "health_events", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "email_verification_tokens", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+                try await Self.expectEmpty(table: "onboarding_state", tenantColumn: "tenant_id", tenantID: tenantID, fluent: fluent)
+            }
         }
     }
 
@@ -232,24 +233,14 @@ struct AccountDeletionTests {
                 body: body,
             ) { #expect($0.status == .noContent) }
 
-            let fluent = try await Self.openTestFluent()
-            defer { Task { try? await fluent.shutdown() } }
-
-            let aliceRow = try await User.find(alice.userId, on: fluent.db())
-            #expect(aliceRow != nil, "Alice's row must survive Mallory's account deletion")
+            try await withTestFluent(label: "test.account.delete") { fluent in
+                let aliceRow = try await User.find(alice.userId, on: fluent.db())
+                #expect(aliceRow != nil, "Alice's row must survive Mallory's account deletion")
+            }
         }
     }
 
     // MARK: - Helpers
-
-    private static func openTestFluent() async throws -> Fluent {
-        let fluent = Fluent(logger: Logger(label: "test.account.delete"))
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        return fluent
-    }
 
     private static func expectEmpty(
         table: String,
