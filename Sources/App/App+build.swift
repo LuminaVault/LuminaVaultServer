@@ -774,12 +774,37 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm"),
     )
+    // HER-240 / spec ticket #4 — pre-enrich chat messages with <context>
+    // blocks for any URLs the user pasted. Reuses URLEnrichmentService's
+    // lightweight enrichURL helper (no DB/disk side effects).
+    //
+    // HER-240 / spec ticket #3 — optional jina.ai tier-2 post-processor
+    // wired here so the shared `urlEnrichmentService` instance picks it
+    // up for both chat pre-enrichment and capture-side rewriting.
+    let jinaEnricher: JinaEnricher? = services.jinaAPIKey.isEmpty
+        ? nil
+        : JinaEnricher(
+            session: URLSession(configuration: .ephemeral),
+            apiKey: services.jinaAPIKey,
+            logger: Logger(label: "lv.capture.jina"),
+        )
+    let urlEnrichmentService = URLEnrichmentService(
+        vaultPaths: vaultPaths,
+        fluent: services.fluent,
+        logger: Logger(label: "lv.capture"),
+        jinaEnricher: jinaEnricher,
+    )
+    let chatURLPreEnricher = ChatURLPreEnricher(
+        urlEnrichmentService: urlEnrichmentService,
+        logger: Logger(label: "lv.llm.chat-url-preenricher"),
+    )
     let llmController = LLMController(
         service: llmService,
         telemetry: llmTelemetry,
         notificationService: pushService,
         achievements: achievementsService,
         usageMeter: usageMeterService,
+        urlPreEnricher: chatURLPreEnricher,
     )
     // HER-172 ContextRouter — feature-gated by `users.context_routing`.
     // Constructed unconditionally; the middleware short-circuits when the
@@ -1065,21 +1090,9 @@ func buildRouter(
     memoryController.addReadRoutes(to: memoryReadGroup)
 
     // HER-149: URL capture with async enrichment (YouTube oEmbed, X scraper, GenericOG).
-    // HER-240 / spec ticket #3: optional jina.ai tier-2 post-processor for
-    // full-page markdown when the primary enricher's metadata is shallow.
-    let jinaEnricher: JinaEnricher? = services.jinaAPIKey.isEmpty
-        ? nil
-        : JinaEnricher(
-            session: URLSession(configuration: .ephemeral),
-            apiKey: services.jinaAPIKey,
-            logger: Logger(label: "lv.capture.jina"),
-        )
-    let urlEnrichmentService = URLEnrichmentService(
-        vaultPaths: vaultPaths,
-        fluent: services.fluent,
-        logger: Logger(label: "lv.capture"),
-        jinaEnricher: jinaEnricher,
-    )
+    // Note: `urlEnrichmentService` + `jinaEnricher` are constructed earlier
+    // (above `llmController`) so that `ChatURLPreEnricher` can share the
+    // same instance for HER-240 spec ticket #4 chat pre-enrichment.
     // HER-274 — shared by `CaptureController` (Safari share extension)
     // and `ConversationController` (chat auto-save-link post-processor).
     // Same vault file shape and enrichment pipeline either way.

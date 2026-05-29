@@ -10,6 +10,27 @@ struct LLMController {
     let notificationService: APNSNotificationService
     let achievements: AchievementsService?
     let usageMeter: UsageMeterService?
+    /// HER-240 / spec ticket #4 — optional pre-enricher that rewrites
+    /// user-role messages with `<context>` blocks for any URLs found.
+    /// Nil disables silently; per-request `X-Skip-URL-Enrichment: true`
+    /// header also disables.
+    let urlPreEnricher: ChatURLPreEnricher?
+
+    init(
+        service: any HermesLLMService,
+        telemetry: RouteTelemetry,
+        notificationService: APNSNotificationService,
+        achievements: AchievementsService? = nil,
+        usageMeter: UsageMeterService? = nil,
+        urlPreEnricher: ChatURLPreEnricher? = nil,
+    ) {
+        self.service = service
+        self.telemetry = telemetry
+        self.notificationService = notificationService
+        self.achievements = achievements
+        self.usageMeter = usageMeter
+        self.urlPreEnricher = urlPreEnricher
+    }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/chat", use: chat)
@@ -48,6 +69,22 @@ struct LLMController {
         var body = try await req.decode(as: ChatRequest.self, context: ctx)
         guard !body.messages.isEmpty else {
             throw HTTPError(.badRequest, message: "messages required")
+        }
+
+        // HER-240 / spec ticket #4 — pre-enrich user messages with
+        // <context> blocks for any URLs unless caller opted out via
+        // X-Skip-URL-Enrichment: true.
+        let skipEnrichment = req.headers[HTTPField.Name("X-Skip-URL-Enrichment")!]?.lowercased() == "true"
+        if !skipEnrichment, let preEnricher = urlPreEnricher {
+            let enriched = await preEnricher.enrich(messages: body.messages)
+            body = ChatRequest(
+                messages: enriched,
+                model: body.model,
+                temperature: body.temperature,
+                stream: body.stream,
+                tools: body.tools,
+                tool_choice: body.tool_choice,
+            )
         }
 
         var isDegraded = false

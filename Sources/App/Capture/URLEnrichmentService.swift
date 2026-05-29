@@ -30,6 +30,27 @@ struct URLEnrichmentService {
         self.jinaEnricher = jinaEnricher
     }
 
+    /// HER-240 / spec ticket #4 — lightweight enrichment for chat
+    /// pre-processor. Runs the same enricher chain as `enrichAndRewrite`
+    /// but skips all DB / disk side effects. SSRF-guarded. Returns nil
+    /// when the URL fails parsing, SSRF check, or every enricher throws.
+    func enrichURL(_ urlString: String) async -> EnrichedMetadata? {
+        guard let url = URL(string: urlString) else { return nil }
+        guard URLEnricherGuard.isPublic(url) else {
+            logger.warning("chat-enrichment rejected non-public url=\(urlString)")
+            return nil
+        }
+        guard let enricher = enrichers.first(where: { $0.canHandle(url: url) }) else {
+            return nil
+        }
+        do {
+            return try await enricher.enrich(url: url)
+        } catch {
+            logger.warning("chat-enrichment failed url=\(urlString) error=\(error)")
+            return nil
+        }
+    }
+
     func enrichAndRewrite(vaultFileID: UUID, urlString: String, tenantID: UUID) async {
         let db = fluent.db()
         do {
