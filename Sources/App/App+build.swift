@@ -1430,10 +1430,20 @@ func buildRouter(
     // up rows left in `error` / `provisioning` by signup soft-fails and
     // retries `HermesProfileService.ensure`. Runs in-process via
     // `ServiceLifecycle`, mirroring `LapseArchiverService`.
-    managedServices.append(HermesProfileReconcilerService(
-        reconciler: reconciler,
-        logger: Logger(label: "lv.admin"),
-    ))
+    //
+    // HER-310 — skip registration entirely under `lv.environment=test`.
+    // `app.test(.router)` boots the ServiceGroup and immediately
+    // graceful-shuts it down; the reconciler's startup `health()` probe
+    // races `Databases.shutdownAsync()` and asserts inside
+    // `Databases._requireDefaultID()`, SIGILL-ing the test binary on
+    // process exit. The reconciler is operational scaffolding — tests
+    // never exercise it, so unhooking it is the cleanest fix.
+    if lvEnvironment != "test" {
+        managedServices.append(HermesProfileReconcilerService(
+            reconciler: reconciler,
+            logger: Logger(label: "lv.admin"),
+        ))
+    }
 
     // Admin: HER-146 Apple Health correlation engine. Shared-secret gated.
     // Host cron drives this nightly via `POST /v1/admin/health/correlate`.

@@ -22,6 +22,14 @@ actor HermesProfileReconcilerService: Service {
     }
 
     func run() async throws {
+        // HER-310 — short-circuit if the service is already being torn
+        // down before we issue any DB-touching probe. `app.test(.router)`
+        // can spin the ServiceGroup up and immediately graceful-shut it
+        // down; without this guard the `reconciler.health()` call below
+        // races `Databases.shutdownAsync()` and asserts inside
+        // `Databases._requireDefaultID()`, SIGILL-ing the test binary on
+        // process exit (the precondition is non-throwing).
+        guard !Task.isShuttingDownGracefully, !Task.isCancelled else { return }
         // HER-226 — surface gateway reachability at startup so the
         // first log line operators see on boot answers "is Hermes up?".
         do {
