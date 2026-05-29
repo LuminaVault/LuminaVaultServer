@@ -4,8 +4,20 @@ import Hummingbird
 import Logging
 import LuminaVaultShared
 import Metrics
+import NIOConcurrencyHelpers
 import NIOCore
 import Tracing
+
+/// HER — thrown by the streaming service when the upstream sends no bytes
+/// for longer than the configured idle window. Converts a silent indefinite
+/// hang (Hermes stalled mid-turn) into a fast, labeled failure the chat
+/// handler can surface as a `.error` SSE event.
+struct HermesStreamIdleTimeout: Error, CustomStringConvertible {
+    let seconds: Double
+    var description: String {
+        "hermes stream idle timeout: no data for \(seconds)s"
+    }
+}
 
 /// HER-37 — single delta produced by a streaming chat completion.
 /// Concatenate `delta`s in order to reconstruct the full reply.
@@ -50,6 +62,13 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
     /// the header.
     let apiKey: String
     let requestTimeout: TimeAmount
+    /// Idle (inter-chunk) timeout. The `requestTimeout` above bounds the
+    /// whole exchange, but once Hermes sends `200` + headers and then stalls
+    /// (agentic tool execution with no `delta.content`, or a wedged upstream)
+    /// nothing fires for the full request budget and the client hangs. This
+    /// bounds the gap between received body chunks instead — any received
+    /// byte (including `hermes.tool.progress` keep-alives) resets it.
+    let streamIdleTimeout: TimeAmount
     let successCounter = Counter(label: "luminavault.llm.chat.stream.success")
     let failureCounter = Counter(label: "luminavault.llm.chat.stream.failure")
 
@@ -60,6 +79,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         logger: Logger,
         apiKey: String = "",
         requestTimeout: TimeAmount = .seconds(120),
+        streamIdleTimeout: TimeAmount = .seconds(60),
     ) {
         self.baseURL = baseURL
         self.httpClient = httpClient
@@ -67,6 +87,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         self.logger = logger
         self.apiKey = apiKey
         self.requestTimeout = requestTimeout
+        self.streamIdleTimeout = streamIdleTimeout
     }
 
     func chatStream(
@@ -80,11 +101,17 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         let logger = logger
         let apiKey = apiKey
         let requestTimeout = requestTimeout
+        let streamIdleTimeout = streamIdleTimeout
         let successCounter = successCounter
         let failureCounter = failureCounter
+        let model = request.model ?? defaultModel
 
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
+            let startedNanos = DispatchTime.now().uptimeNanoseconds
+            func elapsedMs() -> Int64 {
+                Int64((DispatchTime.now().uptimeNanoseconds - startedNanos) / 1_000_000)
+            }
             do {
                 let url = baseURL
                     .appendingPathComponent("v1")
@@ -92,7 +119,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     .appendingPathComponent("completions")
 
                 let payload = StreamingChatRequestBody(
-                    model: request.model ?? defaultModel,
+                    model: model,
                     messages: request.messages,
                     temperature: request.temperature,
                     stream: true,
@@ -107,44 +134,105 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     payloadData: payloadData,
                 )
 
+                logger.debug("hermes stream request", metadata: [
+                    "url": .string(url.absoluteString),
+                    "model": .string(model),
+                    "stream": .string("true"),
+                    "session_key_present": .string(sessionKey.isEmpty ? "false" : "true"),
+                    "session_id_present": .string((sessionID?.isEmpty == false) ? "true" : "false"),
+                    "body_bytes": .stringConvertible(payloadData.count),
+                    "idle_timeout_s": .stringConvertible(Double(streamIdleTimeout.nanoseconds) / 1_000_000_000),
+                ])
+
                 let response = try await httpClient.execute(httpReq, timeout: requestTimeout)
                 guard (200 ..< 300).contains(Int(response.status.code)) else {
                     failureCounter.increment()
-                    logger.error("hermes stream upstream \(response.status.code)")
+                    logger.error("hermes stream upstream non-2xx", metadata: [
+                        "status": .stringConvertible(response.status.code),
+                        "elapsed_ms": .stringConvertible(elapsedMs()),
+                    ])
                     continuation.finish(throwing: HTTPError(.badGateway, message: "hermes stream upstream error (\(response.status.code))"))
                     return
                 }
 
-                var buffer = ""
-                let decoder = JSONDecoder()
-                var finished = false
-                for try await chunk in response.body {
-                    if Task.isCancelled { break }
-                    if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
-                        buffer.append(text)
+                // Idle watchdog: race the SSE reader against an inactivity
+                // timer. Any received body chunk refreshes `lastActivity`;
+                // if the gap exceeds `streamIdleTimeout` the watchdog throws,
+                // the group cancels the reader, and we surface a labeled
+                // timeout instead of hanging until the client gives up.
+                let lastActivity = NIOLockedValueBox(NIODeadline.now())
+                let idleNanos = streamIdleTimeout.nanoseconds
+
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        var buffer = ""
+                        let decoder = JSONDecoder()
+                        var finished = false
+                        var rawChunks = 0
+                        for try await chunk in response.body {
+                            if Task.isCancelled { break }
+                            lastActivity.withLockedValue { $0 = .now() }
+                            rawChunks += 1
+                            if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
+                                buffer.append(text)
+                            }
+                            // OpenAI SSE: events terminated by `\n\n`. Pop
+                            // complete records out of the buffer; leave any
+                            // partial tail in place.
+                            while let terminator = buffer.range(of: "\n\n") {
+                                let record = String(buffer[..<terminator.lowerBound])
+                                buffer.removeSubrange(..<terminator.upperBound)
+                                if Self.processRecord(
+                                    record,
+                                    decoder: decoder,
+                                    yield: { continuation.yield($0) },
+                                    logger: logger,
+                                ) {
+                                    finished = true
+                                    break
+                                }
+                            }
+                            if finished { break }
+                        }
+                        // Flush a trailing record that arrived without the
+                        // `\n\n` terminator (upstream closed mid-frame).
+                        if !finished, !buffer.isEmpty {
+                            _ = Self.processRecord(
+                                buffer,
+                                decoder: decoder,
+                                yield: { continuation.yield($0) },
+                                logger: logger,
+                            )
+                        }
+                        logger.debug("hermes stream reader done", metadata: [
+                            "raw_chunks": .stringConvertible(rawChunks),
+                            "finished": .string("\(finished)"),
+                        ])
                     }
-                    // OpenAI SSE: events terminated by `\n\n`. Pop
-                    // complete records out of the buffer; leave any
-                    // partial tail in place.
-                    while let terminator = buffer.range(of: "\n\n") {
-                        let record = String(buffer[..<terminator.lowerBound])
-                        buffer.removeSubrange(..<terminator.upperBound)
-                        if Self.processRecord(
-                            record,
-                            decoder: decoder,
-                            yield: { continuation.yield($0) },
-                            logger: logger,
-                        ) {
-                            finished = true
-                            break
+                    group.addTask {
+                        while true {
+                            try await Task.sleep(for: .milliseconds(1000))
+                            if Task.isCancelled { return }
+                            let idle = NIODeadline.now() - lastActivity.withLockedValue { $0 }
+                            if idle.nanoseconds > idleNanos {
+                                throw HermesStreamIdleTimeout(seconds: Double(idleNanos) / 1_000_000_000)
+                            }
                         }
                     }
-                    if finished { break }
+                    // First child to finish wins: reader returns on stream
+                    // end, or the watchdog throws on stall. Either way cancel
+                    // the rest.
+                    try await group.next()
+                    group.cancelAll()
                 }
                 successCounter.increment()
                 continuation.finish()
             } catch {
                 failureCounter.increment()
+                logger.error("hermes stream failed", metadata: [
+                    "error": .string(Logger.redact(String(describing: error))),
+                    "elapsed_ms": .stringConvertible(elapsedMs()),
+                ])
                 continuation.finish(throwing: error)
             }
         }
@@ -190,23 +278,44 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         yield: (ChatStreamChunk) -> Void,
         logger: Logger,
     ) -> Bool {
+        // Hermes frames a record as an optional `event:` line followed by
+        // `data:`. We forward `chat.completion.chunk` deltas; the custom
+        // `hermes.tool.progress` event (and any other non-delta event) is
+        // logged for visibility but not treated as content — crucially, the
+        // raw byte already refreshed the idle watchdog, so tool work counts
+        // as liveness rather than a stall.
+        var eventName: String?
         for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
             let line = String(rawLine)
+            if line.hasPrefix("event:") {
+                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                continue
+            }
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
             if payload.isEmpty { continue }
             if payload == "[DONE]" { return true }
+            if let eventName, eventName != "message" {
+                logger.debug("hermes stream non-content event", metadata: ["event": .string(eventName)])
+                continue
+            }
             guard let data = payload.data(using: .utf8) else { continue }
             do {
                 let chunk = try decoder.decode(UpstreamStreamChunk.self, from: data)
-                guard let choice = chunk.choices.first else { continue }
+                guard let choice = chunk.choices.first else {
+                    logger.trace("hermes stream record had no choices")
+                    continue
+                }
                 let delta = choice.delta.content ?? ""
                 if !delta.isEmpty || choice.finishReason != nil {
                     yield(ChatStreamChunk(delta: delta, finishReason: choice.finishReason))
                 }
                 if choice.finishReason != nil { return true }
             } catch {
-                logger.debug("hermes stream chunk decode skipped: \(error)")
+                logger.debug("hermes stream chunk decode skipped", metadata: [
+                    "event": .string(eventName ?? "none"),
+                    "error": .string(String(describing: error)),
+                ])
                 continue
             }
         }

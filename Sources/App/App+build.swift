@@ -239,6 +239,11 @@ func buildRouter(
     kbCompileTransportOverride: (any HermesChatTransport)? = nil,
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
+    // HER-310 — gate DB-ticking background services (cron, reconciler, the
+    // achievements worker) so they never start when there's no database
+    // (no-DB tests) where their `fluent.db()` calls fatalError with
+    // "No default database configured" and kill the test binary.
+    let fluentEnabled = reader.string(forKey: "fluent.enabled", default: "true").lowercased() != "false"
     router.addMiddleware {
         TracingMiddleware()
         MetricsMiddleware()
@@ -345,7 +350,7 @@ func buildRouter(
         service: achievementsService,
         logger: Logger(label: "lv.achievements.worker"),
     )
-    managedServices.append(achievementsWorker)
+    if fluentEnabled { managedServices.append(achievementsWorker) }
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
@@ -1493,7 +1498,7 @@ func buildRouter(
     // `Databases._requireDefaultID()`, SIGILL-ing the test binary on
     // process exit. The reconciler is operational scaffolding — tests
     // never exercise it, so unhooking it is the cleanest fix.
-    if lvEnvironment != "test" {
+    if fluentEnabled, lvEnvironment != "test" {
         managedServices.append(HermesProfileReconcilerService(
             reconciler: reconciler,
             logger: Logger(label: "lv.admin"),
@@ -1684,7 +1689,7 @@ func buildRouter(
     // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is
     // invoked for the application's lifetime. No-op today (catalog empty);
     // becomes load-bearing once HER-169 lands skill dispatch.
-    managedServices.append(cronScheduler)
+    if fluentEnabled, lvEnvironment != "test" { managedServices.append(cronScheduler) }
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))

@@ -35,6 +35,53 @@ struct RouteTelemetry {
     }
 }
 
+// MARK: - Structured stage logging
+
+extension Logger {
+    /// Strips `Bearer <token>` secrets from a string before it reaches the
+    /// logs. Upstream error descriptions can embed the Authorization header;
+    /// this guards against leaking the Hermes / provider key.
+    static func redact(_ s: String) -> String {
+        s.replacingOccurrences(
+            of: #"Bearer\s+[A-Za-z0-9._\-]+"#,
+            with: "Bearer ***",
+            options: .regularExpression,
+        )
+    }
+}
+
+/// Times an async stage and logs `stage` + `duration_ms` on the given
+/// (request-scoped) logger, carrying through any caller metadata. Success
+/// logs at `.debug`; failure logs at `.error` with a redacted error string
+/// and rethrows. The reusable convention for per-stage server observability.
+@discardableResult
+func loggedStage<T>(
+    _ stage: String,
+    logger: Logger,
+    metadata: Logger.Metadata = [:],
+    _ body: () async throws -> T,
+) async throws -> T {
+    let start = DispatchTime.now().uptimeNanoseconds
+    func elapsedMs() -> Int64 {
+        Int64((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+    }
+    do {
+        let result = try await body()
+        var md = metadata
+        md["stage"] = .string(stage)
+        md["duration_ms"] = .stringConvertible(elapsedMs())
+        logger.debug("stage ok", metadata: md)
+        return result
+    } catch {
+        var md = metadata
+        md["stage"] = .string(stage)
+        md["duration_ms"] = .stringConvertible(elapsedMs())
+        md["error"] = .string(Logger.redact(String(describing: error)))
+        logger.error("stage failed", metadata: md)
+        throw error
+    }
+}
+
 struct DiscardingMetricsFactory: MetricsFactory {
     func makeCounter(label _: String, dimensions _: [(String, String)]) -> any CounterHandler {
         DiscardingCounter()
