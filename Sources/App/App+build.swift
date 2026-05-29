@@ -247,7 +247,11 @@ func buildRouter(
     router.addMiddleware {
         TracingMiddleware()
         MetricsMiddleware()
-        LogRequestsMiddleware(.info)
+        // HER — structured request logging: outcome (status), duration, and
+        // redacted error on failure, with level by status class. Replaces
+        // `LogRequestsMiddleware` (start-only, no outcome). Correlation id +
+        // trace ids come from the request context + TracingMiddleware above.
+        RequestLogMiddleware(successLevel: .info)
         OpenAPIRequestContextMiddleware()
     }
     router.middlewares.add(RequestDecompressionMiddleware())
