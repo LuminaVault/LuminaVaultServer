@@ -7,6 +7,11 @@ struct EnrichedMetadata: Codable {
     var author: String?
     var url: String
     var transcript: String?
+    /// HER-240 / spec ticket #3 — full-article body markdown populated by
+    /// the JinaEnricher tier-2 post-processor. Capped at 1MB. Nil when the
+    /// primary enricher already produced sufficient body via `description`
+    /// or `transcript`, or when no jina key is configured.
+    var body: String?
 }
 
 protocol URLEnricher: Sendable {

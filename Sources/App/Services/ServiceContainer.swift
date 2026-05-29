@@ -121,6 +121,10 @@ struct ServiceContainer {
     let emailKind: String
     /// HER-33: Resend API key (required when `emailKind=resend`).
     let emailResendAPIKey: String
+    /// HER-240 / spec ticket #3: jina.ai reader API key for tier-2 URL
+    /// enrichment (full-page markdown). Empty disables jina silently —
+    /// captures still land with whatever the primary enricher returned.
+    let jinaAPIKey: String
     /// HER-33: From address shown to recipients. Must be on a verified
     /// Resend sender domain (e.g. `LuminaVault <auth@lumina.app>`).
     let emailFromAddress: String
