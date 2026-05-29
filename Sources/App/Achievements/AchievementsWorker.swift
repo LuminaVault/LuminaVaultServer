@@ -13,7 +13,7 @@ import ServiceLifecycle
 ///
 /// Shape mirrors `MeTodayCache` (actor + `Service` + `gracefulShutdown()`).
 actor AchievementsWorker: Service {
-    struct Job: Sendable {
+    struct Job {
         let tenantID: UUID
         let event: AchievementEvent
     }
@@ -26,7 +26,7 @@ actor AchievementsWorker: Service {
     init(service: AchievementsService, logger: Logger, bufferSize: Int = 256) {
         self.service = service
         self.logger = logger
-        (self.stream, self.continuation) = AsyncStream<Job>.makeStream(
+        (stream, continuation) = AsyncStream<Job>.makeStream(
             bufferingPolicy: .bufferingNewest(bufferSize),
         )
     }

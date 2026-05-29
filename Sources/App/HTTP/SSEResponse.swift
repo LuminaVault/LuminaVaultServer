@@ -25,6 +25,11 @@ struct SSEStreamResponse: ResponseGenerator {
         let stream = events
         let body = ResponseBody { writer in
             let encoder = JSONEncoder()
+            // Client decodes SSE frames with `.iso8601` dates (JSONDecoder.hvDefault).
+            // Without this the default `.deferredToDate` emits a numeric timestamp and
+            // the client throws "data couldn't be read…" on the first Date-bearing event
+            // (e.g. `.source(QueryHitDTO.createdAt)`). Matches MemoryCompileProgressPublisher.
+            encoder.dateEncodingStrategy = .iso8601
             do {
                 for try await event in stream {
                     let buf = try Self.encodeEventLine(event, encoder: encoder)
