@@ -47,7 +47,7 @@ struct VaultController {
     let fluent: Fluent
     let initService: VaultInitService?
     let eventBus: EventBus?
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     let logger: Logger
     let maxFileSize: Int
 
@@ -59,7 +59,7 @@ struct VaultController {
         fluent: Fluent,
         initService: VaultInitService? = nil,
         eventBus: EventBus? = nil,
-        achievements: AchievementsService? = nil,
+        achievements: AchievementsWorker? = nil,
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
     ) {
@@ -173,7 +173,7 @@ struct VaultController {
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
         if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .vaultUploaded) }
+            achievements.enqueue(tenantID: tenantID, event: .vaultUploaded)
         }
 
         // HER-171: notify the skills runtime so capture-driven skills

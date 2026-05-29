@@ -18,7 +18,7 @@ struct LinkCaptureService {
     let vaultPaths: VaultPathService
     let fluent: Fluent
     let eventBus: EventBus?
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     let enrichmentService: URLEnrichmentService
     let logger: Logger
 
@@ -102,7 +102,7 @@ struct LinkCaptureService {
         logger.info("link captured tenant=\(tenantID) url=\(urlString) path=\(relativePath)")
 
         if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .vaultUploaded) }
+            achievements.enqueue(tenantID: tenantID, event: .vaultUploaded)
         }
 
         if let eventBus {

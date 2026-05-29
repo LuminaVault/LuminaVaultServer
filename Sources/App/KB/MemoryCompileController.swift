@@ -8,7 +8,7 @@ import LuminaVaultShared
 struct MemoryCompileController {
     let service: MemoryCompileService
     let fluent: Fluent
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     let progress: any MemoryCompileProgressPublisher
     let logger: Logger
 
@@ -84,7 +84,7 @@ struct MemoryCompileController {
             try await markFirstKBCompileCompleted(tenantID: tenantID)
 
             if let achievements {
-                Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .kbCompiled) }
+                achievements.enqueue(tenantID: tenantID, event: .kbCompiled)
             }
 
             let response = KBCompileResponse(

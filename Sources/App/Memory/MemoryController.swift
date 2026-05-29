@@ -71,7 +71,7 @@ struct MemoryController {
     let service: HermesMemoryService
     let repository: MemoryRepository
     let embeddings: any EmbeddingService
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     /// HER-235 — derives the read-only memory graph on request.
     let graphService: MemoryGraphService
     /// HER-290 — durable `(tenant_id, content_hash)` reject list used to dedup
@@ -139,7 +139,7 @@ struct MemoryController {
             try await result.memory.save(on: repository.fluent.db())
         }
         if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .memoryUpserted) }
+            achievements.enqueue(tenantID: tenantID, event: .memoryUpserted)
         }
         return try MemoryUpsertResponse(
             memoryId: result.memory.requireID(),

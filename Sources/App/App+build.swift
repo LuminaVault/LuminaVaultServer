@@ -336,6 +336,16 @@ func buildRouter(
         eventBus: eventBus,
         logger: Logger(label: "lv.achievements"),
     )
+    // HER-310 — controller hot-paths enqueue achievement events here instead of
+    // `Task.detached { await achievements.recordAndPush(...) }`. The worker owns
+    // the DB write on the app's long-lived Fluent and is registered AFTER
+    // `fluent` in managedServices, so it stops draining BEFORE Fluent shuts down
+    // → no `.db()` call races a torn-down database (the signal-5 crash).
+    let achievementsWorker = AchievementsWorker(
+        service: achievementsService,
+        logger: Logger(label: "lv.achievements.worker"),
+    )
+    managedServices.append(achievementsWorker)
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
@@ -823,7 +833,7 @@ func buildRouter(
         service: llmService,
         telemetry: llmTelemetry,
         notificationService: pushService,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         usageMeter: usageMeterService,
         urlPreEnricher: chatURLPreEnricher,
     )
@@ -1085,7 +1095,7 @@ func buildRouter(
         service: memoryService,
         repository: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
     )
@@ -1121,7 +1131,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         eventBus: eventBus,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         enrichmentService: urlEnrichmentService,
         logger: Logger(label: "lv.capture"),
     )
@@ -1158,7 +1168,7 @@ func buildRouter(
     )
     let queryController = QueryController(
         service: memoryService,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
         streamService: queryStreamService,
@@ -1248,7 +1258,7 @@ func buildRouter(
         fluent: services.fluent,
         initService: vaultInitService,
         eventBus: eventBus,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
     )
     let vaultGroup = router.group("/v1/vault")
@@ -1291,7 +1301,7 @@ func buildRouter(
     let memoryCompileController = MemoryCompileController(
         service: memoryCompileService,
         fluent: services.fluent,
-        achievements: achievementsService,
+        achievements: achievementsWorker,
         progress: memoryCompileProgressPublisher,
         logger: Logger(label: "lv.memory-compile.controller"),
     )
@@ -1341,7 +1351,7 @@ func buildRouter(
     spacesController.addRoutes(to: spacesGroup)
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
-    let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsService)
+    let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsWorker)
     let soulGroup = router.group("/v1/soul")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .soulByUser, storage: rateLimitStorage))

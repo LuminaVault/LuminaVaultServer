@@ -12,7 +12,7 @@ extension SoulResponse: @retroactive ResponseEncodable {}
 struct SoulController {
     let service: SOULService
     let telemetry: RouteTelemetry
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
 
     /// Cap matches `SOULService.maxSizeBytes`; here we collect at most that
     /// many bytes from the request before failing fast.
@@ -50,7 +50,7 @@ struct SoulController {
             }
             if let achievements {
                 let tenantID = try user.requireID()
-                Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .soulConfigured) }
+                achievements.enqueue(tenantID: tenantID, event: .soulConfigured)
             }
             return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
         }

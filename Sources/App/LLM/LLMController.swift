@@ -8,7 +8,7 @@ struct LLMController {
     let service: any HermesLLMService
     let telemetry: RouteTelemetry
     let notificationService: APNSNotificationService
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     let usageMeter: UsageMeterService?
     /// HER-240 / spec ticket #4 — optional pre-enricher that rewrites
     /// user-role messages with `<context>` blocks for any URLs found.
@@ -20,7 +20,7 @@ struct LLMController {
         service: any HermesLLMService,
         telemetry: RouteTelemetry,
         notificationService: APNSNotificationService,
-        achievements: AchievementsService? = nil,
+        achievements: AchievementsWorker? = nil,
         usageMeter: UsageMeterService? = nil,
         urlPreEnricher: ChatURLPreEnricher? = nil,
     ) {
@@ -134,7 +134,7 @@ struct LLMController {
                 response: response,
             )
             if let achievements {
-                Task { await achievements.recordAndPush(tenantID: userID, event: .chatCompleted) }
+                achievements.enqueue(tenantID: userID, event: .chatCompleted)
             }
             if finalIsDegraded {
                 var headers = HTTPFields()

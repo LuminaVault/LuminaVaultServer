@@ -12,7 +12,7 @@ extension QueryResponse: @retroactive ResponseEncodable {}
 /// over Server-Sent Events.
 struct QueryController {
     let service: HermesMemoryService
-    let achievements: AchievementsService?
+    let achievements: AchievementsWorker?
     // HER-37 — streaming dependencies. Optional so existing test wirings
     // that only need the non-streaming `/v1/query` route keep compiling.
     let memories: MemoryRepository?
@@ -26,7 +26,7 @@ struct QueryController {
 
     init(
         service: HermesMemoryService,
-        achievements: AchievementsService?,
+        achievements: AchievementsWorker?,
         memories: MemoryRepository? = nil,
         embeddings: (any EmbeddingService)? = nil,
         streamService: (any HermesLLMStreamService)? = nil,
@@ -64,7 +64,7 @@ struct QueryController {
             limit: body.limit ?? 5,
         )
         if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .queryRan) }
+            achievements.enqueue(tenantID: tenantID, event: .queryRan)
         }
         let hits = answer.hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -119,7 +119,7 @@ struct QueryController {
         )
 
         if let achievements {
-            Task.detached { await achievements.recordAndPush(tenantID: tenantID, event: .queryRan) }
+            achievements.enqueue(tenantID: tenantID, event: .queryRan)
         }
 
         let chatRequest = ChatRequest(
