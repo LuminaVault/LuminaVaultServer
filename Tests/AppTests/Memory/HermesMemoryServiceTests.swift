@@ -52,8 +52,17 @@ struct HermesMemoryServiceTests {
         await fluent.migrations.add(M16_CreateEmailVerificationToken())
         await fluent.migrations.add(M17_CreateOnboardingState())
         await fluent.migrations.add(M18_AddMemoryTags())
-        try await fluent.migrate()
-        return fluent
+        // HER-310 — wrap `fluent.migrate()` so a transient PG error
+        // shuts the pool down before propagating; otherwise the
+        // EventLoopGroupConnectionPool leaks and SIGILLs the test
+        // binary on process exit (AsyncKit precondition).
+        do {
+            try await fluent.migrate()
+            return fluent
+        } catch {
+            try? await fluent.shutdown()
+            throw error
+        }
     }
 
     private static func createTenant(on fluent: Fluent) async throws -> UUID {

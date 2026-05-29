@@ -28,15 +28,19 @@ struct LapseArchiverTests {
         let fluent = Fluent(logger: Logger(label: "test.lapse-archiver"))
         fluent.databases.use(.postgres(configuration: TestPostgres.configuration()), as: .psql)
         await addMigrations(to: fluent)
-        try await fluent.migrate()
-        try await deletePriorLapseFixtures(fluent)
-        let job = LapseArchiverJob(
-            fluent: fluent,
-            vaultPaths: VaultPathService(rootPath: vaultRoot.path),
-            coldStoragePath: coldRoot.path,
-            logger: Logger(label: "test.lapse-archiver"),
-        )
+        // HER-310 — `fluent.migrate()` and `deletePriorLapseFixtures`
+        // were running above the do/catch — a transient PG error would
+        // leak the EventLoopGroupConnectionPool and SIGILL the test
+        // binary on process exit (AsyncKit precondition).
         do {
+            try await fluent.migrate()
+            try await deletePriorLapseFixtures(fluent)
+            let job = LapseArchiverJob(
+                fluent: fluent,
+                vaultPaths: VaultPathService(rootPath: vaultRoot.path),
+                coldStoragePath: coldRoot.path,
+                logger: Logger(label: "test.lapse-archiver"),
+            )
             let result = try await body(Harness(fluent: fluent, vaultRoot: vaultRoot, coldRoot: coldRoot, job: job))
             try await fluent.shutdown()
             try? FileManager.default.removeItem(at: vaultRoot)
