@@ -98,7 +98,14 @@ jobs:
           POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
-        run: swift test --parallel --enable-code-coverage
+        # HER-310: tests share ONE `hermes_test` DB with no per-suite schema
+        # isolation, and each suite migrates/queries/tears-down its own Fluent.
+        # `--parallel` runs them concurrently against that shared DB → migration
+        # races ("relation \"users\" does not exist"), use-after-shutdown ("No
+        # default database configured"), and the AsyncKit ConnectionPool deinit
+        # SIGILL on parallel teardown. Run serially until per-suite DB isolation
+        # lands (the real fix for getting parallelism back).
+        run: swift test --enable-code-coverage
 
       - name: Export coverage to lcov
         # Best-effort; emits a workflow notice on failure but does not
