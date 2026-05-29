@@ -31,7 +31,9 @@ struct JinaEnricher: URLEnricher {
         self.logger = logger
     }
 
-    func canHandle(url _: URL) -> Bool { true }
+    func canHandle(url _: URL) -> Bool {
+        true
+    }
 
     func enrich(url: URL) async throws -> EnrichedMetadata {
         do {

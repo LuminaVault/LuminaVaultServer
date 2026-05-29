@@ -12,8 +12,13 @@ struct JinaEnricherTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> Result<(HTTPURLResponse, Data), URLError>)?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.handler else {
@@ -29,6 +34,7 @@ struct JinaEnricherTests {
                 client?.urlProtocol(self, didFailWithError: urlError)
             }
         }
+
         override func stopLoading() {}
     }
 
@@ -57,10 +63,10 @@ struct JinaEnricherTests {
     }
 
     @Test
-    func `canHandle returns true for any url`() {
+    func `canHandle returns true for any url`() throws {
         let enricher = Self.makeEnricher(session: Self.stubSession())
-        #expect(enricher.canHandle(url: URL(string: "https://example.com/article")!))
-        #expect(enricher.canHandle(url: URL(string: "https://blog.example.org")!))
+        #expect(try enricher.canHandle(url: #require(URL(string: "https://example.com/article"))))
+        #expect(try enricher.canHandle(url: #require(URL(string: "https://blog.example.org"))))
     }
 
     @Test
@@ -73,7 +79,7 @@ struct JinaEnricherTests {
         defer { StubProtocol.handler = nil }
 
         let enricher = Self.makeEnricher(session: Self.stubSession())
-        let url = URL(string: "https://example.com/article")!
+        let url = try #require(URL(string: "https://example.com/article"))
         let metadata = try await enricher.enrich(url: url)
 
         let req = try #require(captured.requests.first)
@@ -94,7 +100,7 @@ struct JinaEnricherTests {
         defer { StubProtocol.handler = nil }
 
         let enricher = Self.makeEnricher(session: Self.stubSession(), apiKey: nil)
-        _ = try await enricher.enrich(url: URL(string: "https://example.com")!)
+        _ = try await enricher.enrich(url: #require(URL(string: "https://example.com")))
         let req = try #require(captured.requests.first)
         #expect(req.value(forHTTPHeaderField: "Authorization") == nil)
     }
@@ -106,7 +112,7 @@ struct JinaEnricherTests {
         defer { StubProtocol.handler = nil }
 
         let enricher = Self.makeEnricher(session: Self.stubSession())
-        let metadata = try await enricher.enrich(url: URL(string: "https://example.com")!)
+        let metadata = try await enricher.enrich(url: #require(URL(string: "https://example.com")))
         let body = try #require(metadata.body)
         #expect(body.count <= 1024 * 1024)
     }
@@ -125,13 +131,13 @@ struct JinaEnricherTests {
         defer { StubProtocol.handler = nil }
 
         let enricher = Self.makeEnricher(session: Self.stubSession())
-        let metadata = try await enricher.enrich(url: URL(string: "https://example.com")!)
+        let metadata = try await enricher.enrich(url: #require(URL(string: "https://example.com")))
         #expect(captured.attempts == 2)
         #expect(metadata.body == "recovered")
     }
 
     @Test
-    func `enrich throws JinaEnricherError after two 429s`() async {
+    func `enrich throws JinaEnricherError after two 429s`() async throws {
         StubProtocol.handler = { req in
             let tooMany = HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: "HTTP/1.1", headerFields: [:])!
             return .success((tooMany, Data()))
@@ -140,18 +146,18 @@ struct JinaEnricherTests {
 
         let enricher = Self.makeEnricher(session: Self.stubSession())
         await #expect(throws: JinaEnricherError.self) {
-            _ = try await enricher.enrich(url: URL(string: "https://example.com")!)
+            _ = try await enricher.enrich(url: #require(URL(string: "https://example.com")))
         }
     }
 
     @Test
-    func `enrich throws on network error`() async {
+    func `enrich throws on network error`() async throws {
         StubProtocol.handler = { _ in .failure(URLError(.cannotConnectToHost)) }
         defer { StubProtocol.handler = nil }
 
         let enricher = Self.makeEnricher(session: Self.stubSession())
         await #expect(throws: (any Error).self) {
-            _ = try await enricher.enrich(url: URL(string: "https://example.com")!)
+            _ = try await enricher.enrich(url: #require(URL(string: "https://example.com")))
         }
     }
 }

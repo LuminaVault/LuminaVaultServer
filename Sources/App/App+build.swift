@@ -661,14 +661,13 @@ func buildRouter(
     let llmProviderName = reader.string(forKey: ConfigKey("llm.provider"), default: "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
         .lowercased()
-    let gatewayAdapter: any ProviderAdapter
-    if llmProviderName == "stub" {
-        gatewayAdapter = StubChatAdapter(
+    let gatewayAdapter: any ProviderAdapter = if llmProviderName == "stub" {
+        StubChatAdapter(
             replyContent: reader.string(forKey: ConfigKey("llm.stub.replyContent"), default: "Hello from the LuminaVault default brain."),
             replyModel: reader.string(forKey: ConfigKey("llm.stub.replyModel"), default: "stub-default-brain"),
         )
     } else {
-        gatewayAdapter = HermesGatewayAdapter(
+        HermesGatewayAdapter(
             baseURL: hermesURL,
             session: .shared,
             logger: routingLogger,

@@ -29,47 +29,47 @@ let noDBTestReader = ConfigReader(providers: [
 /// values into `ConfigValue` since Swift's `ExpressibleByLiteral` only fires
 /// for literal expressions, not computed properties.
 let dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] = [
-        "http.host": "127.0.0.1",
-        "http.port": 0,
-        "log.level": "warning",
-        "postgres.host": cfg(TestPostgres.host),
-        "postgres.port": cfg(TestPostgres.port),
-        "postgres.database": cfg(TestPostgres.database),
-        "postgres.user": cfg(TestPostgres.username),
-        "postgres.password": cfg(TestPostgres.password),
-        "fluent.autoMigrate": "true",
-        "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
-        "jwt.kid": "test-kid",
-        "hermes.gatewayKind": "logging",
-        // Default `hermes.dataRoot=/app/data/hermes` does not exist on dev
-        // machines (it's a container path), and SOULService.initIfMissing
-        // 503s when it can't write SOUL.md. Pin to /tmp so any test that
-        // walks the upsert-then-provision path (phone, magic-link, X OAuth)
-        // is stable on macOS.
-        "hermes.dataRoot": "/tmp/luminavault-test-hermes",
-        "vault.rootPath": "/tmp/luminavault-test",
-        // HER-137: pin the phone OTP generator to a fixed code so
-        // `/v1/auth/phone/verify` tests are deterministic. Production must
-        // never set this — non-empty value disables randomness.
-        "phone.fixedOtp": "424242",
-        // HER-138: same fixed-OTP pin for the email magic-link generator
-        // so `/v1/auth/email/verify` tests can drive a known code. MUST
-        // stay empty in prod for the same reason as `phone.fixedOtp`.
-        "magic.fixedOtp": "313131",
-        // HER-217: deterministic SecretBox master key for BYO Hermes
-        // tests. 32 zero bytes base64-encoded. Never set this value in
-        // prod — every tenant key derives from it via HKDF.
-        "secret.masterKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        // HER-217: open private/loopback ranges so test-time SSRF
-        // validation accepts 127.0.0.1 / docker-internal hosts. Prod
-        // must leave this `false`.
-        "byoHermes.allowPrivate": "true",
-        // HER-254 fail-closed bearer guard fatals when lv.environment != "dev"
-        // and hermes.apiKey is empty. Tests don't actually dial Hermes (the
-        // gateway is `logging` mode above), so a dummy bearer is sufficient
-        // to satisfy the guard.
-        "hermes.apiKey": "test-hermes-bearer-do-not-use",
-        "lv.environment": "test",
+    "http.host": "127.0.0.1",
+    "http.port": 0,
+    "log.level": "warning",
+    "postgres.host": cfg(TestPostgres.host),
+    "postgres.port": cfg(TestPostgres.port),
+    "postgres.database": cfg(TestPostgres.database),
+    "postgres.user": cfg(TestPostgres.username),
+    "postgres.password": cfg(TestPostgres.password),
+    "fluent.autoMigrate": "true",
+    "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
+    "jwt.kid": "test-kid",
+    "hermes.gatewayKind": "logging",
+    // Default `hermes.dataRoot=/app/data/hermes` does not exist on dev
+    // machines (it's a container path), and SOULService.initIfMissing
+    // 503s when it can't write SOUL.md. Pin to /tmp so any test that
+    // walks the upsert-then-provision path (phone, magic-link, X OAuth)
+    // is stable on macOS.
+    "hermes.dataRoot": "/tmp/luminavault-test-hermes",
+    "vault.rootPath": "/tmp/luminavault-test",
+    // HER-137: pin the phone OTP generator to a fixed code so
+    // `/v1/auth/phone/verify` tests are deterministic. Production must
+    // never set this — non-empty value disables randomness.
+    "phone.fixedOtp": "424242",
+    // HER-138: same fixed-OTP pin for the email magic-link generator
+    // so `/v1/auth/email/verify` tests can drive a known code. MUST
+    // stay empty in prod for the same reason as `phone.fixedOtp`.
+    "magic.fixedOtp": "313131",
+    // HER-217: deterministic SecretBox master key for BYO Hermes
+    // tests. 32 zero bytes base64-encoded. Never set this value in
+    // prod — every tenant key derives from it via HKDF.
+    "secret.masterKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    // HER-217: open private/loopback ranges so test-time SSRF
+    // validation accepts 127.0.0.1 / docker-internal hosts. Prod
+    // must leave this `false`.
+    "byoHermes.allowPrivate": "true",
+    // HER-254 fail-closed bearer guard fatals when lv.environment != "dev"
+    // and hermes.apiKey is empty. Tests don't actually dial Hermes (the
+    // gateway is `logging` mode above), so a dummy bearer is sufficient
+    // to satisfy the guard.
+    "hermes.apiKey": "test-hermes-bearer-do-not-use",
+    "lv.environment": "test",
 ]
 
 let dbTestReader = ConfigReader(providers: [

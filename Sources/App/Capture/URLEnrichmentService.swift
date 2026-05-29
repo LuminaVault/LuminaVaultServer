@@ -137,7 +137,8 @@ struct URLEnrichmentService {
             // Mark as failed
             if let row = try? await VaultFile.query(on: db, tenantID: tenantID)
                 .filter(\.$id == vaultFileID)
-                .first() {
+                .first()
+            {
                 if row.metadata == nil {
                     row.metadata = VaultFileMetadata(enrichmentStatus: "failed")
                 } else {

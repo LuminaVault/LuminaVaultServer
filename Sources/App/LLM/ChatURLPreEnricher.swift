@@ -19,11 +19,6 @@ struct ChatURLPreEnricher {
     let urlEnrichmentService: URLEnrichmentService
     let logger: Logger
 
-    init(urlEnrichmentService: URLEnrichmentService, logger: Logger) {
-        self.urlEnrichmentService = urlEnrichmentService
-        self.logger = logger
-    }
-
     /// Returns the messages with `<context>` blocks prepended to any
     /// user-role message that contains http(s) URLs. Non-user messages
     /// (system, assistant, tool) pass through unchanged.
@@ -40,7 +35,7 @@ struct ChatURLPreEnricher {
                 out.append(message)
                 continue
             }
-            let contextBlocks = await urls.asyncCompactMap { await self.contextBlock(for: $0) }
+            let contextBlocks = await urls.asyncCompactMap { await contextBlock(for: $0) }
             if contextBlocks.isEmpty {
                 out.append(message)
                 continue

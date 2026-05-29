@@ -2,7 +2,6 @@
 import Foundation
 import Testing
 
-@Suite
 struct URLExtractorTests {
     @Test
     func `extracts single url`() {

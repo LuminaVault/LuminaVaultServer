@@ -58,7 +58,7 @@ struct KBCompileControllerTests {
     /// Encodes a `KBCompileRequest` for the request body. Uses a vanilla
     /// `JSONEncoder` to mirror what the iOS client emits.
     private static func compileBody(_ request: KBCompileRequest) throws -> ByteBuffer {
-        ByteBuffer(data: try JSONEncoder().encode(request))
+        try ByteBuffer(data: JSONEncoder().encode(request))
     }
 
     // MARK: - Auth
@@ -71,7 +71,7 @@ struct KBCompileControllerTests {
                 uri: "/v1/kb-compile",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -92,7 +92,7 @@ struct KBCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -115,7 +115,7 @@ struct KBCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest(forceFullRecompile: true)),
+                body: Self.compileBody(KBCompileRequest(forceFullRecompile: true)),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -155,7 +155,7 @@ struct KBCompileControllerTests {
                     .authorization: "Bearer \(tenantB.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest(vaultFileIds: [seededID])),
+                body: Self.compileBody(KBCompileRequest(vaultFileIds: [seededID])),
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -186,7 +186,7 @@ struct KBCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: try Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest()),
             ) { response in
                 #expect(response.status == .ok)
             }

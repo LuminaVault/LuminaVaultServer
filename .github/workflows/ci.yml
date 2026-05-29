@@ -27,8 +27,19 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install SwiftFormat
-        run: brew install swiftformat
+      # Pinned: unpinned `brew install swiftformat` drifts to whatever is
+      # latest on the runner, which silently activates new default rules and
+      # re-breaks the lint gate against unchanged code. Pin to the version the
+      # codebase is formatted with; bump deliberately + reformat in one PR.
+      - name: Install SwiftFormat (pinned 0.61.1)
+        run: |
+          curl -fsSL -o /tmp/swiftformat.zip \
+            https://github.com/nicklockwood/SwiftFormat/releases/download/0.61.1/swiftformat.zip
+          unzip -o /tmp/swiftformat.zip -d /tmp/swiftformat
+          BIN="$(find /tmp/swiftformat -type f -name swiftformat | head -1)"
+          chmod +x "$BIN"
+          sudo mv "$BIN" /usr/local/bin/swiftformat
+          swiftformat --version
       - name: SwiftFormat
         run: swiftformat --lint . --reporter github-actions-log
       - name: Install SwiftLint
