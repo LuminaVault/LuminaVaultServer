@@ -71,9 +71,9 @@ actor UserLLMPreferenceRepository {
         row.mode = mode.rawValue
         row.primaryProvider = primaryProvider.rawValue
         row.primaryModel = primaryModel
-        row.fallbackChain = fallbackChain.map {
+        row.fallbackChain = UserLLMPreference.FallbackChain(steps: fallbackChain.map {
             UserLLMPreference.FallbackStep(provider: $0.provider.rawValue, model: $0.model)
-        }
+        })
         try await row.save(on: fluent.db())
         let snapshot = Self.decode(row)
         cache[tenantID] = CacheEntry(snapshot: snapshot, expiresAt: Date().addingTimeInterval(ttl))
@@ -92,7 +92,7 @@ actor UserLLMPreferenceRepository {
             mode: UserLLMPreference.Mode(rawValue: row.mode) ?? .managed,
             primaryProvider: ProviderKind(rawValue: row.primaryProvider) ?? .hermesGateway,
             primaryModel: row.primaryModel,
-            fallbackChain: row.fallbackChain.compactMap { step in
+            fallbackChain: row.fallbackChain.steps.compactMap { step in
                 guard let provider = ProviderKind(rawValue: step.provider) else { return nil }
                 return Snapshot.Step(provider: provider, model: step.model)
             },

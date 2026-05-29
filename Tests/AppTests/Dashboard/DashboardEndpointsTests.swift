@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdTesting
 import struct LuminaVaultShared.AuthResponse
+import struct LuminaVaultShared.DashboardProfileResponse
 import struct LuminaVaultShared.DashboardStatsResponse
 import struct LuminaVaultShared.InsightListResponse
 import struct LuminaVaultShared.TaskListResponse
@@ -78,6 +79,46 @@ struct DashboardEndpointsTests {
                 #expect(stats.memoriesToday == 0)
                 #expect(stats.memoriesTotal == 0)
                 #expect(stats.lastCompileAt == nil)
+            }
+        }
+    }
+
+    // MARK: - /v1/dashboard/profile
+
+    @Test
+    func `dashboard profile requires auth`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            try await client.execute(
+                uri: "/v1/dashboard/profile",
+                method: .get,
+            ) { response in
+                #expect(response.status == .unauthorized)
+            }
+        }
+    }
+
+    @Test
+    func `dashboard profile returns zero counters and level one for a fresh tenant`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/dashboard/profile",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"],
+            ) { response in
+                #expect(response.status == .ok)
+                let profile = try testJSONDecoder().decode(
+                    DashboardProfileResponse.self,
+                    from: Data(buffer: response.body),
+                )
+                #expect(profile.skillsCount == 0)
+                #expect(profile.jobsCount == 0)
+                #expect(profile.sessionsCount == 0)
+                #expect(profile.badgesEarned == 0)
+                #expect(profile.powerXP == 0)
+                #expect(profile.powerLevel == 1)
             }
         }
     }

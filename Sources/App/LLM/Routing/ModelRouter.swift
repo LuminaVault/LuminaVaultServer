@@ -100,13 +100,13 @@ struct TableModelRouter: ModelRouter {
         switch (tier, capability) {
         case (.pro, .high):
             [
-                ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"),
-                ModelRoute(provider: .anthropic, modelID: "claude-opus-4.7"),
+                ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4-6"),
+                ModelRoute(provider: .anthropic, modelID: "claude-opus-4-7"),
                 ModelRoute(provider: .openai, modelID: "gpt-5"),
             ]
         case (.pro, .medium), (.pro, .low):
             [
-                ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"),
+                ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4-6"),
                 ModelRoute(provider: .gemini, modelID: "gemini-2.5-pro"),
             ]
         case (.free, .high):

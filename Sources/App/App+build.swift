@@ -61,14 +61,21 @@ func buildApplication(
     let fluent = Fluent(logger: fluentLogger)
     if fluentEnabled {
         fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: reader.string(forKey: "postgres.host", default: "127.0.0.1"),
-                port: reader.int(forKey: "postgres.port", default: 5432),
-                username: reader.string(forKey: "postgres.user", default: "luminavault"),
-                password: reader.string(forKey: "postgres.password", default: "luminavault"),
-                database: reader.string(forKey: "postgres.database", default: "luminavault"),
-                tls: .disable,
-            )),
+            .postgres(
+                configuration: .init(
+                    hostname: reader.string(forKey: "postgres.host", default: "127.0.0.1"),
+                    port: reader.int(forKey: "postgres.port", default: 5432),
+                    username: reader.string(forKey: "postgres.user", default: "luminavault"),
+                    password: reader.string(forKey: "postgres.password", default: "luminavault"),
+                    database: reader.string(forKey: "postgres.database", default: "luminavault"),
+                    tls: .disable,
+                ),
+                // HER perf audit: driver default is 1 connection per event loop,
+                // which serializes concurrent slow queries on a loop. Make it
+                // configurable; total pool ≈ this × eventLoopCount (≈ cores).
+                // Keep pool × replicas under Postgres max_connections.
+                maxConnectionsPerEventLoop: reader.int(forKey: "postgres.maxConnectionsPerEventLoop", default: 4),
+            ),
             as: .psql,
         )
         do {
@@ -646,14 +653,29 @@ func buildRouter(
         logger: routingLogger,
     )
 
-    var providerAdapters: [any ProviderAdapter] = [
-        HermesGatewayAdapter(
+    // HER-300 — test-only stub chat provider, selected exclusively via
+    // `llm.provider=stub`. It replaces the real `HermesGatewayAdapter`
+    // under `.hermesGateway` so a `managed`-mode chat (which always
+    // resolves to the table's last-resort gateway route) gets a canned,
+    // network-free reply. Unreachable in prod unless the env var is set.
+    let llmProviderName = reader.string(forKey: ConfigKey("llm.provider"), default: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+    let gatewayAdapter: any ProviderAdapter
+    if llmProviderName == "stub" {
+        gatewayAdapter = StubChatAdapter(
+            replyContent: reader.string(forKey: ConfigKey("llm.stub.replyContent"), default: "Hello from the LuminaVault default brain."),
+            replyModel: reader.string(forKey: ConfigKey("llm.stub.replyModel"), default: "stub-default-brain"),
+        )
+    } else {
+        gatewayAdapter = HermesGatewayAdapter(
             baseURL: hermesURL,
             session: .shared,
             logger: routingLogger,
             defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)",
-        ),
-    ]
+        )
+    }
+    var providerAdapters: [any ProviderAdapter] = [gatewayAdapter]
     // HER-199 — register Gemini provider when API key is configured.
     if !services.geminiAPIKey.isEmpty {
         providerAdapters.append(GeminiContentsAdapter(

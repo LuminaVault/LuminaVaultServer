@@ -741,6 +741,23 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DashboardStatsResponse' }
 
+  /v1/dashboard/profile:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardProfile
+      summary: Player-profile HUD counters for the Home dashboard.
+      description: |
+        Returns the "player profile" numbers the iOS Home dashboard renders:
+        enabled skills, total skill runs (jobs), conversations (sessions),
+        unlocked achievements (badges), and a derived power level + XP.
+        Per-tenant scoped.
+      responses:
+        '200':
+          description: Dashboard profile snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardProfileResponse' }
+
   /v1/tasks:
     get:
       tags: [Dashboard]
@@ -3008,6 +3025,18 @@ components:
           type: string
           format: date-time
           description: Most recent space compile timestamp; null if never compiled.
+
+    DashboardProfileResponse:
+      type: object
+      required: [skillsCount, jobsCount, sessionsCount, badgesEarned, powerLevel, powerXP]
+      description: Player-profile HUD counters for the Home dashboard.
+      properties:
+        skillsCount: { type: integer, minimum: 0, description: Enabled skills. }
+        jobsCount: { type: integer, minimum: 0, description: Total skill runs. }
+        sessionsCount: { type: integer, minimum: 0, description: Total conversations. }
+        badgesEarned: { type: integer, minimum: 0, description: Unlocked sub-achievements. }
+        powerLevel: { type: integer, minimum: 1, description: "Derived: floor(sqrt(powerXP)) + 1." }
+        powerXP: { type: integer, minimum: 0, description: Raw weighted activity XP behind the level. }
 
     TaskState:
       type: string

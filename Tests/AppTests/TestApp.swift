@@ -28,8 +28,7 @@ let noDBTestReader = ConfigReader(providers: [
 /// `cfg(...)` helper lives in `TestPostgres.swift` — it wraps non-literal
 /// values into `ConfigValue` since Swift's `ExpressibleByLiteral` only fires
 /// for literal expressions, not computed properties.
-let dbTestReader = ConfigReader(providers: [
-    InMemoryProvider(values: [
+let dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] = [
         "http.host": "127.0.0.1",
         "http.port": 0,
         "log.level": "warning",
@@ -71,5 +70,22 @@ let dbTestReader = ConfigReader(providers: [
         // to satisfy the guard.
         "hermes.apiKey": "test-hermes-bearer-do-not-use",
         "lv.environment": "test",
-    ]),
+]
+
+let dbTestReader = ConfigReader(providers: [
+    InMemoryProvider(values: dbTestConfigValues),
 ])
+
+/// DB-backed reader with the deterministic stub chat provider enabled.
+/// `llm.provider=stub` swaps the real `HermesGatewayAdapter` for
+/// `StubChatAdapter` under `.hermesGateway`, so a `managed`-mode chat
+/// returns a canned reply with no upstream call. Scoped to tests that
+/// assert an actual LLM reply; other DB tests keep the default gateway.
+func dbTestReaderWithStubChat(
+    replyContent: String = "Hello from the LuminaVault default brain.",
+) -> ConfigReader {
+    var values = dbTestConfigValues
+    values["llm.provider"] = cfg("stub")
+    values["llm.stub.replyContent"] = cfg(replyContent)
+    return ConfigReader(providers: [InMemoryProvider(values: values)])
+}

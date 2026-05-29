@@ -104,7 +104,13 @@ struct URLEnrichmentService {
                 markdown += "## Content\n\(body)\n\n"
             }
 
-            guard let row = try await VaultFile.find(vaultFileID, on: db) else {
+            // Tenant-scoped lookup (S1a): never fetch a VaultFile by id alone —
+            // bind it to the enrichment's tenant so a stray/replayed id can't
+            // reach another tenant's row.
+            guard let row = try await VaultFile.query(on: db, tenantID: tenantID)
+                .filter(\.$id == vaultFileID)
+                .first()
+            else {
                 throw HTTPError(.notFound, message: "VaultFile not found")
             }
 
@@ -129,7 +135,9 @@ struct URLEnrichmentService {
         } catch {
             logger.error("enrichment failed tenant=\(tenantID) file=\(vaultFileID): \(error)")
             // Mark as failed
-            if let row = try? await VaultFile.find(vaultFileID, on: db) {
+            if let row = try? await VaultFile.query(on: db, tenantID: tenantID)
+                .filter(\.$id == vaultFileID)
+                .first() {
                 if row.metadata == nil {
                     row.metadata = VaultFileMetadata(enrichmentStatus: "failed")
                 } else {

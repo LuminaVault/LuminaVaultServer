@@ -83,7 +83,7 @@ struct AnthropicAdapter: ProviderAdapter {
             }
         }
 
-        let model = (openAI["model"] as? String) ?? "claude-sonnet-4.6"
+        let model = (openAI["model"] as? String) ?? "claude-sonnet-4-6"
         let temperature = (openAI["temperature"] as? Double) ?? 0.4
         // Anthropic requires `max_tokens`; OpenAI treats it optional.
         let maxTokens = (openAI["max_tokens"] as? Int) ?? 4096
