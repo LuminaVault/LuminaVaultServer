@@ -1,0 +1,1008 @@
+Test Suite 'All tests' started at 2026-05-29 20:20:32.163.
+Test Suite 'All tests' passed at 2026-05-29 20:20:32.173.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.010) seconds
+◇ Test run started.
+↳ Testing Library Version: 1743
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite URLSessionHermesChatTransportTests started.
+◇ Suite DailyRunCapTests started.
+◇ Suite "RoutingModelRouterTests" started.
+◇ Suite ProviderErrorSurfaceTests started.
+◇ Suite MemoryScoringTests started.
+◇ Suite EnforcementTests started.
+◇ Suite InsightTests started.
+◇ Suite MemoryCompileHappyPathTests started.
+◇ Suite MemoryGraphControllerTests started.
+◇ Suite KBCompileControllerTests started.
+◇ Suite ProviderErrorClassifierTests started.
+◇ Suite XaiOAuthControllerTests started.
+◇ Suite KBCompilePendingTests started.
+◇ Suite PasswordHasherTests started.
+◇ Suite JWTAuthenticatorE2ETests started.
+◇ Suite VaultCRUDTests started.
+◇ Suite HermesLLMStreamServiceTests started.
+◇ Suite PreAuthChallengeStoreTests started.
+◇ Suite TenantIsolationTests started.
+◇ Suite EventBusTests started.
+◇ Suite HermesGatewayTimeoutTests started.
+◇ Suite XaiOAuthServiceTests started.
+◇ Suite GoogleOAuthProviderTests started.
+◇ Suite RoutedLLMTransportTimeoutEnvelopeTests started.
+◇ Suite OTLPHTTPLogExporterTests started.
+◇ Suite UsernamePolicyTests started.
+◇ Suite LLMControllerPushSideEffectTests started.
+◇ Suite AchievementsFlowTests started.
+◇ Suite LiveXaiOAuthBackendTests started.
+◇ Suite MemoryCompileControllerTests started.
+◇ Suite ProviderRegistryTests started.
+◇ Suite "NomicEmbeddingService" started.
+◇ Suite RoutedLLMTransportTests started.
+◇ Suite UserHermesConfigTests started.
+◇ Suite SkillRunCapGuardTests started.
+◇ Suite MemoGeneratorTests started.
+◇ Suite SkillRunnerTests started.
+◇ Suite SkillRunnerLifecycleTests started.
+◇ Suite QueryStreamTests started.
+◇ Suite PremiumGuardMiddlewareTests started.
+◇ Suite "EmbeddingFallbackService" started.
+◇ Suite JinaEnricherTests started.
+◇ Suite RateLimitMiddlewareTests started.
+◇ Suite SOULInitTests started.
+◇ Suite HermesContainerManagerTests started.
+◇ Suite MemorySavedIDTests started.
+◇ Suite EmailVerificationTests started.
+◇ Suite HermesToolErrorClassifierTests started.
+◇ Suite PowerLevelTests started.
+◇ Suite SOULServiceTests started.
+◇ Suite ProviderErrorReasonCodeTests started.
+◇ Suite ResendEmailOTPSenderTests started.
+◇ Suite LapseArchiverTests started.
+◇ Suite EntitlementCheckerTests started.
+◇ Suite SecretBoxTests started.
+◇ Suite MemoryLineageTests started.
+◇ Suite SuggestionsControllerTests started.
+◇ Suite OnboardingTests started.
+◇ Suite MemoryGraphServiceTests started.
+◇ Suite EmailMagicLinkFlowTests started.
+◇ Suite HermesConfigControllerTests started.
+◇ Suite DashboardEndpointsTests started.
+◇ Suite FilesystemHermesGatewayTests started.
+◇ Suite LLMPreferencesChatE2ETests started.
+◇ Suite URLExtractorTests started.
+◇ Suite HermesEndpointResolverTests started.
+◇ Suite SSRFGuardTests started.
+◇ Suite AppTests started.
+◇ Suite SkillManifestTests started.
+◇ Suite ProfilesControllerTests started.
+◇ Suite WebAuthnAntiEnumerationTests started.
+◇ Suite HealthCorrelationServiceTests started.
+◇ Suite "MemoryCompileService progress ordering" started.
+◇ Suite OpenAITTSAdapterTests started.
+◇ Suite HermesProvisioningLifecycleTests started.
+◇ Suite SkillsControllerTests started.
+◇ Suite VaultExportTests started.
+◇ Suite MemoryCompileMemoryUpsertTests started.
+◇ Suite TenantVectorIndexServiceTests started.
+◇ Suite MemoryGeoTests started.
+◇ Suite SlashCommandParserTests started.
+◇ Suite MigrateCommandTests started.
+◇ Suite GrokControllerTests started.
+◇ Suite BootstrapAdminCommandTests started.
+◇ Suite ModelRouterTests started.
+◇ Suite AccountDeletionTests started.
+◇ Suite HealthDailyAggregateTests started.
+◇ Suite URLEnricherGuardTests started.
+◇ Suite HealthReadTests started.
+◇ Suite M39HnswAndTsvectorTests started.
+◇ Suite VaultUploadSpaceTests started.
+◇ Suite SMSSenderTests started.
+◇ Suite HermesTenantConfigSeedTests started.
+◇ Suite HermesProfileReconcilerTests started.
+◇ Suite LocalHermesEmbeddingServiceTests started.
+◇ Suite HermesProfileServiceTests started.
+◇ Suite SessionTokenTests started.
+◇ Suite RateLimitStorageFactoryTests started.
+◇ Suite UpstreamErrorResponseTests started.
+◇ Suite IdempotencyMiddlewareTests started.
+◇ Suite AchievementsServiceTests started.
+◇ Suite MemoryCRUDTests started.
+◇ Suite OpenAIEmbeddingServiceTests started.
+◇ Suite URLExtractionServiceTests started.
+◇ Suite BeliefEvolutionTests started.
+◇ Suite MemoryPruningServiceTests started.
+◇ Suite HermesGatewaysControllerTests started.
+◇ Suite MemoControllerTitleTests started.
+◇ Suite "WebSocketMemoryCompileProgressPublisher" started.
+◇ Suite ConversationE2ETests started.
+◇ Suite FollowUpGeneratorTests started.
+◇ Suite ConversationTests started.
+◇ Suite ModelOriginTests started.
+◇ Suite "EmbeddingProviderKind + Error" started.
+◇ Suite JWTKeyLoaderTests started.
+◇ Suite WebSocketBroadcastGuardTests started.
+◇ Suite RevenueCatWebhookTests started.
+◇ Suite ContextRouterTests started.
+◇ Suite APNSNotificationServiceTests started.
+◇ Suite LLMPreferencesControllerTests started.
+◇ Suite VaultInitTests started.
+◇ Suite AuthFlowTests started.
+◇ Suite PhoneAuthFlowTests started.
+◇ Suite SpacesCategoryTests started.
+◇ Suite HermesGatewayAdapterTests started.
+◇ Suite UpstreamErrorTelemetryTests started.
+◇ Suite PrivacyToggleTests started.
+◇ Suite HermesMemoryServiceTests started.
+◇ Suite MemoryCompileSpaceCountersTests started.
+◇ Suite RoutedLLMTransportFallbackTests started.
+◇ Suite M41HermesTenantContainersTests started.
+◇ Suite PhoneE164ValidatorTests started.
+◇ Suite XOAuthTests started.
+◇ Test "tier strings map to their declared caps" started.
+◇ Test "bare gemini keyword routes to gemini" started.
+◇ Test "nil model defaults to hermesGateway" started.
+◇ Test "empty model defaults to hermesGateway" started.
+◇ Test "non-gemini model goes to hermesGateway" started.
+◇ Suite CronExpressionTests started.
+◇ Test "tier strings are case insensitive" started.
+◇ Test "claude model goes to hermesGateway" started.
+◇ Test "network error mentions provider" started.
+◇ Test "zero ultimate cap encodes the unlimited contract" started.
+◇ Test "case insensitive gemini routing" started.
+◇ Test "gemini-2.5-pro routes to gemini" started.
+◇ Test "unknown tier defaults to trial cap" started.
+◇ Test "happy-path compile flips processedAt + onboarding flag, idempotent on second tap" started.
+◇ Test "gemini-2.5-flash routes to gemini" started.
+◇ Test "nil created at treated as now" started.
+◇ Test "graph returns nodes and edges for authed tenant" started.
+◇ Test "recency decays at halflife" started.
+◇ Test "unauthenticated pending returns 401" started.
+◇ Test "fresh untouched memory scores one" started.
+◇ Test "zero age never negative" started.
+◇ Test "access and query hits dominate old row" started.
+◇ Test "bearer header is sent when apiKey is non-empty" started.
+◇ Test "creditExhausted carries provider name" started.
+◇ Test "401 maps to permanent" started.
+◇ Test "bearer header is omitted when apiKey is empty" started.
+◇ Test "403 plain maps to permanent" started.
+◇ Test "unauthenticated kb-compile returns 401" started.
+◇ Test "5xx maps to transient" started.
+◇ Test "5xx reasonCode is upstream_error" started.
+◇ Test "different inputs produce different hashes" started.
+◇ Test "GET status returns disconnected default for fresh user" started.
+◇ Test "bearer + session headers are sent when apiKey and sessionID are non-empty" started.
+◇ Test "nil body never matches credit marker" started.
+◇ Test "custom fallbacks are appended" started.
+◇ Test "session id header is omitted when sessionID is empty string" started.
+◇ Test "valid bearer authorizes protected route" started.
+◇ Test "unknown 4xx maps to permanent" started.
+◇ Test "enforcement disabled is middleware no op for lapsed user" started.
+◇ Test "hash and verify round trip" started.
+◇ Test "reissue burns prior challenge" started.
+◇ Test "consume typed returns ok on happy path" started.
+◇ Test "402 maps to creditExhausted" started.
+◇ Test "different destinations are independent" started.
+◇ Test "403 with credit marker maps to creditExhausted" started.
+◇ Test "consume typed returns not found for unknown destination" started.
+◇ Test "transient retry codes" started.
+◇ Test "publish with no subscribers is noop" started.
+◇ Test "Insight save + retrieve round trips" started.
+◇ Test "404 maps to permanent" started.
+◇ Test "429 reasonCode is rate_limit not upstream_error" started.
+◇ Test "issued code consumes once" started.
+◇ Test "wrong code fails and counts" started.
+◇ Test "HER-200 H1 concurrent subscribe and publish does not deadlock" started.
+◇ Test "subscriber receives published event of matching type" started.
+◇ Test "HER-200 H1 dropped stream before any publish unregisters cleanly" started.
+◇ Test "refresh token query filters by tenant" started.
+◇ Test "subscriber removed on stream termination" started.
+◇ Test "HER-200 H1 subscribe registers synchronously without Task hop" started.
+◇ Test "consume typed returns wrong code then locked out" started.
+◇ Test "multiple subscribers all receive event" started.
+◇ Test "bounded buffer drops oldest when consumer lags" started.
+◇ Test "start returns authorize URL and session" started.
+◇ Test "consume typed returns expired" started.
+◇ Test "placeholder matches pattern" started.
+◇ Test "validates good slug" started.
+◇ Test "list returns uploaded files" started.
+◇ Test "URLRequest carries explicit 90s timeout interval" started.
+◇ Test "rejects invalid chars" started.
+◇ Test "subscriber ignores events of different type" started.
+◇ Test "exhausted timeout throws UpstreamErrorResponse with upstream_timeout" started.
+◇ Test "rejects reserved" started.
+◇ Test "rejects too long" started.
+◇ Test "valid token returns identity" started.
+◇ Test "rejects too short" started.
+◇ Test "severity number mapping covers swift-log levels" started.
+◇ Test "list endpoint rejects unauthenticated request" started.
+◇ Test "push side effect invokes APNS sender on success" started.
+◇ Test "padToTarget zero-pads short vectors to 1536" started.
+◇ Test "padToTarget passes through exact-length vectors unchanged" started.
+◇ Test "int AnyValue is encoded as JSON string per OTLP spec" started.
+◇ Test "ultimate tier with cap zero short circuits without DB hit" started.
+◇ Test "padToTarget truncates oversize vectors (defensive)" started.
+◇ Test "unauthenticated kb-compile returns 401" started.
+◇ Test "memo loop terminates and persists to vault" started.
+◇ Test "requestAuthorizeURL extracts URL from Authorize prefix line" started.
+◇ Test "model conforms to TenantModel" started.
+◇ Test "encodes OTLP logs request matching collector schema" started.
+◇ Test "buildPrompt with no hits surfaces fallback context" started.
+◇ Test "model uses expected schema name" started.
+◇ Test "trial user hits 402 on grok routes" started.
+◇ Test "recent endpoint rejects unauthenticated request" started.
+◇ Test "transient primary advances to fallback" started.
+◇ Test "SSE source event round-trips through wire format" started.
+◇ Test "all seven providers env loadable from config" started.
+◇ Test "disallowed tool returns tool error and does not write memory" started.
+◇ Test "all-recoverable chain rethrows last error" started.
+◇ Test "SSE token event encodes as data colon json double newline" started.
+◇ Test "buildPrompt embeds hits as numbered context block" started.
+◇ Test "fromMemory preserves createdAt when populated" started.
+◇ Test "register writes default SOUL to vault" started.
+◇ Test "startEventSubscriptions registers one subscriber per event type" started.
+◇ Test "fromMemory normalizes nil tags to empty array" started.
+◇ Test "ensureRunning spawns on first call and is idempotent on second" started.
+◇ Test "primary success returns data" started.
+◇ Test "multiple stderr lines all stripped" started.
+◇ Test "per user buckets are isolated behind shared IP" started.
+◇ Test "permanent error from primary rethrows immediately — no fallback" started.
+◇ Test "savedID returns id when memory was fetched (id set)" started.
+◇ Test "timeout error maps to timeout category" started.
+◇ Test "clean assistant content returns empty array" started.
+◇ Test "fromMemory builds DTO non-throwing on hydrated model" started.
+◇ Test "canHandle returns true for any url" started.
+◇ Test "done event has no payload key on wire" started.
+◇ Test "same_tool_failure_warning parses loop exhausted" started.
+◇ Test "falls back to per IP when identity missing" started.
+◇ Test "youtube-transcript-api missing maps to notInstalled" started.
+◇ Test "python no module named line is stripped" started.
+◇ Test "level follows floor sqrt plus one" started.
+◇ Test "tool returned error parses tool name and message" started.
+◇ Test "tirith spawn error maps to notInstalled" started.
+◇ Test "bash stderr line is stripped" started.
+◇ Test "new user starts unverified" started.
+◇ Test "level is at least one for zero xp" started.
+◇ Test "permission denied maps to permissionDenied" started.
+◇ Test "empty content returns empty array" started.
+◇ Test "networkConnectionLost URLError maps to upstream_unreachable" started.
+◇ Test "sanitize collapses to nil when content was only noise" started.
+◇ Test "notConnectedToInternet URLError maps to upstream_unreachable" started.
+◇ Test "sanitize message collapses empty content to empty string" started.
+◇ Test "unknown URLError falls through to generic network code" started.
+◇ Test "cannotFindHost URLError maps to upstream_unreachable" started.
+◇ Test "read returns default template when file absent" started.
+◇ Test "sanitize message keeps role and tool_calls" started.
+◇ Test "expired trial becomes lapsed" started.
+◇ Test "sanitize preserves nil and empty inputs" started.
+◇ Test "dnsLookupFailed URLError maps to upstream_unreachable" started.
+◇ Test "xp weights memories, sessions, jobs, and badges" started.
+◇ Test "effective tier none is passthrough" started.
+◇ Test "override none is passthrough" started.
+◇ Test "user extension decodes unrecognized tier as lapsed" started.
+◇ Test "non-URLError underlying falls through to generic network code" started.
+◇ Test "posts JSON body with code, from, to, subject" started.
+◇ Test "cannotConnectToHost URLError maps to upstream_unreachable" started.
+◇ Test "override pro does not downgrade ultimate" started.
+◇ Test "chat allowed for active tiers" started.
+◇ Test "kb compile allowed for active tiers" started.
+◇ Test "override pro raises lapsed to pro" started.
+◇ Test "skill builtin run allowed for active tiers" started.
+◇ Test "mlx on device ultimate only" started.
+◇ Test "archived gets nothing" started.
+◇ Test "vault export allowed everywhere except archived" started.
+◇ Test "lapsed gets only vault read and export" started.
+◇ Test "user extension decodes unrecognized override as none" started.
+◇ Test "override ultimate unlocks everything" started.
+◇ Test "context router ultimate only" started.
+◇ Test "timeout URLError maps to upstream_timeout reason code" started.
+◇ Test "byo key ultimate only" started.
+◇ Test "init rejects malformed base64" started.
+◇ Test "defaults are non empty" started.
+◇ Test "get returns fresh state for new user" started.
+◇ Test "lineage returns source when linked" started.
+◇ Test "init rejects empty master key" started.
+◇ Test "vault skill run ultimate only" started.
+◇ Test "defaults are all non blank" started.
+◇ Test "provisions profile directory and config" started.
+◇ Test "vault read allowed everywhere except archived" started.
+◇ Test "capture allowed for active tiers" started.
+◇ Test "user extension post init defaults are trial" started.
+◇ Test "same tenant same username is idempotent" started.
+◇ Test "memory compile allowed for active tiers" started.
+◇ Test "effective tier pro raises floor" started.
+◇ Test "start then verify creates user with email magic link identity" started.
+◇ Test "extracts single url" started.
+◇ Test "empty graph returned for tenant with no memories" started.
+◇ Test "GET 404 when no row exists" started.
+◇ Test "delete renames dir" started.
+◇ Test "effective tier ultimate always wins" started.
+◇ Test "rejects literal 127dot0dot0dot1" started.
+◇ Test "strips trailing right-paren and bracket" started.
+◇ Test "extracts multiple distinct urls preserving order" started.
+◇ Test "dedupes identical urls" started.
+◇ Test "dashboard stats requires auth" started.
+◇ Test "allows http in dev" started.
+◇ Test "returns managed default when no row exists" started.
+◇ Test "signup, signin, set managed brain, then chat gets a reply" started.
+◇ Test "different tenant same username throws" started.
+◇ Test "ignores non-http schemes" started.
+◇ Test "empty input returns empty array" started.
+◇ Test "strips trailing punctuation" started.
+◇ Test "rejects EC2 metadata 169dot254dot169dot254" started.
+◇ Test "rejects host resolving to RFC1918 10dot8" started.
+◇ Test "rejects 0dot0dot0dot0" started.
+◇ Test "parseIPv4 accepts dotted quad" started.
+◇ Test "parseIPv4 rejects non-numeric" started.
+◇ Test "unresolvable host throws unresolvable" started.
+◇ Test "rejects host resolving to RFC1918 192dot168" started.
+◇ Test "parseIPv4 rejects out-of-range octet" started.
+◇ Test "caps at 5 urls per message" started.
+◇ Test "health route returns OK" started.
+◇ Test "hello route serves" started.
+◇ Test "accepts public host" started.
+◇ Test "rejects host resolving to IPv6 loopback" started.
+◇ Test "rejects http in prod" started.
+◇ Test "rejects host resolving to RFC1918 172dot16to31" started.
+◇ Test "invalid output kind is rejected" started.
+◇ Test "allowPrivateRanges opens loopback" started.
+◇ Test "missing required description is rejected" started.
+◇ Test "invalid capability value is rejected" started.
+◇ Test "allowed-tools accepts yaml array" started.
+◇ Test "outputs and daily run cap decode correctly" started.
+◇ Test "rejects host resolving to IPv6 unique-local" started.
+◇ Test "unclosed frontmatter is rejected with descriptive error" started.
+◇ Test "rejects ftp scheme" started.
+◇ Test "missing frontmatter is rejected" started.
+◇ Test "missing required name is rejected" started.
+◇ Test "parser succeeds on every builtin manifest" started.
+◇ Test "body strips frontmatter and trims surrounding whitespace" started.
+◇ Test "happy path emits preparing then thinking then memory saved" started.
+◇ Test "missing required capability is rejected" started.
+◇ Test "allowed-tools accepts space separated string" started.
+◇ Test "200 response returns audio data with correct content type" started.
+◇ Test "register succeeds with a failing hermes gateway and records an error row" started.
+◇ Test "rejects literal localhost" started.
+◇ Test "re-resolves on every call (DNS rebinding defense)" started.
+◇ Test "upsert with full geo persists all four columns" started.
+◇ Test "skips when insufficient history" started.
+◇ Test "generic slash maps to skill name" started.
+◇ Test "ensureIndex creates a partial hnsw index for the tenant" started.
+◇ Test "unauthenticated request is rejected" started.
+◇ Test "error path bubbles up and service emits no completion" started.
+◇ Test "known synthesis aliases preserve topic input" started.
+◇ Test "begin registration returns 200 for unknown username" started.
+◇ Test "empty vault still includes soul and memories snapshots" started.
+◇ Test "beliefs requires a topic" started.
+◇ Test "bootstrap-admin creates a verified admin user" started.
+◇ Test "builtin resources are present and non empty" started.
+◇ Test "youtube enricher routes only youtube hosts" started.
+◇ Test "pro high routes sonnet then opus then gpt5" started.
+◇ Test "generic og enricher is the catch all" started.
+◇ Test "non slash is ignored" started.
+◇ Test "premium user with no xai container hits 409 conflict" started.
+◇ Test "migrate runs without throwing" started.
+◇ Test "public hosts pass" started.
+◇ Test "logging sender does not throw" started.
+◇ Test "x enricher routes twitter and x hosts" started.
+◇ Test "upload with valid space_id sets spaceId on the row" started.
+◇ Test "delete with correct password returns 204" started.
+◇ Test "private and non-http urls are rejected" started.
+◇ Test "steps aggregation sums daily values" started.
+◇ Test "kb ingest aliases route to kb compile" started.
+◇ Test "memory_upsert tool calls persist memories and roll up into response" started.
+◇ Test "GET list on a fresh tenant returns empty items + nil activeSlug" started.
+◇ Test "round trips through HMAC" started.
+◇ Test "migration produces hnsw + tsv schema" started.
+◇ Test "nil resolver → permanent endpointMissing" started.
+◇ Test "ensure twice returns the same ready row" started.
+◇ Test "rejects expired token" started.
+◇ Test "body serializes to error envelope JSON" started.
+◇ Test "lists most recent events within default 7 day window" started.
+◇ Test "unreachable code maps to 502 Bad Gateway" started.
+◇ Test "RateLimitStorageKind enum maps known values" started.
+◇ Test "empty kind defaults to memory" started.
+◇ Test "reconcile creates missing profiles for existing users" started.
+◇ Test "seed writes config and env with key" started.
+◇ Test "timeout code maps to 504 Gateway Timeout" started.
+◇ Test "redis kind falls back to memory until driver lands" started.
+◇ Test "memory kind returns MemoryPersistDriver" started.
+◇ Test "dedupes the same URL repeated" started.
+◇ Test "retry_after_ms omitted when nil" started.
+◇ Test "hpid claim round trips" started.
+◇ Test "returns empty for empty text" started.
+◇ Test "unknown kind defaults to memory" started.
+◇ Test "kind matching is case insensitive" started.
+◇ Test "dedupes URLs that differ only in fragment" started.
+◇ Test "strips default ports during normalization" started.
+◇ Test "generic network code maps to 502 Bad Gateway" started.
+◇ Test "keeps URLs that differ in query string" started.
+◇ Test "lowercases scheme and host during normalization" started.
+◇ Test "replay returns cached response without re-executing handler" started.
+◇ Test "drops non-public hosts via URLEnricherGuard" started.
+◇ Test "respects max URL cap" started.
+◇ Test "request shape: POST /v1/embeddings, model + dimensions, Bearer auth" started.
+◇ Test "upstream_rejected maps to 502 Bad Gateway" started.
+◇ Test "catalog renders deterministic JSON across runs" started.
+◇ Test "prompt body documents required structural contract" started.
+◇ Test "extracts multiple distinct URLs in order" started.
+◇ Test "builtin SKILL md is bundled and declares belief-evolution" started.
+◇ Test "drops markdown extension" started.
+◇ Test "extracts a single bare URL" started.
+◇ Test "single word slug stays single word" started.
+◇ Test "caps output at maxFollowUps soft ceiling" started.
+◇ Test "list returns all memories for tenant" started.
+◇ Test "drops non-HTTP schemes" started.
+◇ Test "handles paths without date segment" started.
+◇ Test "GET list returns all four MVP gateways with notConfigured default" started.
+◇ Test "fixture memories are chronologically ordered and span 3 months" started.
+◇ Test "encoded shape is tagged envelope" started.
+◇ Test "recompute updates score to formula" started.
+◇ Test "buildPrompt with no sources still produces a valid prompt" started.
+◇ Test "returns empty array on malformed assistant JSON" started.
+◇ Test "publish encodes envelope and broadcasts" started.
+◇ Test "titlecases slug segments" started.
+◇ Test "POST conversations creates a row owned by the caller" started.
+◇ Test "short-circuits without an upstream call when summary and sources are empty" started.
+◇ Test "filter excludes CN origin when toggle on" started.
+◇ Test "parses JSON follow-up array from upstream assistant message" started.
+◇ Test "filter on empty candidates returns empty" started.
+◇ Test "returns empty array on transport failure" started.
+◇ Test "error recoverability matrix" started.
+◇ Test "rejects entry without colon" started.
+◇ Test "tolerates whitespace around entries" started.
+◇ Test "loaded collection verifies token signed by active kid" started.
+◇ Test "buildPrompt truncates long source contents to keep tokens bounded" started.
+◇ Test "kind init accepts canonical + aliased + case-insensitive inputs" started.
+◇ Test "returns empty array on empty assistant content" started.
+◇ Test "trims whitespace and drops empty entries" started.
+◇ Test "empty input yields empty list" started.
+◇ Test "tokens signed by fully removed kid fail verification" started.
+◇ Test "classifies known CN origin model identifiers" started.
+◇ Test "extra fields are tolerated" started.
+◇ Test "parses csv into ordered kid/secret pairs" started.
+◇ Test "rejects duplicate kids" started.
+◇ Test "does not flag US or EU origin models" started.
+◇ Test "empty string is rejected" started.
+◇ Test "rejects empty kid" started.
+◇ Test "filter is no op when toggle off" started.
+◇ Test "prepends system when no system present" started.
+◇ Test "valid JSON with type field is allowed" started.
+◇ Test "buildPrompt replays history with system context prepended" started.
+◇ Test "JSON object with non-string type is rejected" started.
+◇ Test "JSON array at top level is rejected" started.
+◇ Test "tokens signed by retired kid still verify after rotation" started.
+◇ Test "rejects short secret" started.
+◇ Test "JSON object missing type field is rejected" started.
+◇ Test "registration leaves vault uninitialized" started.
+◇ Test "bad signature returns 401" started.
+◇ Test "no resolution dispatches to managed baseURL without authorization" started.
+◇ Test "start then verify creates user with phone identity" started.
+◇ Test "get returns managed default when no row exists" started.
+◇ Test "record increments counter with reason_code dimension" started.
+◇ Test "new user defaults to privacy off" started.
+◇ Test "register happy path creates user and hermes profile" started.
+◇ Test "notify LLM reply fans out to every registered token" started.
+◇ Test "plain text is rejected as invalid JSON" started.
+◇ Test "oversize message is rejected" started.
+◇ Test "message at exact size cap is allowed if JSON is valid" started.
+◇ Test "create space accepts and persists category" started.
+◇ Test "upsert dispatches memory upsert and persists" started.
+◇ Test case passing 1 argument status → 500 to "5xx maps to transient" started.
+◇ Test case passing 1 argument status → 502 to "5xx maps to transient" started.
+◇ Test case passing 1 argument status → 503 to "5xx maps to transient" started.
+◇ Test case passing 1 argument status → 504 to "5xx maps to transient" started.
+◇ Test case passing 1 argument status → 599 to "5xx maps to transient" started.
+◇ Test case passing 1 argument body → "{"error":{"type":"insufficient_quota"}}" to "403 with credit marker maps to creditExhausted" started.
+◇ Test case passing 1 argument body → "Quota exceeded for organization xyz" to "403 with credit marker maps to creditExhausted" started.
+◇ Test case passing 1 argument body → "Out of credits — top up your balance" to "403 with credit marker maps to creditExhausted" started.
+◇ Test case passing 1 argument body → "Your billing subscription has lapsed" to "403 with credit marker maps to creditExhausted" started.
+◇ Test case passing 1 argument body → "Payment required to continue" to "403 with credit marker maps to creditExhausted" started.
+◇ Test case passing 1 argument status → 408 to "transient retry codes" started.
+◇ Test case passing 1 argument status → 425 to "transient retry codes" started.
+◇ Test case passing 1 argument status → 429 to "transient retry codes" started.
+◇ Test case passing 1 argument body → "insufficient_balance" to "403 with credit marker maps to creditExhausted" started.
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 warning test.eventbus: [App] skills.eventbus dropped event vault_file_created for subscriber DE72A18D-0246-4DDA-BDB5-025B94872E4C
+2026-05-29T20:20:32+0100 info test: [App] provider registered: hermesGateway
+◇ Test "refreshSpaceCounters writes note_count and last_compiled_at per space" started.
+2026-05-29T20:20:32+0100 warning test: [App] provider hermesGateway failed (upstream_timeout): network(provider: App.ProviderKind.hermesGateway, underlying: Error Domain=NSURLErrorDomain Code=-1001 "(null)")
+2026-05-29T20:20:32+0100 error test: [App] all providers exhausted for decision [App.ModelRoute(provider: App.ProviderKind.hermesGateway, modelID: "hermes-3")]
+◇ Test "credit exhaustion fires failover notice and falls over" started.
+2026-05-29T20:20:32+0100 warning lv.embedding.fallback: [App] embedding recoverable failure: provider=openai err=transient(reason: "503")
+2026-05-29T20:20:32+0100 info lv.embedding.fallback: [App] embedding recovered via fallback: deterministic
+2026-05-29T20:20:32+0100 warning lv.hermes: [App] HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.
+2026-05-29T20:20:32+0100 warning lv.byo-hermes: [App] BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes
+2026-05-29T20:20:32+0100 warning lv.hermes: [App] HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.
+2026-05-29T20:20:32+0100 warning lv.byo-hermes: [App] BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openRouter
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: anthropic
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: ollama
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openRouter
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: anthropic
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: ollama
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: anthropic
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: openai
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: gemini
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: together
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: groq
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: fireworks
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: deepseekDirect
+2026-05-29T20:20:32+0100 warning lv.embedding.fallback: [App] embedding recoverable failure: provider=openai err=transient(reason: "p")
+2026-05-29T20:20:32+0100 warning lv.embedding.fallback: [App] embedding recoverable failure: provider=deterministic err=network(reason: "f")
+◇ Test "migration creates table and indexes" started.
+2026-05-29T20:20:32+0100 warning lv.routing: [App] tts disabled: llm.provider.openai.apiKey is empty
+◇ Test "rejects invalid" started.
+◇ Test "accepts valid E 164" started.
+2026-05-29T20:20:32+0100 info test: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 warning lv.routing: [App] tts disabled: llm.provider.openai.apiKey is empty
+2026-05-29T20:20:32+0100 info lv.embedding.registry: [App] embedding registry active=deterministic fallbacks= cap=2000000
+2026-05-29T20:20:32+0100 info lv.embedding.registry: [App] embedding registry active=deterministic fallbacks= cap=2000000
+2026-05-29T20:20:32+0100 warning lv.embedding.fallback: [App] embedding permanent failure: provider=openai err=permanent(reason: App.EmbeddingProviderError.PermanentReason.authRejected)
+◇ Test "decodes users me envelope with email" started.
+2026-05-29T20:20:32+0100 info lv.routing: [App] synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)
+2026-05-29T20:20:32+0100 info lv.routing: [App] synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile provisioned at /var/folders/b5/3sk3494566xfsjdnngqdmrnr0000gn/T/lv-hermes-test-A225BE94-3E1A-46A5-97D8-A652CA721C65/profiles/bob
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile provisioned at /var/folders/b5/3sk3494566xfsjdnngqdmrnr0000gn/T/lv-hermes-test-D3B752A4-5FB4-4969-97D6-B2E3DAAA2AF9/profiles/dave
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile soft-deleted: dave -> _deleted_1780082432_dave
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile provisioned at /var/folders/b5/3sk3494566xfsjdnngqdmrnr0000gn/T/lv-hermes-test-65FDD04F-BF72-4D2E-8786-A70FD9D2BFAA/profiles/alice
+2026-05-29T20:20:32+0100 warning lv.hermes: [App] HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.
+2026-05-29T20:20:32+0100 warning lv.byo-hermes: [App] BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes
+2026-05-29T20:20:32+0100 warning lv.hermes: [App] HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.
+2026-05-29T20:20:32+0100 warning lv.byo-hermes: [App] BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openRouter
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: anthropic
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: ollama
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile already provisioned at /var/folders/b5/3sk3494566xfsjdnngqdmrnr0000gn/T/lv-hermes-test-A225BE94-3E1A-46A5-97D8-A652CA721C65/profiles/bob
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openRouter
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: anthropic
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: ollama
+2026-05-29T20:20:32+0100 warning lv.routing: [App] tts disabled: llm.provider.openai.apiKey is empty
+2026-05-29T20:20:32+0100 warning lv.routing: [App] tts disabled: llm.provider.openai.apiKey is empty
+2026-05-29T20:20:32+0100 info lv.embedding.registry: [App] embedding registry active=deterministic fallbacks= cap=2000000
+2026-05-29T20:20:32+0100 info test.hermes: [App] hermes profile provisioned at /var/folders/b5/3sk3494566xfsjdnngqdmrnr0000gn/T/lv-hermes-test-BFDAE097-11F8-42D0-9604-2115550F752C/profiles/carol
+2026-05-29T20:20:32+0100 info lv.embedding.registry: [App] embedding registry active=deterministic fallbacks= cap=2000000
+2026-05-29T20:20:32+0100 info lv.routing: [App] synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: anthropic
+2026-05-29T20:20:32+0100 info test: [App] provider config enabled: openai
+2026-05-29T20:20:32+0100 info test: [App] provider registered: hermesGateway
+2026-05-29T20:20:32+0100 warning test.sms.logging: [App] sms OTP (dev only): purpose=login to=+15555550100 code=123456
+◇ Test case passing 1 argument raw → "https://www.youtube.com/watch?v=abc" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "https://youtube.com/watch?v=abc" to "public hosts pass" started.
+2026-05-29T20:20:32+0100 warning lv.hermes: [App] HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.
+2026-05-29T20:20:32+0100 info lv.routing: [App] synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)
+◇ Test case passing 1 argument raw → "https://youtu.be/abc" to "public hosts pass" started.
+2026-05-29T20:20:32+0100 warning lv.byo-hermes: [App] BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes
+◇ Test case passing 1 argument raw → "https://x.com/jack/status/20" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "https://example.com/page" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "http://172.32.0.1/" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "http://172.15.0.1/" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "http://127.0.0.1:5432" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://10.0.0.1/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://localhost/admin" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "https://twitter.com/jack/status/20" to "public hosts pass" started.
+◇ Test case passing 1 argument raw → "http://192.168.1.10/api" to "private and non-http urls are rejected" started.
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: hermesGateway
+◇ Test case passing 1 argument raw → "http://172.16.0.1/" to "private and non-http urls are rejected" started.
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openai
+◇ Test case passing 1 argument raw → "http://172.31.255.255/" to "private and non-http urls are rejected" started.
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: openRouter
+◇ Test case passing 1 argument raw → "http://169.254.169.254/latest/meta-data/" to "private and non-http urls are rejected" started.
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: anthropic
+2026-05-29T20:20:32+0100 info lv.routing: [App] provider registered: ollama
+◇ Test case passing 1 argument raw → "http://[::1]/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://0.0.0.0/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://[fc00::1]/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://metadata.google.internal/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://[fe80::1]/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://server.internal/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "http://printer.local/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "ftp://example.com/" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "file:///etc/passwd" to "private and non-http urls are rejected" started.
+◇ Test case passing 1 argument raw → "javascript:alert(1)" to "private and non-http urls are rejected" started.
+2026-05-29T20:20:32+0100 warning lv.routing: [App] tts disabled: llm.provider.openai.apiKey is empty
+2026-05-29T20:20:32+0100 info lv.embedding.registry: [App] embedding registry active=deterministic fallbacks= cap=2000000
+2026-05-29T20:20:32+0100 info lv.routing: [App] synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)
+2026-05-29T20:20:32+0100 warning test.ratelimit: [App] rateLimit.storageKind=redis requested but Redis driver not yet wired; falling back to memory
+2026-05-29T20:20:32+0100 warning test.ratelimit: [App] rateLimit.storageKind=redis requested but Redis driver not yet wired; falling back to memory
+2026-05-29T20:20:32+0100 warning test.followups: [App] follow-up generator upstream failed: upstream
+◇ Test "step expression every 15 minutes" started.
+◇ Test "range expression office hours" started.
+◇ Test "daily 7am Lisbon matches 0700 local" started.
+◇ Test "dow only weekly memo monday 9am" started.
+◇ Test "out of range integer rejected" started.
+◇ Test "rejects wrong field count" started.
+◇ Test "comma list of minutes" started.
+◇ Test "tz aware 0700 lisbon does not match 0700 utc when offset differs" started.
+◇ Test "dom or dow semantics" started.
+◇ Test "parses 5 fields" started.
+✔ Test "empty model defaults to hermesGateway" passed after 0.032 seconds.
+✔ Test "unknown tier defaults to trial cap" passed after 0.032 seconds.
+✔ Test "claude model goes to hermesGateway" passed after 0.032 seconds.
+✔ Test "non-gemini model goes to hermesGateway" passed after 0.032 seconds.
+✔ Test "zero ultimate cap encodes the unlimited contract" passed after 0.032 seconds.
+✔ Test "bare gemini keyword routes to gemini" passed after 0.032 seconds.
+✔ Test "nil model defaults to hermesGateway" passed after 0.032 seconds.
+✔ Test "tier strings map to their declared caps" passed after 0.032 seconds.
+✔ Test "tier strings are case insensitive" passed after 0.032 seconds.
+✔ Test "gemini-2.5-pro routes to gemini" passed after 0.032 seconds.
+✔ Test "case insensitive gemini routing" passed after 0.032 seconds.
+✔ Test "gemini-2.5-flash routes to gemini" passed after 0.032 seconds.
+✔ Test "recency decays at halflife" passed after 0.032 seconds.
+✔ Test "fresh untouched memory scores one" passed after 0.032 seconds.
+✔ Test "access and query hits dominate old row" passed after 0.032 seconds.
+✔ Test "creditExhausted carries provider name" passed after 0.032 seconds.
+✔ Test "nil created at treated as now" passed after 0.032 seconds.
+✔ Test "zero age never negative" passed after 0.032 seconds.
+✔ Test "401 maps to permanent" passed after 0.032 seconds.
+✔ Test "network error mentions provider" passed after 0.032 seconds.
+✔ Test "403 plain maps to permanent" passed after 0.032 seconds.
+✔ Test "nil body never matches credit marker" passed after 0.032 seconds.
+✔ Test "custom fallbacks are appended" passed after 0.032 seconds.
+✔ Test "5xx reasonCode is upstream_error" passed after 0.032 seconds.
+✔ Test "5xx maps to transient" with 5 test cases passed after 0.032 seconds.
+✔ Test "bearer header is omitted when apiKey is empty" passed after 0.032 seconds.
+✔ Test "session id header is omitted when sessionID is empty string" passed after 0.032 seconds.
+✔ Test "bearer + session headers are sent when apiKey and sessionID are non-empty" passed after 0.032 seconds.
+✔ Test "reissue burns prior challenge" passed after 0.032 seconds.
+✔ Test "consume typed returns ok on happy path" passed after 0.032 seconds.
+✔ Test "unknown 4xx maps to permanent" passed after 0.032 seconds.
+✔ Test "consume typed returns not found for unknown destination" passed after 0.032 seconds.
+✔ Test "402 maps to creditExhausted" passed after 0.032 seconds.
+✔ Test "different inputs produce different hashes" passed after 0.032 seconds.
+✔ Test "transient retry codes" with 3 test cases passed after 0.032 seconds.
+✔ Test "publish with no subscribers is noop" passed after 0.032 seconds.
+✔ Test "404 maps to permanent" passed after 0.032 seconds.
+✔ Test "issued code consumes once" passed after 0.032 seconds.
+✔ Test "403 with credit marker maps to creditExhausted" with 6 test cases passed after 0.032 seconds.
+✔ Test "wrong code fails and counts" passed after 0.032 seconds.
+✔ Test "429 reasonCode is rate_limit not upstream_error" passed after 0.032 seconds.
+✔ Test "different destinations are independent" passed after 0.032 seconds.
+✔ Test "subscriber receives published event of matching type" passed after 0.032 seconds.
+✔ Test "HER-200 H1 dropped stream before any publish unregisters cleanly" passed after 0.032 seconds.
+✔ Test "consume typed returns wrong code then locked out" passed after 0.032 seconds.
+✔ Test "bounded buffer drops oldest when consumer lags" passed after 0.032 seconds.
+✔ Test "subscriber removed on stream termination" passed after 0.032 seconds.
+✔ Test "HER-200 H1 subscribe registers synchronously without Task hop" passed after 0.032 seconds.
+✔ Test "hash and verify round trip" passed after 0.032 seconds.
+✔ Test "multiple subscribers all receive event" passed after 0.032 seconds.
+✔ Test "consume typed returns expired" passed after 0.032 seconds.
+✔ Test "subscriber ignores events of different type" passed after 0.032 seconds.
+✔ Test "severity number mapping covers swift-log levels" passed after 0.032 seconds.
+✔ Test "placeholder matches pattern" passed after 0.032 seconds.
+✔ Test "validates good slug" passed after 0.032 seconds.
+✔ Test "int AnyValue is encoded as JSON string per OTLP spec" passed after 0.032 seconds.
+✔ Test "model conforms to TenantModel" passed after 0.032 seconds.
+✔ Test "model uses expected schema name" passed after 0.032 seconds.
+2026-05-29T20:20:32+0100 info test: [App] provider registered: xai
+2026-05-29T20:20:32+0100 info test: [App] provider registered: openRouter
+✔ Test "transient primary advances to fallback" passed after 0.032 seconds.
+✔ Test "encodes OTLP logs request matching collector schema" passed after 0.032 seconds.
+✔ Test "rejects too short" passed after 0.032 seconds.
+✔ Test "rejects too long" passed after 0.032 seconds.
+✔ Test "buildPrompt embeds hits as numbered context block" passed after 0.032 seconds.
+✔ Test "padToTarget zero-pads short vectors to 1536" passed after 0.032 seconds.
+✔ Test "all-recoverable chain rethrows last error" passed after 0.032 seconds.
+✔ Test "SSE token event encodes as data colon json double newline" passed after 0.032 seconds.
+2026-05-29T20:20:32+0100 warning test: [App] provider xai failed (credit_exhausted): creditExhausted(provider: App.ProviderKind.xai, status: 403, body: Optional("insufficient_quota"))
+✔ Test "SSE source event round-trips through wire format" passed after 0.032 seconds.
+✔ Test "rejects invalid chars" passed after 0.032 seconds.
+✔ Test "rejects reserved" passed after 0.032 seconds.
+✔ Test "buildPrompt with no hits surfaces fallback context" passed after 0.032 seconds.
+✔ Test "all seven providers env loadable from config" passed after 0.032 seconds.
+✔ Test "primary success returns data" passed after 0.032 seconds.
+✔ Test "savedID returns id when memory was fetched (id set)" passed after 0.032 seconds.
+✔ Test "padToTarget truncates oversize vectors (defensive)" passed after 0.032 seconds.
+✔ Test "fromMemory builds DTO non-throwing on hydrated model" passed after 0.032 seconds.
+✔ Test "done event has no payload key on wire" passed after 0.032 seconds.
+✔ Test "fromMemory preserves createdAt when populated" passed after 0.032 seconds.
+✔ Test "exhausted timeout throws UpstreamErrorResponse with upstream_timeout" passed after 0.032 seconds.
+✔ Test "multiple stderr lines all stripped" passed after 0.032 seconds.
+✔ Test "clean assistant content returns empty array" passed after 0.032 seconds.
+✔ Test "same_tool_failure_warning parses loop exhausted" passed after 0.032 seconds.
+✔ Test "tirith spawn error maps to notInstalled" passed after 0.032 seconds.
+✔ Test "timeout error maps to timeout category" passed after 0.032 seconds.
+✔ Test "python no module named line is stripped" passed after 0.032 seconds.
+✔ Test "permanent error from primary rethrows immediately — no fallback" passed after 0.032 seconds.
+✔ Test "tool returned error parses tool name and message" passed after 0.032 seconds.
+✔ Test "level is at least one for zero xp" passed after 0.032 seconds.
+✔ Test "bash stderr line is stripped" passed after 0.032 seconds.
+✔ Test "networkConnectionLost URLError maps to upstream_unreachable" passed after 0.032 seconds.
+✔ Test "notConnectedToInternet URLError maps to upstream_unreachable" passed after 0.032 seconds.
+✔ Test "level follows floor sqrt plus one" passed after 0.032 seconds.
+✔ Test "sanitize collapses to nil when content was only noise" passed after 0.032 seconds.
+✔ Test "permission denied maps to permissionDenied" passed after 0.032 seconds.
+✔ Test "cannotFindHost URLError maps to upstream_unreachable" passed after 0.032 seconds.
+✔ Test "sanitize message collapses empty content to empty string" passed after 0.033 seconds.
+✔ Test "sanitize preserves nil and empty inputs" passed after 0.033 seconds.
+✔ Test "override none is passthrough" passed after 0.032 seconds.
+✔ Test "non-URLError underlying falls through to generic network code" passed after 0.032 seconds.
+✔ Test "sanitize message keeps role and tool_calls" passed after 0.033 seconds.
+✔ Test "user extension decodes unrecognized tier as lapsed" passed after 0.033 seconds.
+✔ Test "dnsLookupFailed URLError maps to upstream_unreachable" passed after 0.033 seconds.
+✔ Test "override pro does not downgrade ultimate" passed after 0.033 seconds.
+✔ Test "cannotConnectToHost URLError maps to upstream_unreachable" passed after 0.033 seconds.
+✔ Test "chat allowed for active tiers" passed after 0.033 seconds.
+✔ Test "effective tier none is passthrough" passed after 0.033 seconds.
+✔ Test "skill builtin run allowed for active tiers" passed after 0.033 seconds.
+✔ Test "kb compile allowed for active tiers" passed after 0.033 seconds.
+✔ Test "mlx on device ultimate only" passed after 0.033 seconds.
+✔ Test "override pro raises lapsed to pro" passed after 0.033 seconds.
+✔ Test "archived gets nothing" passed after 0.033 seconds.
+✔ Test "vault export allowed everywhere except archived" passed after 0.033 seconds.
+✔ Test "unknown URLError falls through to generic network code" passed after 0.033 seconds.
+✔ Test "lapsed gets only vault read and export" passed after 0.033 seconds.
+✔ Test "context router ultimate only" passed after 0.033 seconds.
+✔ Test "user extension decodes unrecognized override as none" passed after 0.033 seconds.
+✔ Test "fromMemory normalizes nil tags to empty array" passed after 0.033 seconds.
+✔ Test "byo key ultimate only" passed after 0.033 seconds.
+✔ Test "canHandle returns true for any url" passed after 0.033 seconds.
+✔ Test "init rejects malformed base64" passed after 0.033 seconds.
+✔ Test "timeout URLError maps to upstream_timeout reason code" passed after 0.033 seconds.
+✔ Test "defaults are non empty" passed after 0.033 seconds.
+✔ Test "vault read allowed everywhere except archived" passed after 0.033 seconds.
+✔ Test "override ultimate unlocks everything" passed after 0.033 seconds.
+✔ Test "capture allowed for active tiers" passed after 0.033 seconds.
+✔ Test "vault skill run ultimate only" passed after 0.033 seconds.
+✔ Test "user extension post init defaults are trial" passed after 0.033 seconds.
+✔ Test "defaults are all non blank" passed after 0.033 seconds.
+✔ Test "effective tier pro raises floor" passed after 0.033 seconds.
+✔ Test "memory compile allowed for active tiers" passed after 0.033 seconds.
+✔ Test "init rejects empty master key" passed after 0.033 seconds.
+✔ Test "effective tier ultimate always wins" passed after 0.033 seconds.
+✔ Test "youtube-transcript-api missing maps to notInstalled" passed after 0.032 seconds.
+2026-05-29T20:20:32+0100 info lv.skills: [App] skills.runner event subscriptions started: 4 streams
+2026-05-29T20:20:32+0100 info lv.skills: [App] skills.runner event subscriptions started: 4 streams
+✔ Test "read returns default template when file absent" passed after 0.033 seconds.
+✔ Test "allows http in dev" passed after 0.033 seconds.
+✔ Test "rejects literal 127dot0dot0dot1" passed after 0.033 seconds.
+✔ Test "extracts multiple distinct urls preserving order" passed after 0.033 seconds.
+✔ Test "extracts single url" passed after 0.033 seconds.
+✔ Test "empty content returns empty array" passed after 0.032 seconds.
+✔ Test "dedupes identical urls" passed after 0.033 seconds.
+✔ Test "ignores non-http schemes" passed after 0.033 seconds.
+✔ Test "parseIPv4 accepts dotted quad" passed after 0.033 seconds.
+✔ Test "rejects EC2 metadata 169dot254dot169dot254" passed after 0.033 seconds.
+✔ Test "rejects 0dot0dot0dot0" passed after 0.033 seconds.
+✔ Test "unresolvable host throws unresolvable" passed after 0.033 seconds.
+✔ Test "strips trailing punctuation" passed after 0.033 seconds.
+✔ Test "empty input returns empty array" passed after 0.033 seconds.
+✔ Test "rejects host resolving to RFC1918 10dot8" passed after 0.033 seconds.
+✔ Test "caps at 5 urls per message" passed after 0.033 seconds.
+✔ Test "parseIPv4 rejects out-of-range octet" passed after 0.033 seconds.
+✔ Test "rejects host resolving to IPv6 loopback" passed after 0.033 seconds.
+✔ Test "rejects host resolving to RFC1918 192dot168" passed after 0.033 seconds.
+✔ Test "accepts public host" passed after 0.033 seconds.
+✔ Test "parseIPv4 rejects non-numeric" passed after 0.033 seconds.
+✔ Test "rejects host resolving to RFC1918 172dot16to31" passed after 0.033 seconds.
+✔ Test "allowPrivateRanges opens loopback" passed after 0.033 seconds.
+✔ Test "provisions profile directory and config" passed after 0.033 seconds.
+✔ Test "rejects http in prod" passed after 0.033 seconds.
+✔ Test "rejects host resolving to IPv6 unique-local" passed after 0.033 seconds.
+✔ Test "same tenant same username is idempotent" passed after 0.033 seconds.
+✔ Test "allowed-tools accepts yaml array" passed after 0.033 seconds.
+✔ Test "unclosed frontmatter is rejected with descriptive error" passed after 0.033 seconds.
+✔ Test "delete renames dir" passed after 0.033 seconds.
+✔ Test "missing frontmatter is rejected" passed after 0.033 seconds.
+✔ Test "invalid output kind is rejected" passed after 0.033 seconds.
+✔ Test "outputs and daily run cap decode correctly" passed after 0.033 seconds.
+✔ Test "missing required name is rejected" passed after 0.033 seconds.
+✔ Test "xp weights memories, sessions, jobs, and badges" passed after 0.033 seconds.
+✔ Test "body strips frontmatter and trims surrounding whitespace" passed after 0.033 seconds.
+✔ Test "missing required description is rejected" passed after 0.033 seconds.
+✔ Test "invalid capability value is rejected" passed after 0.033 seconds.
+✔ Test "missing required capability is rejected" passed after 0.033 seconds.
+✔ Test "padToTarget passes through exact-length vectors unchanged" passed after 0.032 seconds.
+✔ Test "allowed-tools accepts space separated string" passed after 0.033 seconds.
+✔ Test "rejects literal localhost" passed after 0.033 seconds.
+✔ Test "strips trailing right-paren and bracket" passed after 0.033 seconds.
+✔ Test "re-resolves on every call (DNS rebinding defense)" passed after 0.033 seconds.
+✔ Test "generic slash maps to skill name" passed after 0.033 seconds.
+✔ Test "known synthesis aliases preserve topic input" passed after 0.033 seconds.
+✔ Test "different tenant same username throws" passed after 0.034 seconds.
+✔ Test "beliefs requires a topic" passed after 0.033 seconds.
+✔ Test "generic og enricher is the catch all" passed after 0.033 seconds.
+✔ Test "non slash is ignored" passed after 0.033 seconds.
+✔ Test "youtube enricher routes only youtube hosts" passed after 0.033 seconds.
+✔ Test "pro high routes sonnet then opus then gpt5" passed after 0.033 seconds.
+✔ Test "logging sender does not throw" passed after 0.033 seconds.
+✔ Test "public hosts pass" with 8 test cases passed after 0.033 seconds.
+2026-05-29T20:20:32+0100 info lv.skills: [App] skills.runner event subscriptions started: 4 streams
+2026-05-29T20:20:32+0100 info lv.skills: [App] skills.runner event subscriptions started: 4 streams
+✔ Test "private and non-http urls are rejected" with 17 test cases passed after 0.033 seconds.
+✔ Test "kb ingest aliases route to kb compile" passed after 0.033 seconds.
+✔ Test "nil resolver → permanent endpointMissing" passed after 0.033 seconds.
+✔ Test "unreachable code maps to 502 Bad Gateway" passed after 0.033 seconds.
+✔ Test "RateLimitStorageKind enum maps known values" passed after 0.033 seconds.
+✔ Test "empty kind defaults to memory" passed after 0.033 seconds.
+✔ Test "timeout code maps to 504 Gateway Timeout" passed after 0.033 seconds.
+✔ Test "redis kind falls back to memory until driver lands" passed after 0.033 seconds.
+✔ Test "rejects ftp scheme" passed after 0.033 seconds.
+2026-05-29T20:20:32+0100 info lv.skills: [App] skills.runner event subscriptions started: 4 streams
+✔ Test "round trips through HMAC" passed after 0.033 seconds.
+✔ Test "returns empty for empty text" passed after 0.033 seconds.
+✔ Test "unknown kind defaults to memory" passed after 0.033 seconds.
+✔ Test "kind matching is case insensitive" passed after 0.033 seconds.
+✔ Test "body serializes to error envelope JSON" passed after 0.033 seconds.
+✔ Test "retry_after_ms omitted when nil" passed after 0.033 seconds.
+✔ Test "generic network code maps to 502 Bad Gateway" passed after 0.033 seconds.
+✔ Test "dedupes the same URL repeated" passed after 0.033 seconds.
+✔ Test "strips default ports during normalization" passed after 0.033 seconds.
+✔ Test "keeps URLs that differ in query string" passed after 0.033 seconds.
+✔ Test "lowercases scheme and host during normalization" passed after 0.033 seconds.
+✔ Test "drops non-public hosts via URLEnricherGuard" passed after 0.033 seconds.
+✔ Test "dedupes URLs that differ only in fragment" passed after 0.033 seconds.
+✔ Test "upstream_rejected maps to 502 Bad Gateway" passed after 0.033 seconds.
+✔ Test "extracts multiple distinct URLs in order" passed after 0.033 seconds.
+✔ Test "hpid claim round trips" passed after 0.034 seconds.
+✔ Test "drops markdown extension" passed after 0.033 seconds.
+✔ Test "respects max URL cap" passed after 0.033 seconds.
+✔ Test "single word slug stays single word" passed after 0.033 seconds.
+✔ Test "extracts a single bare URL" passed after 0.033 seconds.
+✔ Test "seed writes config and env with key" passed after 0.034 seconds.
+✔ Test "handles paths without date segment" passed after 0.033 seconds.
+✔ Test "drops non-HTTP schemes" passed after 0.033 seconds.
+✔ Test "builtin SKILL md is bundled and declares belief-evolution" passed after 0.033 seconds.
+✔ Test "fixture memories are chronologically ordered and span 3 months" passed after 0.033 seconds.
+✔ Test "prompt body documents required structural contract" passed after 0.033 seconds.
+✔ Test "encoded shape is tagged envelope" passed after 0.033 seconds.
+✔ Test "titlecases slug segments" passed after 0.033 seconds.
+✔ Test "buildPrompt with no sources still produces a valid prompt" passed after 0.033 seconds.
+✔ Test "caps output at maxFollowUps soft ceiling" passed after 0.033 seconds.
+✔ Test "catalog renders deterministic JSON across runs" passed after 0.033 seconds.
+✔ Test "publish encodes envelope and broadcasts" passed after 0.033 seconds.
+✔ Test "filter on empty candidates returns empty" passed after 0.033 seconds.
+✔ Test "short-circuits without an upstream call when summary and sources are empty" passed after 0.033 seconds.
+✔ Test "filter excludes CN origin when toggle on" passed after 0.033 seconds.
+✔ Test "error recoverability matrix" passed after 0.033 seconds.
+✔ Test "parses JSON follow-up array from upstream assistant message" passed after 0.033 seconds.
+✔ Test "rejects entry without colon" passed after 0.033 seconds.
+✔ Test "buildPrompt truncates long source contents to keep tokens bounded" passed after 0.033 seconds.
+✔ Test "empty input yields empty list" passed after 0.033 seconds.
+✔ Test "trims whitespace and drops empty entries" passed after 0.033 seconds.
+✔ Test "tolerates whitespace around entries" passed after 0.033 seconds.
+✔ Test "classifies known CN origin model identifiers" passed after 0.033 seconds.
+✔ Test "returns empty array on malformed assistant JSON" passed after 0.033 seconds.
+✔ Test "returns empty array on empty assistant content" passed after 0.033 seconds.
+✔ Test "kind init accepts canonical + aliased + case-insensitive inputs" passed after 0.033 seconds.
+✔ Test "parses csv into ordered kid/secret pairs" passed after 0.033 seconds.
+✔ Test "extra fields are tolerated" passed after 0.033 seconds.
+✔ Test "filter is no op when toggle off" passed after 0.033 seconds.
+✔ Test "loaded collection verifies token signed by active kid" passed after 0.033 seconds.
+✔ Test "rejects empty kid" passed after 0.033 seconds.
+✔ Test "valid JSON with type field is allowed" passed after 0.033 seconds.
+✔ Test "empty string is rejected" passed after 0.033 seconds.
+✔ Test "rejects duplicate kids" passed after 0.033 seconds.
+✔ Test "buildPrompt replays history with system context prepended" passed after 0.033 seconds.
+✔ Test "JSON object missing type field is rejected" passed after 0.033 seconds.
+✔ Test "JSON array at top level is rejected" passed after 0.033 seconds.
+✔ Test "JSON object with non-string type is rejected" passed after 0.033 seconds.
+✔ Test "prepends system when no system present" passed after 0.033 seconds.
+✔ Test "does not flag US or EU origin models" passed after 0.033 seconds.
+✔ Test "record increments counter with reason_code dimension" passed after 0.033 seconds.
+✔ Test "returns empty array on transport failure" passed after 0.033 seconds.
+✔ Test "tokens signed by retired kid still verify after rotation" passed after 0.033 seconds.
+✔ Test "tokens signed by fully removed kid fail verification" passed after 0.033 seconds.
+✔ Test "rejects short secret" passed after 0.033 seconds.
+✔ Test "builtin resources are present and non empty" passed after 0.035 seconds.
+✔ Test "plain text is rejected as invalid JSON" passed after 0.034 seconds.
+✔ Test "oversize message is rejected" passed after 0.033 seconds.
+✔ Test "parser succeeds on every builtin manifest" passed after 0.035 seconds.
+✔ Test "message at exact size cap is allowed if JSON is valid" passed after 0.034 seconds.
+✔ Test "accepts valid E 164" passed after 0.020 seconds.
+✔ Test "rejects invalid" passed after 0.020 seconds.
+✔ Test "bearer header is sent when apiKey is non-empty" passed after 0.037 seconds.
+✔ Test "decodes users me envelope with email" passed after 0.018 seconds.
+✔ Test "URLRequest carries explicit 90s timeout interval" passed after 0.037 seconds.
+2026-05-29T20:20:32+0100 info test.resend: [App] email OTP delivered via resend: purpose=login to=user@example.com
+✔ Test "200 response returns audio data with correct content type" passed after 0.035 seconds.
+✔ Test "rejects expired token" passed after 0.035 seconds.
+✔ Test "valid token returns identity" passed after 0.037 seconds.
+✔ Test "step expression every 15 minutes" passed after 0.006 seconds.
+✔ Test "range expression office hours" passed after 0.006 seconds.
+✔ Test "dow only weekly memo monday 9am" passed after 0.006 seconds.
+✔ Test "comma list of minutes" passed after 0.006 seconds.
+✔ Test "tz aware 0700 lisbon does not match 0700 utc when offset differs" passed after 0.006 seconds.
+✔ Test "dom or dow semantics" passed after 0.006 seconds.
+✔ Test "request shape: POST /v1/embeddings, model + dimensions, Bearer auth" passed after 0.035 seconds.
+✔ Test "no resolution dispatches to managed baseURL without authorization" passed after 0.034 seconds.
+✔ Test "parses 5 fields" passed after 0.006 seconds.
+✔ Suite DailyRunCapTests passed after 0.039 seconds.
+✔ Suite "RoutingModelRouterTests" passed after 0.039 seconds.
+✔ Suite ProviderErrorSurfaceTests passed after 0.039 seconds.
+✔ Suite MemoryScoringTests passed after 0.039 seconds.
+✔ Suite HermesLLMStreamServiceTests passed after 0.039 seconds.
+✔ Suite PasswordHasherTests passed after 0.039 seconds.
+✔ Suite PreAuthChallengeStoreTests passed after 0.039 seconds.
+✔ Suite ProviderErrorClassifierTests passed after 0.039 seconds.
+✔ Suite OTLPHTTPLogExporterTests passed after 0.039 seconds.
+✔ Test "daily 7am Lisbon matches 0700 local" passed after 0.006 seconds.
+✔ Suite UserHermesConfigTests passed after 0.039 seconds.
+✔ Suite "EmbeddingFallbackService" passed after 0.039 seconds.
+✔ Suite UsernamePolicyTests passed after 0.039 seconds.
+✔ Suite QueryStreamTests passed after 0.039 seconds.
+✔ Suite "NomicEmbeddingService" passed after 0.039 seconds.
+✔ Suite MemorySavedIDTests passed after 0.039 seconds.
+✔ Suite PowerLevelTests passed after 0.039 seconds.
+✔ Suite ProviderErrorReasonCodeTests passed after 0.039 seconds.
+✔ Suite SecretBoxTests passed after 0.039 seconds.
+✔ Suite SuggestionsControllerTests passed after 0.039 seconds.
+✔ Suite HermesToolErrorClassifierTests passed after 0.039 seconds.
+✔ Suite EntitlementCheckerTests passed after 0.039 seconds.
+✔ Suite SSRFGuardTests passed after 0.039 seconds.
+✔ Suite FilesystemHermesGatewayTests passed after 0.039 seconds.
+✔ Suite URLExtractorTests passed after 0.039 seconds.
+✔ Suite SlashCommandParserTests passed after 0.039 seconds.
+✔ Suite SkillManifestTests passed after 0.039 seconds.
+✔ Test "rejects wrong field count" passed after 0.006 seconds.
+✔ Suite UpstreamErrorResponseTests passed after 0.039 seconds.
+✔ Suite "WebSocketMemoryCompileProgressPublisher" passed after 0.039 seconds.
+✔ Suite MemoControllerTitleTests passed after 0.039 seconds.
+✔ Suite URLExtractionServiceTests passed after 0.039 seconds.
+✔ Suite BeliefEvolutionTests passed after 0.039 seconds.
+✔ Suite FollowUpGeneratorTests passed after 0.039 seconds.
+✔ Suite ModelOriginTests passed after 0.039 seconds.
+✔ Suite "EmbeddingProviderKind + Error" passed after 0.039 seconds.
+✔ Test "posts JSON body with code, from, to, subject" passed after 0.037 seconds.
+✔ Suite WebSocketBroadcastGuardTests passed after 0.039 seconds.
+✔ Suite UpstreamErrorTelemetryTests passed after 0.039 seconds.
+✔ Suite JWTKeyLoaderTests passed after 0.039 seconds.
+✔ Test "out of range integer rejected" passed after 0.006 seconds.
+✔ Test "x enricher routes twitter and x hosts" passed after 0.033 seconds.
+2026-05-29T20:20:32+0100 info test.her240c: container=hermes-tenant-test sessionID=sess-1 [App] xai-oauth authorize URL emitted
+✔ Suite PhoneE164ValidatorTests passed after 0.039 seconds.
+✔ Suite SessionTokenTests passed after 0.039 seconds.
+FluentKit/Databases.swift:190: Fatal error: No default database configured.
+FluentKit/Databases.swift:190: Fatal error: No default database configured.
+◇ Test "missing api key disables provider" started.
+◇ Test "transient failovers to next" started.
+◇ Test "non-timeout exhaustion does NOT include retry_after_ms" started.
+✔ Test "requestAuthorizeURL extracts URL from Authorize prefix line" passed after 0.038 seconds.
+◇ Test "enrich populates body with jina markdown" started.
+◇ Test "write round trips through read" started.
+◇ Test "recording sender captures every call" started.
