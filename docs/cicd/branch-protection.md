@@ -16,9 +16,19 @@ After protection lands, push to `main`/`dev` is only possible via a PR merge tha
   - Required approvals: **0** (solo dev — CI is the gate, not human eyes)
   - Dismiss stale approvals when new commits are pushed: ON
 - **Require status checks to pass before merging**: ON
-  - Required checks: `lint` (job names from `.github/workflows/ci.yml`)
+  - Required checks: `lint` (job id from `.github/workflows/ci.yml`)
   - Require branches to be up to date before merging: ON
-  - **`test` is NOT yet required** — the `swift test` job has been failing on main for 30+ consecutive runs (Linux Swift 6.3 runtime SIGILL + missing migration ordering). Promote `test` to required only after the test infra is repaired. Add `"test"` back to the `contexts` array in the JSON payloads when stable.
+  - **`test` is NOT yet required.** The `swift test` job still SIGILLs on
+    process exit — an AsyncKit `ConnectionPool.shutdown() was not called
+    before deinit` precondition during pool teardown, compounded by a
+    migration-ordering bug (`relation "users" does not exist`). The racy
+    `defer { Task { … shutdown } }` migration (HER-310, #105) was necessary
+    but insufficient; the crash persists and is tracked under **HER-310**.
+    Once `test` is green on `main`, promote it: add `"test"` to the
+    `contexts` arrays in `branch-protection-main.json` /
+    `branch-protection-dev.json` and re-apply (commands below). The
+    HER-272 deploy gate (`workflow_run` on CI success) already blocks
+    deploys while `test` is red, so this promotion only tightens merges.
 - **Require conversation resolution before merging**: ON
 - **Restrict who can push to matching branches**: not required (no direct push allowed anyway)
 - **Allow force pushes**: OFF
