@@ -417,6 +417,10 @@ At that point, your application filter becomes **defense-in-depth**, and Postgre
 
 ### Deployment Checklist
 
+> **CI/CD pipeline & rollback runbook:** [`docs/deploy.md`](docs/deploy.md) —
+> how pushes to `main` build, test, deploy to the VPS, smoke-test, and
+> auto-roll-back, plus manual rollback steps.
+
 Before going live on a VPS:
 
 - [ ] **Backups** — test restore from full and incremental backups

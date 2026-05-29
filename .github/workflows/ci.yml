@@ -93,7 +93,12 @@ jobs:
         # Best-effort; emits a workflow notice on failure but does not
         # break the build. Coverage is informational until we wire a
         # dashboard upload step.
+        # `shell: bash` is required: the default shell inside the
+        # `swift:6.3-noble` container is `dash`, which rejects both
+        # `set -o pipefail` and the `[[ ]]` test below ("Illegal option
+        # -o pipefail", exit 2).
         if: always()
+        shell: bash
         run: |
           set -euo pipefail
           BIN_PATH=$(swift build --show-bin-path)

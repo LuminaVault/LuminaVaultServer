@@ -1,7 +1,13 @@
 name: Deploy
 
+# HER-272: deploy is gated on CI. It only runs after the `CI` workflow
+# completes successfully on `main` (via `workflow_run`), so a failing
+# `test` or `lint` job blocks the deploy. `workflow_dispatch` stays for
+# manual redeploys / rollbacks.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -13,6 +19,8 @@ jobs:
   build:
     name: Build & Push Image
     runs-on: ubuntu-latest
+    # Only build/deploy when CI passed (or on a manual dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
@@ -25,12 +33,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # workflow_run runs in the default-branch context; check out the
+          # exact commit CI validated so the image matches what was tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Resolve image references
         id: refs
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           IMAGE_REPOSITORY="${REGISTRY}/${IMAGE_NAME,,}"
-          IMAGE_SHA_TAG="${GITHUB_SHA}"
+          IMAGE_SHA_TAG="${HEAD_SHA}"
           APP_IMAGE="${IMAGE_REPOSITORY}:${IMAGE_SHA_TAG}"
           echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
           echo "image_sha_tag=${IMAGE_SHA_TAG}" >> "$GITHUB_OUTPUT"
@@ -92,6 +106,16 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/obsidian-claudebrain
+
+            # HER-272: record the image to roll back to if this release
+            # fails its smoke test — the last image promoted to "green"
+            # (falls back to whatever is currently live if no green
+            # pointer exists yet). Consumed by the rollback step below.
+            if [ -s .green_image ]; then
+              cp .green_image .rollback_image
+            else
+              sed -n 's/^APP_IMAGE=//p' .env.production > .rollback_image || true
+            fi
 
             # Ensure clean working tree before updating
             git fetch origin main
@@ -156,7 +180,9 @@ jobs:
               --env-file .env.production \
               up -d --no-deps app
 
-            # Health check
+            # On-server health pre-gate (fast, localhost). A failure here
+            # fails the step and triggers the rollback step below; the
+            # public smoke test (next step) is the authoritative gate.
             HEALTHY=0
             for ATTEMPT in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then
@@ -167,14 +193,93 @@ jobs:
             done
 
             if [ "${HEALTHY}" -ne 1 ]; then
-              echo "Health check failed for ${APP_IMAGE}"
+              echo "On-server health check failed for ${APP_IMAGE}"
               APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
                 -f docker-compose.production.yml logs --tail=120 app
               exit 1
             fi
 
-            echo "Rollback command:"
-            echo "APP_PORT=8080 APP_IMAGE=<previous_sha_image> docker compose -p prod -f docker-compose.production.yml --env-file .env.production up -d --no-deps app"
+      # HER-272: authoritative post-deploy smoke test, run FROM THE RUNNER
+      # against the public endpoint over HTTPS. NOTE: hits `/health` (the
+      # public liveness probe returning "ok"), NOT `/v1/health` — the
+      # latter is the JWT-authed health-data domain and returns 401.
+      # Fails the job if not HTTP 200 within ~30s, which triggers rollback.
+      - name: Post-deploy smoke test (public endpoint)
+        env:
+          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL || 'https://api.luminavault.com/health' }}
+        run: |
+          set -euo pipefail
+          for ATTEMPT in $(seq 1 15); do
+            CODE=$(curl -fsS -o /dev/null -w '%{http_code}' "${HEALTH_URL}" || true)
+            if [ "${CODE}" = "200" ]; then
+              echo "Smoke test passed: ${HEALTH_URL} -> 200 (attempt ${ATTEMPT})"
+              exit 0
+            fi
+            echo "Smoke attempt ${ATTEMPT}: ${HEALTH_URL} -> ${CODE:-no-response}"
+            sleep 2
+          done
+          echo "Smoke test FAILED: ${HEALTH_URL} did not return 200 within ~30s"
+          exit 1
 
-            # Cleanup old images older than 7 days
+      # HER-272: promote the just-deployed image to "green" and prune.
+      # Runs only when build + deploy + smoke all succeeded.
+      - name: Promote release
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/obsidian-claudebrain
+            # Record the most-recent-green image pointer (see docs/deploy.md).
+            echo "${{ needs.build.outputs.app_image }}" > .green_image
+            rm -f .rollback_image
+            # Cleanup old images older than 7 days.
             docker image prune -af --filter "until=168h"
+
+      # HER-272: automatic rollback. Runs only if a prior step failed
+      # (deploy error or smoke test not 200). Redeploys the last-known-good
+      # image recorded in .rollback_image. The job stays red regardless.
+      - name: Roll back on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/obsidian-claudebrain
+            if [ ! -s .rollback_image ]; then
+              echo "No .rollback_image recorded; cannot auto-roll back. Manual intervention required (see docs/deploy.md)."
+              exit 0
+            fi
+            ROLLBACK_IMAGE="$(cat .rollback_image)"
+            echo "Rolling back to ${ROLLBACK_IMAGE}"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull "${ROLLBACK_IMAGE}"
+            sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${ROLLBACK_IMAGE}|" .env.production
+            APP_PORT=8080 APP_IMAGE="${ROLLBACK_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              up -d --no-deps app
+            echo "Rollback redeploy issued for ${ROLLBACK_IMAGE}"
+
+      # HER-272: deploy notification (success + failure). Channel wiring is
+      # deferred — this no-ops unless SLACK_WEBHOOK_URL is configured.
+      # TODO(HER-272 follow-up): wire Slack/email and remove the guard.
+      - name: Notify deploy result
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL}" ]; then
+            echo "::notice::deploy result=${{ job.status }} (no SLACK_WEBHOOK_URL configured; notification skipped)"
+            exit 0
+          fi
+          curl -fsS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Production deploy ${{ job.status }} for ${{ needs.build.outputs.app_image }}\"}" \
+            "${SLACK_WEBHOOK_URL}"
