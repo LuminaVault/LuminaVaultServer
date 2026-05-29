@@ -41,20 +41,17 @@ struct MigrateCommandTests {
     func `is_admin column exists after migrate`() async throws {
         try await runMigrateCommand(reader: Self.reader())
 
-        let logger = Logger(label: "test.migrate")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        defer { Task { try? await fluent.shutdown() } }
-
-        let sql = (fluent.db() as? any SQLDatabase)
-        let row = try await sql?
-            .raw(#"SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_admin'"#)
-            .first()
-        #expect(row != nil, "users.is_admin column should exist after migrate")
-
-        try await fluent.shutdown()
+        // HER-310 — Use `withTestFluent` so the connection pool is
+        // guaranteed to shut down before the helper returns. The prior
+        // `defer { Task { try? await fluent.shutdown() } }` pattern is
+        // racy (detached Task may not run before deinit, tripping
+        // AsyncKit's pool-not-shutdown precondition on process exit).
+        try await withTestFluent(label: "test.migrate") { fluent in
+            let sql = (fluent.db() as? any SQLDatabase)
+            let row = try await sql?
+                .raw(#"SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_admin'"#)
+                .first()
+            #expect(row != nil, "users.is_admin column should exist after migrate")
+        }
     }
 }

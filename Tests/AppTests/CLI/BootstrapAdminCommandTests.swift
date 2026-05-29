@@ -59,18 +59,16 @@ struct BootstrapAdminCommandTests {
     }
 
     private static func fetchUser(email: String) async throws -> User? {
-        let logger = Logger(label: "test.bootstrap-admin")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
-        )
-        defer { Task { try? await fluent.shutdown() } }
-        let user = try await User.query(on: fluent.db())
-            .filter(\.$email == email.lowercased())
-            .first()
-        try await fluent.shutdown()
-        return user
+        // HER-310 — Use `withTestFluent` so the pool is guaranteed to
+        // shut down before the helper returns. The prior `defer { Task
+        // { try? await fluent.shutdown() } }` pattern is racy: detached
+        // shutdown may not run before deinit, tripping AsyncKit's
+        // pool-not-shutdown precondition on process exit.
+        try await withTestFluent(label: "test.bootstrap-admin") { fluent in
+            try await User.query(on: fluent.db())
+                .filter(\.$email == email.lowercased())
+                .first()
+        }
     }
 
     @Test
