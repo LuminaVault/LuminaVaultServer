@@ -108,15 +108,27 @@ struct QueryController {
         let sessionID = body.sessionID
         let userQuery = body.query
 
+        var log = ctx.logger
+        log[metadataKey: "tenant_id"] = .string(tenantID.uuidString)
+        log.info("query stream begin", metadata: [
+            "query_len": .stringConvertible(userQuery.count),
+            "limit": .stringConvertible(limit),
+        ])
+
         // Retrieve up-front. If retrieval itself fails, surface a 502
         // through the normal HTTP path — easier to debug than a
         // partial SSE stream.
-        let queryEmbedding = try await embeddings.embed(userQuery, tenantID: tenantID)
-        let hits = try await memories.semanticSearch(
-            tenantID: tenantID,
-            queryEmbedding: queryEmbedding,
-            limit: limit,
-        )
+        let queryEmbedding = try await loggedStage("query.embed", logger: log) {
+            try await embeddings.embed(userQuery, tenantID: tenantID)
+        }
+        let hits = try await loggedStage("query.search", logger: log) {
+            try await memories.semanticSearch(
+                tenantID: tenantID,
+                queryEmbedding: queryEmbedding,
+                limit: limit,
+            )
+        }
+        log.info("query grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .queryRan)
@@ -128,7 +140,7 @@ struct QueryController {
             temperature: 0.4,
         )
         let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
-        let logger = logger
+        let logger = log
         let followUpGenerator = followUpGenerator
         let hitDTOs = hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -151,17 +163,33 @@ struct QueryController {
                     continuation.yield(.fallback(notice.wireDTO()))
                 }
                 do {
+                    let streamStart = DispatchTime.now().uptimeNanoseconds
+                    var firstTokenMs: Int64?
+                    var tokenCount = 0
                     try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
                         for try await chunk in chunks {
                             if Task.isCancelled { break }
                             if !chunk.delta.isEmpty {
+                                if firstTokenMs == nil {
+                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                    logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                }
+                                tokenCount += 1
                                 assistantBuffer.append(chunk.delta)
                                 continuation.yield(.token(chunk.delta))
                             }
                         }
                     }
+                    logger.info("query stream complete", metadata: [
+                        "tokens": .stringConvertible(tokenCount),
+                        "chars": .stringConvertible(assistantBuffer.count),
+                        "duration_ms": .stringConvertible(Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)),
+                        "ttft_ms": .stringConvertible(firstTokenMs ?? -1),
+                    ])
                 } catch {
-                    logger.error("query stream upstream failed: \(error)")
+                    logger.error("query stream upstream failed", metadata: [
+                        "error": .string(Logger.redact(String(describing: error))),
+                    ])
                     continuation.yield(.error("upstream failure"))
                     continuation.finish()
                     return

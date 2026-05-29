@@ -136,6 +136,13 @@ struct ConversationController {
             throw HTTPError(.badRequest, message: "content required")
         }
 
+        // Request-scoped logger: ctx.logger carries the Hummingbird request
+        // id, so every stage below correlates with the access-log line.
+        var log = ctx.logger
+        log[metadataKey: "tenant_id"] = .string(tenantID.uuidString)
+        log[metadataKey: "conversation_id"] = .string(conversationID.uuidString)
+        log.info("chat stream begin", metadata: ["content_len": .stringConvertible(content.count)])
+
         // Persist user turn synchronously so the transcript is durable
         // even if the assistant stream fails downstream.
         let userMessage = try ConversationMessage(
@@ -146,18 +153,25 @@ struct ConversationController {
         try await userMessage.save(on: fluent.db())
 
         // Load full transcript history so the LLM sees prior turns.
-        let history = try await ConversationMessage.query(on: fluent.db())
-            .filter(\.$conversationID == conversationID)
-            .sort(\.$createdAt, .ascending)
-            .all()
+        let history = try await loggedStage("chat.history", logger: log) {
+            try await ConversationMessage.query(on: fluent.db())
+                .filter(\.$conversationID == conversationID)
+                .sort(\.$createdAt, .ascending)
+                .all()
+        }
 
         // Retrieve grounding memories on the latest user turn.
-        let queryEmbedding = try await embeddings.embed(content, tenantID: tenantID)
-        let hits = try await memories.semanticSearch(
-            tenantID: tenantID,
-            queryEmbedding: queryEmbedding,
-            limit: 5,
-        )
+        let queryEmbedding = try await loggedStage("chat.embed", logger: log) {
+            try await embeddings.embed(content, tenantID: tenantID)
+        }
+        let hits = try await loggedStage("chat.search", logger: log) {
+            try await memories.semanticSearch(
+                tenantID: tenantID,
+                queryEmbedding: queryEmbedding,
+                limit: 5,
+            )
+        }
+        log.info("chat grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         let chatRequest = ChatRequest(
             messages: Self.buildPrompt(history: history, hits: hits),
@@ -168,7 +182,7 @@ struct ConversationController {
         let sessionID = conversationID.uuidString
         let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
         let fluent = fluent
-        let logger = logger
+        let logger = log
         let followUpGenerator = followUpGenerator
         let sourceIDs = hits.map(\.id)
         let hitDTOs = hits.map {
@@ -201,17 +215,33 @@ struct ConversationController {
                 }
 
                 do {
+                    let streamStart = DispatchTime.now().uptimeNanoseconds
+                    var firstTokenMs: Int64?
+                    var tokenCount = 0
                     try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
                         for try await chunk in chunks {
                             if Task.isCancelled { break }
                             if !chunk.delta.isEmpty {
+                                if firstTokenMs == nil {
+                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                }
+                                tokenCount += 1
                                 assistantBuffer.append(chunk.delta)
                                 continuation.yield(.token(chunk.delta))
                             }
                         }
                     }
+                    logger.info("chat stream complete", metadata: [
+                        "tokens": .stringConvertible(tokenCount),
+                        "chars": .stringConvertible(assistantBuffer.count),
+                        "duration_ms": .stringConvertible(Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)),
+                        "ttft_ms": .stringConvertible(firstTokenMs ?? -1),
+                    ])
                 } catch {
-                    logger.error("conversation stream upstream failed: \(error)")
+                    logger.error("conversation stream upstream failed", metadata: [
+                        "error": .string(Logger.redact(String(describing: error))),
+                    ])
                     continuation.yield(.error("upstream failure"))
                     continuation.finish()
                     return
