@@ -46,8 +46,8 @@ struct ModelRouterTests {
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
         let decision = await router.pick(forModel: nil, capability: .high, user: Self.user(tier: .pro))
 
-        #expect(decision.primary == ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"))
-        #expect(decision.fallbacks.contains(ModelRoute(provider: .anthropic, modelID: "claude-opus-4.7")))
+        #expect(decision.primary == ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4-6"))
+        #expect(decision.fallbacks.contains(ModelRoute(provider: .anthropic, modelID: "claude-opus-4-7")))
         #expect(decision.fallbacks.contains(ModelRoute(provider: .openai, modelID: "gpt-5")))
         #expect(decision.fallbacks.last == ModelRoute(provider: .hermesGateway, modelID: "hermes-3"))
     }
@@ -58,7 +58,7 @@ struct ModelRouterTests {
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
         let decision = await router.pick(forModel: nil, capability: .medium, user: Self.user(tier: .pro))
 
-        #expect(decision.primary == ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"))
+        #expect(decision.primary == ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4-6"))
         #expect(decision.fallbacks.contains(ModelRoute(provider: .gemini, modelID: "gemini-2.5-pro")))
     }
 

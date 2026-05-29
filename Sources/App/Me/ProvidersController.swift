@@ -253,7 +253,7 @@ struct ProvidersController {
     static func pingPayload(for provider: ProviderID) -> [String: Any] {
         let model = switch provider {
         case .xai: "grok-4"
-        case .anthropic: "claude-sonnet-4.6"
+        case .anthropic: "claude-sonnet-4-6"
         case .openai: "gpt-4o-mini"
         case .openRouter: "openrouter/auto"
         case .ollama: "llama3.1"
