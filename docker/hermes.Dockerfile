@@ -12,7 +12,10 @@
 #
 # Rebuild via `docker compose build hermes` after editing
 # `hermes-skills/`.
-FROM nousresearch/hermes-agent:latest
+# Pinned by digest (was `:latest`) — `:latest` drift moved the hermes binary
+# layout on 2026-05-29 and broke startup (exit 127). Digest maps to the
+# `:latest` tag as of that date. Bump deliberately after verifying startup.
+FROM nousresearch/hermes-agent:latest@sha256:b6e41c155d6bfce5ad83c5d0fec670086db8a43250e4511c9474134be5482d33
 
 # Baked layout — read-only inside the container. The runtime path
 # (`/opt/data/skills/`) is populated by the entrypoint on each start.

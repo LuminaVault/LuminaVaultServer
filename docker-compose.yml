@@ -90,7 +90,9 @@ services:
       # --- CORS (dev = wildcard) ---
       CORS_ALLOWEDORIGINS: ""
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health | grep -q ok || exit 1"]
+      # /health returns 200 with an empty body — check status, not body.
+      # `curl -f` fails on non-2xx; image installs curl (see Dockerfile.dev).
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

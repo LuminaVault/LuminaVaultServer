@@ -18,6 +18,10 @@ if [ -d "${BAKED}" ]; then
     cp -Rn "${BAKED}/." "${TARGET}/" 2>/dev/null || true
 fi
 
-# Hand off to the base image's documented CLI. The base entrypoint is
-# the `hermes` binary on PATH; CMD provides `gateway run`.
-exec hermes "$@"
+# Hand off to the base image's documented entrypoint, which bootstraps the
+# runtime env and launches the `hermes` CLI. CMD (`gateway run`) flows through
+# as "$@". We do NOT call `hermes` directly — it is not on the default PATH
+# (the base startup is what makes it runnable, and the `/opt/data` bind mount
+# shadows `/opt/data/.local/bin`). tini is preserved for PID-1 signal handling
+# and zombie reaping of hermes' subprocesses.
+exec /usr/bin/tini -g -- /opt/hermes/docker/entrypoint.sh "$@"
