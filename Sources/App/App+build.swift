@@ -1156,12 +1156,17 @@ func buildRouter(
     // central Hermes gateway directly (routed/Gemini streaming is out of
     // scope). Bypasses the routing layer; falls back to non-streaming
     // `/v1/query` via the existing agent loop.
+    // Idle (inter-chunk) timeout for Hermes SSE. Bounds silence between body
+    // chunks so a stalled upstream fails fast instead of hanging until the
+    // client's request timeout. Tune via HERMES_STREAM_IDLE_TIMEOUT.
+    let hermesStreamIdleSeconds = Int64(reader.string(forKey: "hermes.streamIdleTimeout", default: "60")) ?? 60
     let queryStreamService = DefaultHermesLLMStreamService(
         baseURL: hermesURL,
         httpClient: HTTPClient.shared,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,
+        streamIdleTimeout: .seconds(hermesStreamIdleSeconds),
     )
     // HER-37 Slice C — single FollowUpGenerator instance shared by the
     // Query + Conversation controllers. Reuses the routed transport so
