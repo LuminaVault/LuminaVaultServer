@@ -32,21 +32,28 @@ struct SkillRunnerTests {
         await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
         await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
         await fluent.migrations.add(M27_AddUserTimezone())
-        try await fluent.migrate()
-
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-skill-runner-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tmpRoot, withIntermediateDirectories: true)
 
-        let username = "skill-\(UUID().uuidString.prefix(8).lowercased())"
-        let user = User(
-            email: "\(username)@test.luminavault",
-            username: username,
-            passwordHash: "x",
-        )
-        try await user.save(on: fluent.db())
-
+        // HER-310 — Everything throwable AFTER `Fluent` is constructed
+        // must run inside the do/catch so `fluent.shutdown()` is
+        // guaranteed before the struct deinits. Previously
+        // `fluent.migrate()`, `createDirectory`, and `user.save` ran
+        // above the do/catch — any transient PG error would leak the
+        // EventLoopGroupConnectionPool and SIGILL the test binary on
+        // process exit (AsyncKit precondition).
         do {
+            try await fluent.migrate()
+            try FileManager.default.createDirectory(at: tmpRoot, withIntermediateDirectories: true)
+
+            let username = "skill-\(UUID().uuidString.prefix(8).lowercased())"
+            let user = User(
+                email: "\(username)@test.luminavault",
+                username: username,
+                passwordHash: "x",
+            )
+            try await user.save(on: fluent.db())
+
             let result = try await body(Harness(
                 fluent: fluent,
                 tenantID: user.requireID(),

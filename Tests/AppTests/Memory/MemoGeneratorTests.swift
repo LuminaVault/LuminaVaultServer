@@ -52,8 +52,17 @@ struct MemoGeneratorTests {
         await fluent.migrations.add(M13_CreateVaultFile())
         await fluent.migrations.add(M14_CreateHealthEvent())
         await fluent.migrations.add(M15_AddTierFields())
-        try await fluent.migrate()
-        return fluent
+        // HER-310 — wrap `fluent.migrate()` so a transient PG error
+        // shuts the pool down before propagating; otherwise the
+        // EventLoopGroupConnectionPool leaks and SIGILLs the test
+        // binary on process exit (AsyncKit precondition).
+        do {
+            try await fluent.migrate()
+            return fluent
+        } catch {
+            try? await fluent.shutdown()
+            throw error
+        }
     }
 
     private static func makeService(fluent: Fluent, tmpRoot: URL, transport: any HermesChatTransport) -> MemoGeneratorService {

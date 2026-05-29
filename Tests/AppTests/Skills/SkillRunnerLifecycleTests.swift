@@ -42,47 +42,54 @@ struct SkillRunnerLifecycleTests {
         await fluent.migrations.add(M25_AddUserPrivacyNoCNOrigin())
         await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
         await fluent.migrations.add(M27_AddUserTimezone())
-        try await fluent.migrate()
-
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-skill-lifecycle-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tmpRoot, withIntermediateDirectories: true)
 
-        let username = "skill-lc-\(UUID().uuidString.prefix(8).lowercased())"
-        let user = User(
-            email: "\(username)@test.luminavault",
-            username: username,
-            passwordHash: "x",
-        )
-        try await user.save(on: fluent.db())
-
-        let vaultPaths = VaultPathService(rootPath: tmpRoot.appendingPathComponent("vault").path)
-        let apns = APNSNotificationService(
-            enabled: false,
-            bundleID: "",
-            teamID: "",
-            keyID: "",
-            privateKeyPath: "",
-            environment: "development",
-            fluent: fluent,
-            logger: Logger(label: "test.skill-lifecycle.apns"),
-        )
-        let bus = EventBus(logger: Logger(label: "test.skill-lifecycle.bus"))
-        let runner = SkillRunner(
-            catalog: SkillCatalog(vaultPaths: vaultPaths, logger: Logger(label: "test.skill-lifecycle.catalog")),
-            transport: NoopChatTransport(),
-            memories: MemoryRepository(fluent: fluent),
-            embeddings: DeterministicEmbeddingService(),
-            apns: apns,
-            defaultModel: "test-model",
-            fluent: fluent,
-            vaultPaths: vaultPaths,
-            capGuard: SkillRunCapGuard(fluent: fluent, logger: Logger(label: "test.skill-lifecycle.cap")),
-            eventBus: bus,
-            logger: Logger(label: "test.skill-lifecycle.runner"),
-        )
-
+        // HER-310 — Everything throwable AFTER `Fluent` is constructed
+        // must run inside the do/catch so `fluent.shutdown()` is
+        // guaranteed before the struct deinits. Previously
+        // `fluent.migrate()`, `createDirectory`, and `user.save` ran
+        // above the do/catch — any transient PG error would leak the
+        // EventLoopGroupConnectionPool and SIGILL the test binary on
+        // process exit (AsyncKit precondition).
         do {
+            try await fluent.migrate()
+            try FileManager.default.createDirectory(at: tmpRoot, withIntermediateDirectories: true)
+
+            let username = "skill-lc-\(UUID().uuidString.prefix(8).lowercased())"
+            let user = User(
+                email: "\(username)@test.luminavault",
+                username: username,
+                passwordHash: "x",
+            )
+            try await user.save(on: fluent.db())
+
+            let vaultPaths = VaultPathService(rootPath: tmpRoot.appendingPathComponent("vault").path)
+            let apns = APNSNotificationService(
+                enabled: false,
+                bundleID: "",
+                teamID: "",
+                keyID: "",
+                privateKeyPath: "",
+                environment: "development",
+                fluent: fluent,
+                logger: Logger(label: "test.skill-lifecycle.apns"),
+            )
+            let bus = EventBus(logger: Logger(label: "test.skill-lifecycle.bus"))
+            let runner = SkillRunner(
+                catalog: SkillCatalog(vaultPaths: vaultPaths, logger: Logger(label: "test.skill-lifecycle.catalog")),
+                transport: NoopChatTransport(),
+                memories: MemoryRepository(fluent: fluent),
+                embeddings: DeterministicEmbeddingService(),
+                apns: apns,
+                defaultModel: "test-model",
+                fluent: fluent,
+                vaultPaths: vaultPaths,
+                capGuard: SkillRunCapGuard(fluent: fluent, logger: Logger(label: "test.skill-lifecycle.cap")),
+                eventBus: bus,
+                logger: Logger(label: "test.skill-lifecycle.runner"),
+            )
+
             let result = try await body(Harness(
                 fluent: fluent,
                 tenantID: user.requireID(),

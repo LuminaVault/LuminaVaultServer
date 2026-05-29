@@ -25,10 +25,16 @@ struct SkillRunCapGuardTests {
             .postgres(configuration: TestPostgres.configuration()),
             as: .psql,
         )
-        let username = "scg-\(UUID().uuidString.prefix(8).lowercased())"
-        let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
-        try await user.save(on: fluent.db())
+        // HER-310 — Everything throwable AFTER `Fluent` is constructed
+        // must run inside the do/catch so `fluent.shutdown()` is
+        // guaranteed before the struct deinits. Previously
+        // `user.save(on:)` ran above the do/catch — a transient PG error
+        // would leak the EventLoopGroupConnectionPool and SIGILL the
+        // test binary on process exit (AsyncKit precondition).
         do {
+            let username = "scg-\(UUID().uuidString.prefix(8).lowercased())"
+            let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
+            try await user.save(on: fluent.db())
             let result = try await body(Harness(fluent: fluent, user: user))
             try await fluent.shutdown()
             return result

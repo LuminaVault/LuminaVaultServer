@@ -109,26 +109,30 @@ struct LLMControllerPushSideEffectTests {
         await fluent.migrations.add(M09_AddUsernameToUser())
         await fluent.migrations.add(M10_CreateDeviceToken())
         await fluent.migrations.add(M15_AddTierFields())
-        try await fluent.migrate()
-
-        let userID = UUID()
-        let user = User(
-            id: userID,
-            email: "llm-push-\(userID.uuidString.prefix(8))@test.luminavault",
-            username: "llm-push-\(userID.uuidString.prefix(8).lowercased())",
-            passwordHash: "x",
-        )
-        try await user.save(on: fluent.db())
-
-        // Register a device token so notifyLLMReply has something to push to.
-        let token = DeviceToken(
-            tenantID: userID,
-            token: "abc123",
-            platform: "ios",
-        )
-        try await token.save(on: fluent.db())
-
+        // HER-310 — `fluent.migrate()`, `user.save`, and `token.save`
+        // were running above the do/catch — a transient PG error would
+        // leak the EventLoopGroupConnectionPool and SIGILL the test
+        // binary on process exit (AsyncKit precondition).
         do {
+            try await fluent.migrate()
+
+            let userID = UUID()
+            let user = User(
+                id: userID,
+                email: "llm-push-\(userID.uuidString.prefix(8))@test.luminavault",
+                username: "llm-push-\(userID.uuidString.prefix(8).lowercased())",
+                passwordHash: "x",
+            )
+            try await user.save(on: fluent.db())
+
+            // Register a device token so notifyLLMReply has something to push to.
+            let token = DeviceToken(
+                tenantID: userID,
+                token: "abc123",
+                platform: "ios",
+            )
+            try await token.save(on: fluent.db())
+
             let result = try await body(fluent, userID)
             try? await fluent.shutdown()
             return result

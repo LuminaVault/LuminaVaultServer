@@ -30,16 +30,22 @@ struct MemoryPruningServiceTests {
             .postgres(configuration: TestPostgres.configuration()),
             as: .psql,
         )
-        let scoring = MemoryScoringService(fluent: fluent, config: scoringConfig, logger: logger)
-        let pruning = MemoryPruningService(fluent: fluent, config: pruningConfig, logger: logger)
-
-        // Ephemeral user.
-        let username = "mp-\(UUID().uuidString.prefix(8).lowercased())"
-        let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
-        try await user.save(on: fluent.db())
-
-        let harness = Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
+        // HER-310 — Everything throwable AFTER `Fluent` is constructed
+        // must run inside the do/catch so `fluent.shutdown()` is
+        // guaranteed before the struct deinits. Previously `user.save`
+        // ran above the do/catch — a transient PG error would leak the
+        // EventLoopGroupConnectionPool and SIGILL the test binary on
+        // process exit (AsyncKit precondition).
         do {
+            let scoring = MemoryScoringService(fluent: fluent, config: scoringConfig, logger: logger)
+            let pruning = MemoryPruningService(fluent: fluent, config: pruningConfig, logger: logger)
+
+            // Ephemeral user.
+            let username = "mp-\(UUID().uuidString.prefix(8).lowercased())"
+            let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
+            try await user.save(on: fluent.db())
+
+            let harness = Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
             let result = try await body(harness)
             try await fluent.shutdown()
             return result
