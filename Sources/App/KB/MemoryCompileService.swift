@@ -102,9 +102,21 @@ actor MemoryCompileService {
         // processed at the end so they stop blocking every future compile and
         // drop out of the pending count.
         var missingRowIDs: [UUID] = []
+        // Link captures still being enriched — counted so we can tell the
+        // client "N still enriching" and so we don't mark them processed.
+        var deferredEnriching = 0
 
         for row in rows {
             let rowID = try row.requireID()
+            // A freshly-captured link is just the "# [Pending Enrichment]"
+            // skeleton until URLEnrichmentService fills the full article async.
+            // Compiling it now yields nothing, so DEFER it: skip without
+            // marking processed, so the next Sync & Learn (after enrichment)
+            // picks up the real content.
+            if row.metadata?.enrichmentStatus == "pending" {
+                deferredEnriching += 1
+                continue
+            }
             let safeRelative = try VaultController.sanitizePath(row.path)
             let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)
             let payload: Data
@@ -146,11 +158,11 @@ actor MemoryCompileService {
             if !missingRowIDs.isEmpty {
                 try await markVaultFilesProcessed(ids: missingRowIDs, at: Date())
             }
-            logger.warning("kb-compile: no readable vault files (\(missingRowIDs.count) missing) for tenant \(tenantID)")
+            logger.warning("kb-compile: no readable vault files (\(missingRowIDs.count) missing, \(deferredEnriching) still enriching) for tenant \(tenantID)")
             return InternalMemoryCompileResult(writtenFiles: [], memories: [], summary: "No readable files to learn from.")
         }
 
-        logger.info("kb-compile processing \(writtenFiles.count) existing files (\(totalBytes) bytes, \(missingRowIDs.count) missing skipped) for tenant \(tenantID)")
+        logger.info("kb-compile processing \(writtenFiles.count) existing files (\(totalBytes) bytes, \(missingRowIDs.count) missing skipped, \(deferredEnriching) still enriching) for tenant \(tenantID)")
 
         // HER-290 — load the tenant's reject list once per compile so we can
         // dedup `memory_upsert` calls whose content the user already rejected.
@@ -181,6 +193,10 @@ actor MemoryCompileService {
             spaceIDs: Set(rows.compactMap(\.spaceID)),
             at: completedAt,
         )
+        // HER-105 Hybrid — regenerate the human-browsable wiki/ export. Pure
+        // side-effect: pgvector memories are the source of truth, so a wiki
+        // failure must never fail the compile.
+        await rebuildWiki(tenantID: tenantID, at: completedAt)
         return InternalMemoryCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
@@ -571,6 +587,125 @@ actor MemoryCompileService {
          WHERE s.tenant_id = \(bind: tenantID)
            AND s.id = ANY(\(unsafeRaw: literal))
         """).run()
+    }
+
+    // MARK: - HER-105 Hybrid wiki export
+
+    /// Deterministic full rebuild of the tenant's `wiki/` from current vault
+    /// files + non-rejected memories. Best-effort: pgvector memories are the
+    /// source of truth, so any failure is logged and swallowed — it must never
+    /// fail the compile. Writes `wiki/index.md`, `wiki/<space-slug>.md`,
+    /// `wiki/sources/<source-slug>.md`, and `wiki/memories.md`.
+    private func rebuildWiki(tenantID: UUID, at date: Date) async {
+        do {
+            let db = memories.fluent.db()
+            let wikiRoot = vaultPaths.wikiDirectory(for: tenantID)
+            let rawRoot = vaultPaths.rawDirectory(for: tenantID)
+            let fm = FileManager.default
+            try fm.createDirectory(at: wikiRoot, withIntermediateDirectories: true)
+
+            let spaces = try await Space.query(on: db, tenantID: tenantID).all()
+            var slugByID: [UUID: String] = [:]
+            var nameBySlug: [String: String] = ["inbox": "Inbox"]
+            for s in spaces {
+                guard let id = s.id else { continue }
+                slugByID[id] = s.slug
+                nameBySlug[s.slug] = s.name
+            }
+
+            let files = try await VaultFile.query(on: db, tenantID: tenantID)
+                .sort(\.$createdAt, .descending).all()
+            let mems = try await Memory.query(on: db, tenantID: tenantID)
+                .filter(\.$reviewState != MemoryReviewState.rejected)
+                .sort(\.$createdAt, .descending).all()
+
+            // sources/<slug>.md — one page per vault file (text inlined; binary noted)
+            let sourcesDir = wikiRoot.appendingPathComponent("sources")
+            try fm.createDirectory(at: sourcesDir, withIntermediateDirectories: true)
+            var bySlug: [String: [(name: String, page: String)]] = [:]
+            for f in files {
+                let slug = f.spaceID.flatMap { slugByID[$0] } ?? "inbox"
+                let pageSlug = Self.wikiSlug(f.path)
+                let name = (f.path as NSString).lastPathComponent
+                let body: String
+                if Self.isTextLike(contentType: f.contentType),
+                   let text = try? String(contentsOf: rawRoot.appendingPathComponent(f.path), encoding: .utf8)
+                {
+                    body = text
+                } else {
+                    body = "_(binary asset: \(f.contentType))_"
+                }
+                let page = """
+                ---
+                source_path: "\(f.path)"
+                space: "\(nameBySlug[slug] ?? slug)"
+                content_type: "\(f.contentType)"
+                ---
+
+                # \(name)
+
+                \(body)
+                """
+                try? page.data(using: .utf8)?.write(to: sourcesDir.appendingPathComponent("\(pageSlug).md"))
+                bySlug[slug, default: []].append((name, pageSlug))
+            }
+
+            // <space-slug>.md — per-Space source index
+            for (slug, entries) in bySlug {
+                let lines = entries.map { "- [\($0.name)](sources/\($0.page).md)" }
+                let page = """
+                # \(nameBySlug[slug] ?? slug)
+
+                \(entries.count) source\(entries.count == 1 ? "" : "s").
+
+                \(lines.joined(separator: "\n"))
+                """
+                try? page.data(using: .utf8)?.write(to: wikiRoot.appendingPathComponent("\(slug).md"))
+            }
+
+            // memories.md — what Lumina knows
+            let memLines = mems.prefix(1000).map { "- \($0.content)" }
+            let memPage = """
+            # What Lumina knows
+
+            \(mems.count) memories (rejected excluded).
+
+            \(memLines.joined(separator: "\n"))
+            """
+            try? memPage.data(using: .utf8)?.write(to: wikiRoot.appendingPathComponent("memories.md"))
+
+            // index.md
+            let iso = ISO8601DateFormatter().string(from: date)
+            var idx = "# Vault wiki\n\nLast compiled: \(iso)\n\n## Spaces\n"
+            for slug in bySlug.keys.sorted() {
+                idx += "- [\(nameBySlug[slug] ?? slug)](\(slug).md) — \(bySlug[slug]?.count ?? 0) sources\n"
+            }
+            idx += "\n[What Lumina knows](memories.md) — \(mems.count) memories\n"
+            try? idx.data(using: .utf8)?.write(to: wikiRoot.appendingPathComponent("index.md"))
+
+            logger.info("wiki rebuilt tenant=\(tenantID) sources=\(files.count) spaces=\(bySlug.count) memories=\(mems.count)")
+        } catch {
+            logger.warning("wiki rebuild failed tenant=\(tenantID): \(error)")
+        }
+    }
+
+    /// Filesystem-safe slug from a vault path's basename (lowercased, non
+    /// alphanumerics collapsed to `-`).
+    static func wikiSlug(_ path: String) -> String {
+        let base = ((path as NSString).lastPathComponent as NSString).deletingPathExtension.lowercased()
+        var out = ""
+        var lastDash = false
+        for ch in base {
+            if ch.isLetter || ch.isNumber {
+                out.append(ch)
+                lastDash = false
+            } else if !lastDash {
+                out.append("-")
+                lastDash = true
+            }
+        }
+        let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? "untitled" : trimmed
     }
 
     private static func encodeJSON(_ value: Any) -> String {

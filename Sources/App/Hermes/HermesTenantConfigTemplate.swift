@@ -17,24 +17,35 @@ enum HermesTenantConfigTemplate {
         case ioFailure(path: String, underlying: String)
     }
 
-    /// Renders + writes both files into `<volumePath>/.hermes/`. Idempotent:
+    /// Renders + writes the tenant's `config.yaml` and `.env`. Idempotent:
     /// re-writes only when on-disk SHA-256 differs from the rendered output.
+    ///
+    /// HER-XXX path fix: Hermes loads `config.yaml` from **HERMES_HOME root**
+    /// (`get_config_path()` == `HERMES_HOME/config.yaml` == `/opt/data/config.yaml`),
+    /// not `<home>/.hermes/`. The previous `.hermes/config.yaml` location was
+    /// silently ignored — the base entrypoint's example copy won instead — so
+    /// the narrowed-platform config never took effect. We now write
+    /// `config.yaml` at the root so both the platform narrowing AND the
+    /// `mcp_servers.mnemosyne` block actually load. (`seed()` runs before every
+    /// `docker run`, so existing tenants pick up the corrected config on their
+    /// next restart via the drift rewrite.) `.env` is kept under `.hermes/` for
+    /// back-compat; `API_SERVER_*` are also injected via `docker --env`, which
+    /// Hermes treats as authoritative regardless of the `.env` path.
     static func seed(volumePath: String, apiKey: String, defaultModel: String) throws {
-        let hermesDir = "\(volumePath)/.hermes"
         do {
             try FileManager.default.createDirectory(
-                atPath: hermesDir,
+                atPath: "\(volumePath)/.hermes",
                 withIntermediateDirectories: true,
             )
         } catch {
-            throw SeedError.ioFailure(path: hermesDir, underlying: String(describing: error))
+            throw SeedError.ioFailure(path: "\(volumePath)/.hermes", underlying: String(describing: error))
         }
         try writeIfDrifted(
-            path: "\(hermesDir)/config.yaml",
+            path: "\(volumePath)/config.yaml",
             content: configYAML(defaultModel: defaultModel),
         )
         try writeIfDrifted(
-            path: "\(hermesDir)/.env",
+            path: "\(volumePath)/.hermes/.env",
             content: envFile(apiKey: apiKey),
         )
     }
@@ -101,19 +112,23 @@ enum HermesTenantConfigTemplate {
         logging:
           level: INFO
 
-        # HER-XXX — Mnemosyne memory provider, wired as an MCP server. Hermes
-        # spawns `mnemosyne mcp` (stdio) and registers its remember/recall/
-        # triples tools as native commands. The `mnemosyne` console script is
-        # baked into the image (docker/hermes.Dockerfile); the SQLite store
-        # persists on the per-tenant volume via MNEMOSYNE_DATA_DIR=/opt/data/mnemosyne
-        # (injected as a container env). Present in every seeded config so
-        # memory is on by default; `seed()`'s SHA-256 drift rewrite back-fills
-        # this block into existing tenants on their next restart.
-        mcp:
-          servers:
-            mnemosyne:
-              command: mnemosyne
-              args: ["mcp"]
+        # HER-XXX — Mnemosyne memory provider, wired as a Hermes MCP server
+        # (top-level `mcp_servers:` is the key this Hermes build reads — see
+        # cli-config.yaml.example). Hermes spawns `mnemosyne mcp` (stdio) and
+        # auto-discovers its remember/recall/triples tools. The `mnemosyne`
+        # console script is baked into the image (docker/hermes.Dockerfile).
+        # The per-server `env:` is required: Hermes passes ONLY these (plus safe
+        # defaults) to the subprocess, so MNEMOSYNE_DATA_DIR must be set here to
+        # land the SQLite store on the persisted /opt/data volume. On by default
+        # in every seeded config; `seed()`'s drift rewrite back-fills existing
+        # tenants on next restart.
+        mcp_servers:
+          mnemosyne:
+            command: mnemosyne
+            args: ["mcp"]
+            env:
+              MNEMOSYNE_DATA_DIR: /opt/data/mnemosyne
+              FASTEMBED_CACHE_PATH: /opt/data/mnemosyne/cache
         """
     }
 

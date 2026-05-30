@@ -124,7 +124,7 @@ struct VaultController {
         guard let rawPath = request.uri.queryParameters["path"].map(String.init), !rawPath.isEmpty else {
             throw HTTPError(.badRequest, message: "missing required query parameter `path`")
         }
-        let safeRelative = try Self.sanitizePath(rawPath)
+        var safeRelative = try Self.sanitizePath(rawPath)
 
         // HER-CaptureTab — optional space association. When provided, the row
         // must belong to the caller's tenant; cross-tenant ids are rejected
@@ -134,6 +134,21 @@ struct VaultController {
             raw: request.uri.queryParameters["space_id"].map(String.init),
             tenantID: tenantID,
         )
+
+        // HER-105 — file the upload under its Space's folder `raw/<slug>/<name>`
+        // (unfiled → `raw/inbox/`), so the on-disk vault mirrors the app's
+        // Spaces. The client's `path` prefix is ignored in favour of the
+        // server-authoritative Space slug; only the basename is kept.
+        let spaceFolder: String
+        if let spaceID,
+           let space = try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first()
+        {
+            spaceFolder = space.slug
+        } else {
+            spaceFolder = "inbox"
+        }
+        let basename = (safeRelative as NSString).lastPathComponent
+        safeRelative = try Self.sanitizePath("\(spaceFolder)/\(basename)")
 
         let contentType = request.headers[.contentType] ?? "application/octet-stream"
         try Self.validateContentType(contentType, againstExtension: (safeRelative as NSString).pathExtension.lowercased())

@@ -40,15 +40,38 @@ FROM nousresearch/hermes-agent:latest@sha256:b6e41c155d6bfce5ad83c5d0fec670086db
 ENV UV_LINK_MODE=copy \
     MNEMOSYNE_DATA_DIR=/opt/data/mnemosyne \
     FASTEMBED_CACHE_PATH=/opt/data/mnemosyne/cache
+# The base image already ships a uv-managed CPython under /root/.local/share/uv
+# (mode 700). `uv venv --python 3.12` would reuse it, so the venv's python
+# symlink points into /root and the unprivileged `hermes` runtime user can't
+# traverse it → MCP spawn fails with EACCES (and HERMES_HOME=/opt/data is
+# bind-mounted, so we can't rely on it either). So we install a *fresh* 3.12
+# explicitly under /opt/uv-python, build the venv against that absolute path,
+# and chmod a+rX so any uid (the base may remap HERMES_UID) can read/traverse/
+# exec it. The `gosu hermes` line asserts this for real at build time — `su`
+# does NOT drop privileges in this base image, so it would falsely pass.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends build-essential cmake; \
-    uv venv --python 3.12 /opt/mnemosyne-venv; \
+    uv python install 3.12 --install-dir /opt/uv-python; \
+    PYBIN="$(ls -d /opt/uv-python/cpython-3.12*/bin/python3.12 | head -1)"; \
+    uv venv --python "$PYBIN" /opt/mnemosyne-venv; \
     uv pip install --python /opt/mnemosyne-venv/bin/python "mnemosyne-memory[all]==3.1.2"; \
+    # mnemosyne pins `mcp>=1.0.0`; align it to the version Hermes's own venv
+    # ships (1.26.0) so the stdio initialize handshake isn't rejected.
+    uv pip install --python /opt/mnemosyne-venv/bin/python "mcp==1.26.0"; \
     ln -sf /opt/mnemosyne-venv/bin/mnemosyne /usr/local/bin/mnemosyne; \
-    /usr/local/bin/mnemosyne --help >/dev/null; \
+    chmod -R a+rX /opt/uv-python /opt/mnemosyne-venv; \
+    gosu hermes /usr/local/bin/mnemosyne --help >/dev/null; \
     apt-get purge -y build-essential cmake; apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
+
+# Bake the Mnemosyne MCP registration into Hermes's default config example so
+# the central Hermes (and any fresh per-tenant volume) that copies the example
+# on first boot gets memory wired out of the box. Per-tenant containers normally
+# use the seeded config.yaml (HermesTenantConfigTemplate), which carries the
+# same `mcp_servers.mnemosyne` block. The example only has a *commented*
+# `mcp_servers:` sample, so appending one real top-level block is valid YAML.
+RUN printf '\n# HER-XXX — Mnemosyne memory MCP server (baked default)\nmcp_servers:\n  mnemosyne:\n    command: mnemosyne\n    args: ["mcp"]\n    env:\n      MNEMOSYNE_DATA_DIR: /opt/data/mnemosyne\n      FASTEMBED_CACHE_PATH: /opt/data/mnemosyne/cache\n' >> /opt/hermes/cli-config.yaml.example
 
 # Baked layout — read-only inside the container. The runtime path
 # (`/opt/data/skills/`) is populated by the entrypoint on each start.

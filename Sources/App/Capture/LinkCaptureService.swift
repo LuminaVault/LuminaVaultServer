@@ -54,16 +54,18 @@ struct LinkCaptureService {
             throw CaptureError.nonPublicHost
         }
 
-        // HER-105 — validate the optional Space belongs to the caller before
-        // writing the row, so the link lands in the chosen Space (the client
-        // already sends `space_id`; it was previously dropped on the floor).
+        // HER-105 — validate the optional Space belongs to the caller and
+        // capture its slug so the file lands under `raw/<slug>/` (the on-disk
+        // vault mirrors the app's Spaces). Unfiled captures go to `raw/inbox/`.
+        var spaceSlug = "inbox"
         if let spaceID {
-            let owned = try await Space.query(on: fluent.db(), tenantID: tenantID)
+            guard let owned = try await Space.query(on: fluent.db(), tenantID: tenantID)
                 .filter(\.$id == spaceID)
                 .first()
-            guard owned != nil else {
+            else {
                 throw CaptureError.unknownSpace
             }
+            spaceSlug = owned.slug
         }
 
         var markdown = """
@@ -95,7 +97,7 @@ struct LinkCaptureService {
         // (the second `/v1/capture/safari` of a rapid double-tap). Suffixing
         // makes every capture a distinct row.
         let suffix = UUID().uuidString.prefix(8).lowercased()
-        let relativePath = "captures/\(timestamp)-\(cleanHost)-\(suffix).md"
+        let relativePath = "\(spaceSlug)/\(timestamp)-\(cleanHost)-\(suffix).md"
 
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)

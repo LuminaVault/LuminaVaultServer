@@ -30,6 +30,9 @@ struct App {
             case "bootstrap-admin":
                 try await runBootstrapAdminCommand(reader: reader)
                 return
+            case "backfill-vault-space-folders":
+                try await runBackfillVaultSpaceFoldersCommand(reader: reader)
+                return
             default:
                 break
             }
