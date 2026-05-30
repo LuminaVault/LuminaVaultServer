@@ -177,6 +177,9 @@ struct VaultController {
         try fm.moveItem(at: tmp, to: target)
 
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        // HER-105 — `?processed=true` marks the row already-compiled (written
+        // text notes set this; they create their memory via /v1/memory/upsert).
+        let processed = request.uri.queryParameters["processed"].map(String.init) == "true"
         let savedID = try await upsertVaultFileRow(
             tenantID: tenantID,
             spaceID: spaceID,
@@ -184,6 +187,7 @@ struct VaultController {
             contentType: contentType,
             sizeBytes: Int64(data.count),
             sha256: digest,
+            processed: processed,
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
@@ -451,8 +455,14 @@ struct VaultController {
         contentType: String,
         sizeBytes: Int64,
         sha256: String,
+        processed: Bool = false,
     ) async throws -> UUID {
         let db = fluent.db()
+        // HER-105 — `processed` marks the row already-compiled so Sync & Learn
+        // skips it. Used by written text notes, which create their memory
+        // immediately via `/v1/memory/upsert`; without this the note's markdown
+        // file would be re-compiled into a duplicate memory.
+        let processedAt: Date? = processed ? Date() : nil
         if let existing = try await VaultFile.query(on: db, tenantID: tenantID)
             .filter(\.$path == path)
             .first()
@@ -460,7 +470,7 @@ struct VaultController {
             existing.contentType = contentType
             existing.sizeBytes = sizeBytes
             existing.sha256 = sha256
-            existing.processedAt = nil
+            existing.processedAt = processedAt
             if let spaceID {
                 existing.spaceID = spaceID
             }
@@ -474,6 +484,7 @@ struct VaultController {
             contentType: contentType,
             sizeBytes: sizeBytes,
             sha256: sha256,
+            processedAt: processedAt,
         )
         try await row.save(on: db)
         return try row.requireID()

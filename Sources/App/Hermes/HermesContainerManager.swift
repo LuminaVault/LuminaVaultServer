@@ -60,6 +60,24 @@ actor HermesContainerManager {
     private let config: Config
     private let logger: Logger
     private let now: @Sendable () -> Date
+    /// HER-330 — overrides `config.image` after a self-update so subsequent
+    /// `dockerRun` / `reprovisionAll` calls spawn tenants on the new image.
+    /// `nil` means "use `config.image`". Set via `setImage`.
+    private var imageOverride: String?
+
+    /// The image new containers are launched from: the post-update override
+    /// when set, else the boot-time `config.image`.
+    private var activeImage: String { imageOverride ?? config.image }
+
+    /// HER-330 — point future tenant spawns at `ref` (e.g. after the central
+    /// Hermes self-update pulled a new image). Affects `reprovisionAll` and
+    /// any lazy `ensureRunning` respawn from here on.
+    func setImage(_ ref: String) {
+        imageOverride = ref
+    }
+
+    /// The image future tenant containers will be launched from.
+    func currentImage() -> String { activeImage }
 
     init(
         docker: any DockerExec,
@@ -299,7 +317,7 @@ actor HermesContainerManager {
             // volume (the baked image also sets this as ENV; explicit here so
             // it holds even if the image default changes).
             "--env", "MNEMOSYNE_DATA_DIR=/opt/data/mnemosyne",
-            config.image,
+            activeImage,
             "gateway", "run",
         ]
         let result = try await docker.run(args: args)

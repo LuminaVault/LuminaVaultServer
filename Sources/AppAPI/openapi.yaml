@@ -2550,6 +2550,156 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  # ─────────────────────────── System / Hermes update ──────────────────────
+  # HER-330 — owner-triggered "Update Hermes" flow. Every route requires BOTH
+  # the owner JWT AND the shared admin token (X-Admin-Token header), since an
+  # update affects every tenant on the box.
+
+  /v1/system/hermes/version:
+    get:
+      tags: [System]
+      operationId: systemHermesVersion
+      summary: Current central Hermes image + available-update info.
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      responses:
+        '200':
+          description: Version info.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [info]
+                properties:
+                  info: { $ref: '#/components/schemas/HermesVersionInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/system/hermes/update:
+    post:
+      tags: [System]
+      operationId: systemHermesUpdateStart
+      summary: Start a Hermes self-update (detached, blue-green).
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartHermesUpdateRequest' }
+      responses:
+        '200':
+          description: Job accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartHermesUpdateResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: An update is already in progress.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/system/hermes/update/current:
+    get:
+      tags: [System]
+      operationId: systemHermesUpdateCurrent
+      summary: Most recent in-flight (or last) update job, for reconnect.
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      responses:
+        '200':
+          description: Job snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { $ref: '#/components/schemas/HermesUpdateJobStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/system/hermes/update/{jobID}:
+    get:
+      tags: [System]
+      operationId: systemHermesUpdateStatus
+      summary: Full status snapshot for one update job (poll fallback).
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      parameters:
+        - in: path
+          name: jobID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Job snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { $ref: '#/components/schemas/HermesUpdateJobStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/system/hermes/update/{jobID}/stream:
+    get:
+      tags: [System]
+      operationId: systemHermesUpdateStream
+      summary: SSE stream of HermesUpdateEvent for one job.
+      description: >
+        `text/event-stream`; each `data:` line is one JSON-encoded
+        `HermesUpdateEvent` (discriminated by `type`), blank-line terminated.
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      parameters:
+        - in: path
+          name: jobID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/system/hermes/update/{jobID}/rollback:
+    post:
+      tags: [System]
+      operationId: systemHermesUpdateRollback
+      summary: Manually roll a failed update back to its previous version.
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      parameters:
+        - in: path
+          name: jobID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rollback job accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartHermesUpdateResponse' }
+        '400':
+          description: Rollback unavailable (no recorded previous version).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: An update is already in progress.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
 components:
 
   securitySchemes:
@@ -2562,6 +2712,14 @@ components:
       type: http
       scheme: bearer
       description: Shared-secret bearer (`admin.token` env var).
+    adminTokenHeader:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+      description: >
+        HER-330 — shared admin secret (`admin.token`) presented in the
+        `X-Admin-Token` header. Required (in addition to the owner JWT) on
+        the system Hermes-update routes.
     revenueCatWebhookSecret:
       type: http
       scheme: bearer
@@ -2618,6 +2776,83 @@ components:
       properties:
         error: { type: string }
         message: { type: string }
+
+    # ── HER-330 Hermes self-update ──
+    HermesVersionInfo:
+      type: object
+      required: [currentRef, currentLabel, updateAvailable]
+      properties:
+        currentRef: { type: string }
+        currentDigest: { type: string, nullable: true }
+        currentLabel: { type: string }
+        availableLabel: { type: string, nullable: true }
+        updateAvailable: { type: boolean }
+        lastUpdatedAt: { type: string, format: date-time, nullable: true }
+
+    StartHermesUpdateRequest:
+      type: object
+      properties:
+        targetTag:
+          type: string
+          nullable: true
+          description: Release-channel tag to pull; defaults to the server's channel.
+
+    StartHermesUpdateResponse:
+      type: object
+      required: [jobID, state]
+      properties:
+        jobID: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/HermesUpdateJobState' }
+
+    HermesUpdateJobState:
+      type: string
+      enum: [running, succeeded, failed, rolledBack]
+
+    HermesUpdateStepID:
+      type: string
+      enum: [preflight, pullImage, verifyImage, snapshotCurrent, swapCentral, healthCheckCentral, reprovisionTenants, verifyTenants, promote, rollback]
+
+    HermesUpdateStepState:
+      type: string
+      enum: [pending, running, succeeded, failed, skipped]
+
+    HermesUpdateStep:
+      type: object
+      required: [id, state]
+      properties:
+        id: { $ref: '#/components/schemas/HermesUpdateStepID' }
+        state: { $ref: '#/components/schemas/HermesUpdateStepState' }
+        detail: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+
+    HermesUpdateJobStatus:
+      type: object
+      required: [jobID, state, steps, startedAt, updatedAt]
+      properties:
+        jobID: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/HermesUpdateJobState' }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/HermesUpdateStep' }
+        fromVersion: { type: string, nullable: true }
+        toVersion: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    HermesUpdateEvent:
+      type: object
+      description: >
+        SSE frame discriminated by `type`. `payload` shape depends on `type`:
+        step→HermesUpdateStep, status→HermesUpdateJobState string,
+        done→HermesUpdateJobStatus, error→string.
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [step, status, done, error]
+        payload: {}
 
     UpstreamError:
       type: object

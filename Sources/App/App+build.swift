@@ -187,6 +187,16 @@ func buildApplication(
         hermesPerTenantPortRangeEnd: reader.int(forKey: "hermes.perTenant.portRangeEnd", default: 9500),
         hermesPerTenantIdleTTLSeconds: reader.int(forKey: "hermes.perTenant.idleTTLSeconds", default: 1800),
         dockerBinaryPath: reader.string(forKey: "docker.binaryPath", default: "/usr/bin/docker"),
+        // HER-330 — central Hermes self-update target. Defaults assume the
+        // GHCR-published image and the compose `hermes` service name; override
+        // per deployment.
+        hermesCentralContainerName: reader.string(forKey: "hermes.central.containerName", default: "luminavault-hermes"),
+        hermesCentralTempContainerName: reader.string(forKey: "hermes.central.tempContainerName", default: "luminavault-hermes-next"),
+        hermesCentralRegistryImage: reader.string(forKey: "hermes.central.registryImage", default: "ghcr.io/luminavault/luminavault-hermes"),
+        hermesCentralChannelTag: reader.string(forKey: "hermes.central.channelTag", default: "latest"),
+        hermesCentralVolumePath: reader.string(forKey: "hermes.central.volumePath", default: "/app/data/hermes"),
+        hermesCentralPort: reader.int(forKey: "hermes.central.port", default: 8642),
+        hermesCentralTempPort: reader.int(forKey: "hermes.central.tempPort", default: 8643),
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -541,6 +551,9 @@ func buildRouter(
     // HER-241 — per-user Hermes messaging gateway configurator. Gated on
     // the same SecretBox as BYO Hermes; gateway config is sealed at rest.
     var hermesGatewaysController: HermesGatewaysController?
+    // HER-330 — owner-triggered "Update Hermes" controller. Built inside the
+    // secret-key branch where the docker exec + container manager exist.
+    var hermesUpdateController: HermesUpdateController?
     // HER-134 — LocalHermes text-embedding adapter resolves the running
     // per-tenant container via `HermesContainerManager.handle`. Outside
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
@@ -637,6 +650,47 @@ func buildRouter(
                 secretBox: secretBox,
                 gatewayClient: HermesGatewayClient(logger: gatewaysLogger),
                 logger: gatewaysLogger,
+            )
+
+            // HER-330 — central Hermes self-update. Reuses the same docker
+            // exec + container manager. The health probe hits the (loopback)
+            // published port of a candidate container's OpenAI gateway.
+            let updateLogger = Logger(label: "lv.hermes-update")
+            let healthProbe: CentralHermesManager.HealthProbe = { port, apiKey in
+                var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/models")!)
+                req.timeoutInterval = 5
+                req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                guard let (_, response) = try? await URLSession.shared.data(for: req),
+                      let http = response as? HTTPURLResponse
+                else { return false }
+                return (200 ..< 300).contains(http.statusCode)
+            }
+            let centralManager = CentralHermesManager(
+                docker: dockerExec,
+                config: CentralHermesManager.Config(
+                    containerName: services.hermesCentralContainerName,
+                    tempContainerName: services.hermesCentralTempContainerName,
+                    registryImage: services.hermesCentralRegistryImage,
+                    defaultChannelTag: services.hermesCentralChannelTag,
+                    network: services.hermesPerTenantNetwork,
+                    volumePath: services.hermesCentralVolumePath,
+                    port: services.hermesCentralPort,
+                    tempPort: services.hermesCentralTempPort,
+                    apiServerKey: services.hermesAPIKey,
+                    mnemosyneDataDir: "/opt/data/mnemosyne",
+                ),
+                healthProbe: healthProbe,
+                logger: updateLogger,
+            )
+            let updateService = HermesUpdateService(
+                fluent: services.fluent,
+                central: centralManager,
+                containerManager: containerManager,
+                logger: updateLogger,
+            )
+            hermesUpdateController = HermesUpdateController(
+                service: updateService,
+                logger: updateLogger,
             )
         } catch {
             fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
@@ -1647,6 +1701,17 @@ func buildRouter(
             .add(middleware: jwtAuthenticator)
             .add(middleware: PremiumGuardMiddleware(logger: Logger(label: "lv.grok.premium-guard")))
         grokController.addRoutes(to: grokGroup)
+    }
+
+    // HER-330 — /v1/system/hermes/* self-update routes. Gated by BOTH the JWT
+    // authenticator (authenticated owner) AND the shared admin token, since an
+    // update affects every tenant on the box. Mounted only when the master
+    // secret is set (same gate as the container manager it drives).
+    if let hermesUpdateController {
+        let systemHermesGroup = router.group("/v1/system/hermes")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+        hermesUpdateController.addRoutes(to: systemHermesGroup)
     }
 
     // Account management (HER-92) — DELETE /v1/account (GDPR data wipe).

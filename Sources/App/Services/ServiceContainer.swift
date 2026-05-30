@@ -153,4 +153,25 @@ struct ServiceContainer {
     /// server process. Defaults to `/usr/bin/docker`. Override on macOS
     /// dev (`/opt/homebrew/bin/docker`).
     let dockerBinaryPath: String
+    /// HER-330: name of the shared (central) Hermes container the chat path
+    /// talks to. Recreated in-place by the self-update flow. Must match the
+    /// running container's name (compose `container_name`).
+    let hermesCentralContainerName: String
+    /// HER-330: temp ("green") container name used while validating a new
+    /// image during the blue-green self-update.
+    let hermesCentralTempContainerName: String
+    /// HER-330: registry image (no tag) pulled by the self-update, e.g.
+    /// `ghcr.io/luminavault/luminavault-hermes`.
+    let hermesCentralRegistryImage: String
+    /// HER-330: default release-channel tag pulled when an update request
+    /// omits an explicit tag (e.g. `latest` / `stable`).
+    let hermesCentralChannelTag: String
+    /// HER-330: host path bind-mounted at `/opt/data` for the central
+    /// container (memory DB, config, auth). Must match the host bind source.
+    let hermesCentralVolumePath: String
+    /// HER-330: canonical published host port for the central container.
+    let hermesCentralPort: Int
+    /// HER-330: temp published host port used by the green container during
+    /// validation. Must be free.
+    let hermesCentralTempPort: Int
 }
