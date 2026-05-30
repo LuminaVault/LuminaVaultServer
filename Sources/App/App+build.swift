@@ -1422,6 +1422,17 @@ func buildRouter(
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
 
+    // "Feed Your Brain" — bulk import (P1: link-batch staging into the
+    // `imported` inbox Space). Categorization + approve land in P1.2.
+    let importController = ImportController(service: ImportService(
+        fluent: services.fluent,
+        linkCapture: linkCaptureService,
+        spaces: spacesService,
+        logger: Logger(label: "lv.import"),
+    ))
+    let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
+    importController.addRoutes(to: importGroup)
+
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
     let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsWorker)
     let soulGroup = router.group("/v1/soul")
