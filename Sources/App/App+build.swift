@@ -1422,14 +1422,25 @@ func buildRouter(
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
 
-    // "Feed Your Brain" — bulk import (P1: link-batch staging into the
-    // `imported` inbox Space). Categorization + approve land in P1.2.
-    let importController = ImportController(service: ImportService(
-        fluent: services.fluent,
-        linkCapture: linkCaptureService,
-        spaces: spacesService,
-        logger: Logger(label: "lv.import"),
-    ))
+    // "Feed Your Brain" — bulk import: stage links into the `imported` inbox,
+    // Smart-Import categorize into Spaces, approve → file + scoped compile.
+    let importController = ImportController(
+        service: ImportService(
+            fluent: services.fluent,
+            linkCapture: linkCaptureService,
+            spaces: spacesService,
+            vaultPaths: vaultPaths,
+            memoryCompile: memoryCompileService,
+            logger: Logger(label: "lv.import"),
+        ),
+        categorizer: ImportCategorizationService(
+            fluent: services.fluent,
+            transport: routedTransport,
+            vaultPaths: vaultPaths,
+            defaultModel: services.hermesDefaultModel,
+            logger: Logger(label: "lv.import.categorize"),
+        ),
+    )
     let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
     importController.addRoutes(to: importGroup)
 
