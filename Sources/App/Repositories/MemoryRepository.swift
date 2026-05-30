@@ -60,6 +60,7 @@ struct MemoryRepository {
                embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
+          AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
         LIMIT \(bind: limit)
         """).all(decoding: MemorySearchRow.self)
@@ -86,6 +87,7 @@ struct MemoryRepository {
         embedding: [Float],
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
+        spaceID: UUID? = nil,
         reviewState: String = "auto",
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
@@ -97,24 +99,26 @@ struct MemoryRepository {
             // `embedding` and `tags` cannot use `bind:` here — SQLKit has no
             // type encoders for pgvector or TEXT[]. Both are spliced as raw
             // SQL literals; everything else (id, tenant_id, content,
-            // source_vault_file_id, review_state) is properly parameterised.
-            // SQLKit binds `nil` UUIDs as SQL NULL, so the optional FK is
-            // safe to thread through unconditionally.
+            // source_vault_file_id, space_id, review_state) is properly
+            // parameterised. SQLKit binds `nil` UUIDs as SQL NULL, so the
+            // optional FKs are safe to thread through unconditionally.
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, review_state, created_at)
+            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, space_id, review_state, created_at)
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
                     \(bind: sourceVaultFileID),
+                    \(bind: spaceID),
                     \(bind: reviewState),
                     NOW())
             """).run()
         } else {
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, review_state, created_at)
+            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, space_id, review_state, created_at)
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(bind: sourceVaultFileID),
+                    \(bind: spaceID),
                     \(bind: reviewState),
                     NOW())
             """).run()
@@ -172,6 +176,7 @@ struct MemoryRepository {
                embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
+          AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
         LIMIT \(bind: limit)
         """).all(decoding: MemorySearchRow.self)

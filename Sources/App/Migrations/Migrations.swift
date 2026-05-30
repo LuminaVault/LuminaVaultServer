@@ -63,4 +63,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M56_CreateEmbeddingUsage())
     await fluent.migrations.add(M57_AddModeToLLMPrefs())
     await fluent.migrations.add(M58_AddOnboardingBrainConfigured())
+    await fluent.migrations.add(M59_AddSpaceToMemory())
 }

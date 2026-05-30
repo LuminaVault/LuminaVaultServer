@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap clean lint help bruno-regen
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image clean lint help bruno-regen
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -68,3 +68,9 @@ hermes-skills-rebuild: ## Rebuild the Hermes image with the current hermes-skill
 	docker compose up -d hermes
 	@echo "✓ hermes restarted with refreshed bundled skills"
 	@echo "  verify with: curl -s http://localhost:8080/v1/skills | jq '.skills[].name'"
+
+hermes-image: ## Build the Mnemosyne-baked Hermes image (tag used by central + per-tenant runs) (HER-XXX)
+	docker build -f docker/hermes.Dockerfile -t luminavault-hermes:local .
+	@echo "✓ built luminavault-hermes:local (kb-* skills + mnemosyne memory MCP)"
+	@echo "  central: docker compose up -d hermes   per-tenant: HERMES_PER_TENANT_IMAGE=luminavault-hermes:local"
+	@echo "  upgrade existing tenants: trigger HermesContainerManager.reprovisionAll (admin)"

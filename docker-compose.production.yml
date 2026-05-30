@@ -64,7 +64,10 @@ services:
       HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
-      HERMES_PER_TENANT_IMAGE: ${HERMES_PER_TENANT_IMAGE:-nousresearch/hermes-agent:latest}
+      # HER-XXX — default to the Mnemosyne-baked image so new tenant containers
+      # ship persistent memory. Build it on this host (`make hermes-image`) or
+      # override with a pinned registry digest.
+      HERMES_PER_TENANT_IMAGE: ${HERMES_PER_TENANT_IMAGE:-luminavault-hermes:local}
       HERMES_PER_TENANT_NETWORK: ${HERMES_PER_TENANT_NETWORK:-luminavault-hermes-net}
       HERMES_PER_TENANT_DATA_ROOT_BASE: ${HERMES_PER_TENANT_DATA_ROOT_BASE:-/app/data/hermes-tenants}
       HERMES_PER_TENANT_PORT_RANGE_START: ${HERMES_PER_TENANT_PORT_RANGE_START:-9000}
@@ -174,7 +177,13 @@ services:
       retries: 5
 
   hermes:
-    image: nousresearch/hermes-agent:latest
+    # HER-XXX — Mnemosyne-baked image (kb-* skills + `mnemosyne` memory MCP).
+    # Built from docker/hermes.Dockerfile; the `image:` tag matches the
+    # per-tenant default so per-tenant `docker run` reuses the same local image.
+    build:
+      context: .
+      dockerfile: docker/hermes.Dockerfile
+    image: luminavault-hermes:local
     restart: unless-stopped
     command: gateway run
     volumes:
@@ -187,6 +196,8 @@ services:
       API_SERVER_PORT: "8642"
       API_SERVER_MODEL_NAME: ${HERMES_DEFAULTMODEL:-hermes-3}
       API_SERVER_KEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; rotate with `make hermes-bootstrap` and restart stack)}
+      # HER-XXX — Mnemosyne memory store on the persisted /opt/data volume.
+      MNEMOSYNE_DATA_DIR: /opt/data/mnemosyne
     deploy:
       resources:
         limits:

@@ -18,6 +18,12 @@ if [ -d "${BAKED}" ]; then
     cp -Rn "${BAKED}/." "${TARGET}/" 2>/dev/null || true
 fi
 
+# HER-XXX — ensure the Mnemosyne store dir exists on the persisted volume
+# before Hermes spawns `mnemosyne mcp`. We run as root here (the base
+# entrypoint drops to the `hermes` user via gosu *after* us and chowns
+# /opt/data recursively), so this dir inherits hermes ownership.
+mkdir -p "${HERMES_HOME}/mnemosyne" 2>/dev/null || true
+
 # Hand off to the base image's documented entrypoint, which bootstraps the
 # runtime env and launches the `hermes` CLI. CMD (`gateway run`) flows through
 # as "$@". We do NOT call `hermes` directly — it is not on the default PATH

@@ -186,6 +186,44 @@ actor HermesContainerManager {
         return stale.count
     }
 
+    /// HER-XXX — bulk-upgrade existing tenant containers to the current
+    /// `config.image` (e.g. after baking a new Mnemosyne build). For each
+    /// known tenant: force-remove the container, then re-create it via
+    /// `dockerRun` — which re-seeds `config.yaml` from the latest template
+    /// (back-filling the `mcp.servers.mnemosyne` block) and re-runs with the
+    /// current image. The per-tenant `/opt/data` volume (memory DB + auth.json)
+    /// is bind-mounted by path and untouched by `rm`, so no data is lost.
+    /// Idempotent and safe to re-run. Returns the count re-provisioned.
+    @discardableResult
+    func reprovisionAll() async throws -> Int {
+        try await docker.ensureNetworkExists(config.network)
+        let rows = try await HermesTenantContainer.query(on: fluent.db()).all()
+        var count = 0
+        for row in rows {
+            // Idempotent: `rm -f` is a no-op if the container is already gone.
+            _ = try? await docker.run(args: ["rm", "-f", row.containerName])
+            do {
+                try await dockerRun(
+                    containerName: row.containerName,
+                    port: row.port,
+                    apiServerKey: decrypt(row: row, tenantID: row.tenantID),
+                    tenantID: row.tenantID,
+                )
+                row.lastUsedAt = now()
+                try await row.update(on: fluent.db())
+                count += 1
+            } catch {
+                logger.error("reprovision failed for hermes-tenant container", metadata: [
+                    "tenantID": "\(row.tenantID)",
+                    "container": "\(row.containerName)",
+                    "error": "\(error)",
+                ])
+            }
+        }
+        logger.info("reprovisioned hermes-tenant containers", metadata: ["count": "\(count)"])
+        return count
+    }
+
     // MARK: - Private
 
     private func loadRow(tenantID: UUID) async throws -> HermesTenantContainer? {
@@ -257,6 +295,10 @@ actor HermesContainerManager {
             "--env", "API_SERVER_PORT=8642",
             "--env", "API_SERVER_KEY=\(apiServerKey)",
             "--env", "HERMES_HOME=/opt/data",
+            // HER-XXX — persist the Mnemosyne memory store on this tenant's
+            // volume (the baked image also sets this as ENV; explicit here so
+            // it holds even if the image default changes).
+            "--env", "MNEMOSYNE_DATA_DIR=/opt/data/mnemosyne",
             config.image,
             "gateway", "run",
         ]

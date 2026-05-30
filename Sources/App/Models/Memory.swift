@@ -22,6 +22,11 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     /// it spawned — the trace just degrades to "source unknown".
     @OptionalField(key: "source_vault_file_id") var sourceVaultFileID: UUID?
 
+    /// HER-105 — optional Space the memory was filed into. NULL when the
+    /// capture was unfiled. FK is ON DELETE SET NULL so deleting a Space
+    /// leaves its memories intact (they just drop back to "unfiled").
+    @OptionalField(key: "space_id") var spaceID: UUID?
+
     /// HER-207 — optional geo anchor (WGS84 lat/lng + accuracy radius in
     /// metres + reverse-geocoded place label). All four are independently
     /// NULL when the memory was captured without location context.
@@ -49,6 +54,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         content: String,
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
+        spaceID: UUID? = nil,
         lat: Double? = nil,
         lng: Double? = nil,
         accuracyM: Double? = nil,
@@ -60,6 +66,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         self.content = content
         self.tags = tags
         self.sourceVaultFileID = sourceVaultFileID
+        self.spaceID = spaceID
         self.lat = lat
         self.lng = lng
         self.accuracyM = accuracyM

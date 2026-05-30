@@ -100,6 +100,20 @@ enum HermesTenantConfigTemplate {
 
         logging:
           level: INFO
+
+        # HER-XXX — Mnemosyne memory provider, wired as an MCP server. Hermes
+        # spawns `mnemosyne mcp` (stdio) and registers its remember/recall/
+        # triples tools as native commands. The `mnemosyne` console script is
+        # baked into the image (docker/hermes.Dockerfile); the SQLite store
+        # persists on the per-tenant volume via MNEMOSYNE_DATA_DIR=/opt/data/mnemosyne
+        # (injected as a container env). Present in every seeded config so
+        # memory is on by default; `seed()`'s SHA-256 drift rewrite back-fills
+        # this block into existing tenants on their next restart.
+        mcp:
+          servers:
+            mnemosyne:
+              command: mnemosyne
+              args: ["mcp"]
         """
     }
 

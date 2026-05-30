@@ -25,6 +25,7 @@ struct LinkCaptureService {
     enum CaptureError: Error {
         case invalidURL
         case nonPublicHost
+        case unknownSpace
     }
 
     struct CapturedLink {
@@ -44,12 +45,25 @@ struct LinkCaptureService {
         tenantID: UUID,
         url urlString: String,
         note: String?,
+        spaceID: UUID? = nil,
     ) async throws -> CapturedLink {
         guard let url = URL(string: urlString) else {
             throw CaptureError.invalidURL
         }
         guard URLEnricherGuard.isPublic(url) else {
             throw CaptureError.nonPublicHost
+        }
+
+        // HER-105 — validate the optional Space belongs to the caller before
+        // writing the row, so the link lands in the chosen Space (the client
+        // already sends `space_id`; it was previously dropped on the floor).
+        if let spaceID {
+            let owned = try await Space.query(on: fluent.db(), tenantID: tenantID)
+                .filter(\.$id == spaceID)
+                .first()
+            guard owned != nil else {
+                throw CaptureError.unknownSpace
+            }
         }
 
         var markdown = """
@@ -74,7 +88,14 @@ struct LinkCaptureService {
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         let timestamp = formatter.string(from: Date())
         let cleanHost = (url.host ?? "link").replacingOccurrences(of: ".", with: "-")
-        let relativePath = "captures/\(timestamp)-\(cleanHost).md"
+        // A short random suffix makes the path collision-proof. The previous
+        // `captures/<timestamp>-<host>.md` was second-resolution, so two
+        // captures of the same URL within one second produced an identical
+        // path → `vault_files` unique-constraint violation → uncaught 500
+        // (the second `/v1/capture/safari` of a rapid double-tap). Suffixing
+        // makes every capture a distinct row.
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let relativePath = "captures/\(timestamp)-\(cleanHost)-\(suffix).md"
 
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
@@ -90,6 +111,7 @@ struct LinkCaptureService {
         let db = fluent.db()
         let row = VaultFile(
             tenantID: tenantID,
+            spaceID: spaceID,
             path: relativePath,
             contentType: "text/markdown",
             sizeBytes: sizeBytes,

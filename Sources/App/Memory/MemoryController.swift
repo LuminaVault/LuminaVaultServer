@@ -1,3 +1,4 @@
+import FluentKit
 import Foundation
 import Hummingbird
 import Logging
@@ -77,6 +78,9 @@ struct MemoryController {
     /// HER-290 — durable `(tenant_id, content_hash)` reject list used to dedup
     /// memories the user has already rejected.
     let rejectListRepository: KBCompileRejectListRepository
+    /// HER-171 — fires `SkillEvent.memoryUpserted` so the skills runtime can
+    /// react to a freshly-saved memory. Optional: test wirings can omit it.
+    var eventBus: EventBus?
 
     private static let defaultLimit = 20
     private static let maxLimit = 100
@@ -115,37 +119,87 @@ struct MemoryController {
     func upsert(_ req: Request, ctx: AppRequestContext) async throws -> MemoryUpsertResponse {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: MemoryUpsertRequest.self, context: ctx)
-        guard !body.content.isEmpty else {
+        let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else {
             throw HTTPError(.badRequest, message: "content required")
         }
         let tenantID = try user.requireID()
-        let result = try await service.upsert(
+
+        // HER-105 — optional Space target via `?space_id=` query param (mirrors
+        // `POST /v1/vault/files`). The shared `MemoryUpsertRequest` DTO is a
+        // pinned package so the binding rides the query string instead of a new
+        // body field. Validated against the caller's Spaces (cross-tenant /
+        // malformed id → 400).
+        let spaceID = try await resolveOptionalSpaceID(
+            req.uri.queryParameters["space_id"].map(String.init),
             tenantID: tenantID,
-            sessionKey: tenantID.uuidString,
-            content: body.content,
         )
-        // HER-207 — geo passthrough. The agent-driven upsert path doesn't
-        // know about location, so we patch the four optional fields onto
-        // the saved Memory after the tool call returns. All four are
-        // independently optional; only fields actually supplied are set,
-        // so a partial body (e.g. lat+lng without place_name) round-trips
-        // correctly.
+
+        // Deterministic save: embed + persist directly. The capture path must
+        // NOT depend on an LLM choosing to call a `memory_upsert` tool — that
+        // path routed through the capability table to Gemini, which frequently
+        // replied in plain text and never emitted the tool call, 502-ing every
+        // text/photo capture ("hermes did not call memory_upsert"). Saving a
+        // note is mechanical (embed + insert); the agent loop only added
+        // latency and a failure mode.
+        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let memory = try await repository.create(
+            tenantID: tenantID,
+            content: content,
+            embedding: embedding,
+            spaceID: spaceID,
+        )
+
+        // HER-207 — geo passthrough. All four fields are independently
+        // optional; only those actually supplied are set, so a partial body
+        // (e.g. lat+lng without place_name) round-trips correctly.
         let hasGeo = body.lat != nil || body.lng != nil || body.accuracyM != nil || body.placeName != nil
         if hasGeo {
-            result.memory.lat = body.lat
-            result.memory.lng = body.lng
-            result.memory.accuracyM = body.accuracyM
-            result.memory.placeName = body.placeName
-            try await result.memory.save(on: repository.fluent.db())
+            memory.lat = body.lat
+            memory.lng = body.lng
+            memory.accuracyM = body.accuracyM
+            memory.placeName = body.placeName
+            try await memory.save(on: repository.fluent.db())
+        }
+
+        let memoryID = try memory.requireID()
+
+        // HER-171 — notify the skills runtime a memory landed (best-effort;
+        // never blocks or fails the save).
+        if let eventBus {
+            eventBus.publish(SkillEvent(
+                type: .memoryUpserted,
+                tenantID: tenantID,
+                payload: [SkillEvent.PayloadKey.memoryID: memoryID.uuidString],
+            ))
         }
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .memoryUpserted)
         }
-        return try MemoryUpsertResponse(
-            memoryId: result.memory.requireID(),
-            content: result.memory.content,
-            summary: result.summary,
+
+        return MemoryUpsertResponse(
+            memoryId: memoryID,
+            content: memory.content,
+            summary: "Saved to your vault.",
         )
+    }
+
+    /// HER-105 — validates an optional `space_id` query param and confirms it
+    /// belongs to `tenantID`. nil-in / nil-out is the unfiled path; a malformed
+    /// UUID or cross-tenant id raises 400 so the client sees the
+    /// misconfiguration instead of the memory silently landing unfiled.
+    private func resolveOptionalSpaceID(_ raw: String?, tenantID: UUID) async throws -> UUID? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard let spaceID = UUID(uuidString: raw) else {
+            throw HTTPError(.badRequest, message: "`space_id` is not a valid UUID")
+        }
+        let exists = try await Space.query(on: repository.fluent.db(), tenantID: tenantID)
+            .filter(\.$id == spaceID)
+            .first()
+        guard exists != nil else {
+            throw HTTPError(.badRequest, message: "`space_id` does not belong to the caller")
+        }
+        return spaceID
     }
 
     @Sendable

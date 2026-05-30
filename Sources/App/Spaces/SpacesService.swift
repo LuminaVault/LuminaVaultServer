@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import SQLKit
 
 enum SpacesError {
     static let invalidSlug = HTTPError(.badRequest, message: "slug must be 2-31 chars, lowercase a-z/0-9/-, no leading dash")
@@ -34,9 +35,11 @@ struct SpacesService {
     let logger: Logger
 
     func list(tenantID: UUID) async throws -> [Space] {
-        try await Space.query(on: fluent.db(), tenantID: tenantID)
+        let spaces = try await Space.query(on: fluent.db(), tenantID: tenantID)
             .sort(\.$name, .ascending)
             .all()
+        try await refreshNoteCounts(spaces, tenantID: tenantID)
+        return spaces
     }
 
     func get(tenantID: UUID, id: UUID) async throws -> Space {
@@ -44,7 +47,33 @@ struct SpacesService {
             .filter(\.$id == id)
             .first()
         else { throw SpacesError.notFound }
+        try await refreshNoteCounts([space], tenantID: tenantID)
         return space
+    }
+
+    /// HER-105 — recompute `noteCount` live from `vault_files` and stamp it onto
+    /// the in-memory models before they map to DTOs. The persisted `note_count`
+    /// is denormalised and only refreshed by `MemoryCompileService` during a
+    /// compile, so a fresh capture (link/photo filed into a Space) wouldn't move
+    /// the icon badge until the next Sync & Learn. Counting on read keeps the
+    /// badge accurate immediately. Single grouped query, so cost is O(1) hops
+    /// regardless of Space count.
+    private func refreshNoteCounts(_ spaces: [Space], tenantID: UUID) async throws {
+        guard !spaces.isEmpty, let sql = fluent.db() as? any SQLDatabase else { return }
+        let ids = spaces.compactMap(\.id)
+        guard !ids.isEmpty else { return }
+        let literal = "ARRAY[" + ids.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"
+        let rows = try await sql.raw("""
+        SELECT space_id, COUNT(*)::int AS n
+          FROM vault_files
+         WHERE tenant_id = \(bind: tenantID)
+           AND space_id = ANY(\(unsafeRaw: literal))
+         GROUP BY space_id
+        """).all(decoding: SpaceCountRow.self)
+        let counts = Dictionary(uniqueKeysWithValues: rows.map { ($0.space_id, $0.n) })
+        for space in spaces {
+            space.noteCount = counts[space.id ?? UUID()] ?? 0
+        }
     }
 
     func create(
@@ -159,4 +188,9 @@ struct SpacesService {
         }
         try await space.delete(on: fluent.db())
     }
+}
+
+private struct SpaceCountRow: Decodable {
+    let space_id: UUID
+    let n: Int
 }

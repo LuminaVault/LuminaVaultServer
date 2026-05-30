@@ -97,12 +97,25 @@ actor MemoryCompileService {
         var compiledTextBlocks: [(path: String, content: String, contentType: String)] = []
         var totalBytes = 0
         var rowIDs: [UUID] = []
+        // Vault rows whose backing file is gone from disk (orphans — e.g.
+        // captured before a vault-volume reset). Skipped, then stamped
+        // processed at the end so they stop blocking every future compile and
+        // drop out of the pending count.
+        var missingRowIDs: [UUID] = []
 
         for row in rows {
             let rowID = try row.requireID()
             let safeRelative = try VaultController.sanitizePath(row.path)
             let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)
-            let payload = try Data(contentsOf: target)
+            let payload: Data
+            do {
+                payload = try Data(contentsOf: target)
+            } catch {
+                // Missing-file orphan: skip instead of 500-ing the whole batch.
+                logger.warning("kb-compile skipping missing vault file path=\(safeRelative) tenant=\(tenantID): \(error)")
+                missingRowIDs.append(rowID)
+                continue
+            }
             guard payload.count <= maxFileSize else {
                 throw MemoryCompileError.fileTooLarge(path: safeRelative, limit: maxFileSize)
             }
@@ -126,7 +139,18 @@ actor MemoryCompileService {
             }
         }
 
-        logger.info("kb-compile processing \(rows.count) existing files (\(totalBytes) bytes) for tenant \(tenantID)")
+        // Every pending row was an orphan (no readable file). Clear them so the
+        // pending count drains and the user isn't stuck re-tapping Sync & Learn
+        // on a batch that can never produce memories. No LLM round-trip.
+        if writtenFiles.isEmpty {
+            if !missingRowIDs.isEmpty {
+                try await markVaultFilesProcessed(ids: missingRowIDs, at: Date())
+            }
+            logger.warning("kb-compile: no readable vault files (\(missingRowIDs.count) missing) for tenant \(tenantID)")
+            return InternalMemoryCompileResult(writtenFiles: [], memories: [], summary: "No readable files to learn from.")
+        }
+
+        logger.info("kb-compile processing \(writtenFiles.count) existing files (\(totalBytes) bytes, \(missingRowIDs.count) missing skipped) for tenant \(tenantID)")
 
         // HER-290 — load the tenant's reject list once per compile so we can
         // dedup `memory_upsert` calls whose content the user already rejected.
@@ -149,7 +173,9 @@ actor MemoryCompileService {
             rejectedHashes: rejectedHashes,
         )
         let completedAt = Date()
-        try await markVaultFilesProcessed(ids: rowIDs, at: completedAt)
+        // Stamp both the compiled rows and any skipped orphans so the pending
+        // count reflects reality and orphans don't re-enter the next batch.
+        try await markVaultFilesProcessed(ids: rowIDs + missingRowIDs, at: completedAt)
         try await refreshSpaceCounters(
             tenantID: tenantID,
             spaceIDs: Set(rows.compactMap(\.spaceID)),
@@ -263,16 +289,21 @@ actor MemoryCompileService {
         runId: UUID,
         rejectedHashes: Set<String>,
     ) async throws -> CompileSummary {
+        // One-shot structured extraction. The previous multi-turn tool-calling
+        // loop depended on the model deciding to call `memory_upsert`; routed to
+        // Gemini that never happened (it replied in prose), so kb-compile
+        // ingested 0 memories. Instead we ask for a single JSON object and
+        // persist each memory server-side — deterministic and provider-portable
+        // (`response_format: json_object` is honoured by OpenAI-compatible
+        // upstreams and mapped to Gemini's responseMimeType).
         let systemPrompt = """
-        You are Hermes' kb-compile agent. The user just dropped a batch of \
-        files into their vault. Your job is to (a) extract the durable, \
-        high-signal memories from those files (preferences, decisions, \
-        facts, TODOs, recurring patterns) and (b) call the `memory_upsert` \
-        tool once for each distinct memory you want to persist. After all \
-        useful memories are saved, reply with a short summary covering: \
-        how many memories you stored, which themes you saw, anything you \
-        deliberately skipped. Never invent — only extract what's in the \
-        files.
+        You are Hermes' kb-compile agent. Extract the durable, high-signal \
+        memories (preferences, decisions, facts, TODOs, recurring patterns) from \
+        the user's files. Never invent — only extract what is actually present. \
+        Return ONLY a JSON object of the form \
+        {"memories": ["<memory 1>", "<memory 2>", ...]} where each entry is one \
+        concise, self-contained memory written in the third person. Return \
+        {"memories": []} when there is nothing durable to store.
         \(hint.map { "User hint: \($0)" } ?? "")
         """
 
@@ -284,65 +315,116 @@ actor MemoryCompileService {
             }.joined(separator: "\n\n")
         }
 
-        var conversation: [AgentMessage] = [
-            .init(role: "system", content: systemPrompt),
-            .init(role: "user", content: bundled),
-        ]
-        let tools = [Self.memoryUpsertTool()]
+        await progress.publish(.thinking(.init(runId: runId, iteration: 1)), tenantID: tenantID)
+
+        let body = ExtractionPayload(
+            model: defaultModel,
+            messages: [
+                .init(role: "system", content: systemPrompt),
+                .init(role: "user", content: bundled),
+            ],
+            responseFormat: ["type": "json_object"],
+            temperature: 0.2,
+            stream: false,
+        )
+        let payload = try JSONEncoder().encode(body)
+        let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
+        let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
+        let content = response.choices.first?.message.content ?? ""
+        let parsed = Self.parseExtractedMemories(content)
+        logger.info("kb-compile extracted \(parsed.count) candidate memories for tenant \(tenantID)")
+
         var collectedMemories: [InternalKBCompileMemoryRef] = []
-
-        // HER-288 — iteration is 1-indexed and emitted at the top of each
-        // round-trip so subscribers can render "thinking (1/N)" before the
-        // model call goes out, not after.
-        var iteration = 0
-        for _ in 0 ..< maxToolIterations {
-            iteration += 1
-            await progress.publish(
-                .thinking(.init(runId: runId, iteration: iteration)),
-                tenantID: tenantID,
-            )
-
-            let body = ChatPayload(
-                model: defaultModel,
-                messages: conversation,
-                tools: tools,
-                toolChoice: "auto",
-                temperature: 0.2,
-                stream: false,
-            )
-            let payload = try JSONEncoder().encode(body)
-            let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
-            let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
-            guard let choice = response.choices.first else {
-                throw HTTPError(.badGateway, message: "hermes returned no choices")
-            }
-            let assistant = choice.message
-            conversation.append(assistant)
-
-            if let calls = assistant.toolCalls, !calls.isEmpty {
-                for call in calls {
-                    let result = try await dispatch(
-                        tenantID: tenantID,
-                        toolCall: call,
-                        memories: &collectedMemories,
-                        runId: runId,
-                        rejectedHashes: rejectedHashes,
-                    )
-                    conversation.append(.init(
-                        role: "tool",
-                        content: result,
-                        toolCallId: call.id,
-                        name: call.function.name,
-                    ))
-                }
+        for text in parsed {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            // HER-290 — skip content the user previously rejected.
+            if rejectedHashes.contains(Self.contentHash(trimmed)) {
+                logger.info("kb-compile skipped rejected memory hash for tenant \(tenantID)")
                 continue
             }
-
-            return CompileSummary(text: assistant.content ?? "", memories: collectedMemories)
+            let embedding = try await embeddings.embed(trimmed, tenantID: tenantID)
+            let saved = try await memories.create(
+                tenantID: tenantID,
+                content: trimmed,
+                embedding: embedding,
+                reviewState: "pending",
+            )
+            let id = try saved.requireID()
+            collectedMemories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
+            let dto = MemoryDTO(
+                id: id,
+                content: saved.content,
+                tags: saved.tags ?? [],
+                createdAt: saved.createdAt,
+                reviewState: saved.reviewState,
+            )
+            await progress.publish(.memorySaved(.init(runId: runId, memory: dto)), tenantID: tenantID)
         }
 
-        logger.warning("kb-compile loop hit max iterations \(maxToolIterations)")
-        throw HTTPError(.badGateway, message: "kb-compile did not converge")
+        let noun = collectedMemories.count == 1 ? "memory" : "memories"
+        return CompileSummary(text: "Learned \(collectedMemories.count) \(noun).", memories: collectedMemories)
+    }
+
+    /// Lenient parse of the model's JSON memory list. Accepts the canonical
+    /// `{"memories": ["a","b"]}`, an array of objects `[{"content":"a"}]`, and a
+    /// bare array `["a","b"]`. Tolerates markdown code fences some models add.
+    static func parseExtractedMemories(_ raw: String) -> [String] {
+        func stringFrom(_ any: Any) -> String? {
+            if let str = any as? String { return str }
+            if let dict = any as? [String: Any], let c = dict["content"] as? String { return c }
+            return nil
+        }
+        func memories(from obj: Any) -> [String]? {
+            if let dict = obj as? [String: Any], let arr = dict["memories"] as? [Any] {
+                return arr.compactMap(stringFrom)
+            }
+            if let arr = obj as? [Any] { return arr.compactMap(stringFrom) }
+            return nil
+        }
+
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip ```json ... ``` fences some models wrap output in.
+        if s.contains("```") {
+            s = s.replacingOccurrences(of: "```json", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // 1) direct parse
+        if let data = s.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data),
+           let result = memories(from: obj)
+        {
+            return result
+        }
+        // 2) without responseMimeType, Gemini may wrap JSON in prose — pull the
+        //    outermost {...} or [...] block and parse that.
+        for (open, close) in [("{", "}"), ("[", "]")] {
+            if let lo = s.firstIndex(of: Character(open)),
+               let hi = s.lastIndex(of: Character(close)), lo < hi
+            {
+                let slice = String(s[lo ... hi])
+                if let data = slice.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data),
+                   let result = memories(from: obj)
+                {
+                    return result
+                }
+            }
+        }
+        return []
+    }
+
+    private struct ExtractionPayload: Encodable {
+        let model: String
+        let messages: [AgentMessage]
+        let responseFormat: [String: String]
+        let temperature: Double?
+        let stream: Bool
+        enum CodingKeys: String, CodingKey {
+            case model, messages, temperature, stream
+            case responseFormat = "response_format"
+        }
     }
 
     private func dispatch(

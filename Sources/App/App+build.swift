@@ -177,7 +177,10 @@ func buildApplication(
         jinaAPIKey: reader.string(forKey: "jina.apiKey", isSecret: true, default: ""),
         emailFromAddress: reader.string(forKey: "email.fromAddress", default: ""),
         emailReplyTo: reader.string(forKey: "email.replyTo", default: ""),
-        hermesPerTenantImage: reader.string(forKey: "hermes.perTenant.image", default: "nousresearch/hermes-agent:latest"),
+        // HER-XXX — default to the Mnemosyne-baked image so new tenant
+        // containers ship persistent memory. Override via `hermes.perTenant.image`
+        // (env HERMES_PER_TENANT_IMAGE) to pin a registry digest in prod.
+        hermesPerTenantImage: reader.string(forKey: "hermes.perTenant.image", default: "luminavault-hermes:local"),
         hermesPerTenantNetwork: reader.string(forKey: "hermes.perTenant.network", default: "luminavault-hermes-net"),
         hermesPerTenantDataRootBase: reader.string(forKey: "hermes.perTenant.dataRootBase", default: "/app/data/hermes-tenants"),
         hermesPerTenantPortRangeStart: reader.int(forKey: "hermes.perTenant.portRangeStart", default: 9000),
@@ -1107,6 +1110,7 @@ func buildRouter(
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
+        eventBus: eventBus,
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
     // HermesMemoryService); attach the resolution middleware so user-

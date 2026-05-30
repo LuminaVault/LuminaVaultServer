@@ -42,7 +42,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the OpenAI payload
         guard
-            var openAI = try? JSONSerialization.jsonObject(with: payload)
+            let openAI = try? JSONSerialization.jsonObject(with: payload)
             as? [String: Any],
             let rawMessages = openAI["messages"] as? [[String: Any]]
         else {
@@ -62,6 +62,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
         let translated = Self.translateToGemini(
             messages: rawMessages,
             tools: openAI["tools"] as? [[String: Any]],
+            toolChoice: openAI["tool_choice"],
             temperature: openAI["temperature"] as? Double,
             maxTokens: openAI["max_tokens"] as? Int,
             topP: openAI["top_p"] as? Double,
@@ -172,6 +173,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     private static func translateToGemini(
         messages: [[String: Any]],
         tools: [[String: Any]]? = nil,
+        toolChoice: Any? = nil,
         temperature: Double? = nil,
         maxTokens: Int? = nil,
         topP: Double? = nil,
@@ -221,23 +223,29 @@ struct GeminiContentsAdapter: ProviderAdapter {
             result["contents"] = contents
         }
 
-        // tools → function_declarations
+        // tools → function_declarations. Gemini expects ALL declarations in a
+        // SINGLE `function_declarations` array inside ONE tool entry — emitting
+        // one tool-per-declaration made Gemini mishandle/ignore the tools (this
+        // is what broke the 3-tool memory_upsert agent loop).
         if let tools, !tools.isEmpty {
-            var geminiTools: [[String: Any]] = []
+            var declarations: [[String: Any]] = []
             for tool in tools {
                 if let function = tool["function"] as? [String: Any] {
-                    let declaration: [String: Any] = [
+                    declarations.append([
                         "name": function["name"] ?? "",
                         "description": function["description"] ?? "",
                         "parameters": function["parameters"] ?? [:],
-                    ]
-                    geminiTools.append(
-                        ["function_declarations": [declaration]],
-                    )
+                    ])
                 }
             }
-            if !geminiTools.isEmpty {
-                result["tools"] = geminiTools
+            if !declarations.isEmpty {
+                result["tools"] = [["function_declarations": declarations]]
+                // Map OpenAI `tool_choice` → Gemini `tool_config`. Without this
+                // Gemini defaults to a weak AUTO and frequently replies in prose
+                // instead of calling the tool (kb-compile ingested 0 memories).
+                // "required"/"any" → ANY (must call); object form → ANY scoped to
+                // the named function; "none" → NONE; else → AUTO.
+                result["tool_config"] = functionCallingConfig(for: toolChoice)
             }
         }
 
@@ -247,11 +255,44 @@ struct GeminiContentsAdapter: ProviderAdapter {
         if let maxTokens { generationConfig["maxOutputTokens"] = maxTokens }
         if let topP { generationConfig["topP"] = topP }
         if let stopSequences { generationConfig["stopSequences"] = stopSequences }
+        // NOTE: deliberately NOT mapping OpenAI `response_format` →
+        // `responseMimeType: application/json`. gemini-2.5-flash hangs (90s+
+        // upstream timeout) when that field is set, even on tiny inputs. We
+        // instead ask for JSON in the prompt and parse it leniently from the
+        // prose reply (see MemoryCompileService.parseExtractedMemories). The
+        // `response_format` field still rides the payload for OpenAI-/Hermes-
+        // compatible upstreams, which honour it natively.
         if !generationConfig.isEmpty {
             result["generationConfig"] = generationConfig
         }
 
         return result
+    }
+
+    /// OpenAI `tool_choice` → Gemini `tool_config.function_calling_config`.
+    /// `none` → NONE, `required`/`any` → ANY (must call a function), object
+    /// `{function:{name}}` → ANY scoped to that function, anything else
+    /// (incl. `auto`/nil) → AUTO (model decides).
+    private static func functionCallingConfig(for toolChoice: Any?) -> [String: Any] {
+        func cfg(_ mode: String, names: [String]? = nil) -> [String: Any] {
+            var fcc: [String: Any] = ["mode": mode]
+            if let names, !names.isEmpty { fcc["allowed_function_names"] = names }
+            return ["function_calling_config": fcc]
+        }
+        if let choice = toolChoice as? String {
+            switch choice.lowercased() {
+            case "none": return cfg("NONE")
+            case "required", "any": return cfg("ANY")
+            default: return cfg("AUTO")
+            }
+        }
+        if let obj = toolChoice as? [String: Any],
+           let fn = obj["function"] as? [String: Any],
+           let name = fn["name"] as? String
+        {
+            return cfg("ANY", names: [name])
+        }
+        return cfg("AUTO")
     }
 
     /// Extract content and/or tool_calls as Gemini parts.

@@ -7,7 +7,22 @@ import Logging
 
 struct CaptureSafariRequest: Codable {
     let url: String
-    let note: String?
+    /// HER-90 — the client encodes this as `notes` (snake_case passthrough).
+    /// The previous server field was `note`, so the annotation the user typed
+    /// in the share sheet was silently dropped on decode. Named `notes` to
+    /// match the wire shape `CaptureSafariEndpoints` sends.
+    let notes: String?
+    /// HER-105 — optional Space to file the captured link into. nil = unfiled.
+    let spaceId: UUID?
+
+    /// Explicit keys: `AppRequestContext` uses Hummingbird's default request
+    /// decoder (no `convertFromSnakeCase`), so the client's `space_id` must be
+    /// mapped here or it decodes as nil and the link lands unfiled.
+    enum CodingKeys: String, CodingKey {
+        case url
+        case notes
+        case spaceId = "space_id"
+    }
 }
 
 struct CaptureSafariResponse: Codable, ResponseEncodable {
@@ -35,11 +50,18 @@ struct CaptureController {
 
         let result: LinkCaptureService.CapturedLink
         do {
-            result = try await service.captureLink(tenantID: tenantID, url: body.url, note: body.note)
+            result = try await service.captureLink(
+                tenantID: tenantID,
+                url: body.url,
+                note: body.notes,
+                spaceID: body.spaceId,
+            )
         } catch LinkCaptureService.CaptureError.invalidURL {
             throw HTTPError(.badRequest, message: "Invalid URL")
         } catch LinkCaptureService.CaptureError.nonPublicHost {
             throw HTTPError(.badRequest, message: "URL host is not enrichable")
+        } catch LinkCaptureService.CaptureError.unknownSpace {
+            throw HTTPError(.badRequest, message: "`space_id` does not belong to the caller")
         }
 
         let responseBody = CaptureSafariResponse(id: result.fileID, path: result.relativePath, status: "accepted")
