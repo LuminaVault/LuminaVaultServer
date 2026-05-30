@@ -154,7 +154,7 @@ struct ConversationController {
 
         // Load full transcript history so the LLM sees prior turns.
         let history = try await loggedStage("chat.history", logger: log) {
-            try await ConversationMessage.query(on: fluent.db())
+            try await ConversationMessage.query(on: self.fluent.db())
                 .filter(\.$conversationID == conversationID)
                 .sort(\.$createdAt, .ascending)
                 .all()
