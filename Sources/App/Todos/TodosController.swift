@@ -125,6 +125,7 @@ struct TodosController {
         else {
             throw HTTPError(.notFound, message: "todo not found")
         }
+        try await validateProject(patch.projectID, tenantID: tenantID)
 
         var meta = row.metadata ?? VaultFileMetadata()
         meta.isTodo = true
