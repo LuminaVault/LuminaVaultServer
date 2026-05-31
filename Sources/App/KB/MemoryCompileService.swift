@@ -53,6 +53,11 @@ actor MemoryCompileService {
     let maxFileSize: Int
     let maxBatchBytes: Int
     let maxToolIterations: Int
+
+    /// Max chars of a single file's text fed to the extraction LLM (the lead of
+    /// an enriched article — enough for durable facts, small enough to keep the
+    /// prompt clean and the JSON response untruncated).
+    static let maxBlockChars = 8000
     /// HER-288 — progress publisher used to fan-out `.preparing`,
     /// `.thinking`, and `.memorySaved` events over the per-tenant WS
     /// channel. Defaults to `NoopMemoryCompileProgressPublisher` so unit tests
@@ -147,7 +152,15 @@ actor MemoryCompileService {
             if Self.isTextLike(contentType: row.contentType),
                let text = String(data: payload, encoding: .utf8)
             {
-                compiledTextBlocks.append((safeRelative, text, row.contentType))
+                // Cap per-file content fed to the extraction LLM. Enriched links
+                // (e.g. a full Jina-fetched wikipedia article) can be 100s of KB
+                // of noisy markdown — that bloats the prompt, risks a truncated
+                // JSON response, and drowns the model so it extracts nothing. The
+                // durable facts live in the lead, so the first ~8K chars suffice.
+                let capped = text.count > Self.maxBlockChars
+                    ? String(text.prefix(Self.maxBlockChars))
+                    : text
+                compiledTextBlocks.append((safeRelative, capped, row.contentType))
             }
         }
 
@@ -313,13 +326,21 @@ actor MemoryCompileService {
         // (`response_format: json_object` is honoured by OpenAI-compatible
         // upstreams and mapped to Gemini's responseMimeType).
         let systemPrompt = """
-        You are Hermes' kb-compile agent. Extract the durable, high-signal \
-        memories (preferences, decisions, facts, TODOs, recurring patterns) from \
-        the user's files. Never invent — only extract what is actually present. \
+        You are Hermes' kb-compile agent. Extract durable, high-signal memories \
+        from the SUBSTANCE of the user's files:
+          - For personal notes: the user's preferences, decisions, plans, TODOs, \
+            and recurring patterns ("Prefers espresso over filter coffee.").
+          - For saved articles / documents / links: the key facts, claims, \
+            definitions, and takeaways stated in the material itself \
+            ("Stoicism teaches that virtue is the only true good.").
+        Write each memory as one concise, self-contained statement of fact in the \
+        third person. Never invent — only extract what is actually present. \
+        Do NOT write meta-observations about the user saving, capturing, or \
+        having a file (e.g. avoid "User captured a Wikipedia article" or "User \
+        maintains a knowledge base"). Skip navigation/boilerplate. \
         Return ONLY a JSON object of the form \
-        {"memories": ["<memory 1>", "<memory 2>", ...]} where each entry is one \
-        concise, self-contained memory written in the third person. Return \
-        {"memories": []} when there is nothing durable to store.
+        {"memories": ["<memory 1>", "<memory 2>", ...]}, or {"memories": []} when \
+        there is nothing durable to store.
         \(hint.map { "User hint: \($0)" } ?? "")
         """
 

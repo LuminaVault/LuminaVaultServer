@@ -193,4 +193,5 @@ enum HermesUpdateError: Error, Equatable {
     case healthCheckTimedOut
     case alreadyRunning
     case rollbackFailed(String)
+    case perTenantDisabled
 }

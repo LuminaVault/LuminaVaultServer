@@ -132,6 +132,20 @@ actor HermesUpdateService {
         try await loadRow(jobID: id)?.snapshot()
     }
 
+    /// HER-330 — bulk-reprovision every per-tenant Hermes container onto the
+    /// current per-tenant image WITHOUT running a full central-update job.
+    /// Force-removes then re-creates each tenant container (re-seeding
+    /// `config.yaml`); the per-tenant data volume is bind-mounted and
+    /// untouched, so no memory is lost. Idempotent. Returns the count
+    /// reprovisioned. Throws `HermesUpdateError.perTenantDisabled` when
+    /// per-tenant containers are turned off.
+    func reprovisionTenants() async throws -> Int {
+        guard let cm = containerManager else {
+            throw HermesUpdateError.perTenantDisabled
+        }
+        return try await cm.reprovisionAll()
+    }
+
     func currentVersionInfo() async -> HermesVersionInfo {
         let ref = await central.currentImageRef() ?? central.fullRef(tag: central.config.defaultChannelTag)
         let digest = await central.currentImageDigest()

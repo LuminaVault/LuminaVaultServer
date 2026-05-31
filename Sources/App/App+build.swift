@@ -875,16 +875,18 @@ func buildRouter(
     // blocks for any URLs the user pasted. Reuses URLEnrichmentService's
     // lightweight enrichURL helper (no DB/disk side effects).
     //
-    // HER-240 / spec ticket #3 — optional jina.ai tier-2 post-processor
-    // wired here so the shared `urlEnrichmentService` instance picks it
-    // up for both chat pre-enrichment and capture-side rewriting.
-    let jinaEnricher: JinaEnricher? = services.jinaAPIKey.isEmpty
-        ? nil
-        : JinaEnricher(
-            session: URLSession(configuration: .ephemeral),
-            apiKey: services.jinaAPIKey,
-            logger: Logger(label: "lv.capture.jina"),
-        )
+    // HER-240 / spec ticket #3 — jina.ai tier-2 post-processor (fetches the
+    // full page body when the primary OG enricher is shallow). Always wired:
+    // r.jina.ai's reader works KEYLESS (the key is optional, only lifts rate
+    // limits), so capture/import links get real article bodies — and therefore
+    // real memories — even with no `JINA_API_KEY` configured. Previously this
+    // was nil without a key, so every link enriched to title-only (~250 bytes)
+    // and compiled to zero memories.
+    let jinaEnricher: JinaEnricher? = JinaEnricher(
+        session: URLSession(configuration: .ephemeral),
+        apiKey: services.jinaAPIKey.isEmpty ? nil : services.jinaAPIKey,
+        logger: Logger(label: "lv.capture.jina"),
+    )
     let urlEnrichmentService = URLEnrichmentService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
@@ -1431,6 +1433,7 @@ func buildRouter(
             spaces: spacesService,
             vaultPaths: vaultPaths,
             memoryCompile: memoryCompileService,
+            urlEnrich: urlEnrichmentService,
             logger: Logger(label: "lv.import"),
         ),
         categorizer: ImportCategorizationService(

@@ -44,16 +44,39 @@ if ! command -v bru >/dev/null 2>&1; then
   exit 1
 fi
 
+DEST="${TARGET}/LuminaVaultServer"
+
 echo "→ regenerating Bruno collection"
 echo "    spec:   ${SPEC}"
-echo "    target: ${TARGET}"
+echo "    target: ${DEST}"
+
+# bru CLI v3 (3.0.x) refuses to import when the --output collection dir already
+# exists and is non-empty ("Output directory is not empty"), which broke the
+# old in-place `--output "${TARGET}"` workflow. Work around it: import into a
+# fresh temp dir, then rsync the generated request folders back into the real
+# collection. The hand-maintained environments/ folder is excluded so its
+# baseUrl/token vars survive regeneration.
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}"' EXIT
 
 bru import openapi \
   --source "${SPEC}" \
-  --output "${TARGET}" \
+  --output "${TMP_DIR}" \
   --collection-name "LuminaVaultServer" \
   --group-by tags
 
+GENERATED="${TMP_DIR}/LuminaVaultServer"
+if [ ! -d "${GENERATED}" ]; then
+  echo "error: bru produced no LuminaVaultServer collection under ${TMP_DIR}" >&2
+  exit 1
+fi
+
+mkdir -p "${DEST}"
+# --delete prunes operation folders dropped from the spec; --exclude keeps the
+# manual environments/ folder untouched (bru would otherwise overwrite it).
+rsync -a --delete --exclude 'environments' "${GENERATED}/" "${DEST}/"
+
 echo
-echo "✓ regenerated Bruno collection at ${TARGET}"
+echo "✓ regenerated Bruno collection at ${DEST}"
+echo "  preserved: ${DEST}/environments"
 echo "  next: cd ${TARGET} && git diff && git commit + push"

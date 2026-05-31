@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image clean lint help bruno-regen
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -73,4 +73,27 @@ hermes-image: ## Build the Mnemosyne-baked Hermes image (tag used by central + p
 	docker build -f docker/hermes.Dockerfile -t luminavault-hermes:local .
 	@echo "✓ built luminavault-hermes:local (kb-* skills + mnemosyne memory MCP)"
 	@echo "  central: docker compose up -d hermes   per-tenant: HERMES_PER_TENANT_IMAGE=luminavault-hermes:local"
-	@echo "  upgrade existing tenants: trigger HermesContainerManager.reprovisionAll (admin)"
+	@echo "  upgrade existing tenants: make hermes-reprovision (admin)"
+
+# Bulk-reprovision every per-tenant Hermes container onto the current image
+# via POST /v1/system/hermes/reprovision. Gated by BOTH the owner JWT and the
+# shared admin secret. Override the connection vars as needed:
+#   make hermes-reprovision LV_JWT=<session-jwt> LV_ADMIN_TOKEN=<admin.token> \
+#                           LV_BASE_URL=http://localhost:8080
+LV_BASE_URL ?= http://localhost:8080
+LV_JWT ?=
+LV_ADMIN_TOKEN ?=
+
+hermes-reprovision: ## Reprovision all per-tenant Hermes containers onto the current image (admin; needs LV_JWT + LV_ADMIN_TOKEN)
+	@if [ -z "$(LV_JWT)" ] || [ -z "$(LV_ADMIN_TOKEN)" ]; then \
+		echo "error: set LV_JWT (owner session token) and LV_ADMIN_TOKEN (admin.token)" >&2; \
+		echo "  make hermes-reprovision LV_JWT=... LV_ADMIN_TOKEN=... [LV_BASE_URL=...]" >&2; \
+		exit 1; \
+	fi
+	@echo "→ reprovisioning per-tenant Hermes containers via $(LV_BASE_URL)"
+	@curl -fsS -X POST "$(LV_BASE_URL)/v1/system/hermes/reprovision" \
+		-H "Authorization: Bearer $(LV_JWT)" \
+		-H "X-Admin-Token: $(LV_ADMIN_TOKEN)" \
+		-H "Content-Type: application/json" \
+		&& echo "" \
+		&& echo "✓ reprovision complete (see \"reprovisioned\" count above)"

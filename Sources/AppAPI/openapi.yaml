@@ -49,6 +49,8 @@ tags:
   - name: Vault
   - name: KB
     description: Knowledge-base compile (Hermes learning loop).
+  - name: Import
+    description: Feed Your Brain bulk import (links, bookmarks, files into Spaces).
   - name: Spaces
   - name: Soul
     description: SOUL.md CRUD (HER-85).
@@ -1911,6 +1913,124 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/KBCompilePendingResponse' }
 
+  /v1/import:
+    post:
+      tags: [Import]
+      operationId: importLinks
+      summary: Stage a batch of URLs into the import inbox ("Feed Your Brain").
+      description: |
+        Stages each http(s) URL as a vault file in the reserved `imported`
+        Space (deduped by URL), tracked under a new import session. Follow with
+        POST /v1/import/{id}/categorize, then /approve.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportCreateRequest' }
+      responses:
+        '200':
+          description: Import session created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportCreateResponse' }
+
+  /v1/import/bookmarks:
+    post:
+      tags: [Import]
+      operationId: importBookmarks
+      summary: Stage links from a Netscape bookmarks HTML export.
+      description: |
+        Raw bookmarks HTML body (Safari / Chrome "Export Bookmarks"). Parses
+        out http(s) links and stages them like POST /v1/import.
+      requestBody:
+        required: true
+        content:
+          text/html:
+            schema: { type: string }
+      responses:
+        '200':
+          description: Import session created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportCreateResponse' }
+
+  /v1/import/files:
+    post:
+      tags: [Import]
+      operationId: importFiles
+      summary: Open an import session over already-uploaded vault files.
+      description: |
+        For photos / documents / EventKit-rendered notes: the client first
+        uploads each via POST /v1/vault/files, then registers the returned ids
+        here so they flow through categorize → approve.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportFilesRequest' }
+      responses:
+        '200':
+          description: Import session created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportCreateResponse' }
+
+  /v1/import/{id}:
+    get:
+      tags: [Import]
+      operationId: importStatus
+      summary: Import session status + items (with proposed Spaces).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Session status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportStatusResponse' }
+
+  /v1/import/{id}/categorize:
+    post:
+      tags: [Import]
+      operationId: importCategorize
+      summary: Run Smart Import LLM categorization; returns the proposal.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated session with proposed Spaces per item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportStatusResponse' }
+
+  /v1/import/{id}/approve:
+    post:
+      tags: [Import]
+      operationId: importApprove
+      summary: Apply the Space mapping — file items, enrich links, scoped compile.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportApproveRequest' }
+      responses:
+        '200':
+          description: Import filed and compiled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportApproveResponse' }
+
   /v1/kb-compile:
     post:
       tags: [KB]
@@ -2696,6 +2816,38 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
         '409':
           description: An update is already in progress.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/system/hermes/reprovision:
+    post:
+      tags: [System]
+      operationId: systemHermesReprovision
+      summary: Bulk-reprovision all per-tenant Hermes containers onto the current image.
+      description: >
+        Force-removes then re-creates every per-tenant Hermes container,
+        re-seeding `config.yaml` from the latest template. The per-tenant data
+        volume (memory DB + auth.json) is bind-mounted and untouched, so no
+        data is lost. Idempotent. Does NOT run a central blue-green update.
+      security:
+        - bearerJWT: []
+          adminTokenHeader: []
+      responses:
+        '200':
+          description: Reprovision complete.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reprovisioned]
+                properties:
+                  reprovisioned:
+                    type: integer
+                    description: Number of tenant containers reprovisioned.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: Per-tenant containers are disabled on this server.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -4240,6 +4392,72 @@ components:
         pendingFiles:
           type: integer
           description: HER-293 — vault rows with `processed_at` IS NULL for the caller's tenant.
+
+    ImportCreateRequest:
+      type: object
+      required: [sourceType, urls]
+      properties:
+        sourceType: { type: string, example: bookmarks }
+        urls:
+          type: array
+          items: { type: string, format: uri }
+    ImportFilesRequest:
+      type: object
+      required: [sourceType, vaultFileIds]
+      properties:
+        sourceType: { type: string, example: documents }
+        vaultFileIds:
+          type: array
+          items: { type: string, format: uuid }
+    ImportCreateResponse:
+      type: object
+      required: [sessionId, status, total, staged, skipped]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { type: string }
+        total: { type: integer }
+        staged: { type: integer }
+        skipped: { type: integer }
+    ImportItemDTO:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        proposedSpace:
+          type: string
+          nullable: true
+          description: existing Space slug, `new:<Name>`, or `imported`.
+        status: { type: string }
+    ImportStatusResponse:
+      type: object
+      required: [id, sourceType, status, total, staged, items]
+      properties:
+        id: { type: string, format: uuid }
+        sourceType: { type: string }
+        status: { type: string }
+        total: { type: integer }
+        staged: { type: integer }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ImportItemDTO' }
+    ImportApproveRequest:
+      type: object
+      properties:
+        overrides:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: itemId → `slug | new:Name | imported`. Absent items keep their proposal.
+    ImportApproveResponse:
+      type: object
+      required: [sessionId, status, filed, memoriesIngested]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { type: string }
+        filed: { type: integer }
+        memoriesIngested: { type: integer }
 
     KBCompileStartedDTO:
       type: object

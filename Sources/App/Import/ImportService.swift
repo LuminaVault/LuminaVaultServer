@@ -13,7 +13,17 @@ struct ImportService {
     let spaces: SpacesService
     let vaultPaths: VaultPathService
     let memoryCompile: MemoryCompileService
+    let urlEnrich: URLEnrichmentService
     let logger: Logger
+
+    /// Max concurrent link enrichments during approve (avoid stampeding the
+    /// network / upstream OG+Jina services on a large import).
+    static let enrichConcurrency = 4
+    /// Cap on links enriched INLINE during approve so the request can't hang on
+    /// a huge import (e.g. 500 bookmarks × network fetch). Links beyond the cap
+    /// are still enriched by their staging-time task and picked up by a later
+    /// Sync & Learn — they just don't all land as memories in this one call.
+    static let maxInlineEnrich = 50
 
     static let maxBatch = 500
     static let importedSlug = "imported"
@@ -189,6 +199,11 @@ struct ImportService {
             filed += 1
         }
 
+        // Enrich link items (bounded concurrency) so the scoped compile sees
+        // real article content, not the "# [Pending Enrichment]" skeleton — so
+        // an import yields memories in-flow instead of on the next Sync & Learn.
+        await enrichLinks(tenantID: tenantID, items: items)
+
         session.status = ImportStatus.compiling
         try await session.save(on: db)
 
@@ -211,6 +226,38 @@ struct ImportService {
         try await session.save(on: db)
         logger.info("import approved tenant=\(tenantID) session=\(sessionID) filed=\(filed) memories=\(memories)")
         return ApproveResult(filed: filed, memories: memories)
+    }
+
+    /// Bounded-concurrency enrichment over the session's link items whose vault
+    /// file is still enrichment-pending. Best-effort (enrichAndRewrite never
+    /// throws). Re-reads the row inside, so it works after the filing move.
+    private func enrichLinks(tenantID: UUID, items: [ImportItem]) async {
+        let db = fluent.db()
+        var jobs: [(UUID, String)] = []
+        for item in items {
+            guard let url = item.url, let vfID = item.vaultFileID else { continue }
+            if let vf = try? await VaultFile.query(on: db, tenantID: tenantID).filter(\.$id == vfID).first(),
+               vf.metadata?.enrichmentStatus == "pending"
+            {
+                jobs.append((vfID, url))
+            }
+        }
+        if jobs.count > Self.maxInlineEnrich {
+            logger.info("import enrich capped: \(jobs.count) links, enriching \(Self.maxInlineEnrich) inline; rest land on next compile")
+            jobs = Array(jobs.prefix(Self.maxInlineEnrich))
+        }
+        guard !jobs.isEmpty else { return }
+        let urlEnrich = urlEnrich
+        await withTaskGroup(of: Void.self) { group in
+            var i = 0
+            func addNext() {
+                guard i < jobs.count else { return }
+                let (vfID, url) = jobs[i]; i += 1
+                group.addTask { await urlEnrich.enrichAndRewrite(vaultFileID: vfID, urlString: url, tenantID: tenantID) }
+            }
+            for _ in 0 ..< Self.enrichConcurrency { addNext() }
+            for await _ in group { addNext() }
+        }
     }
 
     func status(tenantID: UUID, sessionID: UUID) async throws -> (ImportSession, [ImportItem]) {

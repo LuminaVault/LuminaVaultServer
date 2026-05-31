@@ -20,6 +20,7 @@ struct HermesUpdateController {
         router.get("update/:jobID", use: jobStatus)
         router.get("update/:jobID/stream", use: stream)
         router.post("update/:jobID/rollback", use: rollback)
+        router.post("reprovision", use: reprovisionTenants)
     }
 
     // MARK: - GET /version
@@ -92,6 +93,18 @@ struct HermesUpdateController {
         }
     }
 
+    // MARK: - POST /reprovision
+
+    @Sendable
+    func reprovisionTenants(_: Request, ctx _: AppRequestContext) async throws -> ReprovisionTenantsResponseBody {
+        do {
+            let count = try await service.reprovisionTenants()
+            return ReprovisionTenantsResponseBody(reprovisioned: count)
+        } catch HermesUpdateError.perTenantDisabled {
+            throw HTTPError(.serviceUnavailable, message: "per_tenant_disabled")
+        }
+    }
+
     // MARK: - Helpers
 
     private func requireJobID(_ ctx: AppRequestContext) throws -> UUID {
@@ -119,4 +132,8 @@ struct HermesUpdateJobStatusResponse: Codable, ResponseEncodable {
 struct StartHermesUpdateResponseBody: Codable, ResponseEncodable {
     let jobID: UUID
     let state: HermesUpdateJobState
+}
+
+struct ReprovisionTenantsResponseBody: Codable, ResponseEncodable {
+    let reprovisioned: Int
 }

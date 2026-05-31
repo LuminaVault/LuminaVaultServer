@@ -2,61 +2,15 @@ import FluentKit
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
-// Server-local DTOs. `LuminaVaultShared` is a pinned package; the import surface
-// is new, so its DTOs live here (mirrored client-side) until a shared release.
-// NOTE: `AppRequestContext` uses Hummingbird's default decoder (no snake_case),
-// so request keys are camelCase exactly as named here.
-
-struct ImportCreateRequest: Codable {
-    let sourceType: String
-    let urls: [String]
-}
-
-struct ImportFilesRequest: Codable {
-    let sourceType: String
-    /// ids returned by `POST /v1/vault/files` (photos/documents/EventKit notes
-    /// already uploaded into the `imported` Space).
-    let vaultFileIds: [UUID]
-}
-
-struct ImportCreateResponse: Codable, ResponseEncodable {
-    let sessionId: UUID
-    let status: String
-    let total: Int
-    let staged: Int
-    let skipped: Int
-}
-
-struct ImportItemDTO: Codable {
-    let id: UUID
-    let url: String?
-    let title: String?
-    let proposedSpace: String?
-    let status: String
-}
-
-struct ImportStatusResponse: Codable, ResponseEncodable {
-    let id: UUID
-    let sourceType: String
-    let status: String
-    let total: Int
-    let staged: Int
-    let items: [ImportItemDTO]
-}
-
-struct ImportApproveRequest: Codable {
-    /// itemId → `slug | new:Name | imported`. Absent items use their
-    /// LLM-proposed Space. Omit/empty to accept the whole proposal as-is.
-    let overrides: [String: String]?
-}
-
-struct ImportApproveResponse: Codable, ResponseEncodable {
-    let sessionId: UUID
-    let status: String
-    let filed: Int
-    let memoriesIngested: Int
-}
+// HER-105 — import DTOs now live in LuminaVaultShared (v0.42.0). Server-side
+// `ResponseEncodable` conformances for the response types. NOTE:
+// `AppRequestContext` uses Hummingbird's default decoder (no snake_case), and
+// the shared DTOs are plain camelCase Codable, so they decode/encode directly.
+extension ImportCreateResponse: @retroactive ResponseEncodable {}
+extension ImportStatusResponse: @retroactive ResponseEncodable {}
+extension ImportApproveResponse: @retroactive ResponseEncodable {}
 
 /// "Feed Your Brain" P1 — `POST /v1/import` (stage a link batch) and
 /// `GET /v1/import/{id}` (poll status + items). Categorization + approve land
