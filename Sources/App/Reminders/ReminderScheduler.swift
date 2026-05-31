@@ -76,7 +76,9 @@ actor ReminderScheduler: Service {
                 inFlight += 1
                 group.addTask { [self] in await fire(next, now: now) }
             }
-            for _ in 0 ..< min(maxConcurrent, reminders.count) { spawnNext() }
+            for _ in 0 ..< min(maxConcurrent, reminders.count) {
+                spawnNext()
+            }
             while inFlight > 0 {
                 _ = await group.next()
                 inFlight -= 1

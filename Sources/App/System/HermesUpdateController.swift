@@ -1,7 +1,7 @@
 import Foundation
 import Hummingbird
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 
 /// HER-330 — owner-facing "Update Hermes" routes under `/v1/system/hermes`.
 ///
@@ -27,14 +27,14 @@ struct HermesUpdateController {
 
     @Sendable
     func version(_: Request, ctx _: AppRequestContext) async throws -> HermesVersionInfoResponse {
-        HermesVersionInfoResponse(info: await service.currentVersionInfo())
+        await HermesVersionInfoResponse(info: service.currentVersionInfo())
     }
 
     // MARK: - POST /update
 
     @Sendable
     func startUpdate(_ req: Request, ctx: AppRequestContext) async throws -> StartHermesUpdateResponseBody {
-        let body = (try? await req.decode(as: StartHermesUpdateRequest.self, context: ctx))
+        let body = await (try? req.decode(as: StartHermesUpdateRequest.self, context: ctx))
             ?? StartHermesUpdateRequest(targetTag: nil)
         do {
             let snapshot = try await service.startUpdate(targetTag: body.targetTag)
@@ -75,7 +75,7 @@ struct HermesUpdateController {
         guard try await service.job(id: jobID) != nil else {
             throw HTTPError(.notFound, message: "job_not_found")
         }
-        return HermesUpdateSSEResponse(events: await service.subscribe(jobID: jobID))
+        return await HermesUpdateSSEResponse(events: service.subscribe(jobID: jobID))
     }
 
     // MARK: - POST /update/:jobID/rollback
@@ -116,6 +116,7 @@ struct HermesUpdateController {
 }
 
 // MARK: - Response envelopes
+
 //
 // Thin `ResponseEncodable` wrappers around the shared wire DTOs. The DTOs
 // live in `LuminaVaultShared`; these envelopes are server-only glue so the

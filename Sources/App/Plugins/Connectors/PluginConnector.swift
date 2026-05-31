@@ -23,7 +23,7 @@ enum ConnectorError: Error, Equatable {
     case upstreamFailure(Int)
 }
 
-struct ConnectorHTTPResponse: Sendable {
+struct ConnectorHTTPResponse {
     let status: Int
     let body: Data
 }
@@ -36,12 +36,16 @@ protocol ConnectorHTTPClient: Sendable {
 
 struct URLSessionConnectorHTTPClient: ConnectorHTTPClient {
     let session: URLSession
-    init(session: URLSession = .shared) { self.session = session }
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
 
     func get(url: URL, headers: [String: String]) async throws -> ConnectorHTTPResponse {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return ConnectorHTTPResponse(status: status, body: data)

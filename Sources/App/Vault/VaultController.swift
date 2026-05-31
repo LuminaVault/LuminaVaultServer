@@ -165,13 +165,12 @@ struct VaultController {
         // (unfiled → `raw/inbox/`), so the on-disk vault mirrors the app's
         // Spaces. The client's `path` prefix is ignored in favour of the
         // server-authoritative Space slug; only the basename is kept.
-        let spaceFolder: String
-        if let spaceID,
-           let space = try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first()
+        let spaceFolder: String = if let spaceID,
+                                     let space = try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first()
         {
-            spaceFolder = space.slug
+            space.slug
         } else {
-            spaceFolder = "inbox"
+            "inbox"
         }
         let basename = (safeRelative as NSString).lastPathComponent
         safeRelative = try Self.sanitizePath("\(spaceFolder)/\(basename)")

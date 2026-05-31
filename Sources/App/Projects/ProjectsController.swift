@@ -12,8 +12,7 @@ extension ProjectDTO: @retroactive ResponseEncodable {}
 /// - `GET    /v1/projects` — list (with live `todoCount` per project).
 /// - `POST   /v1/projects` — create.
 /// - `PATCH  /v1/projects/:id` — rename / re-describe / archive.
-/// - `DELETE /v1/projects/:id` — delete (note-todos orphan; their
-///   `metadata.projectID` simply stops matching any project row).
+/// - `DELETE /v1/projects/:id` — delete (todos orphan via ON DELETE SET NULL).
 struct ProjectsController {
     let fluent: Fluent
     let logger: Logger

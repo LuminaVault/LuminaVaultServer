@@ -1563,9 +1563,10 @@ func buildRouter(
     let projectsGroup = router.group("/v1/projects").add(middleware: jwtAuthenticator)
     projectsController.addRoutes(to: projectsGroup)
 
-    // HER-Notes/Todos merge — `/v1/todos` is backed by note metadata
-    // (vault_files where metadata.isTodo), so the dedicated Todos API and the
-    // note browser share one store. See TodosController.
+    // HER-Notes/Todos merge — `/v1/todos` (TodoDTO) is backed by note metadata
+    // (vault_files where metadata.isTodo): a todo IS a note, so the Todos API
+    // and the note browser share one store. `projectID` links to the dedicated
+    // Projects table above.
     let todosController = TodosController(
         fluent: services.fluent,
         vaultPaths: vaultPaths,

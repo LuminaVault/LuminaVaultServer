@@ -61,10 +61,11 @@ struct UsageSummaryAggregationTests {
             // Two usage rows this month for this tenant + one for another tenant.
             let other = try await Self.makeUser("oth\(UUID().uuidString.prefix(6).lowercased())", on: fluent.db())
             let otherID = try other.requireID()
-            for (tid, tin, tout) in [(tenantID, 100, 40), (tenantID, 50, 10), (otherID, 999, 999)] {
+            // Distinct models per row — the PK is (tenant_id, day, model).
+            for (tid, model, tin, tout) in [(tenantID, "model-a", 100, 40), (tenantID, "model-b", 50, 10), (otherID, "model-a", 999, 999)] {
                 try await sql.raw("""
                 INSERT INTO usage_meter (tenant_id, day, model, mtok_in, mtok_out)
-                VALUES (\(bind: tid), CURRENT_DATE, 'test-model', \(bind: Int64(tin)), \(bind: Int64(tout)))
+                VALUES (\(bind: tid), CURRENT_DATE, \(bind: model), \(bind: Int64(tin)), \(bind: Int64(tout)))
                 """).run()
             }
 
@@ -79,8 +80,8 @@ struct UsageSummaryAggregationTests {
             SELECT COALESCE(SUM(mtok_in),0)::int AS tin, COALESCE(SUM(mtok_out),0)::int AS tout
             FROM usage_meter WHERE tenant_id = \(bind: tenantID) AND day >= \(bind: periodStart)
             """).first(decoding: Row.self)
-            #expect(row?.tin == 150)   // 100 + 50, other tenant excluded
-            #expect(row?.tout == 50)   // 40 + 10
+            #expect(row?.tin == 150) // 100 + 50, other tenant excluded
+            #expect(row?.tout == 50) // 40 + 10
 
             let embed = try await EmbeddingUsage.query(on: fluent.db())
                 .filter(\.$tenantID == tenantID)

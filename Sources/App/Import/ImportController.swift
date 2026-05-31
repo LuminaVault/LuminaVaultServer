@@ -123,7 +123,7 @@ struct ImportController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let sessionID = try Self.sessionID(ctx)
-        let body = (try? await req.decode(as: ImportApproveRequest.self, context: ctx)) ?? ImportApproveRequest(overrides: nil)
+        let body = await (try? req.decode(as: ImportApproveRequest.self, context: ctx)) ?? ImportApproveRequest(overrides: nil)
         let result = try await service.approve(
             tenantID: tenantID, sessionID: sessionID, overrides: body.overrides ?? [:],
         )
@@ -143,8 +143,8 @@ struct ImportController {
 
     private func statusResponse(tenantID: UUID, sessionID: UUID) async throws -> ImportStatusResponse {
         let (session, items) = try await service.status(tenantID: tenantID, sessionID: sessionID)
-        return ImportStatusResponse(
-            id: try session.requireID(),
+        return try ImportStatusResponse(
+            id: session.requireID(),
             sourceType: session.sourceType,
             status: session.status,
             total: session.totalItems,

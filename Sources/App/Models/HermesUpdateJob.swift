@@ -39,7 +39,7 @@ final class HermesUpdateJob: Model, @unchecked Sendable {
     ) {
         self.id = id
         self.state = state.rawValue
-        self.stepsJSON = Self.encodeSteps(steps)
+        stepsJSON = Self.encodeSteps(steps)
         self.fromVersion = fromVersion
         self.toVersion = toVersion
         self.errorMessage = errorMessage

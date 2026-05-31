@@ -1,16 +1,16 @@
+@testable import App
 import Foundation
 import Logging
 import LuminaVaultShared
 import Testing
-@testable import App
 
 /// Pure-logic unit tests for the HER-43 plugin foundation. No DB / no real
 /// HTTP (the connector uses a stub client), so they run fast and avoid the
 /// AsyncKit teardown SIGILL (HER-310) that the integration suites hit.
 @Suite("Plugin catalog validation")
 struct PluginCatalogTests {
-    @Test("readwise is in the catalog with a secret access_token field")
-    func catalogHasReadwise() {
+    @Test
+    func `readwise is in the catalog with a secret access_token field`() {
         let entry = PluginCatalog.entry(slug: "readwise")
         #expect(entry != nil)
         #expect(entry?.binding == "readwise")
@@ -18,19 +18,19 @@ struct PluginCatalogTests {
         #expect(fields.contains { $0.key == "access_token" && $0.kind == .secret && $0.isRequired })
     }
 
-    @Test("catalog filters by category and sorts by slug")
-    func catalogFilter() {
+    @Test
+    func `catalog filters by category and sorts by slug`() {
         #expect(PluginCatalog.catalog(category: .connector).contains { $0.slug == "readwise" })
         #expect(PluginCatalog.catalog(category: .theme).isEmpty)
     }
 
-    @Test("validate accepts a complete config")
-    func validateOK() {
+    @Test
+    func `validate accepts a complete config`() {
         #expect(PluginCatalog.validate(slug: "readwise", config: ["access_token": "tok"]) == .ok)
     }
 
-    @Test("validate rejects unknown plugin, missing required, and unknown field")
-    func validateRejections() {
+    @Test
+    func `validate rejects unknown plugin, missing required, and unknown field`() {
         #expect(PluginCatalog.validate(slug: "nope", config: [:]) == .unknownPlugin)
         #expect(PluginCatalog.validate(slug: "readwise", config: [:]) == .missing("access_token"))
         #expect(PluginCatalog.validate(slug: "readwise", config: ["access_token": "  "]) == .missing("access_token"))
@@ -67,8 +67,8 @@ struct ReadwiseConnectorTests {
         return (c, stub)
     }
 
-    @Test("maps source_url, dedupes, drops non-http and null sources")
-    func mapsSourceURLs() async throws {
+    @Test
+    func `maps source_url, dedupes, drops non-http and null sources`() async throws {
         let json = """
         {"nextPageCursor": null, "results": [
           {"source_url": "https://example.com/a"},
@@ -84,24 +84,24 @@ struct ReadwiseConnectorTests {
         #expect(await stub.lastAuthHeader == "Token tok")
     }
 
-    @Test("missing token throws missingConfig before any request")
-    func missingToken() async {
+    @Test
+    func `missing token throws missingConfig before any request`() async {
         let (c, _) = connector(status: 200, json: "{}")
         await #expect(throws: ConnectorError.missingConfig("access_token")) {
             try await c.fetchURLs(config: [:], tenantID: UUID())
         }
     }
 
-    @Test("401 maps to unauthorized")
-    func unauthorized() async {
+    @Test
+    func `401 maps to unauthorized`() async {
         let (c, _) = connector(status: 401, json: "{}")
         await #expect(throws: ConnectorError.unauthorized) {
             try await c.fetchURLs(config: ["access_token": "bad"], tenantID: UUID())
         }
     }
 
-    @Test("500 maps to upstreamFailure")
-    func upstream() async {
+    @Test
+    func `500 maps to upstreamFailure`() async {
         let (c, _) = connector(status: 500, json: "{}")
         await #expect(throws: ConnectorError.upstreamFailure(500)) {
             try await c.fetchURLs(config: ["access_token": "tok"], tenantID: UUID())

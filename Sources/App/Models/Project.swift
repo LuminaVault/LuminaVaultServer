@@ -3,8 +3,7 @@ import Foundation
 import LuminaVaultShared
 
 /// HER-Projects — a named container that groups `Todo`s. Tenant-scoped.
-/// Todos are note-backed (`VaultFile` with `metadata.isTodo`) and link to a
-/// project via `VaultFileMetadata.projectID`; `todoCount` is computed on read.
+/// `todoCount` is not stored; controllers compute it on read when needed.
 final class Project: Model, TenantModel, @unchecked Sendable {
     static let schema = "projects"
 

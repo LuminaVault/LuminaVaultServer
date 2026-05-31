@@ -9,18 +9,19 @@ import LuminaVaultShared
 extension TodoListResponse: @retroactive ResponseEncodable {}
 extension TodoDTO: @retroactive ResponseEncodable {}
 
-/// HER-Notes/Todos merge — the canonical `/v1/todos` API, backed by note
-/// metadata so there is ONE todo store, not two. A todo *is* a vault file
-/// whose `metadata.isTodo == true`; the note browser and this API are two
-/// views of the same rows. Standalone todos created here are lightweight
-/// markdown notes (body = title) so they're browsable and (optionally)
-/// recalled in chat, exactly like a note promoted to a todo in the editor.
+/// HER-Notes/Todos merge — the `/v1/todos` API, backed by note metadata so
+/// there is ONE todo store, not two. A todo *is* a vault file whose
+/// `metadata.isTodo == true`; the note browser and this API are two views of
+/// the same rows. Standalone todos created here are lightweight markdown
+/// notes (body = title) so they're browsable and recalled in chat, exactly
+/// like a note promoted to a todo in the editor. `projectID` links to the
+/// dedicated Projects table.
 ///
 /// Endpoints (tenant-scoped via `jwtAuthenticator`):
-/// - `GET    /v1/todos`      — open first, then by soonest due.
-/// - `POST   /v1/todos`      — create a standalone todo (a todo-note).
-/// - `PATCH  /v1/todos/:id`  — toggle done / edit title, due, project.
-/// - `DELETE /v1/todos/:id`  — remove (soft-deletes the file, cascades memory).
+/// - `GET    /v1/todos?done=<bool>&projectID=<uuid>` — open first, then due.
+/// - `POST   /v1/todos` — create a standalone todo (a todo-note).
+/// - `PATCH  /v1/todos/:id` — toggle done / edit title, due, project.
+/// - `DELETE /v1/todos/:id` — remove (soft-deletes the file, cascades memory).
 struct TodosController {
     let fluent: Fluent
     let vaultPaths: VaultPathService
@@ -38,12 +39,19 @@ struct TodosController {
     // MARK: - List
 
     @Sendable
-    func list(_: Request, ctx: AppRequestContext) async throws -> TodoListResponse {
+    func list(_ req: Request, ctx: AppRequestContext) async throws -> TodoListResponse {
         let tenantID = try ctx.requireTenantID()
+        let doneFilter = req.uri.queryParameters["done"].flatMap { Bool(String($0)) }
+        let projectFilter = req.uri.queryParameters["projectID"].flatMap { UUID(uuidString: String($0)) }
+
         let rows = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).all()
         let todos = try rows
-            .filter { $0.metadata?.isTodo == true }
-            .map { try Self.toDTO($0) }
+            .compactMap { f -> TodoDTO? in
+                guard let m = f.metadata, m.isTodo == true else { return nil }
+                if let doneFilter, (m.done ?? false) != doneFilter { return nil }
+                if let projectFilter, m.projectID != projectFilter { return nil }
+                return try Self.toDTO(f)
+            }
             .sorted { a, b in
                 if a.done != b.done { return !a.done } // open before done
                 return (a.dueAt ?? .distantFuture) < (b.dueAt ?? .distantFuture)
@@ -100,7 +108,7 @@ struct TodosController {
                 let embedding = try await embeddings.embed(title, tenantID: tenantID)
                 _ = try await memories.create(
                     tenantID: tenantID, content: title, embedding: embedding,
-                    sourceVaultFileID: try row.requireID(), reviewState: "auto",
+                    sourceVaultFileID: row.requireID(), reviewState: "auto",
                 )
             } catch {
                 logger.error("todo memory create failed tenant=\(tenantID): \(error)")
@@ -171,8 +179,7 @@ struct TodosController {
 
     // MARK: - Helpers
 
-    /// 400 if a non-nil projectID does not belong to the tenant — surfaces a
-    /// clean error rather than silently storing a dangling project link.
+    /// 400 if a non-nil projectID does not belong to the tenant.
     private func validateProject(_ projectID: UUID?, tenantID: UUID) async throws {
         guard let projectID else { return }
         let exists = try await Project.query(on: fluent.db(), tenantID: tenantID)
@@ -180,8 +187,6 @@ struct TodosController {
             .count() > 0
         guard exists else { throw HTTPError(.badRequest, message: "unknown project") }
     }
-
-    // MARK: - Mapping
 
     private static func toDTO(_ f: VaultFile) throws -> TodoDTO {
         let m = f.metadata
