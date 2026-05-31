@@ -595,6 +595,7 @@ struct VaultController {
             isTodo: new.isTodo,
             done: new.done,
             dueAt: new.dueAt,
+            projectID: new.projectID ?? old?.projectID,
         )
     }
 

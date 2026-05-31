@@ -13,6 +13,10 @@ struct VaultFileMetadata: Codable {
     var isTodo: Bool?
     var done: Bool?
     var dueAt: Date?
+    /// HER-Notes/Todos merge — optional Project grouping (maps to
+    /// `TodoDTO.projectID`). Stored here so note-todos and the dedicated
+    /// `/v1/todos` API share one backing store (the vault file).
+    var projectID: UUID?
 
     init(
         enrichmentStatus: String? = nil,
@@ -21,6 +25,7 @@ struct VaultFileMetadata: Codable {
         isTodo: Bool? = nil,
         done: Bool? = nil,
         dueAt: Date? = nil,
+        projectID: UUID? = nil,
     ) {
         self.enrichmentStatus = enrichmentStatus
         self.title = title
@@ -28,6 +33,7 @@ struct VaultFileMetadata: Codable {
         self.isTodo = isTodo
         self.done = done
         self.dueAt = dueAt
+        self.projectID = projectID
     }
 }
 
