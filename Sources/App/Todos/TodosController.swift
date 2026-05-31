@@ -61,6 +61,7 @@ struct TodosController {
         guard !title.isEmpty else {
             throw HTTPError(.badRequest, message: "todo title required")
         }
+        try await validateProject(body.projectID, tenantID: tenantID)
 
         let id = UUID()
         let safeRelative = try VaultController.sanitizePath("inbox/\(id.uuidString).md")
@@ -165,6 +166,18 @@ struct TodosController {
         }
         try await row.delete(on: fluent.db())
         return Response(status: .noContent)
+    }
+
+    // MARK: - Helpers
+
+    /// 400 if a non-nil projectID does not belong to the tenant — surfaces a
+    /// clean error rather than silently storing a dangling project link.
+    private func validateProject(_ projectID: UUID?, tenantID: UUID) async throws {
+        guard let projectID else { return }
+        let exists = try await Project.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == projectID)
+            .count() > 0
+        guard exists else { throw HTTPError(.badRequest, message: "unknown project") }
     }
 
     // MARK: - Mapping

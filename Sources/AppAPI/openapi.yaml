@@ -2726,6 +2726,155 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/projects:
+    get:
+      tags: [Projects]
+      operationId: projectsList
+      summary: List the caller's projects.
+      description: Projects group note-todos. Each carries a live `todoCount`.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: Project list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectListResponse' }
+    post:
+      tags: [Projects]
+      operationId: projectsCreate
+      summary: Create a project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreateRequest' }
+      responses:
+        '200':
+          description: Created project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDTO' }
+        '400':
+          description: Missing name.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/projects/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Projects]
+      operationId: projectsPatch
+      summary: Update a project (name / description / archived).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectPatchRequest' }
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDTO' }
+        '404':
+          description: Unknown project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Projects]
+      operationId: projectsDelete
+      summary: Delete a project. Note-todos that referenced it become unfiled.
+      responses:
+        '204': { description: Row deleted. }
+        '404':
+          description: Unknown project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/todos:
+    get:
+      tags: [Todos]
+      operationId: todosList
+      summary: List the caller's todos (open first, then by soonest due).
+      description: |
+        A todo is a vault note whose `metadata.isTodo` is true; this API and
+        the note browser are two views of the same store.
+      responses:
+        '200':
+          description: Todo list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TodoListResponse' }
+    post:
+      tags: [Todos]
+      operationId: todosCreate
+      summary: Create a standalone todo (stored as a markdown todo-note).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoCreateRequest' }
+      responses:
+        '200':
+          description: Created todo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TodoDTO' }
+        '400':
+          description: Missing title.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/todos/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Todos]
+      operationId: todosPatch
+      summary: Toggle done / edit title, due date, or project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoPatchRequest' }
+      responses:
+        '200':
+          description: Updated todo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TodoDTO' }
+        '404':
+          description: Unknown todo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Todos]
+      operationId: todosDelete
+      summary: Delete a todo (soft-deletes the note, cascades its recall memory).
+      responses:
+        '204': { description: Row deleted. }
+        '404':
+          description: Unknown todo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /v1/profiles:
     get:
       tags: [Profiles]
@@ -3742,6 +3891,81 @@ components:
         body: { type: string }
         fireAt: { type: string, format: date-time }
         recurrenceCron: { type: string }
+
+    # ── Projects (HER-Projects) ──
+
+    ProjectDTO:
+      type: object
+      required: [id, name, archived, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        archived: { type: boolean, default: false }
+        todoCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    ProjectListResponse:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectDTO' }
+        nextCursor: { type: string }
+
+    ProjectCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+
+    ProjectPatchRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        archived: { type: boolean }
+
+    # ── Todos (HER-Notes/Todos merge — note-backed) ──
+
+    TodoDTO:
+      type: object
+      required: [id, title, done, createdAt]
+      description: A user to-do. Backed by a vault note (`metadata.isTodo`).
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        done: { type: boolean, default: false }
+        dueAt: { type: string, format: date-time }
+        projectID: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    TodoListResponse:
+      type: object
+      required: [todos]
+      properties:
+        todos:
+          type: array
+          items: { $ref: '#/components/schemas/TodoDTO' }
+        nextCursor: { type: string }
+
+    TodoCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        dueAt: { type: string, format: date-time }
+        projectID: { type: string, format: uuid }
+
+    TodoPatchRequest:
+      type: object
+      properties:
+        title: { type: string }
+        done: { type: boolean }
+        dueAt: { type: string, format: date-time }
+        projectID: { type: string, format: uuid }
 
     # ── BYO Hermes ──
 
