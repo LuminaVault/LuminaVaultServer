@@ -762,6 +762,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DashboardProfileResponse' }
 
+  /v1/dashboard/home:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardHome
+      summary: One-shot counts + active profile for the Home dashboard.
+      description: |
+        Aggregates every Home card count in a single request: enabled skills,
+        skill runs (jobs), reminders, todos, non-archived projects, active
+        insights, plus the active Hermes profile's name + slug. Per-tenant.
+      responses:
+        '200':
+          description: Home summary snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HomeSummaryResponse' }
+
+  /v1/analytics/usage-summary:
+    get:
+      tags: [Analytics]
+      operationId: analyticsUsageSummary
+      summary: Month-to-date usage analytics for the caller.
+      description: |
+        LLM token totals (in/out) and embedding tokens for the current
+        calendar month, plus session count and a coarse blended cost estimate
+        in cents. Powers the Home "Insights" card.
+      responses:
+        '200':
+          description: Usage summary for the current period.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSummaryResponse' }
+
   /v1/tasks:
     get:
       tags: [Dashboard]
@@ -3778,6 +3810,33 @@ components:
         badgesEarned: { type: integer, minimum: 0, description: Unlocked sub-achievements. }
         powerLevel: { type: integer, minimum: 1, description: "Derived: floor(sqrt(powerXP)) + 1." }
         powerXP: { type: integer, minimum: 0, description: Raw weighted activity XP behind the level. }
+
+    HomeSummaryResponse:
+      type: object
+      required: [skillsCount, jobsCount, remindersCount, todosCount, projectsCount, insightsCount]
+      description: One-shot counts + active profile for the Home dashboard.
+      properties:
+        skillsCount: { type: integer, minimum: 0 }
+        jobsCount: { type: integer, minimum: 0 }
+        remindersCount: { type: integer, minimum: 0 }
+        todosCount: { type: integer, minimum: 0 }
+        projectsCount: { type: integer, minimum: 0 }
+        insightsCount: { type: integer, minimum: 0 }
+        activeProfileName: { type: string }
+        activeProfileSlug: { type: string }
+
+    UsageSummaryResponse:
+      type: object
+      required: [llmTokensIn, llmTokensOut, embeddingTokens, sessionsCount, estimatedCostCents, periodStart, periodEnd]
+      description: Month-to-date usage analytics for the caller.
+      properties:
+        llmTokensIn: { type: integer, minimum: 0 }
+        llmTokensOut: { type: integer, minimum: 0 }
+        embeddingTokens: { type: integer, minimum: 0 }
+        sessionsCount: { type: integer, minimum: 0 }
+        estimatedCostCents: { type: integer, minimum: 0, description: Coarse blended estimate, not billing-accurate. }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
 
     TaskState:
       type: string
