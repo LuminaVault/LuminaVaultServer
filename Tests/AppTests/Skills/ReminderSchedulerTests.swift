@@ -123,8 +123,8 @@ struct ReminderSchedulerTests {
             _ = try await scheduler.tick(at: now)
 
             let reloaded = try await Reminder.find(reminder.requireID(), on: fluent.db())
-            #expect(reloaded?.firedAt == nil)            // re-armed, not stamped
-            #expect((reloaded?.fireAt ?? now) > now)     // advanced into the future
+            #expect(reloaded?.firedAt == nil) // re-armed, not stamped
+            #expect((reloaded?.fireAt ?? now) > now) // advanced into the future
         }
     }
 

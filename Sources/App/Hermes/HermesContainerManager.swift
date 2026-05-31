@@ -67,7 +67,9 @@ actor HermesContainerManager {
 
     /// The image new containers are launched from: the post-update override
     /// when set, else the boot-time `config.image`.
-    private var activeImage: String { imageOverride ?? config.image }
+    private var activeImage: String {
+        imageOverride ?? config.image
+    }
 
     /// HER-330 — point future tenant spawns at `ref` (e.g. after the central
     /// Hermes self-update pulled a new image). Affects `reprovisionAll` and
@@ -77,7 +79,9 @@ actor HermesContainerManager {
     }
 
     /// The image future tenant containers will be launched from.
-    func currentImage() -> String { activeImage }
+    func currentImage() -> String {
+        activeImage
+    }
 
     init(
         docker: any DockerExec,

@@ -89,7 +89,8 @@ struct ImportService {
                 try await item.save(on: db)
                 staged += 1
             } catch LinkCaptureService.CaptureError.invalidURL,
-                    LinkCaptureService.CaptureError.nonPublicHost {
+                LinkCaptureService.CaptureError.nonPublicHost
+            {
                 let item = ImportItem(
                     tenantID: tenantID, sessionID: sessionID, url: url, status: ImportItemStatus.skipped,
                 )
@@ -255,8 +256,12 @@ struct ImportService {
                 let (vfID, url) = jobs[i]; i += 1
                 group.addTask { await urlEnrich.enrichAndRewrite(vaultFileID: vfID, urlString: url, tenantID: tenantID) }
             }
-            for _ in 0 ..< Self.enrichConcurrency { addNext() }
-            for await _ in group { addNext() }
+            for _ in 0 ..< Self.enrichConcurrency {
+                addNext()
+            }
+            for await _ in group {
+                addNext()
+            }
         }
     }
 
@@ -275,7 +280,7 @@ struct ImportService {
 
     /// Resolves an approval target (`slug` | `new:Name` | `imported`) to a real,
     /// existing Space slug — creating a proposed new Space when needed.
-    private func resolveDestSlug(tenantID: UUID, target: String, slugCache: inout [String: UUID]) async throws -> String {
+    private func resolveDestSlug(tenantID: UUID, target: String, slugCache _: inout [String: UUID]) async throws -> String {
         if target.isEmpty || target == Self.importedSlug { return Self.importedSlug }
         if target.hasPrefix("new:") {
             let name = String(target.dropFirst(4)).trimmingCharacters(in: .whitespaces)

@@ -1509,6 +1509,14 @@ func buildRouter(
     let dashboardGroup = router.group("/v1/dashboard").add(middleware: jwtAuthenticator)
     dashboardController.addRoutes(to: dashboardGroup)
 
+    // HER-Insights — per-tenant usage analytics (the Home "Insights" card).
+    let analyticsController = AnalyticsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.analytics"),
+    )
+    let analyticsGroup = router.group("/v1/analytics").add(middleware: jwtAuthenticator)
+    analyticsController.addRoutes(to: analyticsGroup)
+
     let tasksController = TasksController(logger: Logger(label: "lv.tasks"))
     let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
     tasksController.addRoutes(to: tasksGroup)

@@ -16,8 +16,13 @@ struct HermesUpdateServiceTests {
     /// Controllable health probe backing.
     private actor HealthFlag {
         var value: Bool
-        init(_ v: Bool) { value = v }
-        func set(_ v: Bool) { value = v }
+        init(_ v: Bool) {
+            value = v
+        }
+
+        func set(_ v: Bool) {
+            value = v
+        }
     }
 
     private static func truncate(_ fluent: Fluent) async throws {

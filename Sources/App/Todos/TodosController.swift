@@ -108,7 +108,7 @@ struct TodosController {
                 let embedding = try await embeddings.embed(title, tenantID: tenantID)
                 _ = try await memories.create(
                     tenantID: tenantID, content: title, embedding: embedding,
-                    sourceVaultFileID: try row.requireID(), reviewState: "auto",
+                    sourceVaultFileID: row.requireID(), reviewState: "auto",
                 )
             } catch {
                 logger.error("todo memory create failed tenant=\(tenantID): \(error)")

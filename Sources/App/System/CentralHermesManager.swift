@@ -11,8 +11,8 @@ import Logging
 /// no compose project files. The run spec mirrors `HermesContainerManager.dockerRun`.
 ///
 /// All operations are idempotent where it matters (`rm -f`, `pull`).
-struct CentralHermesManager: Sendable {
-    struct Config: Sendable {
+struct CentralHermesManager {
+    struct Config {
         /// Canonical container name the app's chat path talks to.
         let containerName: String
         /// Temp ("green") container name used while validating the new image.
@@ -39,7 +39,9 @@ struct CentralHermesManager: Sendable {
     let healthProbe: HealthProbe
     let logger: Logger
 
-    func fullRef(tag: String) -> String { "\(config.registryImage):\(tag)" }
+    func fullRef(tag: String) -> String {
+        "\(config.registryImage):\(tag)"
+    }
 
     // MARK: - Inspection
 

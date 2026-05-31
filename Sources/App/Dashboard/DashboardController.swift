@@ -8,6 +8,7 @@ import SQLKit
 
 extension DashboardStatsResponse: @retroactive ResponseEncodable {}
 extension DashboardProfileResponse: @retroactive ResponseEncodable {}
+extension HomeSummaryResponse: @retroactive ResponseEncodable {}
 
 struct DashboardController {
     let fluent: HummingbirdFluent.Fluent
@@ -16,6 +17,64 @@ struct DashboardController {
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("/stats", use: stats)
         router.get("/profile", use: profile)
+        router.get("/home", use: home)
+    }
+
+    /// `GET /v1/dashboard/home` — one-shot counts for the Home dashboard
+    /// cards plus the active Hermes profile, so the landing screen makes a
+    /// single request instead of six. All counts are tenant-scoped.
+    @Sendable
+    func home(_: Request, ctx: AppRequestContext) async throws -> HomeSummaryResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+        let db = fluent.db()
+
+        async let skillsCountQ = SkillsState.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$enabled == true)
+            .count()
+        async let remindersCountQ = Reminder.query(on: db, tenantID: tenantID).count()
+        async let projectsCountQ = Project.query(on: db, tenantID: tenantID)
+            .filter(\.$archived == false)
+            .count()
+        async let insightsCountQ = Insight.query(on: db, tenantID: tenantID)
+            .filter(\.$dismissedAt == nil)
+            .count()
+        async let activeProfileQ = UserHermesProfile.query(on: db, tenantID: tenantID)
+            .filter(\.$isDefault == true)
+            .first()
+
+        let jobsCount = try await Self.skillRunCount(tenantID: tenantID, db: db)
+        let todosCount = try await Self.todoCount(tenantID: tenantID, db: db)
+
+        let skillsCount = try await skillsCountQ
+        let remindersCount = try await remindersCountQ
+        let projectsCount = try await projectsCountQ
+        let insightsCount = try await insightsCountQ
+        let activeProfile = try await activeProfileQ
+
+        return HomeSummaryResponse(
+            skillsCount: skillsCount,
+            jobsCount: jobsCount,
+            remindersCount: remindersCount,
+            todosCount: todosCount,
+            projectsCount: projectsCount,
+            insightsCount: insightsCount,
+            activeProfileName: activeProfile?.label,
+            activeProfileSlug: activeProfile?.slug,
+        )
+    }
+
+    /// Count of note-backed todos (`vault_files.metadata.isTodo == true`).
+    /// `metadata` is a JSON column, so we filter with the `->>` operator.
+    private static func todoCount(tenantID: UUID, db: any Database) async throws -> Int {
+        guard let sql = db as? any SQLDatabase else { return 0 }
+        struct CountRow: Decodable { let count: Int }
+        let row = try await sql.raw("""
+        SELECT COUNT(*)::int AS count FROM vault_files
+        WHERE tenant_id = \(bind: tenantID) AND metadata->>'isTodo' = 'true'
+        """).first(decoding: CountRow.self)
+        return row?.count ?? 0
     }
 
     @Sendable

@@ -51,11 +51,10 @@ struct PluginService {
         let sealed = try seal(config, tenantID: tenantID)
 
         let existing = try await loadInstall(tenantID: tenantID, slug: slug)
-        let row: PluginInstall
-        if let existing {
-            row = existing
+        let row: PluginInstall = if let existing {
+            existing
         } else {
-            row = PluginInstall(
+            PluginInstall(
                 tenantID: tenantID, pluginSlug: slug,
                 configCiphertext: sealed.ciphertext, configNonce: sealed.nonce,
             )
@@ -114,7 +113,7 @@ struct PluginService {
         let urls: [String]
         do {
             urls = try await connector.fetchURLs(config: config, tenantID: tenantID)
-        } catch ConnectorError.missingConfig(let key) {
+        } catch let ConnectorError.missingConfig(key) {
             throw HTTPError(.badRequest, message: "\(ErrorCode.missingField.rawValue):\(key)")
         } catch ConnectorError.unauthorized {
             throw HTTPError(.badGateway, message: ErrorCode.connectorUnauthorized.rawValue)
@@ -131,8 +130,8 @@ struct PluginService {
         row.lastSyncAt = Date()
         try await row.save(on: fluent.db())
 
-        return PluginSyncResponse(
-            installId: try row.requireID(),
+        return try PluginSyncResponse(
+            installId: row.requireID(),
             sessionId: result.sessionID,
             status: ImportStatus.enriching,
             total: result.total,
@@ -158,7 +157,7 @@ struct PluginService {
     private func seal(_ config: [String: String], tenantID: UUID) throws -> SecretBox.Sealed {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let plaintext = String(decoding: try encoder.encode(config), as: UTF8.self)
+        let plaintext = try String(decoding: encoder.encode(config), as: UTF8.self)
         do {
             return try secretBox.seal(plaintext, tenantID: tenantID)
         } catch {
@@ -190,8 +189,8 @@ struct PluginService {
     }
 
     static func dto(_ row: PluginInstall) throws -> PluginInstallDTO {
-        PluginInstallDTO(
-            id: try row.requireID(),
+        try PluginInstallDTO(
+            id: row.requireID(),
             pluginSlug: row.pluginSlug,
             status: PluginInstallStatus(rawValue: row.status) ?? .enabled,
             hasConfig: !row.configCiphertext.isEmpty,

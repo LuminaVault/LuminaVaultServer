@@ -1,5 +1,5 @@
-import Testing
 @testable import App
+import Testing
 
 /// Pure-logic unit tests for the "Feed Your Brain" import + compile helpers.
 /// No DB / no HTTP, so they run fast and don't hit the AsyncKit teardown
@@ -8,8 +8,8 @@ import Testing
 struct ImportLogicTests {
     // MARK: - Bookmark HTML parsing
 
-    @Test("parseBookmarksHTML extracts http(s) links, dedupes, drops non-http")
-    func parseBookmarks() {
+    @Test
+    func `parseBookmarksHTML extracts http(s) links, dedupes, drops non-http`() {
         let html = """
         <!DOCTYPE NETSCAPE-Bookmark-file-1>
         <DL><p>
@@ -24,41 +24,41 @@ struct ImportLogicTests {
         #expect(urls == ["https://news.ycombinator.com/", "http://example.com/a"])
     }
 
-    @Test("parseBookmarksHTML returns empty for no links")
-    func parseBookmarksEmpty() {
+    @Test
+    func `parseBookmarksHTML returns empty for no links`() {
         #expect(ImportService.parseBookmarksHTML("<html><body>no links</body></html>").isEmpty)
     }
 
     // MARK: - Slugify
 
-    @Test("slugify produces a valid Space slug")
-    func slugify() {
+    @Test
+    func `slugify produces a valid Space slug`() {
         #expect(ImportService.slugify("AI & Machine Learning!") == "ai-machine-learning")
         #expect(ImportService.slugify("  Cooking 101  ") == "cooking-101")
         #expect(ImportService.slugify("***") == "imported") // empty → fallback
-        #expect(ImportService.slugify("A").count >= 2)       // min length guard
+        #expect(ImportService.slugify("A").count >= 2) // min length guard
     }
 
     // MARK: - Categorization mapping parse
 
-    @Test("parseMappings reads the canonical object")
-    func mappings() {
+    @Test
+    func `parseMappings reads the canonical object`() {
         let raw = #"{"mappings":[{"id":"a","space":"ai"},{"id":"b","space":"new:Cooking"}]}"#
         let m = ImportCategorizationService.parseMappings(raw)
         #expect(m["a"] == "ai")
         #expect(m["b"] == "new:Cooking")
     }
 
-    @Test("parseMappings tolerates code fences and surrounding prose")
-    func mappingsLenient() {
+    @Test
+    func `parseMappings tolerates code fences and surrounding prose`() {
         let fenced = "```json\n{\"mappings\":[{\"id\":\"x\",\"space\":\"health\"}]}\n```"
         #expect(ImportCategorizationService.parseMappings(fenced)["x"] == "health")
         let prose = "Sure! Here is the mapping: {\"mappings\":[{\"id\":\"y\",\"space\":\"imported\"}]} Done."
         #expect(ImportCategorizationService.parseMappings(prose)["y"] == "imported")
     }
 
-    @Test("parseMappings returns empty on garbage")
-    func mappingsGarbage() {
+    @Test
+    func `parseMappings returns empty on garbage`() {
         #expect(ImportCategorizationService.parseMappings("not json").isEmpty)
     }
 }
@@ -66,39 +66,39 @@ struct ImportLogicTests {
 /// Pure-logic tests for the memory-compile extraction parser.
 @Suite("Compile extraction parse")
 struct CompileParseTests {
-    @Test("parses canonical {memories:[...]}")
-    func object() {
+    @Test
+    func `parses canonical {memories:[...]}`() {
         let r = MemoryCompileService.parseExtractedMemories(#"{"memories":["a","b"]}"#)
         #expect(r == ["a", "b"])
     }
 
-    @Test("parses an array of {content} objects")
-    func arrayOfObjects() {
+    @Test
+    func `parses an array of {content} objects`() {
         let r = MemoryCompileService.parseExtractedMemories(#"{"memories":[{"content":"x"},{"content":"y"}]}"#)
         #expect(r == ["x", "y"])
     }
 
-    @Test("parses a bare array")
-    func bareArray() {
+    @Test
+    func `parses a bare array`() {
         #expect(MemoryCompileService.parseExtractedMemories(#"["one","two"]"#) == ["one", "two"])
     }
 
-    @Test("strips code fences and prose")
-    func fencedAndProse() {
+    @Test
+    func `strips code fences and prose`() {
         let fenced = "```json\n{\"memories\":[\"z\"]}\n```"
         #expect(MemoryCompileService.parseExtractedMemories(fenced) == ["z"])
         let prose = "Here you go: {\"memories\":[\"p\"]} — that's all."
         #expect(MemoryCompileService.parseExtractedMemories(prose) == ["p"])
     }
 
-    @Test("empty memories yields empty")
-    func empty() {
+    @Test
+    func `empty memories yields empty`() {
         #expect(MemoryCompileService.parseExtractedMemories(#"{"memories":[]}"#).isEmpty)
         #expect(MemoryCompileService.parseExtractedMemories("garbage").isEmpty)
     }
 
-    @Test("wikiSlug sanitizes a path basename")
-    func wikiSlug() {
+    @Test
+    func `wikiSlug sanitizes a path basename`() {
         #expect(MemoryCompileService.wikiSlug("captures/2026-05-30-Foo Bar.md") == "2026-05-30-foo-bar")
         #expect(MemoryCompileService.wikiSlug("ai/note.md").isEmpty == false)
     }

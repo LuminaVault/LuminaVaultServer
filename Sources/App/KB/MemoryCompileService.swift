@@ -627,7 +627,7 @@ actor MemoryCompileService {
 
             let spaces = try await Space.query(on: db, tenantID: tenantID).all()
             var slugByID: [UUID: String] = [:]
-            var nameBySlug: [String: String] = ["inbox": "Inbox"]
+            var nameBySlug = ["inbox": "Inbox"]
             for s in spaces {
                 guard let id = s.id else { continue }
                 slugByID[id] = s.slug
@@ -648,13 +648,12 @@ actor MemoryCompileService {
                 let slug = f.spaceID.flatMap { slugByID[$0] } ?? "inbox"
                 let pageSlug = Self.wikiSlug(f.path)
                 let name = (f.path as NSString).lastPathComponent
-                let body: String
-                if Self.isTextLike(contentType: f.contentType),
-                   let text = try? String(contentsOf: rawRoot.appendingPathComponent(f.path), encoding: .utf8)
+                let body: String = if Self.isTextLike(contentType: f.contentType),
+                                      let text = try? String(contentsOf: rawRoot.appendingPathComponent(f.path), encoding: .utf8)
                 {
-                    body = text
+                    text
                 } else {
-                    body = "_(binary asset: \(f.contentType))_"
+                    "_(binary asset: \(f.contentType))_"
                 }
                 let page = """
                 ---

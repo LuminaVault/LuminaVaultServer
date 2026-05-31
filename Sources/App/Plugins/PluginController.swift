@@ -42,7 +42,7 @@ struct PluginController {
     @Sendable
     func listInstalls(_: Request, ctx: AppRequestContext) async throws -> PluginInstallsListResponse {
         let tenantID = try ctx.requireTenantID()
-        return PluginInstallsListResponse(items: try await service.listInstalls(tenantID: tenantID))
+        return try await PluginInstallsListResponse(items: service.listInstalls(tenantID: tenantID))
     }
 
     @Sendable

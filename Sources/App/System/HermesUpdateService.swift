@@ -1,8 +1,8 @@
 import FluentKit
 import Foundation
 import HummingbirdFluent
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 
 /// HER-330 — orchestrates the owner-triggered "Update Hermes" flow.
 ///
@@ -210,7 +210,9 @@ actor HermesUpdateService {
 
     private func broadcast(_ event: HermesUpdateEvent, jobID: UUID) {
         guard let conts = subscribers[jobID] else { return }
-        for cont in conts.values { cont.yield(event) }
+        for cont in conts.values {
+            cont.yield(event)
+        }
     }
 
     private func finishSubscribers(jobID: UUID, with snapshot: HermesUpdateJobStatus) {
@@ -289,7 +291,7 @@ actor HermesUpdateService {
             try await mark(jobID, .reprovisionTenants, .running)
             if let cm = containerManager {
                 await cm.setImage(targetRef)
-                let count = (try? await cm.reprovisionAll()) ?? 0
+                let count = await (try? cm.reprovisionAll()) ?? 0
                 try await mark(jobID, .reprovisionTenants, .succeeded, detail: "\(count) tenant container(s) updated")
             } else {
                 try await mark(jobID, .reprovisionTenants, .skipped, detail: "per-tenant containers disabled")
