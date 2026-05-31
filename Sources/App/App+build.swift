@@ -1545,6 +1545,29 @@ func buildRouter(
     let remindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
     remindersController.addRoutes(to: remindersGroup)
 
+    // HER-Projects — todo containers (the Home "Projects" card). Note-todos
+    // link to a project via `VaultFileMetadata.projectID`; this controller
+    // owns the project rows + live per-project todo counts.
+    let projectsController = ProjectsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.projects"),
+    )
+    let projectsGroup = router.group("/v1/projects").add(middleware: jwtAuthenticator)
+    projectsController.addRoutes(to: projectsGroup)
+
+    // HER-Notes/Todos merge — `/v1/todos` is backed by note metadata
+    // (vault_files where metadata.isTodo), so the dedicated Todos API and the
+    // note browser share one store. See TodosController.
+    let todosController = TodosController(
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: embeddingService,
+        logger: Logger(label: "lv.todos"),
+    )
+    let todosGroup = router.group("/v1/todos").add(middleware: jwtAuthenticator)
+    todosController.addRoutes(to: todosGroup)
+
     // HER-37 Slice D — synthesis worker. Off by default so local + CI
     // builds don't fire real Hermes traffic. Enable in production via
     // `SYNTHESIS_WORKER_ENABLED=true` env var.
