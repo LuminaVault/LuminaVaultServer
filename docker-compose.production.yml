@@ -77,7 +77,11 @@ services:
       LV_SECRET_MASTER_KEY: ${LV_SECRET_MASTER_KEY:-}
       LV_ENVIRONMENT: ${LV_ENVIRONMENT:-production}
       BYO_HERMES_ALLOW_PRIVATE: ${BYO_HERMES_ALLOW_PRIVATE:-false}
-      VAULT_ROOTPATH: /app/data/luminavault
+      # Must be VAULT_ROOT_PATH (swift-configuration maps `vault.rootPath` →
+      # VAULT_ROOT_PATH). The old `VAULT_ROOTPATH` never matched, so the app
+      # fell through to `.env`'s VAULT_ROOT_PATH=/var/lib/luminavault — an
+      # unmounted ephemeral path wiped on every rebuild, orphaning vault rows.
+      VAULT_ROOT_PATH: /app/data/luminavault
       # --- CORS (prod MUST set explicit origins) ---
       CORS_ALLOWEDORIGINS: ${CORS_ALLOWEDORIGINS:?required}
       # --- WebAuthn ---

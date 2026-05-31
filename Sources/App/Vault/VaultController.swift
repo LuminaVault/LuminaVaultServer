@@ -31,6 +31,15 @@ extension VaultFileDTO {
             spaceId: row.spaceID,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
+            metadata: row.metadata.map {
+                VaultNoteMetadataDTO(
+                    title: $0.title,
+                    tags: $0.tags,
+                    isTodo: $0.isTodo,
+                    done: $0.done,
+                    dueAt: $0.dueAt,
+                )
+            },
         )
     }
 }
@@ -53,6 +62,14 @@ struct VaultController {
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
+
+    /// Decodes the `X-Vault-Metadata` note sidecar header. ISO-8601 dates so
+    /// `dueAt` round-trips with the client encoder.
+    private static let metadataDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
 
     init(
         vaultPaths: VaultPathService,
@@ -153,6 +170,13 @@ struct VaultController {
         let contentType = request.headers[.contentType] ?? "application/octet-stream"
         try Self.validateContentType(contentType, againstExtension: (safeRelative as NSString).pathExtension.lowercased())
 
+        // HER-Notes — optional note/todo sidecar passed as a JSON header so the
+        // raw-bytes body stays the file payload. Malformed JSON is ignored
+        // (the upload still succeeds as a plain file) rather than 400'ing.
+        let noteMetadata: VaultFileMetadata? = request.headers[.init("X-Vault-Metadata")!]
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? Self.metadataDecoder.decode(VaultFileMetadata.self, from: $0) }
+
         var mutableRequest = request
         let buffer = try await mutableRequest.collectBody(upTo: maxFileSize)
         let data = Data(buffer: buffer)
@@ -188,6 +212,7 @@ struct VaultController {
             sizeBytes: Int64(data.count),
             sha256: digest,
             processed: processed,
+            metadata: noteMetadata,
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
@@ -237,8 +262,16 @@ struct VaultController {
         // No trigram index yet (pg_trgm) — scale doesn't warrant it.
         let q = request.uri.queryParameters["q"].map(String.init).flatMap { $0.isEmpty ? nil : $0 }
 
+        // Inbox = unfiled notes (spaceID nil). `space=inbox` is a reserved
+        // sentinel — no real Space row has that slug; uploads use "inbox"
+        // only as the on-disk folder for unfiled files. `unfiled=true` is an
+        // explicit alias. Either path filters `space_id IS NULL` rather than
+        // resolving a slug (which would 404).
+        let unfiled = request.uri.queryParameters["unfiled"].map(String.init) == "true"
+            || spaceSlug == "inbox"
+
         var spaceID: UUID?
-        if let slug = spaceSlug, !slug.isEmpty {
+        if !unfiled, let slug = spaceSlug, !slug.isEmpty {
             let space = try await Space.query(on: fluent.db(), tenantID: tenantID)
                 .filter(\.$slug == slug)
                 .first()
@@ -258,7 +291,9 @@ struct VaultController {
         if let after {
             _ = query.filter(\.$createdAt > after)
         }
-        if let spaceID {
+        if unfiled {
+            _ = query.filter(\.$spaceID == nil)
+        } else if let spaceID {
             _ = query.filter(\.$spaceID == spaceID)
         }
         if let q {
@@ -456,6 +491,7 @@ struct VaultController {
         sizeBytes: Int64,
         sha256: String,
         processed: Bool = false,
+        metadata: VaultFileMetadata? = nil,
     ) async throws -> UUID {
         let db = fluent.db()
         // HER-105 — `processed` marks the row already-compiled so Sync & Learn
@@ -474,6 +510,9 @@ struct VaultController {
             if let spaceID {
                 existing.spaceID = spaceID
             }
+            if let metadata {
+                existing.metadata = Self.mergeMetadata(existing.metadata, metadata)
+            }
             try await existing.save(on: db)
             return try existing.requireID()
         }
@@ -485,9 +524,28 @@ struct VaultController {
             sizeBytes: sizeBytes,
             sha256: sha256,
             processedAt: processedAt,
+            metadata: metadata,
         )
         try await row.save(on: db)
         return try row.requireID()
+    }
+
+    /// Merge note metadata over an existing sidecar. The incoming note fields
+    /// (title/tags/isTodo/done/dueAt) overwrite; `enrichmentStatus` is owned
+    /// by the enrichment pipeline, so it survives a note edit that doesn't
+    /// carry one.
+    private static func mergeMetadata(
+        _ old: VaultFileMetadata?,
+        _ new: VaultFileMetadata,
+    ) -> VaultFileMetadata {
+        VaultFileMetadata(
+            enrichmentStatus: new.enrichmentStatus ?? old?.enrichmentStatus,
+            title: new.title,
+            tags: new.tags,
+            isTodo: new.isTodo,
+            done: new.done,
+            dueAt: new.dueAt,
+        )
     }
 
     /// Parses the optional `space_id` upload query param and confirms it

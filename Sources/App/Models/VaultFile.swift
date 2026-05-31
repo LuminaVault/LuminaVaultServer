@@ -1,11 +1,33 @@
 import FluentKit
 import Foundation
 
+/// JSON sidecar on each vault row. All fields optional so older rows (which
+/// only ever held `enrichmentStatus`) decode cleanly — a missing key is nil.
+/// HER-Notes adds the note/smart-todo fields: a human title, free-form tags,
+/// and todo state (isTodo + done + dueAt) so a note can act as a diary entry
+/// or a checkable, due-dated task.
 struct VaultFileMetadata: Codable {
     var enrichmentStatus: String?
+    var title: String?
+    var tags: [String]?
+    var isTodo: Bool?
+    var done: Bool?
+    var dueAt: Date?
 
-    init(enrichmentStatus: String? = nil) {
+    init(
+        enrichmentStatus: String? = nil,
+        title: String? = nil,
+        tags: [String]? = nil,
+        isTodo: Bool? = nil,
+        done: Bool? = nil,
+        dueAt: Date? = nil,
+    ) {
         self.enrichmentStatus = enrichmentStatus
+        self.title = title
+        self.tags = tags
+        self.isTodo = isTodo
+        self.done = done
+        self.dueAt = dueAt
     }
 }
 
