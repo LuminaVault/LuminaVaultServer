@@ -315,6 +315,31 @@ struct MemoryRepository {
         return !rows.isEmpty
     }
 
+    /// HER-Notes — the memory id (if any) compiled from a given vault file.
+    /// Lets the note write path re-embed in place on edit instead of
+    /// orphaning the old vector and creating a duplicate.
+    func idBySourceVaultFileID(tenantID: UUID, sourceVaultFileID: UUID) async throws -> UUID? {
+        try await Memory.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$sourceVaultFileID == sourceVaultFileID)
+            .first()?
+            .id
+    }
+
+    /// HER-Notes — deletes the memory originating from a vault file so a note
+    /// delete doesn't leave a dangling recall. Returns true if one was removed.
+    @discardableResult
+    func deleteBySourceVaultFileID(tenantID: UUID, sourceVaultFileID: UUID) async throws -> Bool {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for delete")
+        }
+        let result = try await sql.raw("""
+        DELETE FROM memories
+        WHERE tenant_id = \(bind: tenantID) AND source_vault_file_id = \(bind: sourceVaultFileID)
+        RETURNING id
+        """).all(decoding: DeletedIDRow.self)
+        return !result.isEmpty
+    }
+
     /// Updates tags only. `nil` clears all tags; empty array clears too.
     func updateTags(tenantID: UUID, id: UUID, tags: [String]?) async throws -> Bool {
         let row = try await Memory.query(on: fluent.db(), tenantID: tenantID)

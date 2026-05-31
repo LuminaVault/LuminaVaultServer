@@ -66,4 +66,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M59_AddSpaceToMemory())
     await fluent.migrations.add(M60_CreateHermesUpdateJob())
     await fluent.migrations.add(M61_CreateImportSessions())
+    await fluent.migrations.add(M62_CreatePlugins())
+    await fluent.migrations.add(M63_CreateReminder())
 }

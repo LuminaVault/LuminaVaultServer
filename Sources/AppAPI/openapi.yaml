@@ -51,6 +51,8 @@ tags:
     description: Knowledge-base compile (Hermes learning loop).
   - name: Import
     description: Feed Your Brain bulk import (links, bookmarks, files into Spaces).
+  - name: Plugins
+    description: Declarative plugin foundation — catalog, per-tenant installs, connector sync (HER-43).
   - name: Spaces
   - name: Soul
     description: SOUL.md CRUD (HER-85).
@@ -2040,6 +2042,109 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ImportApproveResponse' }
 
+  /v1/plugins/catalog:
+    get:
+      tags: [Plugins]
+      operationId: pluginCatalog
+      summary: List first-party plugins available to install.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [connector, skill, memory, export, ui, theme]
+      responses:
+        '200':
+          description: Catalog entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/installs:
+    get:
+      tags: [Plugins]
+      operationId: pluginInstalls
+      summary: List this tenant's plugin installs.
+      responses:
+        '200':
+          description: Installs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginInstallsListResponse' }
+    post:
+      tags: [Plugins]
+      operationId: pluginInstall
+      summary: Install a plugin with its config (re-installing replaces config).
+      description: |
+        Validates `config` against the catalog entry's fields; secret values are
+        sealed at rest and never echoed (responses carry `hasConfig` only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InstallPluginRequest' }
+      responses:
+        '200':
+          description: Install created or updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginInstallDTO' }
+
+  /v1/plugins/installs/{id}:
+    patch:
+      tags: [Plugins]
+      operationId: pluginUpdateInstall
+      summary: Update an install's config and/or enable-disable it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePluginInstallRequest' }
+      responses:
+        '200':
+          description: Updated install.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginInstallDTO' }
+    delete:
+      tags: [Plugins]
+      operationId: pluginUninstall
+      summary: Uninstall a plugin.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Uninstalled.
+
+  /v1/plugins/installs/{id}/sync:
+    post:
+      tags: [Plugins]
+      operationId: pluginSync
+      summary: Run a connector install now — stages its items into the import inbox.
+      description: |
+        Connector capability only. Returns a standard import session id; follow
+        with POST /v1/import/{id}/categorize then /approve to file + compile.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sync staged items into a new import session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginSyncResponse' }
+
   /v1/kb-compile:
     post:
       tags: [KB]
@@ -2529,6 +2634,97 @@ paths:
               schema: { $ref: '#/components/schemas/TierOverrideResponse' }
 
   # ─────────────── Hermes Profiles — multi-agent (HER-273) ─────────────
+
+  /v1/reminders:
+    get:
+      tags: [Reminders]
+      operationId: remindersList
+      summary: List the caller's reminders.
+      description: |
+        Returns pending and fired reminders for the authed tenant, newest
+        `fireAt` first. Firing is server-side (ReminderScheduler); a fired
+        one-shot reminder carries a non-null `firedAt`.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: Reminder list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderListResponse' }
+    post:
+      tags: [Reminders]
+      operationId: remindersCreate
+      summary: Create a reminder.
+      description: |
+        `fireAt` is the first delivery time. Set `recurrenceCron` (a 5-field
+        cron expression) for a recurring reminder; omit it for one-shot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderCreateRequest' }
+      responses:
+        '200':
+          description: Created reminder.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderDTO' }
+        '400':
+          description: Missing title or invalid recurrence cron.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/reminders/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Reminders]
+      operationId: remindersPatch
+      summary: Update a reminder.
+      description: |
+        Any unset field is left unchanged. Editing `fireAt` re-arms a
+        reminder that had already fired.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderPatchRequest' }
+      responses:
+        '200':
+          description: Updated reminder.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderDTO' }
+        '400':
+          description: Empty title or invalid recurrence cron.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Unknown reminder.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Reminders]
+      operationId: remindersDelete
+      summary: Delete a reminder.
+      responses:
+        '204':
+          description: Row deleted.
+        '404':
+          description: Unknown reminder.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
   /v1/profiles:
     get:
@@ -3503,6 +3699,50 @@ components:
           items: { $ref: '#/components/schemas/InsightDTO' }
         nextCursor: { type: string }
 
+    # ── Reminders (HER-Reminders) ──
+
+    ReminderDTO:
+      type: object
+      required: [id, title, body, fireAt, createdAt]
+      description: |
+        A user-scheduled timed message. When `fireAt` arrives the server
+        fires an APNS push (category `reminder`) and stamps `firedAt`.
+        One-shot unless `recurrenceCron` is set.
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        fireAt: { type: string, format: date-time }
+        recurrenceCron: { type: string }
+        firedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    ReminderListResponse:
+      type: object
+      required: [reminders]
+      properties:
+        reminders:
+          type: array
+          items: { $ref: '#/components/schemas/ReminderDTO' }
+        nextCursor: { type: string }
+
+    ReminderCreateRequest:
+      type: object
+      required: [title, body, fireAt]
+      properties:
+        title: { type: string }
+        body: { type: string }
+        fireAt: { type: string, format: date-time }
+        recurrenceCron: { type: string }
+
+    ReminderPatchRequest:
+      type: object
+      properties:
+        title: { type: string }
+        body: { type: string }
+        fireAt: { type: string, format: date-time }
+        recurrenceCron: { type: string }
+
     # ── BYO Hermes ──
 
     HermesConfigGetResponse:
@@ -4467,6 +4707,84 @@ components:
         status: { type: string }
         filed: { type: integer }
         memoriesIngested: { type: integer }
+
+    PluginConfigField:
+      type: object
+      required: [key, label, kind, isRequired]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        placeholder: { type: string, nullable: true }
+        kind: { type: string, enum: [text, secret, url] }
+        isRequired: { type: boolean }
+    PluginCatalogEntryDTO:
+      type: object
+      required: [slug, name, summary, description, category, capabilityKind, iconSlug, version, publisher, verified, configFields]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        category: { type: string, enum: [connector, skill, memory, export, ui, theme] }
+        capabilityKind: { type: string, enum: [connector, skill, memory] }
+        iconSlug: { type: string }
+        version: { type: string }
+        publisher: { type: string }
+        verified: { type: boolean }
+        configFields:
+          type: array
+          items: { $ref: '#/components/schemas/PluginConfigField' }
+    PluginCatalogListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PluginCatalogEntryDTO' }
+    PluginInstallDTO:
+      type: object
+      required: [id, pluginSlug, status, hasConfig]
+      properties:
+        id: { type: string, format: uuid }
+        pluginSlug: { type: string }
+        status: { type: string, enum: [enabled, disabled] }
+        hasConfig: { type: boolean }
+        createdAt: { type: string, format: date-time, nullable: true }
+        lastSyncAt: { type: string, format: date-time, nullable: true }
+    PluginInstallsListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PluginInstallDTO' }
+    InstallPluginRequest:
+      type: object
+      required: [pluginSlug, config]
+      properties:
+        pluginSlug: { type: string }
+        config:
+          type: object
+          additionalProperties: { type: string }
+          description: field key → value, validated against the catalog entry.
+    UpdatePluginInstallRequest:
+      type: object
+      properties:
+        config:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+        status: { type: string, enum: [enabled, disabled], nullable: true }
+    PluginSyncResponse:
+      type: object
+      required: [installId, sessionId, status, total, staged, skipped]
+      properties:
+        installId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        status: { type: string }
+        total: { type: integer }
+        staged: { type: integer }
+        skipped: { type: integer }
 
     KBCompileStartedDTO:
       type: object

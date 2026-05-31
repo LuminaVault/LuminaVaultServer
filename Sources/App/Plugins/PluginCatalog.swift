@@ -1,0 +1,89 @@
+import Foundation
+import LuminaVaultShared
+
+/// HER-43 (Slice 1) — static, first-party catalog of installable plugins.
+/// Authoritative source for display metadata, the registry binding, and the
+/// per-install config fields. The `plugins` table is seeded from this list
+/// (see `M62_CreatePlugins`); runtime reads the static catalog to avoid drift,
+/// exactly like `HermesGatewayCatalog`.
+///
+/// Slice 1 ships one entry (Readwise connector) to prove the install →
+/// configure → sync path end-to-end. Later slices add skill/memory entries.
+enum PluginCatalog {
+    /// Internal entry: catalog metadata + the registry `binding` key (the DTO
+    /// doesn't carry `binding` — it's a server wiring detail, not wire format).
+    struct Entry {
+        let dto: PluginCatalogEntryDTO
+        let binding: String
+    }
+
+    static let entries: [String: Entry] = [
+        "readwise": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "readwise",
+                name: "Readwise",
+                summary: "Import your Readwise highlights' source articles into your vault.",
+                description: """
+                Pulls the source articles behind your Readwise highlights and \
+                stages them into your Imported inbox, where Smart Import files \
+                them into Spaces and compiles them into memories. Provide a \
+                Readwise access token (readwise.io/access_token).
+                """,
+                category: .connector,
+                capabilityKind: .connector,
+                iconSlug: "readwise",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [
+                    PluginConfigField(
+                        key: "access_token",
+                        label: "Access token",
+                        placeholder: "readwise.io/access_token",
+                        kind: .secret,
+                        isRequired: true,
+                    ),
+                ],
+            ),
+            binding: "readwise",
+        ),
+    ]
+
+    static func entry(slug: String) -> Entry? {
+        entries[slug]
+    }
+
+    /// All catalog DTOs, optionally filtered by category. Stable ordering by
+    /// slug so the client list is deterministic.
+    static func catalog(category: PluginCategory? = nil) -> [PluginCatalogEntryDTO] {
+        entries.values
+            .map(\.dto)
+            .filter { category == nil || $0.category == category }
+            .sorted { $0.slug < $1.slug }
+    }
+
+    /// Validate a config dict against the entry's fields: every required field
+    /// must be present and non-empty; unknown keys are rejected. Returns the
+    /// offending key for stable error codes.
+    static func validate(slug: String, config: [String: String]) -> ValidationResult {
+        guard let entry = entries[slug] else { return .unknownPlugin }
+        let allowed = Set(entry.dto.configFields.map(\.key))
+        for key in config.keys where !allowed.contains(key) {
+            return .unknownField(key)
+        }
+        for field in entry.dto.configFields where field.isRequired {
+            let value = config[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value == nil || value!.isEmpty {
+                return .missing(field.key)
+            }
+        }
+        return .ok
+    }
+
+    enum ValidationResult: Equatable {
+        case ok
+        case unknownPlugin
+        case missing(String)
+        case unknownField(String)
+    }
+}

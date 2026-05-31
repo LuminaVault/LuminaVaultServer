@@ -1334,6 +1334,8 @@ func buildRouter(
         eventBus: eventBus,
         achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: embeddingService,
     )
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
@@ -1447,6 +1449,37 @@ func buildRouter(
     let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
     importController.addRoutes(to: importGroup)
 
+    // HER-43 (Slice 1) — /v1/plugins (declarative plugin foundation). Mounted
+    // only when the master secret is set: install config (e.g. a connector API
+    // token) is sealed at rest via the same SecretBox as BYO Hermes. Connector
+    // syncs reuse the import pipeline above.
+    if let secretBox = secretBoxRef {
+        let pluginService = PluginService(
+            fluent: services.fluent,
+            secretBox: secretBox,
+            importService: ImportService(
+                fluent: services.fluent,
+                linkCapture: linkCaptureService,
+                spaces: spacesService,
+                vaultPaths: vaultPaths,
+                memoryCompile: memoryCompileService,
+                urlEnrich: urlEnrichmentService,
+                logger: Logger(label: "lv.plugins.import"),
+            ),
+            connectors: ConnectorRegistry(connectors: [
+                ReadwiseConnector(
+                    http: URLSessionConnectorHTTPClient(),
+                    logger: Logger(label: "lv.plugins.readwise"),
+                ),
+            ]),
+            logger: Logger(label: "lv.plugins"),
+        )
+        let pluginsGroup = router.group("/v1/plugins")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        PluginController(service: pluginService).addRoutes(to: pluginsGroup)
+    }
+
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
     let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsWorker)
     let soulGroup = router.group("/v1/soul")
@@ -1501,6 +1534,16 @@ func buildRouter(
     )
     let profilesGroup = router.group("/v1/profiles").add(middleware: jwtAuthenticator)
     profilesController.addRoutes(to: profilesGroup)
+
+    // HER-Reminders — user-scheduled timed messages. Firing is owned by
+    // ReminderScheduler (registered with the ServiceGroup below); this
+    // controller is CRUD only.
+    let remindersController = RemindersController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.reminders"),
+    )
+    let remindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
+    remindersController.addRoutes(to: remindersGroup)
 
     // HER-37 Slice D — synthesis worker. Off by default so local + CI
     // builds don't fire real Hermes traffic. Enable in production via
@@ -1793,6 +1836,14 @@ func buildRouter(
     // invoked for the application's lifetime. No-op today (catalog empty);
     // becomes load-bearing once HER-169 lands skill dispatch.
     if fluentEnabled, lvEnvironment != "test" { managedServices.append(cronScheduler) }
+    // HER-Reminders — per-minute reminder firing. Same single-replica gate
+    // as CronScheduler; shares the APNS push service.
+    let reminderScheduler = ReminderScheduler(
+        fluent: services.fluent,
+        push: pushService,
+        logger: Logger(label: "lv.reminders.scheduler"),
+    )
+    if fluentEnabled, lvEnvironment != "test" { managedServices.append(reminderScheduler) }
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))

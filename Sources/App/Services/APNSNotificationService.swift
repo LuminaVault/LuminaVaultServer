@@ -18,6 +18,10 @@ enum APNSPushCategory: String {
     case nudge
     case digest
     case achievement
+    /// HER-Reminders — a user reminder came due.
+    case reminder
+    /// HER-Cron — a scheduled (cron) skill fired.
+    case cron
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -199,6 +203,29 @@ struct APNSNotificationService {
         )
     }
 
+    /// HER-Reminders — a user reminder came due. Fired by `ReminderScheduler`.
+    func notifyReminder(userID: UUID, title: String, body: String) async throws {
+        try await notify(
+            userID: userID,
+            title: title,
+            subtitle: nil,
+            body: body,
+            category: .reminder,
+        )
+    }
+
+    /// HER-Cron — a scheduled skill fired. Fired by `CronScheduler` for skills
+    /// that carry an APNS category. `skillName` is the user-facing label.
+    func notifyCron(userID: UUID, skillName: String, body: String) async throws {
+        try await notify(
+            userID: userID,
+            title: "Scheduled job ran",
+            subtitle: skillName,
+            body: body,
+            category: .cron,
+        )
+    }
+
     /// Generic per-user push. Looks up every active `DeviceToken` row,
     /// sends to each, reaps tokens that APNS marks as dead.
     func notify(
@@ -264,7 +291,9 @@ struct APNSNotificationService {
         on db: any Database,
     ) async throws -> Bool {
         switch category {
-        case .achievement:
+        case .achievement, .reminder, .cron:
+            // High-signal, low-frequency surfaces — never gated by the
+            // category opt-out table in v1.
             return false
         case .chat, .nudge, .digest:
             break
@@ -276,7 +305,7 @@ struct APNSNotificationService {
         case .chat: return !prefs.chatEnabled
         case .nudge: return !prefs.nudgeEnabled
         case .digest: return !prefs.digestEnabled
-        case .achievement: return false
+        case .achievement, .reminder, .cron: return false
         }
     }
 

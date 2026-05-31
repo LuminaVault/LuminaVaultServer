@@ -59,6 +59,11 @@ struct VaultController {
     let achievements: AchievementsWorker?
     let logger: Logger
     let maxFileSize: Int
+    /// HER-Notes — when present, a `?note=true` upload owns its recall memory
+    /// (create-or-update by sourceVaultFileID + re-embed), and a note delete
+    /// cascades that memory. Optional so non-note deployments/tests skip it.
+    let memories: MemoryRepository?
+    let embeddings: (any EmbeddingService)?
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
@@ -79,6 +84,8 @@ struct VaultController {
         achievements: AchievementsWorker? = nil,
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
+        memories: MemoryRepository? = nil,
+        embeddings: (any EmbeddingService)? = nil,
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
@@ -87,6 +94,8 @@ struct VaultController {
         self.achievements = achievements
         self.logger = logger
         self.maxFileSize = maxFileSize
+        self.memories = memories
+        self.embeddings = embeddings
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -233,6 +242,40 @@ struct VaultController {
                 ],
             )
             eventBus.publish(event)
+        }
+
+        // HER-Notes — a written note (`?note=true`) owns its recall memory
+        // right here, so creation and every later edit re-embed in one call
+        // (no separate /v1/memory/upsert, no lineage gap). Create-or-update
+        // is keyed on the vault file id; tags ride the metadata sidecar.
+        // Failures are logged, not fatal — the file write already succeeded.
+        let isNote = request.uri.queryParameters["note"].map(String.init) == "true"
+        if isNote, let memories, let embeddings,
+           let content = String(data: data, encoding: .utf8), !content.isEmpty
+        {
+            do {
+                let embedding = try await embeddings.embed(content, tenantID: tenantID)
+                if let existingMemID = try await memories.idBySourceVaultFileID(
+                    tenantID: tenantID, sourceVaultFileID: savedID,
+                ) {
+                    _ = try await memories.updateContent(
+                        tenantID: tenantID, id: existingMemID,
+                        content: content, embedding: embedding,
+                    )
+                } else {
+                    _ = try await memories.create(
+                        tenantID: tenantID,
+                        content: content,
+                        embedding: embedding,
+                        tags: noteMetadata?.tags,
+                        sourceVaultFileID: savedID,
+                        spaceID: spaceID,
+                        reviewState: "auto",
+                    )
+                }
+            } catch {
+                logger.error("note memory upsert failed tenant=\(tenantID) path=\(safeRelative): \(error)")
+            }
         }
 
         return VaultUploadResponse(
@@ -393,6 +436,13 @@ struct VaultController {
                 // user-visible state; never block deletion on a disk hiccup.
                 logger.error("vault soft-delete rename failed tenant=\(tenantID) path=\(safeRelative): \(error)")
             }
+        }
+        // HER-Notes — cascade the note's recall memory so a delete doesn't
+        // leave a dangling memory whose source file is gone. No-op for files
+        // that never produced a note memory. Captured before row.delete since
+        // M23's FK is ON DELETE SET NULL (which would orphan, not remove).
+        if let memories, let rowID = try? row.requireID() {
+            try? await memories.deleteBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: rowID)
         }
         try await row.delete(on: fluent.db())
         logger.info("vault delete tenant=\(tenantID) path=\(safeRelative)")
