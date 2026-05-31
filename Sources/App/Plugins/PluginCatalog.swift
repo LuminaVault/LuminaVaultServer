@@ -47,6 +47,63 @@ enum PluginCatalog {
             ),
             binding: "readwise",
         ),
+        "rss": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "rss",
+                name: "RSS / Atom feed",
+                summary: "Pull new articles from any RSS or Atom feed into your vault.",
+                description: """
+                Fetches a feed you paste and stages each item's article into your \
+                Imported inbox, where Smart Import files them into Spaces and \
+                compiles them into memories. Works with any public RSS or Atom URL.
+                """,
+                category: .connector,
+                capabilityKind: .connector,
+                iconSlug: "rss",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [
+                    PluginConfigField(
+                        key: "feed_url",
+                        label: "Feed URL",
+                        placeholder: "https://example.com/feed.xml",
+                        kind: .url,
+                        isRequired: true,
+                    ),
+                ],
+            ),
+            binding: "rss",
+        ),
+        "raindrop": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "raindrop",
+                name: "Raindrop.io",
+                summary: "Import your Raindrop.io bookmarks into your vault.",
+                description: """
+                Pulls your saved Raindrop.io bookmarks and stages each link into \
+                your Imported inbox, where Smart Import files them into Spaces and \
+                compiles them into memories. Provide a Raindrop test token \
+                (app.raindrop.io → Settings → Integrations).
+                """,
+                category: .connector,
+                capabilityKind: .connector,
+                iconSlug: "raindrop",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [
+                    PluginConfigField(
+                        key: "access_token",
+                        label: "Access token",
+                        placeholder: "test token from raindrop.io integrations",
+                        kind: .secret,
+                        isRequired: true,
+                    ),
+                ],
+            ),
+            binding: "raindrop",
+        ),
     ]
 
     static func entry(slug: String) -> Entry? {

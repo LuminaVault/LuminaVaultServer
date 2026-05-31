@@ -20,6 +20,7 @@ struct PluginService {
     enum ErrorCode: String {
         case unknownPlugin = "unknown_plugin"
         case missingField = "missing_field"
+        case invalidField = "invalid_field"
         case unknownField = "unknown_field"
         case installNotFound = "install_not_found"
         case notAConnector = "not_a_connector"
@@ -115,6 +116,8 @@ struct PluginService {
             urls = try await connector.fetchURLs(config: config, tenantID: tenantID)
         } catch let ConnectorError.missingConfig(key) {
             throw HTTPError(.badRequest, message: "\(ErrorCode.missingField.rawValue):\(key)")
+        } catch let ConnectorError.invalidConfig(key) {
+            throw HTTPError(.badRequest, message: "\(ErrorCode.invalidField.rawValue):\(key)")
         } catch ConnectorError.unauthorized {
             throw HTTPError(.badGateway, message: ErrorCode.connectorUnauthorized.rawValue)
         } catch ConnectorError.upstreamFailure {
