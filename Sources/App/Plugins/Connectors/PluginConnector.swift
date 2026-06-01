@@ -20,6 +20,8 @@ protocol PluginConnector: Sendable {
 enum ConnectorError: Error, Equatable {
     /// A required config field was missing/empty at run time.
     case missingConfig(String)
+    /// A config field was present but unusable (e.g. a non-public or malformed URL).
+    case invalidConfig(String)
     /// Upstream rejected the credential (e.g. HTTP 401/403).
     case unauthorized
     /// Upstream was unreachable or returned an unexpected status/body.

@@ -1471,6 +1471,14 @@ func buildRouter(
                     http: URLSessionConnectorHTTPClient(),
                     logger: Logger(label: "lv.plugins.readwise"),
                 ),
+                RaindropConnector(
+                    http: URLSessionConnectorHTTPClient(),
+                    logger: Logger(label: "lv.plugins.raindrop"),
+                ),
+                RSSConnector(
+                    http: URLSessionConnectorHTTPClient(),
+                    logger: Logger(label: "lv.plugins.rss"),
+                ),
             ]),
             logger: Logger(label: "lv.plugins"),
         )
