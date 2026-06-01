@@ -1492,14 +1492,16 @@ paths:
     get:
       tags: [Memory]
       operationId: memoryGraph
-      summary: Derived memory graph for the current tenant (HER-235).
+      summary: Derived second-brain graph for the current tenant (HER-235).
       description: |
-        Nodes are top-scored memories; edges are derived on read from shared
-        tags + pgvector cosine similarity. No edges are persisted in v1.
+        Nodes are memories and (optionally) wiki pages — one per text-like
+        vault file. Edges are derived on read: wikilink (memory→source page
+        lineage), tag, space (shared Space), semantic (pgvector cosine), and
+        temporal (same-day proximity). No edges are persisted in v1.
       parameters:
         - in: query
           name: limit
-          description: Max number of nodes returned (highest-scored memories first).
+          description: Max number of nodes returned per source (memories, and wiki pages).
           schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
         - in: query
           name: similarityThreshold
@@ -1510,9 +1512,20 @@ paths:
         - in: query
           name: maxEdgesPerNode
           description: |
-            After tag + semantic edges are merged, each node is pruned to its
-            top-K strongest edges by weight (undirected).
+            After all edge kinds are merged, each node is pruned to its top-K
+            strongest edges (undirected); explicit links win over inferred.
           schema: { type: integer, minimum: 1, maximum: 50, default: 8 }
+        - in: query
+          name: includeWikiPages
+          description: When true (default), text-like vault files are added as wiki-page nodes.
+          schema: { type: boolean, default: true }
+        - in: query
+          name: kinds
+          description: |
+            CSV of edge kinds to compute (wikilink,tag,space,semantic,temporal).
+            Absent or empty computes every kind.
+          schema: { type: string }
+          example: wikilink,space,semantic
       responses:
         '200':
           description: Derived graph for the current tenant.
@@ -2086,9 +2099,76 @@ paths:
           schema:
             type: string
             enum: [connector, skill, memory, export, ui, theme]
+        - name: featured
+          in: query
+          required: false
+          description: When true, returns only Featured marketplace entries.
+          schema: { type: boolean }
+        - name: premium
+          in: query
+          required: false
+          description: When true, returns only premium (paid-tier) entries.
+          schema: { type: boolean }
       responses:
         '200':
-          description: Catalog entries.
+          description: Catalog entries (connectors + LV predefined skills).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/hermes-skills:
+    get:
+      tags: [Plugins]
+      operationId: pluginHermesSkills
+      summary: Read-only list of skills installed in the tenant's Hermes agent.
+      description: |
+        Proxies the tenant's Hermes `GET /v1/skills`. Returns catalog entries
+        with `publisher: "Hermes"`. Empty when Hermes is unresolved/unreachable.
+      responses:
+        '200':
+          description: Hermes-installed skills as read-only catalog entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/hermes-skills/install:
+    post:
+      tags: [Plugins]
+      operationId: pluginHermesSkillInstall
+      summary: Install a Hermes Hub skill into the tenant's Hermes container.
+      description: |
+        Runs `hermes skills install <id>` inside the caller's per-tenant Hermes
+        container (CLI-only upstream → docker exec). Returns the refreshed
+        read-only list of installed skills. 409 if the tenant has no container.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Hub skill id or URL (`hermes skills install` argument).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Installed; refreshed Hermes-installed skills list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/hermes-skills/{name}:
+    delete:
+      tags: [Plugins]
+      operationId: pluginHermesSkillUninstall
+      summary: Uninstall a skill from the tenant's Hermes container.
+      description: |
+        Runs `hermes skills uninstall <name>` inside the caller's container.
+        Returns the refreshed read-only list of installed skills.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Uninstalled; refreshed Hermes-installed skills list.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
@@ -2111,6 +2191,7 @@ paths:
       description: |
         Validates `config` against the catalog entry's fields; secret values are
         sealed at rest and never echoed (responses carry `hasConfig` only).
+        Premium plugins require the pro/ultimate tier → 402 otherwise.
       requestBody:
         required: true
         content:
@@ -2122,6 +2203,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PluginInstallDTO' }
+        '402':
+          description: Premium plugin requires a paid subscription (premium_required).
 
   /v1/plugins/installs/{id}:
     patch:
@@ -4587,21 +4670,33 @@ components:
 
     # ── Memory Graph (HER-235) ──
 
+    GraphNodeKindDTO:
+      type: string
+      enum: [memory, wikiPage]
+      description: "Which store the node's id belongs to (memories vs vault_files)."
+
     MemoryGraphNodeDTO:
       type: object
       required: [id, title, tags, createdAt, score]
       properties:
         id: { type: string, format: uuid }
-        title: { type: string, description: "First ~60 chars of memory content; used as node label." }
+        title: { type: string, description: "Memory content snippet or wiki-page title; used as node label." }
         tags:
           type: array
           items: { type: string }
         createdAt: { type: string, format: date-time }
-        score: { type: number, format: double, description: "Existing memories.score — drives node radius client-side." }
+        score: { type: number, format: double, description: "Drives node radius client-side. Memory uses memories.score; wiki pages use a constant." }
+        kind:
+          allOf: [{ $ref: '#/components/schemas/GraphNodeKindDTO' }]
+          description: "Defaults to memory when omitted (pre-enrich payloads)."
+        spaceID:
+          type: string
+          format: uuid
+          description: "Optional Space the node is filed under; powers space edges."
 
     MemoryEdgeKindDTO:
       type: string
-      enum: [tag, semantic]
+      enum: [wikilink, tag, space, semantic, temporal]
 
     MemoryGraphEdgeDTO:
       type: object

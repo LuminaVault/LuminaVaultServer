@@ -554,6 +554,10 @@ func buildRouter(
     // HER-330 — owner-triggered "Update Hermes" controller. Built inside the
     // secret-key branch where the docker exec + container manager exist.
     var hermesUpdateController: HermesUpdateController?
+    // HER-43 Slice 3b — Hermes Hub skill install/uninstall via docker exec into
+    // the tenant's container. Built in the same secret branch (needs the docker
+    // exec + container manager); mounted under /v1/plugins (tenant JWT).
+    var hubSkillsService: HermesHubSkillsService?
     // HER-134 — LocalHermes text-embedding adapter resolves the running
     // per-tenant container via `HermesContainerManager.handle`. Outside
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
@@ -611,6 +615,15 @@ func buildRouter(
             localHermesHandleResolver = { tenantID in
                 try await containerManager.handle(tenantID: tenantID)
             }
+            // HER-43 Slice 3b — hub skill install/uninstall into the tenant's
+            // container (CLI-only upstream → docker exec). Reuses the 3a
+            // read-only HermesSkillsClient to return the refreshed list.
+            hubSkillsService = HermesHubSkillsService(
+                docker: dockerExec,
+                containerManager: containerManager,
+                installedSkillsClient: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
+                logger: Logger(label: "lv.plugins.hub-install"),
+            )
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
@@ -1148,7 +1161,37 @@ func buildRouter(
         hermesHandleResolver: localHermesHandleResolver,
         logger: Logger(label: "lv.embedding.registry"),
     )
-    let embeddingService: any EmbeddingService = embeddingRegistry.active
+    // HER-43 Slice 4 — when a master secret is set, wrap the global embedding
+    // service so a tenant who installed the "byok-embeddings" memory plugin is
+    // routed through their own key, using the SAME active provider-kind + model
+    // (identical vector space → no re-embedding). Falls through to global for
+    // everyone else, and BYO is only buildable for keyable kinds (openai/nomic).
+    let embeddingService: any EmbeddingService
+    if let secretBox = secretBoxRef {
+        let activeKind = embeddingRegistry.activeKind
+        let openaiBaseRaw = reader.string(forKey: "llm.provider.openai.baseURL", default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let openaiBase = URL(string: openaiBaseRaw) ?? OpenAIEmbeddingService.defaultBaseURL
+        let makeKeyed: @Sendable (String) -> (any EmbeddingService)? = { apiKey in
+            switch activeKind {
+            case .openai:
+                OpenAIEmbeddingService(apiKey: apiKey, baseURL: openaiBase, logger: Logger(label: "lv.embedding.openai.byok"))
+            case .nomic:
+                NomicEmbeddingService(apiKey: apiKey, logger: Logger(label: "lv.embedding.nomic.byok"))
+            case .hermesLocal, .deterministic:
+                nil
+            }
+        }
+        let resolver = PerTenantEmbeddingResolver(
+            fluent: services.fluent,
+            secretBox: secretBox,
+            logger: Logger(label: "lv.embedding.byok"),
+            makeKeyedService: makeKeyed,
+        )
+        embeddingService = TenantAwareEmbeddingService(global: embeddingRegistry.active, resolver: resolver)
+    } else {
+        embeddingService = embeddingRegistry.active
+    }
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
@@ -1471,13 +1514,32 @@ func buildRouter(
                     http: URLSessionConnectorHTTPClient(),
                     logger: Logger(label: "lv.plugins.readwise"),
                 ),
+                RaindropConnector(
+                    http: URLSessionConnectorHTTPClient(),
+                    logger: Logger(label: "lv.plugins.raindrop"),
+                ),
+                RSSConnector(
+                    http: URLSessionConnectorHTTPClient(),
+                    logger: Logger(label: "lv.plugins.rss"),
+                ),
             ]),
+            skillCatalog: skillCatalog,
+            hermesSkills: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
             logger: Logger(label: "lv.plugins"),
         )
-        let pluginsGroup = router.group("/v1/plugins")
+        // `byoHermesMiddleware` is added when available so `GET /hermes-skills`
+        // can read the tenant's resolved Hermes base URL + auth from
+        // `ctx.hermesResolution`; without it that route returns an empty list.
+        let pluginsBase = router.group("/v1/plugins")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        let pluginsGroup = byoHermesMiddleware.map { pluginsBase.add(middleware: $0) } ?? pluginsBase
         PluginController(service: pluginService).addRoutes(to: pluginsGroup)
+        // HER-43 Slice 3b — hub skill install/uninstall, mounted on the same
+        // tenant-JWT group. Only when a per-tenant container manager exists.
+        if let hubSkillsService {
+            HermesHubSkillsController(service: hubSkillsService).addRoutes(to: pluginsGroup)
+        }
     }
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.

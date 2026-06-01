@@ -25,6 +25,7 @@ struct PluginController {
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("catalog", use: catalog)
+        router.get("hermes-skills", use: hermesSkills)
         router.get("installs", use: listInstalls)
         router.post("installs", use: install)
         router.patch("installs/:id", use: update)
@@ -34,9 +35,27 @@ struct PluginController {
 
     @Sendable
     func catalog(_ req: Request, ctx: AppRequestContext) async throws -> PluginCatalogListResponse {
-        _ = try ctx.requireTenantID()
+        let tenantID = try ctx.requireTenantID()
         let category = req.uri.queryParameters.get("category").flatMap { PluginCategory(rawValue: $0) }
-        return PluginCatalogListResponse(items: service.listCatalog(category: category))
+        // HER-43 Slice 6 — optional curation filters: ?featured=true / ?premium=true.
+        let featured = Self.boolQuery(req, "featured")
+        let premium = Self.boolQuery(req, "premium")
+        return await PluginCatalogListResponse(
+            items: service.listCatalog(tenantID: tenantID, category: category, featured: featured, premium: premium),
+        )
+    }
+
+    /// HER-43 Slice 3a — read-only list of skills installed in the tenant's
+    /// Hermes agent (proxied from Hermes `GET /v1/skills`). Empty when Hermes
+    /// is unresolved/unreachable. Hub install lands in Slice 3b.
+    @Sendable
+    func hermesSkills(_: Request, ctx: AppRequestContext) async throws -> PluginCatalogListResponse {
+        _ = try ctx.requireTenantID()
+        let items = await service.hermesInstalledSkills(
+            baseURL: ctx.hermesResolution?.baseURL,
+            authHeader: ctx.hermesResolution?.authHeader,
+        )
+        return PluginCatalogListResponse(items: items)
     }
 
     @Sendable
@@ -47,9 +66,26 @@ struct PluginController {
 
     @Sendable
     func install(_ req: Request, ctx: AppRequestContext) async throws -> PluginInstallDTO {
-        let tenantID = try ctx.requireTenantID()
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
         let body = try await req.decode(as: InstallPluginRequest.self, context: ctx)
+        // HER-43 Slice 6 — premium plugins require the paid tier. 402 mirrors
+        // PremiumGuardMiddleware so the client can route to the paywall.
+        if PluginCatalog.isPremium(slug: body.pluginSlug), !Self.entitledToPremium(user) {
+            throw HTTPError(.init(code: 402, reasonPhrase: "Payment Required"), message: "premium_required")
+        }
         return try await service.install(tenantID: tenantID, slug: body.pluginSlug, config: body.config)
+    }
+
+    /// Pro/ultimate gate, honoring `tier_override` (matches PremiumGuardMiddleware).
+    private static func entitledToPremium(_ user: User) -> Bool {
+        let effective = user.tierOverride != "none" ? user.tierOverride : user.tier
+        return ["pro", "ultimate"].contains(effective)
+    }
+
+    private static func boolQuery(_ req: Request, _ key: String) -> Bool? {
+        guard let raw = req.uri.queryParameters.get(key) else { return nil }
+        return raw == "true" || raw == "1"
     }
 
     @Sendable

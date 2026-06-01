@@ -165,8 +165,7 @@ struct MemoryGraphServiceTests {
             edge(n1, n2), edge(n1, n3), edge(n2, n3),
         ]
         let pruned = MemoryGraphService.mergeAndCap(
-            tagEdges: [],
-            semanticEdges: candidates,
+            groupsInPrecedence: [candidates],
             maxEdgesPerNode: 2,
         )
         var degree: [UUID: Int] = [:]
@@ -179,6 +178,69 @@ struct MemoryGraphServiceTests {
         }
         // 4 nodes, cap=2 → at most 4 surviving edges (4 × 2 / 2).
         #expect(pruned.count <= 4)
+    }
+
+    @Test
+    func `lineage edges link a memory to its source page only when the page is in the node set`() throws {
+        let mem = try #require(UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000001"))
+        let page = try #require(UUID(uuidString: "bbbbbbbb-0000-0000-0000-000000000002"))
+        let orphanSource = try #require(UUID(uuidString: "cccccccc-0000-0000-0000-000000000003"))
+
+        func row(_ id: UUID, source: UUID?) -> MemoryNodeRow {
+            MemoryNodeRow(
+                id: id, content: "c", tags: nil, created_at: Date(), score: 1,
+                space_id: nil, source_vault_file_id: source,
+            )
+        }
+        let rows = [row(mem, source: page), row(orphanSource, source: orphanSource)]
+        // Only `page` is an included wiki node; the orphan's source is not.
+        let edges = MemoryGraphService.lineageEdges(memRows: rows, wikiIDs: [page])
+
+        #expect(edges.count == 1)
+        let edge = try #require(edges.first)
+        #expect(edge.kind == .wikilink)
+        #expect(edge.weight == 1.0)
+        #expect(Set([edge.from, edge.to]) == Set([mem, page]))
+        #expect(edge.from.uuidString < edge.to.uuidString) // undirected invariant
+    }
+
+    @Test
+    func `chain edges connect consecutive nodes within a group`() throws {
+        let s1 = try #require(UUID(uuidString: "10000000-0000-0000-0000-000000000000"))
+        let nodes = (0 ..< 4).map { i in
+            MemoryGraphService.NodeMeta(
+                id: UUID(), spaceID: s1, createdAt: Date(timeIntervalSince1970: Double(i) * 1000),
+            )
+        } + [
+            // A lone node in its own Space contributes no edge.
+            MemoryGraphService.NodeMeta(id: UUID(), spaceID: UUID(), createdAt: Date()),
+        ]
+        let edges = MemoryGraphService.chainEdges(
+            grouping: nodes, by: { $0.spaceID.map(MemoryGraphService.AnyGroupKey.uuid) },
+            kind: .space, weight: 0.45,
+        )
+        // 4-node group → a 3-edge chain; the singleton group adds nothing.
+        #expect(edges.count == 3)
+        #expect(edges.allSatisfy { $0.kind == .space && $0.weight == 0.45 })
+        #expect(edges.allSatisfy { $0.from.uuidString < $0.to.uuidString })
+    }
+
+    @Test
+    func `merge precedence keeps the explicit wikilink over a weaker inferred edge on the same pair`() throws {
+        let a = try #require(UUID(uuidString: "00000000-0000-0000-0000-0000000000a1"))
+        let b = try #require(UUID(uuidString: "00000000-0000-0000-0000-0000000000b2"))
+        let (from, to) = MemoryGraphService.ordered(a, b)
+        let wikilink = MemoryGraphEdgeDTO(from: from, to: to, kind: .wikilink, tag: nil, similarity: nil, weight: 1.0)
+        let temporal = MemoryGraphEdgeDTO(from: from, to: to, kind: .temporal, tag: nil, similarity: nil, weight: 0.3)
+
+        // temporal listed first by array position, but wikilink has higher
+        // precedence (earlier group) so it must win the dedupe.
+        let merged = MemoryGraphService.mergeAndCap(
+            groupsInPrecedence: [[wikilink], [temporal]],
+            maxEdgesPerNode: 8,
+        )
+        #expect(merged.count == 1)
+        #expect(merged.first?.kind == .wikilink)
     }
 
     @Test
