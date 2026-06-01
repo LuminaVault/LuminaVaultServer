@@ -10,6 +10,7 @@ struct MemoryCompileController {
     let fluent: Fluent
     let achievements: AchievementsWorker?
     let progress: any MemoryCompileProgressPublisher
+    let usageMetrics: UsageMetricsService?
     let logger: Logger
 
     /// POST `/v1/kb-compile` — heavy Hermes loop. Wired separately from the
@@ -63,6 +64,7 @@ struct MemoryCompileController {
         guard !rows.isEmpty else {
             let empty = KBCompileResponse(memoriesIngested: 0, memoriesUpdated: 0, durationMs: 0, runId: runId)
             await progress.publish(.completed(.init(runId: runId, response: empty)), tenantID: tenantID)
+            await usageMetrics?.recordMemoryCompile(tenantID: tenantID, runID: runId, files: 0)
             return empty
         }
 
@@ -95,6 +97,7 @@ struct MemoryCompileController {
                 pendingMemoryIds: result.memories.map(\.id),
             )
             await progress.publish(.completed(.init(runId: runId, response: response)), tenantID: tenantID)
+            await usageMetrics?.recordMemoryCompile(tenantID: tenantID, runID: runId, files: result.writtenFiles.count)
             return response
         } catch {
             await progress.publish(

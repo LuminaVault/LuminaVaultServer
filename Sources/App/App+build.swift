@@ -478,6 +478,7 @@ func buildRouter(
     meGroup.get("/me", use: meHandler)
     meGroup.put("/me/privacy", use: updatePrivacyHandler(fluent: services.fluent))
     meGroup.get("/me/billing", use: meBillingHandler(enforcementEnabled: services.billingEnforcementEnabled))
+    meGroup.get("/me/usage", use: meUsageHandler(fluent: services.fluent))
 
     // HER-216 — authenticated passkey management (list / revoke).
     let webAuthnAuthedGroup = router.group("/v1/auth")
@@ -1422,6 +1423,7 @@ func buildRouter(
         fluent: services.fluent,
         achievements: achievementsWorker,
         progress: memoryCompileProgressPublisher,
+        usageMetrics: UsageMetricsService(fluent: services.fluent),
         logger: Logger(label: "lv.memory-compile.controller"),
     )
     // HER-293 — `GET /v1/memory-compile/pending` is a cheap COUNT(*) probe
@@ -2220,5 +2222,15 @@ private func meBillingHandler(
             daysRemaining: daysRemaining,
             enforcementEnabled: enforcementEnabled,
         )
+    }
+}
+
+private func meUsageHandler(
+    fluent: Fluent,
+) -> @Sendable (Request, AppRequestContext) async throws -> MeUsageResponse {
+    { _, ctx in
+        let user = try ctx.requireIdentity()
+        let service = UsageMetricsService(fluent: fluent)
+        return try await service.currentMonthUsage(for: user)
     }
 }
