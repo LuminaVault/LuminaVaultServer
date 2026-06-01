@@ -612,6 +612,43 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SkillListResponse' }
 
+  /v1/jobs/detect:
+    post:
+      tags: [Skills]
+      operationId: jobsDetect
+      summary: Classify a chat message for recurring-job intent (Lumina Jobs P3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties: { text: { type: string } }
+      responses:
+        '200':
+          description: Job proposal (isJob=false when not a recurring job).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobProposalDTO' }
+
+  /v1/jobs:
+    post:
+      tags: [Skills]
+      operationId: jobsCreate
+      summary: Create a scheduled job (authored as a vault cron skill).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreateRequest' }
+      responses:
+        '200':
+          description: The created job, as a SkillDTO.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillDTO' }
+
   /v1/skills/{name}:
     patch:
       tags: [Skills]
@@ -3815,6 +3852,29 @@ components:
             type: object
             required: [key, value]
             properties: { key: { type: string }, value: { type: string } }
+
+    JobProposalDTO:
+      type: object
+      required: [isJob]
+      description: "Lumina Jobs P3 — recurring-job intent classification result."
+      properties:
+        isJob: { type: boolean }
+        title: { type: string }
+        cron: { type: string }
+        scheduleHuman: { type: string }
+        domain: { type: string }
+        spec: { type: string }
+
+    JobCreateRequest:
+      type: object
+      required: [title, cron, spec]
+      description: "Lumina Jobs P3 — create a scheduled job (a vault cron skill)."
+      properties:
+        title: { type: string }
+        cron: { type: string }
+        domain: { type: string }
+        spec: { type: string }
+        spaceId: { type: string, format: uuid }
 
     SkillSparklinePoint:
       type: object

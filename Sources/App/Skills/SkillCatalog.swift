@@ -32,23 +32,38 @@ actor SkillCatalog {
     /// shadow built-in entries with the same `name` (HER-168 acceptance).
     ///
     /// HER-247: minimal implementation scans the bundled
-    /// `Resources/Skills/<name>/SKILL.md` files. Vault scanning is
-    /// deferred to HER-168.
-    func manifests(for _: UUID) async throws -> [SkillManifest] {
-        guard let resourceRoot = Bundle.module.resourceURL?
-            .appendingPathComponent("Skills", isDirectory: true)
-        else {
-            return []
+    /// `Resources/Skills/<name>/SKILL.md` (built-in) plus, per tenant,
+    /// `<vaultRoot>/tenants/<id>/skills/<name>/SKILL.md` (vault). Vault skills
+    /// override built-ins of the same name. Vault scanning (HER-168) backs
+    /// chat-created **Jobs** (Jobs P3) — a job is a vault skill with a cron
+    /// schedule, picked up by `CronScheduler` like any other skill.
+    func manifests(for tenantID: UUID) async throws -> [SkillManifest] {
+        var byName: [String: SkillManifest] = [:]
+        // Built-ins first (so vault can override by name).
+        if let resourceRoot = Bundle.module.resourceURL?.appendingPathComponent("Skills", isDirectory: true) {
+            for manifest in scan(directory: resourceRoot, source: .builtin) {
+                byName[manifest.name] = manifest
+            }
         }
+        // Vault skills override.
+        let vaultSkills = vaultPaths.tenantRoot(for: tenantID).appendingPathComponent("skills", isDirectory: true)
+        for manifest in scan(directory: vaultSkills, source: .vault) {
+            byName[manifest.name] = manifest
+        }
+        return byName.values.sorted { $0.name < $1.name }
+    }
+
+    /// Scans a `<dir>/<name>/SKILL.md` layout, parsing each manifest with the
+    /// given source. Missing dir / parse failures are skipped (logged).
+    private func scan(directory: URL, source: SkillManifest.Source) -> [SkillManifest] {
         let fm = FileManager.default
         guard let dirs = try? fm.contentsOfDirectory(
-            at: resourceRoot,
+            at: directory,
             includingPropertiesForKeys: [.isDirectoryKey],
         ) else {
             return []
         }
         var manifests: [SkillManifest] = []
-        manifests.reserveCapacity(dirs.count)
         for dir in dirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             var isDir: ObjCBool = false
             guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { continue }
@@ -56,11 +71,11 @@ actor SkillCatalog {
             guard fm.fileExists(atPath: skillFile.path) else { continue }
             do {
                 let contents = try String(contentsOf: skillFile, encoding: .utf8)
-                let manifest = try parser.parse(source: .builtin, contents: contents)
-                manifests.append(manifest)
+                manifests.append(try parser.parse(source: source, contents: contents))
             } catch {
                 logger.warning("skill_catalog parse failure", metadata: [
                     "skill": .string(dir.lastPathComponent),
+                    "source": .string(source.rawValue),
                     "error": .string(String(describing: error)),
                 ])
                 continue

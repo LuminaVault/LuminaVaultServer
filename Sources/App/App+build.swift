@@ -1967,6 +1967,15 @@ func buildRouter(
     // HER-177 — Today-tab skill outputs feed.
     SkillOutputsController(logger: skillsLogger).addRoutes(to: skillsGroup)
 
+    // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
+    let jobsGroup = router.group("/v1/jobs").add(middleware: jwtAuthenticator)
+    JobsController(
+        classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
+        vaultPaths: vaultPaths,
+        fluent: services.fluent,
+        logger: Logger(label: "lv.jobs"),
+    ).addRoutes(to: jobsGroup)
+
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
     ApnsCategoryPrefsController(

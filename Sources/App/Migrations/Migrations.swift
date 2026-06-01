@@ -71,4 +71,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M64_CreateProject())
     await fluent.migrations.add(M65_CreateUsageEvents())
     await fluent.migrations.add(M66_AddSkillRunLogOutput())
+    await fluent.migrations.add(M67_AddSkillsStateJobFields())
 }
