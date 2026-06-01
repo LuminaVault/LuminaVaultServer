@@ -26,12 +26,14 @@ actor CronScheduler: Service {
     private let catalog: SkillCatalog
     private let runner: SkillRunner
     private let fluent: Fluent
+    private let push: APNSNotificationService?
     private let logger: Logger
 
     init(
         catalog: SkillCatalog,
         runner: SkillRunner,
         fluent: Fluent,
+        push: APNSNotificationService? = nil,
         logger: Logger,
         tickInterval: Duration = .seconds(60),
         maxConcurrent: Int = 4,
@@ -39,6 +41,7 @@ actor CronScheduler: Service {
         self.catalog = catalog
         self.runner = runner
         self.fluent = fluent
+        self.push = push
         self.logger = logger
         self.tickInterval = tickInterval
         self.maxConcurrent = maxConcurrent
@@ -148,6 +151,20 @@ actor CronScheduler: Service {
         } catch {
             logger.warning("skills.cron \(label) state persist failed: \(error)")
         }
+        // HER-Cron — notify the user that a scheduled skill fired, but only
+        // when the skill carries an APNS category (opt-in per skill via
+        // SkillsState.apnsCategory) and the run succeeded. Best-effort.
+        if status == "ok", let push, pair.apnsCategory != nil {
+            do {
+                try await push.notifyCron(
+                    userID: pair.tenantID,
+                    skillName: pair.skillName,
+                    body: "Your \(pair.skillName) job just ran.",
+                )
+            } catch {
+                logger.warning("skills.cron \(label) push failed: \(error)")
+            }
+        }
     }
 
     // MARK: - Fluent IO
@@ -163,6 +180,9 @@ actor CronScheduler: Service {
         let source: String // "builtin" | "vault"
         let schedule: String?
         let lastRunAt: Date?
+        /// HER-Cron — per-skill APNS opt-in. When non-nil, a successful cron
+        /// run fires a `notifyCron` push.
+        let apnsCategory: String?
         let manifest: SkillManifest
 
         static func == (lhs: DuePair, rhs: DuePair) -> Bool {
@@ -213,6 +233,7 @@ actor CronScheduler: Service {
                     source: manifest.source.rawValue,
                     schedule: schedule,
                     lastRunAt: state?.lastRunAt,
+                    apnsCategory: state?.apnsCategory,
                     manifest: manifest,
                 ))
             }

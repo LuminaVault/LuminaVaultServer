@@ -1862,6 +1862,7 @@ func buildRouter(
         catalog: skillCatalog,
         runner: skillRunner,
         fluent: services.fluent,
+        push: pushService,
         logger: skillsLogger,
     )
     // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking // URLSession / .shared live here on Linux
+#endif
 
 /// HER-43 (Slice 1) — a declarative connector capability. Given a tenant's
 /// decrypted install config, it returns source URLs to stage. The plugin
