@@ -406,12 +406,19 @@ struct MemoryController {
                 ?? MemoryGraphService.defaultMaxEdgesPerNode,
             min: 1, max: MemoryGraphService.maxMaxEdgesPerNode,
         )
+        // `includeWikiPages` defaults true; `kinds` is a CSV of edge kinds
+        // (wikilink,tag,space,semantic,temporal). Absent / empty → all kinds.
+        let includeWikiPages = req.uri.queryParameters["includeWikiPages"]
+            .map { $0 == "true" || $0 == "1" } ?? true
+        let kinds = Self.parseEdgeKinds(req.uri.queryParameters["kinds"].map(String.init))
 
         return try await graphService.graph(
             tenantID: tenantID,
             limit: limit,
             similarity: similarity,
             maxEdgesPerNode: maxEdges,
+            includeWikiPages: includeWikiPages,
+            kinds: kinds,
         )
     }
 
@@ -437,5 +444,15 @@ struct MemoryController {
 
     private static func clampDouble(_ value: Double, min lo: Double, max hi: Double) -> Double {
         Swift.max(lo, Swift.min(hi, value))
+    }
+
+    /// Parses a CSV of edge-kind names into a set, dropping unknowns. A nil or
+    /// empty parameter yields every edge kind.
+    private static func parseEdgeKinds(_ csv: String?) -> Set<MemoryEdgeKindDTO> {
+        guard let csv, !csv.isEmpty else { return MemoryGraphService.allEdgeKinds }
+        let parsed = Set(csv.split(separator: ",").compactMap {
+            MemoryEdgeKindDTO(rawValue: $0.trimmingCharacters(in: .whitespaces))
+        })
+        return parsed.isEmpty ? MemoryGraphService.allEdgeKinds : parsed
     }
 }
