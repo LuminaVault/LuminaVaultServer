@@ -63,8 +63,13 @@ struct HermesGatewaysController {
             byID[row.gatewayID] = row
         }
 
-        let entries = HermesGatewayID.allCases.map { id -> HermesGatewayCatalogEntry in
-            let entry = HermesGatewayCatalog.entry(for: id)
+        // Only surface gateways present in the catalog (WhatsApp is excluded —
+        // it needs interactive QR pairing, not remote credential entry). Keep
+        // `HermesGatewayID.allCases` order for a stable list.
+        let entries = HermesGatewayID.allCases
+            .filter { HermesGatewayCatalog.entries[$0] != nil }
+            .map { id -> HermesGatewayCatalogEntry in
+                let entry = HermesGatewayCatalog.entry(for: id)
             let row = byID[id.rawValue]
             return HermesGatewayCatalogEntry(
                 id: id,
@@ -217,7 +222,11 @@ struct HermesGatewaysController {
 
     private func parseID(_ ctx: AppRequestContext) throws -> HermesGatewayID {
         let raw = try ctx.parameters.require("id", as: String.self)
-        guard let id = HermesGatewayID(rawValue: raw) else {
+        // Must be a known enum case AND present in the catalog (excludes
+        // WhatsApp, which isn't remotely configurable — keeps `entry(for:)`'s
+        // force-unwrap safe).
+        guard let id = HermesGatewayID(rawValue: raw),
+              HermesGatewayCatalog.entries[id] != nil else {
             throw HTTPError(.notFound, message: ErrorCode.unsupportedGateway.rawValue)
         }
         return id

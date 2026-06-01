@@ -2,6 +2,7 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
 /// HER-240a — lifecycle manager for per-tenant Hermes containers.
 ///
@@ -299,10 +300,12 @@ actor HermesContainerManager {
         tenantID: UUID,
     ) async throws {
         let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
+        let gateways = try await gatewaySeeds(tenantID: tenantID)
         try HermesTenantConfigTemplate.seed(
             volumePath: volumePath,
             apiKey: apiServerKey,
             defaultModel: config.defaultModel,
+            gateways: gateways,
         )
         let args = [
             "run",
@@ -333,5 +336,59 @@ actor HermesContainerManager {
             }
             throw Error.dockerRunFailed(stderr: result.stderr, exitCode: result.exitCode)
         }
+    }
+
+    /// Loads + decrypts the tenant's configured messaging gateways for `.env`
+    /// seeding. Rows that fail to decrypt/decode or map to an unknown gateway
+    /// are skipped (logged) rather than aborting the whole spawn.
+    private func gatewaySeeds(tenantID: UUID) async throws -> [HermesGatewaySeed] {
+        let rows = try await UserHermesGateway.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .all()
+        var seeds: [HermesGatewaySeed] = []
+        for row in rows {
+            guard let gatewayID = HermesGatewayID(rawValue: row.gatewayID) else { continue }
+            do {
+                let plaintext = try secretBox.open(
+                    SecretBox.Sealed(ciphertext: row.configCiphertext, nonce: row.configNonce),
+                    tenantID: tenantID,
+                )
+                let config = try JSONDecoder().decode([String: String].self, from: Data(plaintext.utf8))
+                seeds.append(HermesGatewaySeed(gatewayID: gatewayID, config: config))
+            } catch {
+                logger.error("skipping undecodable hermes gateway config", metadata: [
+                    "tenantID": "\(tenantID)",
+                    "gateway": "\(row.gatewayID)",
+                    "error": "\(error)",
+                ])
+            }
+        }
+        return seeds
+    }
+
+    /// Apply the tenant's saved gateway config: recreate the container so the
+    /// freshly-seeded `.env` (with gateway token env-vars) takes effect. Mirrors
+    /// a single-tenant `reprovisionAll` — `rm -f` then `dockerRun` (which
+    /// re-seeds the `.env`). The persisted `/opt/data` volume is bind-mounted by
+    /// path and untouched by `rm`, so memory + auth survive. Throws on docker
+    /// failure; the caller (apply job) maps that to a failed step. Health is
+    /// verified separately by the apply service.
+    func applyGatewayConfig(tenantID: UUID) async throws {
+        try await docker.ensureNetworkExists(config.network)
+        guard let row = try await loadRow(tenantID: tenantID) else {
+            // No container yet — lazy-spawn now; `dockerRun` seeds the gateways.
+            try await ensureRunning(tenantID: tenantID)
+            return
+        }
+        // Idempotent: `rm -f` is a no-op if the container is already gone.
+        _ = try? await docker.run(args: ["rm", "-f", row.containerName])
+        try await dockerRun(
+            containerName: row.containerName,
+            port: row.port,
+            apiServerKey: decrypt(row: row, tenantID: tenantID),
+            tenantID: tenantID,
+        )
+        row.lastUsedAt = now()
+        try await row.update(on: fluent.db())
     }
 }

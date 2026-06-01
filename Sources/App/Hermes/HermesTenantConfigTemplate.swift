@@ -1,15 +1,32 @@
 import Crypto
 import Foundation
+import LuminaVaultShared
 
-/// HER-254 — embedded `~/.hermes/config.yaml` and `.env` templates used to
-/// seed each per-tenant container's `/opt/data/.hermes/` directory before
-/// `docker run`. Without a seeded config, Hermes boots with defaults that
-/// try to enable telegram/discord/whatsapp/email platforms — all of which
-/// fail without credentials and produce noisy logs. We narrow the surface
-/// to just the `api_server` platform so the container becomes a clean
-/// per-tenant OpenAI-compatible HTTP endpoint.
+/// One tenant gateway's decrypted credential config, ready to render into the
+/// container's `.env`. `config` keys are the catalog field keys (e.g.
+/// `bot_token`); `HermesGatewayCatalog.envVars(_:config:)` maps them to the
+/// Hermes env-var names.
+struct HermesGatewaySeed: Sendable, Equatable {
+    let gatewayID: HermesGatewayID
+    let config: [String: String]
+}
+
+/// HER-254 — embedded `config.yaml` and `.env` templates used to seed each
+/// per-tenant container's `/opt/data` volume before `docker run`. Without a
+/// seeded config, Hermes boots with defaults that try to enable
+/// telegram/discord/whatsapp/email platforms — all of which fail without
+/// credentials and produce noisy logs. We narrow the surface to `api_server`
+/// (a clean per-tenant OpenAI-compatible HTTP endpoint) and selectively
+/// activate messaging gateways the tenant has configured by writing their
+/// token env-vars into `.env`.
 ///
-/// Both templates are deterministic given the same `apiKey`. `seed(...)`
+/// Gateway activation is **env-var driven** (Hermes' `gateway run` starts a
+/// platform when its token env-var is present — see the
+/// `hermes-gateway-env-schema` memory), so credentials go in `.env`, not
+/// `config.yaml`. `.env` is written at the volume **root** (`/opt/data/.env`
+/// == `HERMES_HOME/.env`, the only path Hermes reads via `get_env_path()`).
+///
+/// Templates are deterministic given the same inputs. `seed(...)`
 /// SHA-256-compares the rendered output against what's on disk and only
 /// rewrites on drift, so seeding is idempotent across restarts.
 enum HermesTenantConfigTemplate {
@@ -20,33 +37,39 @@ enum HermesTenantConfigTemplate {
     /// Renders + writes the tenant's `config.yaml` and `.env`. Idempotent:
     /// re-writes only when on-disk SHA-256 differs from the rendered output.
     ///
-    /// HER-XXX path fix: Hermes loads `config.yaml` from **HERMES_HOME root**
-    /// (`get_config_path()` == `HERMES_HOME/config.yaml` == `/opt/data/config.yaml`),
-    /// not `<home>/.hermes/`. The previous `.hermes/config.yaml` location was
-    /// silently ignored — the base entrypoint's example copy won instead — so
-    /// the narrowed-platform config never took effect. We now write
-    /// `config.yaml` at the root so both the platform narrowing AND the
-    /// `mcp_servers.mnemosyne` block actually load. (`seed()` runs before every
-    /// `docker run`, so existing tenants pick up the corrected config on their
-    /// next restart via the drift rewrite.) `.env` is kept under `.hermes/` for
-    /// back-compat; `API_SERVER_*` are also injected via `docker --env`, which
-    /// Hermes treats as authoritative regardless of the `.env` path.
-    static func seed(volumePath: String, apiKey: String, defaultModel: String) throws {
+    /// Hermes loads `config.yaml` from **HERMES_HOME root** (`get_config_path()`
+    /// == `/opt/data/config.yaml`) and `.env` from `get_env_path()` ==
+    /// `HERMES_HOME/.env` == `/opt/data/.env`. Both are written at the volume
+    /// root. (A prior version wrote `.env` to `.hermes/.env`, which Hermes never
+    /// reads — `API_SERVER_*` only worked because they're also passed via
+    /// `docker --env`. Gateway tokens are NOT passed via `--env`, so the path
+    /// must be correct here.) `seed()` runs before every `docker run`, so
+    /// existing tenants pick up the corrected paths + any gateway changes on
+    /// their next restart via the drift rewrite.
+    ///
+    /// - Parameter gateways: the tenant's configured messaging gateways; their
+    ///   token env-vars are appended to `.env` to activate each platform.
+    static func seed(
+        volumePath: String,
+        apiKey: String,
+        defaultModel: String,
+        gateways: [HermesGatewaySeed] = [],
+    ) throws {
         do {
             try FileManager.default.createDirectory(
-                atPath: "\(volumePath)/.hermes",
+                atPath: volumePath,
                 withIntermediateDirectories: true,
             )
         } catch {
-            throw SeedError.ioFailure(path: "\(volumePath)/.hermes", underlying: String(describing: error))
+            throw SeedError.ioFailure(path: volumePath, underlying: String(describing: error))
         }
         try writeIfDrifted(
             path: "\(volumePath)/config.yaml",
             content: configYAML(defaultModel: defaultModel),
         )
         try writeIfDrifted(
-            path: "\(volumePath)/.hermes/.env",
-            content: envFile(apiKey: apiKey),
+            path: "\(volumePath)/.env",
+            content: envFile(apiKey: apiKey, gateways: gateways),
         )
     }
 
@@ -91,20 +114,11 @@ enum HermesTenantConfigTemplate {
             enabled: true
             host: 0.0.0.0
             port: 8642
-          telegram:
-            enabled: false
-          discord:
-            enabled: false
-          whatsapp:
-            enabled: false
-          slack:
-            enabled: false
-          matrix:
-            enabled: false
-          mattermost:
-            enabled: false
-          email:
-            enabled: false
+
+        # Messaging gateways (telegram/discord/slack/…) are NOT listed here:
+        # activation is driven by the presence of each platform's token env-var
+        # in `.env` (see HermesGatewayCatalog.envVars). Listing them with
+        # `enabled: false` is inert for messaging and only risks confusion.
 
         gateway:
           allow_all_users: true
@@ -132,16 +146,40 @@ enum HermesTenantConfigTemplate {
         """
     }
 
-    /// Returns the rendered `.env` containing only the API_SERVER_KEY.
-    /// All other credentials are intentionally absent — they're either
-    /// not used by the api_server platform or injected via docker `--env`.
-    static func envFile(apiKey: String) -> String {
-        """
-        # Auto-generated by HermesContainerManager (HER-254).
-        API_SERVER_KEY=\(apiKey)
-        API_SERVER_ENABLED=true
-        API_SERVER_HOST=0.0.0.0
-        API_SERVER_PORT=8642
-        """
+    /// Returns the rendered `.env`: the `API_SERVER_*` block plus one line per
+    /// configured gateway token env-var. Activating a messaging platform is as
+    /// simple as its token env-var being present here.
+    static func envFile(apiKey: String, gateways: [HermesGatewaySeed] = []) -> String {
+        var lines = [
+            "# Auto-generated by HermesContainerManager (HER-254).",
+            "API_SERVER_KEY=\(apiKey)",
+            "API_SERVER_ENABLED=true",
+            "API_SERVER_HOST=0.0.0.0",
+            "API_SERVER_PORT=8642",
+        ]
+        // Deterministic order (sorted by env-var name) so the SHA-256 drift
+        // check is stable across restarts.
+        var gatewayVars: [String: String] = [:]
+        for gw in gateways {
+            for (k, v) in HermesGatewayCatalog.envVars(gw.gatewayID, config: gw.config) {
+                gatewayVars[k] = v
+            }
+        }
+        if !gatewayVars.isEmpty {
+            lines.append("")
+            lines.append("# Messaging gateways (token presence activates the platform).")
+            for key in gatewayVars.keys.sorted() {
+                lines.append("\(key)=\(envQuote(gatewayVars[key]!))")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Single-quote a `.env` value so python-dotenv treats it literally (no
+    /// `${VAR}` interpolation, no backslash-escape processing). Gateway tokens
+    /// are single-quote-free; any embedded `'` is stripped defensively rather
+    /// than producing a malformed line.
+    private static func envQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: ""))'"
     }
 }
