@@ -3775,6 +3775,46 @@ components:
         mtokIn: { type: integer }
         mtokOut: { type: integer }
         markdown: { type: string, description: "Lumina Jobs P1 — the run's rendered Markdown output, shown as the job result on iOS." }
+        blocks:
+          type: array
+          description: "Lumina Jobs P2 — structured native-render blocks; client renders these instead of markdown when present."
+          items: { $ref: '#/components/schemas/LuminaBlock' }
+
+    LuminaBlock:
+      type: object
+      required: [type]
+      description: "Flat discriminated union (type + optional typed fields). Unknown types render a client-side fallback."
+      properties:
+        type: { type: string, description: "heading|paragraph|markdown|statCard|lineChart|barChart|list|table|badge|keyValue|quote|image|divider" }
+        text: { type: string }
+        level: { type: integer }
+        label: { type: string }
+        value: { type: string }
+        delta: { type: string }
+        trend: { type: string }
+        items: { type: array, items: { type: string } }
+        columns: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: array, items: { type: string } } }
+        url: { type: string }
+        series:
+          type: array
+          items:
+            type: object
+            required: [name, points]
+            properties:
+              name: { type: string }
+              points:
+                type: array
+                items:
+                  type: object
+                  required: [x, y]
+                  properties: { x: { type: string }, y: { type: number } }
+        pairs:
+          type: array
+          items:
+            type: object
+            required: [key, value]
+            properties: { key: { type: string }, value: { type: string } }
 
     SkillSparklinePoint:
       type: object

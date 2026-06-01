@@ -16,10 +16,14 @@ enum SkillTrigger: Hashable {
 
 /// Outcome of a single skill execution. Persisted to `skill_run_log` by
 /// `SkillRunner` and surfaced on the `POST /v1/skills/:name/run` response.
-struct SkillRunResult: Codable, Hashable {
+struct SkillRunResult: Codable {
     let runID: UUID
     let status: String // "ok" | "error"
     let markdown: String
+    /// Jobs P2 — structured native-render blocks (nil when the agent returned
+    /// plain markdown). Persisted to `skill_run_log.blocks` and surfaced on
+    /// `SkillRunDTO.blocks` for the iOS BlockRenderer.
+    let blocks: [LuminaBlock]?
     let error: String?
     let modelUsed: String?
     let mtokIn: Int
@@ -197,6 +201,7 @@ actor SkillRunner {
                 runID: runID,
                 status: "ok",
                 markdown: outcome.summary,
+                blocks: outcome.blocks,
                 error: nil,
                 modelUsed: modelUsed,
                 mtokIn: mtokIn,
@@ -215,6 +220,7 @@ actor SkillRunner {
                 runID: runID,
                 status: "error",
                 markdown: "",
+                blocks: nil,
                 error: message,
                 modelUsed: modelUsed,
                 mtokIn: mtokIn,
@@ -231,6 +237,36 @@ actor SkillRunner {
 
     private struct AgentOutcome {
         var summary: String
+        var blocks: [LuminaBlock]?
+    }
+
+    /// Jobs P2 — the agent may return either plain markdown (existing skills)
+    /// or a JSON object `{"markdown": "...", "blocks": [...]}` for native
+    /// rendering. Lenient: if the content parses as that shape with blocks,
+    /// use them; otherwise treat the whole content as markdown (blocks = nil).
+    /// Non-breaking — markdown-only skills are unaffected.
+    static func parseAgentOutput(_ content: String) -> (summary: String, blocks: [LuminaBlock]?) {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip a ```json … ``` fence if present.
+        let unfenced: String = {
+            guard trimmed.hasPrefix("```") else { return trimmed }
+            let inner = trimmed.drop(while: { $0 == "`" })
+            let afterTag = inner.drop(while: { $0 != "\n" }).dropFirst()
+            if let end = afterTag.range(of: "```", options: .backwards) {
+                return String(afterTag[afterTag.startIndex ..< end.lowerBound])
+            }
+            return String(afterTag)
+        }()
+        guard unfenced.hasPrefix("{"), let data = unfenced.data(using: .utf8) else {
+            return (content, nil)
+        }
+        struct Envelope: Decodable { let markdown: String?; let blocks: [LuminaBlock]? }
+        guard let env = try? JSONDecoder().decode(Envelope.self, from: data),
+              let blocks = env.blocks, !blocks.isEmpty
+        else {
+            return (content, nil)
+        }
+        return (env.markdown ?? content, blocks)
     }
 
     private enum AvailableTool: String, CaseIterable {
@@ -381,7 +417,20 @@ actor SkillRunner {
             You are running LuminaVault skill `\(skill.name)`.
             Follow the skill body. Tool availability is enforced server-side;
             if a tool call returns an error, continue without trying to bypass it.
-            Return the final output body as markdown or concise plain text.
+
+            OUTPUT FORMAT — choose ONE:
+            • Plain markdown / concise text (default), OR
+            • For data-rich results, a single JSON object:
+              {"markdown":"<short fallback>","blocks":[ ... ]}
+              where each block is {"type": <kind>, ...fields}. Kinds:
+              heading{text,level} · paragraph{text} · markdown{text} ·
+              statCard{label,value,delta,trend:"up|down|flat"} ·
+              lineChart{series:[{name,points:[{x,y}]}]} · barChart{series} ·
+              list{items:[...]} · table{columns:[...],rows:[[...]]} ·
+              badge{text} · keyValue{pairs:[{key,value}]} · quote{text} ·
+              image{url} · divider. Pick the blocks that best present THIS
+              domain (e.g. statCard+lineChart for metrics, table/list for
+              collections, markdown for prose). Output ONLY the JSON, no fence.
             """),
             .init(role: "user", content: """
             Trigger: \(Self.triggerDescription(trigger))
@@ -437,7 +486,8 @@ actor SkillRunner {
                 }
                 continue
             }
-            return AgentOutcome(summary: assistant.content ?? "")
+            let parsed = Self.parseAgentOutput(assistant.content ?? "")
+            return AgentOutcome(summary: parsed.summary, blocks: parsed.blocks)
         }
         throw HTTPError(.badGateway, message: "skill runner agent did not converge")
     }
@@ -636,13 +686,20 @@ actor SkillRunner {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "skill runner requires SQL driver")
         }
+        // Jobs P2 — encode structured blocks to a JSON string for the JSONB
+        // column; nil when the run produced plain markdown.
+        let blocksJSON: String? = {
+            guard let blocks = result.blocks, let data = try? JSONEncoder().encode(blocks) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }()
         try await sql.raw("""
         INSERT INTO skill_run_log
-            (id, tenant_id, source, name, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown)
+            (id, tenant_id, source, name, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown, blocks)
         VALUES
             (\(bind: result.runID), \(bind: tenantID), \(bind: skill.source.rawValue), \(bind: skill.name),
              \(bind: result.startedAt), \(bind: result.endedAt), \(bind: result.status), \(bind: result.error),
-             \(bind: result.modelUsed), \(bind: result.mtokIn), \(bind: result.mtokOut), \(bind: result.markdown))
+             \(bind: result.modelUsed), \(bind: result.mtokIn), \(bind: result.mtokOut), \(bind: result.markdown),
+             \(bind: blocksJSON)::jsonb)
         """).run()
         try await sql.raw("""
         INSERT INTO skills_state

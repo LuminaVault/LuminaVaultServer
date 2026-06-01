@@ -143,9 +143,10 @@ struct SkillsController {
             let mtok_in: Int
             let mtok_out: Int
             let markdown: String?
+            let blocks: String?
         }
         let runs = try await sql.raw("""
-        SELECT id, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown
+        SELECT id, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown, blocks::text AS blocks
         FROM skill_run_log
         WHERE tenant_id = \(bind: tenantID) AND name = \(bind: String(name))
         ORDER BY started_at DESC
@@ -153,7 +154,10 @@ struct SkillsController {
         """).all(decoding: RunRow.self)
 
         let runDTOs = runs.map { row in
-            SkillRunDTO(
+            let blocks: [LuminaBlock]? = row.blocks
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONDecoder().decode([LuminaBlock].self, from: $0) }
+            return SkillRunDTO(
                 id: row.id,
                 startedAt: row.started_at,
                 endedAt: row.ended_at,
@@ -163,6 +167,7 @@ struct SkillsController {
                 mtokIn: row.mtok_in,
                 mtokOut: row.mtok_out,
                 markdown: row.markdown,
+                blocks: blocks,
             )
         }
 
