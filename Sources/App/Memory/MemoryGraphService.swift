@@ -160,8 +160,11 @@ struct MemoryGraphService {
         """).all(decoding: MemoryNodeRow.self)
     }
 
-    /// Wiki-page nodes — one per text-like `vault_files` row. These are the
-    /// same source pages the compile pipeline renders under `wiki/sources/`.
+    /// Source nodes — one per captured `vault_files` row. Includes text-like
+    /// captures (notes, saved links → `text/markdown`) **and images**
+    /// (`image/*`, e.g. screenshots and photo captures). Images were
+    /// previously excluded by a `text/%`-only filter, so they never appeared
+    /// on the graph despite being first-class captures.
     private func fetchWikiNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [WikiNodeRow] {
         try await sql.raw("""
         SELECT id,
@@ -171,7 +174,7 @@ struct MemoryGraphService {
                created_at
         FROM vault_files
         WHERE tenant_id = \(bind: tenantID)
-          AND content_type LIKE 'text/%'
+          AND (content_type LIKE 'text/%' OR content_type LIKE 'image/%')
         ORDER BY created_at DESC NULLS LAST, id ASC
         LIMIT \(bind: limit)
         """).all(decoding: WikiNodeRow.self)
