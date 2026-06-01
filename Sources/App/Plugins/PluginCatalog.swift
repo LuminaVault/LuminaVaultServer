@@ -142,6 +142,27 @@ enum PluginCatalog {
             binding: "byok-embeddings",
             premium: true,
         ),
+        "reading-time": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "reading-time",
+                name: "Reading Time",
+                summary: "Add an estimated reading time to articles you capture.",
+                description: """
+                Estimates how long each captured article takes to read (at \
+                ~200 words per minute) and writes it into the note's \
+                frontmatter as `reading_time`. Runs automatically after a \
+                link is captured and enriched — no configuration needed.
+                """,
+                category: .capture,
+                capabilityKind: .captureHook,
+                iconSlug: "capture",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [],
+            ),
+            binding: "reading-time",
+        ),
     ]
 
     static func entry(slug: String) -> Entry? {
