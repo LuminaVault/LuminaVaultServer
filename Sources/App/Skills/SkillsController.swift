@@ -142,9 +142,10 @@ struct SkillsController {
             let model_used: String?
             let mtok_in: Int
             let mtok_out: Int
+            let markdown: String?
         }
         let runs = try await sql.raw("""
-        SELECT id, started_at, ended_at, status, error, model_used, mtok_in, mtok_out
+        SELECT id, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown
         FROM skill_run_log
         WHERE tenant_id = \(bind: tenantID) AND name = \(bind: String(name))
         ORDER BY started_at DESC
@@ -161,6 +162,7 @@ struct SkillsController {
                 modelUsed: row.model_used,
                 mtokIn: row.mtok_in,
                 mtokOut: row.mtok_out,
+                markdown: row.markdown,
             )
         }
 

@@ -3774,6 +3774,7 @@ components:
         modelUsed: { type: string }
         mtokIn: { type: integer }
         mtokOut: { type: integer }
+        markdown: { type: string, description: "Lumina Jobs P1 — the run's rendered Markdown output, shown as the job result on iOS." }
 
     SkillSparklinePoint:
       type: object

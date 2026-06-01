@@ -638,11 +638,11 @@ actor SkillRunner {
         }
         try await sql.raw("""
         INSERT INTO skill_run_log
-            (id, tenant_id, source, name, started_at, ended_at, status, error, model_used, mtok_in, mtok_out)
+            (id, tenant_id, source, name, started_at, ended_at, status, error, model_used, mtok_in, mtok_out, markdown)
         VALUES
             (\(bind: result.runID), \(bind: tenantID), \(bind: skill.source.rawValue), \(bind: skill.name),
              \(bind: result.startedAt), \(bind: result.endedAt), \(bind: result.status), \(bind: result.error),
-             \(bind: result.modelUsed), \(bind: result.mtokIn), \(bind: result.mtokOut))
+             \(bind: result.modelUsed), \(bind: result.mtokIn), \(bind: result.mtokOut), \(bind: result.markdown))
         """).run()
         try await sql.raw("""
         INSERT INTO skills_state
