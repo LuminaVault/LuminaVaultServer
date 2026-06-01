@@ -2099,6 +2099,16 @@ paths:
           schema:
             type: string
             enum: [connector, skill, memory, export, ui, theme]
+        - name: featured
+          in: query
+          required: false
+          description: When true, returns only Featured marketplace entries.
+          schema: { type: boolean }
+        - name: premium
+          in: query
+          required: false
+          description: When true, returns only premium (paid-tier) entries.
+          schema: { type: boolean }
       responses:
         '200':
           description: Catalog entries (connectors + LV predefined skills).
@@ -2181,6 +2191,7 @@ paths:
       description: |
         Validates `config` against the catalog entry's fields; secret values are
         sealed at rest and never echoed (responses carry `hasConfig` only).
+        Premium plugins require the pro/ultimate tier → 402 otherwise.
       requestBody:
         required: true
         content:
@@ -2192,6 +2203,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PluginInstallDTO' }
+        '402':
+          description: Premium plugin requires a paid subscription (premium_required).
 
   /v1/plugins/installs/{id}:
     patch:

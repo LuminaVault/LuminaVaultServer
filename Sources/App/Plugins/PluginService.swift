@@ -38,11 +38,20 @@ struct PluginService {
     // MARK: - Catalog
 
     /// Connector entries (static) + LV predefined skill entries (from
-    /// `SkillCatalog`), filtered by category. Tenant-scoped because skill
-    /// manifests are loaded per tenant (builtin + vault).
-    func listCatalog(tenantID: UUID, category: PluginCategory?) async -> [PluginCatalogEntryDTO] {
-        var entries = PluginCatalog.catalog(category: category)
-        if category == nil || category == .skill {
+    /// `SkillCatalog`), filtered by category and the Slice 6 curation flags.
+    /// Tenant-scoped because skill manifests are loaded per tenant.
+    ///
+    /// LV predefined skills are never `featured`/`premium`, so they are only
+    /// merged in for the unfiltered/category-only view — a `featured`/`premium`
+    /// filter returns just the matching static catalog entries.
+    func listCatalog(
+        tenantID: UUID,
+        category: PluginCategory?,
+        featured: Bool? = nil,
+        premium: Bool? = nil,
+    ) async -> [PluginCatalogEntryDTO] {
+        var entries = PluginCatalog.catalog(category: category, featured: featured, premium: premium)
+        if category == nil || category == .skill, featured == nil, premium == nil {
             entries += await skillEntries(tenantID: tenantID)
         }
         return entries.sorted { $0.slug < $1.slug }
