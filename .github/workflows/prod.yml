@@ -131,6 +131,15 @@ jobs:
             SENTRY_ENVIRONMENT="${{ secrets.SENTRY_ENVIRONMENT }}"
             SENTRY_RELEASE="${{ github.sha }}"
 
+            # HER-131: backup config. Each is optional — an unset secret leaves
+            # any value already in .env.production untouched (see the write loop
+            # below), so you can configure backups by hand on the VPS instead.
+            # The backup profile is only brought up when recipient + remote are
+            # both present (further down).
+            BACKUP_AGE_RECIPIENT="${{ secrets.BACKUP_AGE_RECIPIENT }}"
+            BACKUP_RCLONE_REMOTE="${{ secrets.BACKUP_RCLONE_REMOTE }}"
+            BACKUP_ALERT_WEBHOOK="${{ secrets.BACKUP_ALERT_WEBHOOK }}"
+
             # Login to container registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -152,7 +161,8 @@ jobs:
                 echo "POSTHOG_OTEL_TOKEN=${POSTHOG_OTEL_TOKEN}" >> .env.production
               fi
             fi
-            for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE; do
+            for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE \
+                       BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK; do
               value="$(printenv "$key" || true)"
               if [ -n "${value}" ]; then
                 if grep -q "^${key}=" .env.production; then
@@ -197,6 +207,27 @@ jobs:
               APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
                 -f docker-compose.production.yml logs --tail=120 app
               exit 1
+            fi
+
+            # HER-131: bring up the encrypted backup sidecar when configured.
+            # Reads the persisted .env.production so a hand-configured VPS works
+            # even when the GH secrets are unset. Requires ./secrets/rclone.conf
+            # and the age identity to already exist on the host (one-time setup;
+            # see docs/backup.md). A backup failure does NOT fail the deploy.
+            if grep -qE '^BACKUP_AGE_RECIPIENT=.+' .env.production \
+               && grep -qE '^BACKUP_RCLONE_REMOTE=.+' .env.production; then
+              if [ -f ./secrets/rclone.conf ]; then
+                echo "Backups configured — bringing up backup profile"
+                APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+                  -f docker-compose.production.yml \
+                  --env-file .env.production \
+                  --profile backup \
+                  up -d --build --no-deps backup || echo "WARN: backup service failed to start (non-fatal)"
+              else
+                echo "WARN: BACKUP_* set but ./secrets/rclone.conf missing — skipping backup profile (see docs/backup.md)"
+              fi
+            else
+              echo "Backups not configured (BACKUP_AGE_RECIPIENT / BACKUP_RCLONE_REMOTE unset) — skipping backup profile"
             fi
 
       # HER-272: authoritative post-deploy smoke test, run FROM THE RUNNER

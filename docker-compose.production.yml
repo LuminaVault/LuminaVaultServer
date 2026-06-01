@@ -282,6 +282,10 @@ services:
       BACKUP_RETAIN_MONTHLY: ${BACKUP_RETAIN_MONTHLY:-6}
       BACKUP_WEEKLY_DOW: ${BACKUP_WEEKLY_DOW:-7}
       BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START:-false}
+      # Failure alerting (optional). Slack-compatible incoming-webhook URL;
+      # empty = log only. BACKUP_ALERT_ON_SUCCESS also pings on green runs.
+      BACKUP_ALERT_WEBHOOK: ${BACKUP_ALERT_WEBHOOK:-}
+      BACKUP_ALERT_ON_SUCCESS: ${BACKUP_ALERT_ON_SUCCESS:-false}
       TZ: ${BACKUP_TZ:-UTC}
     deploy:
       resources:

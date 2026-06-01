@@ -77,11 +77,19 @@ BACKUP_AGE_IDENTITY_PATH=/app/secrets/age-identity.txt         # restore-only
 # BACKUP_RETAIN_WEEKLY=4
 # BACKUP_RETAIN_MONTHLY=6
 # BACKUP_WEEKLY_DOW=7
+# BACKUP_ALERT_WEBHOOK=https://hooks.slack.com/services/...  # failure alerts
+# BACKUP_ALERT_ON_SUCCESS=false                              # also ping on green
 ```
 
 See `.env.example` for the full annotated block.
 
 ### 4. Enable the backup service
+
+> **CI/CD auto-enables this.** When `BACKUP_AGE_RECIPIENT` + `BACKUP_RCLONE_REMOTE`
+> are set (as GitHub secrets or directly in `.env.production`) **and**
+> `./secrets/rclone.conf` exists on the host, the production deploy
+> (`prod.yml`) brings up the `backup` sidecar automatically after each release.
+> The manual commands below are for the first run or a hand-managed host.
 
 ```bash
 make backup-image     # build luminavault-backup:local once
@@ -104,6 +112,14 @@ docker compose -p prod -f docker-compose.production.yml --profile backup \
 docker compose -p prod -f docker-compose.production.yml --profile backup \
   run --rm backup rclone cat "$BACKUP_RCLONE_REMOTE/daily/<date>/MANIFEST.txt"
 ```
+
+## Failure alerting
+
+Set `BACKUP_ALERT_WEBHOOK` (a Slack-compatible incoming webhook) to get a POST
+when a nightly run fails — `backup.sh` traps the first failing command and
+reports the aborted snapshot. The deploy passes through the `BACKUP_ALERT_WEBHOOK`
+GitHub secret if you set one. Set `BACKUP_ALERT_ON_SUCCESS=true` to also receive
+a green heartbeat (useful to detect a silently dead cron). Unset = log only.
 
 ## Restore procedure (disaster recovery)
 

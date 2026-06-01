@@ -38,6 +38,10 @@ DAILY="${REMOTE}/daily/${STAMP}"
 SRC_ROOT="${BACKUP_SRC_ROOT:-/backup/src}"
 PG_PORT="${POSTGRES_PORT:-5432}"
 
+# Alert on any failure (ERR fires on the first failing command under set -e).
+# STAMP is defined above so the message names the snapshot in flight.
+trap 'rc=$?; notify "FAILED" "snapshot ${STAMP} aborted (exit ${rc}); check ${BACKUP_LOG_DIR}/backup.log"; exit ${rc}' ERR
+
 log "backup: starting ${STAMP} → ${DAILY}"
 
 # --- Postgres (logical dump, custom format) ---------------------------------
@@ -92,3 +96,6 @@ prune_tier weekly  "${BACKUP_RETAIN_WEEKLY:-4}"
 prune_tier monthly "${BACKUP_RETAIN_MONTHLY:-6}"
 
 log "backup: completed ${STAMP}"
+if [ "${BACKUP_ALERT_ON_SUCCESS:-false}" = "true" ]; then
+  notify "OK" "snapshot ${STAMP} completed"
+fi

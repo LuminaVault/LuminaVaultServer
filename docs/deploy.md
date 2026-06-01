@@ -147,3 +147,37 @@ echo "$TARGET" > .green_image
 | `SENTRY_*` | deploy | Sentry release + env wiring |
 | `SLACK_WEBHOOK_URL` | notify (optional) | deploy notifications (deferred) |
 | `vars.PRODUCTION_HEALTH_URL` (optional) | smoke test | override the smoke URL (default `https://api.luminavault.com/health`) |
+| `BACKUP_AGE_RECIPIENT` (optional) | deploy | HER-131 backup encryption recipient (age public key) |
+| `BACKUP_RCLONE_REMOTE` (optional) | deploy | HER-131 backup destination, e.g. `b2:bucket/luminavault` |
+| `BACKUP_ALERT_WEBHOOK` (optional) | deploy | HER-131 Slack webhook for backup-failure alerts |
+
+## Backups (HER-131)
+
+The deploy writes the `BACKUP_*` secrets into `.env.production` and, when both
+`BACKUP_AGE_RECIPIENT` and `BACKUP_RCLONE_REMOTE` are present **and**
+`./secrets/rclone.conf` exists on the host, brings up the `backup` profile
+sidecar. A backup-service start failure is logged but does **not** fail the
+deploy.
+
+One-time host setup is still manual (the deploy never invents keys):
+
+```bash
+ssh <SERVER_USER>@<SERVER_HOST>
+cd /opt/obsidian-claudebrain
+
+# 1. age keypair — keep the private identity safe & offline.
+age-keygen -o secrets/age-identity.txt && chmod 600 secrets/age-identity.txt
+#    note the "Public key: age1..." line → set BACKUP_AGE_RECIPIENT (GH secret
+#    or directly in .env.production).
+
+# 2. rclone remote (Backblaze B2 / AWS S3 / MinIO / SFTP).
+docker run --rm -it -v "$PWD/secrets:/config/rclone" rclone/rclone config
+
+# 3. set the remote + recipient (GH secrets, or .env.production directly):
+#    BACKUP_AGE_RECIPIENT=age1....
+#    BACKUP_RCLONE_REMOTE=b2:my-bucket/luminavault
+#    BACKUP_AGE_IDENTITY_PATH=/app/secrets/age-identity.txt
+```
+
+Next deploy auto-starts the sidecar. Full operator runbook (retention, restore,
+drill, alerting): [`backup.md`](./backup.md).

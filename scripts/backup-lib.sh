@@ -25,6 +25,22 @@ die() {
   exit 1
 }
 
+# --- Alerting ----------------------------------------------------------------
+# notify <status> <message>
+# Logs always; POSTs a Slack-compatible JSON payload when BACKUP_ALERT_WEBHOOK
+# is set. Best-effort — a failed webhook never masks the original exit status.
+notify() {
+  local status="$1" msg="$2"
+  log "${status}: ${msg}"
+  [ -n "${BACKUP_ALERT_WEBHOOK:-}" ] || return 0
+  command -v curl >/dev/null 2>&1 || { log "WARN: curl missing — cannot send alert"; return 0; }
+  local host; host="$(hostname 2>/dev/null || echo unknown)"
+  curl -fsS -m 10 -X POST -H 'Content-type: application/json' \
+    --data "{\"text\":\"[LuminaVault backup @ ${host}] ${status}: ${msg}\"}" \
+    "${BACKUP_ALERT_WEBHOOK}" >/dev/null 2>&1 \
+    || log "WARN: alert webhook POST failed"
+}
+
 # --- Env validation ----------------------------------------------------------
 # Both scripts need a remote + an age recipient (backup) or identity (restore);
 # the recipient check lives here, the identity check stays in restore.sh.

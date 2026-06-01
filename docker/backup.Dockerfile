@@ -7,7 +7,7 @@
 # base image and drives the nightly schedule.
 FROM postgres:18-alpine
 
-RUN apk add --no-cache age rclone bash tzdata coreutils
+RUN apk add --no-cache age rclone bash tzdata coreutils curl
 
 # Backup + restore scripts and their shared lib. backup.sh resolves its lib by
 # its own directory, so all three must live together.
