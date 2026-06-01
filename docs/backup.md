@@ -6,6 +6,21 @@ procedure, and the quarterly drill. For host provisioning see
 [`hetzner-deployment.md`](./hetzner-deployment.md); for deploy/rollback see
 [`deploy.md`](./deploy.md).
 
+## Quick start (VPS, one-time, after merge)
+
+```bash
+cd /opt/obsidian-claudebrain
+age-keygen -o secrets/age-identity.txt && chmod 600 secrets/age-identity.txt   # → BACKUP_AGE_RECIPIENT (the printed age1... public key)
+docker run --rm -it -v "$PWD/secrets:/config/rclone" rclone/rclone config       # → secrets/rclone.conf
+# set GH secrets (or .env.production directly):
+#   BACKUP_AGE_RECIPIENT, BACKUP_RCLONE_REMOTE, BACKUP_ALERT_WEBHOOK (optional)
+```
+
+Next deploy auto-starts the sidecar (`prod.yml` brings up `--profile backup`
+once recipient + remote + `secrets/rclone.conf` are present). Keep the private
+`secrets/age-identity.txt` backed up offline — lose it and backups are
+unrecoverable. Details below.
+
 ## What gets backed up
 
 | Asset | How | Artifact |
