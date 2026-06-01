@@ -2,9 +2,10 @@
 
 Production CI/CD for `LuminaVaultServer`. This is the operational runbook:
 how a release reaches the VPS, how to roll back, and where to look when
-it breaks. For host provisioning, TLS/Caddy, networking, and backups see
-[`hetzner-deployment.md`](./hetzner-deployment.md). For branch protection
-see [`cicd/branch-protection.md`](./cicd/branch-protection.md).
+it breaks. For host provisioning, TLS/Caddy, and networking see
+[`hetzner-deployment.md`](./hetzner-deployment.md); for encrypted off-site
+backups and the restore procedure see [`backup.md`](./backup.md). For branch
+protection see [`cicd/branch-protection.md`](./cicd/branch-protection.md).
 
 ## Pipeline overview
 

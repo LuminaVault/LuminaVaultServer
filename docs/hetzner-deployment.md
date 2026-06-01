@@ -366,48 +366,40 @@ hasn't completed yet; wait 60 s and retry.
 | Audit log archives                         | weekly         | Object Storage (lifecycle rule to Glacier-equivalent at 90 d) | ~hours      |
 | Secrets                                    | manual on rotate | password manager + sealed-secret git    | n/a         |
 
-### 6.1 Nightly backup script (sketch)
+### 6.1 Nightly backup service (HER-131 — implemented)
+
+Backups are baked into the compose stack as an opt-in `backup` service: a cron
+sidecar that nightly does `pg_dump | age | rclone copy` for Postgres plus
+`tar | age | rclone copy` for `data/luminavault/` and `data/hermes/`, all
+age-encrypted and shipped to any rclone remote (Backblaze B2, AWS S3, MinIO,
+or a Hetzner Storage Box via rclone's SFTP backend). Retention defaults to
+7 daily / 4 weekly / 6 monthly.
+
+**Setup + restore are documented in [`backup.md`](./backup.md).** In short:
 
 ```bash
-#!/usr/bin/env bash
-# /etc/cron.daily/lv-backup — runs at 02:30 UTC under root.
-# TODO(HER-31): commit a fully-tested version at scripts/lv-backup.sh.
-set -euo pipefail
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
-DEST="ssh://u<storage-box-user>@<storage-box-user>.your-storagebox.de:23/backups"
-
-# 1. PG base dump
-docker compose exec -T postgres pg_dump -U luminavault luminavault \
-  | zstd -19 -T0 > /srv/luminavault/backups/pg-${TS}.sql.zst
-
-# 2. Hermes + vault (rsync, dedup-aware destination)
-rsync -aHAX --delete /srv/luminavault/data/hermes/   ${DEST}/hermes/
-rsync -aHAX --delete /srv/luminavault/data/luminavault/  ${DEST}/vault/
-
-# 3. Ship PG dump
-rsync -av /srv/luminavault/backups/pg-${TS}.sql.zst  ${DEST}/postgres/
-
-# 4. Local retention (Storage Box keeps the long tail)
-find /srv/luminavault/backups -name "pg-*.sql.zst" -mtime +7 -delete
+# one-time: generate an age keypair + rclone remote (see backup.md)
+docker compose -p prod -f docker-compose.production.yml \
+  --profile backup --env-file .env.production up -d backup
 ```
 
-Set up Storage Box SSH key + `~/.ssh/known_hosts` once with a manual
-`ssh u<id>@<id>.your-storagebox.de -p 23` to accept the host key before
-the cron's first run.
+This supersedes the old `/etc/cron.daily/lv-backup` sketch — do not hand-roll a
+host cron; the sidecar owns it.
 
 ### 6.2 Restore drill
 
-Run a restore drill on a second box once a quarter:
+An automated round-trip drill runs quarterly in CI
+(`.github/workflows/restore-drill.yml`): it backs up an ephemeral Postgres +
+sentinel files, wipes them, restores with `scripts/restore.sh`, and asserts the
+data came back — no cloud credentials needed. A red run means restore is broken.
+Trigger it on demand from **Actions → Restore Drill → Run workflow**, or locally
+with `make backup-drill`.
 
-1. `hcloud server create` a fresh CPX21 with the same cloud-init.
-2. `rsync` the latest Storage Box snapshot back to `/srv/luminavault/`.
-3. `docker compose up -d postgres` → `psql -f pg-*.sql` into a fresh DB.
-4. `swift run App migrate` → confirm migrations are at head.
-5. `swift run App` and verify `GET /v1/me` works with a saved token.
-
-If the drill takes longer than 30 min, refactor the script — your real
-incident response cannot afford to discover problems in the script under
-stress.
+For a full production restore against real off-site snapshots, follow the
+disaster-recovery procedure in [`backup.md`](./backup.md) (stop stack →
+`make backup-restore DATE=YYYY-MM-DD` → restart → verify `GET /v1/me`). If the
+drill takes longer than 30 min, fix the tooling — incident response cannot
+afford to discover problems under stress.
 
 ---
 
