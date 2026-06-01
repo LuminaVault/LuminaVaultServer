@@ -2101,10 +2101,51 @@ paths:
       description: |
         Proxies the tenant's Hermes `GET /v1/skills`. Returns catalog entries
         with `publisher: "Hermes"`. Empty when Hermes is unresolved/unreachable.
-        Installing hub skills from LV is not yet supported (Slice 3b).
       responses:
         '200':
           description: Hermes-installed skills as read-only catalog entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/hermes-skills/install:
+    post:
+      tags: [Plugins]
+      operationId: pluginHermesSkillInstall
+      summary: Install a Hermes Hub skill into the tenant's Hermes container.
+      description: |
+        Runs `hermes skills install <id>` inside the caller's per-tenant Hermes
+        container (CLI-only upstream → docker exec). Returns the refreshed
+        read-only list of installed skills. 409 if the tenant has no container.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Hub skill id or URL (`hermes skills install` argument).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Installed; refreshed Hermes-installed skills list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }
+
+  /v1/plugins/hermes-skills/{name}:
+    delete:
+      tags: [Plugins]
+      operationId: pluginHermesSkillUninstall
+      summary: Uninstall a skill from the tenant's Hermes container.
+      description: |
+        Runs `hermes skills uninstall <name>` inside the caller's container.
+        Returns the refreshed read-only list of installed skills.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Uninstalled; refreshed Hermes-installed skills list.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PluginCatalogListResponse' }

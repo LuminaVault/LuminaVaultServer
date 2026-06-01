@@ -554,6 +554,10 @@ func buildRouter(
     // HER-330 — owner-triggered "Update Hermes" controller. Built inside the
     // secret-key branch where the docker exec + container manager exist.
     var hermesUpdateController: HermesUpdateController?
+    // HER-43 Slice 3b — Hermes Hub skill install/uninstall via docker exec into
+    // the tenant's container. Built in the same secret branch (needs the docker
+    // exec + container manager); mounted under /v1/plugins (tenant JWT).
+    var hubSkillsService: HermesHubSkillsService?
     // HER-134 — LocalHermes text-embedding adapter resolves the running
     // per-tenant container via `HermesContainerManager.handle`. Outside
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
@@ -611,6 +615,15 @@ func buildRouter(
             localHermesHandleResolver = { tenantID in
                 try await containerManager.handle(tenantID: tenantID)
             }
+            // HER-43 Slice 3b — hub skill install/uninstall into the tenant's
+            // container (CLI-only upstream → docker exec). Reuses the 3a
+            // read-only HermesSkillsClient to return the refreshed list.
+            hubSkillsService = HermesHubSkillsService(
+                docker: dockerExec,
+                containerManager: containerManager,
+                installedSkillsClient: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
+                logger: Logger(label: "lv.plugins.hub-install"),
+            )
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
@@ -1492,6 +1505,11 @@ func buildRouter(
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         let pluginsGroup = byoHermesMiddleware.map { pluginsBase.add(middleware: $0) } ?? pluginsBase
         PluginController(service: pluginService).addRoutes(to: pluginsGroup)
+        // HER-43 Slice 3b — hub skill install/uninstall, mounted on the same
+        // tenant-JWT group. Only when a per-tenant container manager exists.
+        if let hubSkillsService {
+            HermesHubSkillsController(service: hubSkillsService).addRoutes(to: pluginsGroup)
+        }
     }
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
