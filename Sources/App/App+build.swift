@@ -1480,11 +1480,17 @@ func buildRouter(
                     logger: Logger(label: "lv.plugins.rss"),
                 ),
             ]),
+            skillCatalog: skillCatalog,
+            hermesSkills: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
             logger: Logger(label: "lv.plugins"),
         )
-        let pluginsGroup = router.group("/v1/plugins")
+        // `byoHermesMiddleware` is added when available so `GET /hermes-skills`
+        // can read the tenant's resolved Hermes base URL + auth from
+        // `ctx.hermesResolution`; without it that route returns an empty list.
+        let pluginsBase = router.group("/v1/plugins")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        let pluginsGroup = byoHermesMiddleware.map { pluginsBase.add(middleware: $0) } ?? pluginsBase
         PluginController(service: pluginService).addRoutes(to: pluginsGroup)
     }
 

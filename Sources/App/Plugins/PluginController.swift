@@ -25,6 +25,7 @@ struct PluginController {
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("catalog", use: catalog)
+        router.get("hermes-skills", use: hermesSkills)
         router.get("installs", use: listInstalls)
         router.post("installs", use: install)
         router.patch("installs/:id", use: update)
@@ -34,9 +35,22 @@ struct PluginController {
 
     @Sendable
     func catalog(_ req: Request, ctx: AppRequestContext) async throws -> PluginCatalogListResponse {
-        _ = try ctx.requireTenantID()
+        let tenantID = try ctx.requireTenantID()
         let category = req.uri.queryParameters.get("category").flatMap { PluginCategory(rawValue: $0) }
-        return PluginCatalogListResponse(items: service.listCatalog(category: category))
+        return await PluginCatalogListResponse(items: service.listCatalog(tenantID: tenantID, category: category))
+    }
+
+    /// HER-43 Slice 3a — read-only list of skills installed in the tenant's
+    /// Hermes agent (proxied from Hermes `GET /v1/skills`). Empty when Hermes
+    /// is unresolved/unreachable. Hub install lands in Slice 3b.
+    @Sendable
+    func hermesSkills(_: Request, ctx: AppRequestContext) async throws -> PluginCatalogListResponse {
+        _ = try ctx.requireTenantID()
+        let items = await service.hermesInstalledSkills(
+            baseURL: ctx.hermesResolution?.baseURL,
+            authHeader: ctx.hermesResolution?.authHeader,
+        )
+        return PluginCatalogListResponse(items: items)
     }
 
     @Sendable
