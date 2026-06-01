@@ -15,6 +15,10 @@ struct PluginService {
     let secretBox: SecretBox
     let importService: ImportService
     let connectors: ConnectorRegistry
+    /// HER-43 Slice 3a — LV predefined skills surfaced as `.skill` plugins.
+    let skillCatalog: SkillCatalog
+    /// HER-43 Slice 3a — read-only mirror of the tenant's Hermes installed skills.
+    let hermesSkills: any HermesSkillsClienting
     let logger: Logger
 
     enum ErrorCode: String {
@@ -33,8 +37,28 @@ struct PluginService {
 
     // MARK: - Catalog
 
-    func listCatalog(category: PluginCategory?) -> [PluginCatalogEntryDTO] {
-        PluginCatalog.catalog(category: category)
+    /// Connector entries (static) + LV predefined skill entries (from
+    /// `SkillCatalog`), filtered by category. Tenant-scoped because skill
+    /// manifests are loaded per tenant (builtin + vault).
+    func listCatalog(tenantID: UUID, category: PluginCategory?) async -> [PluginCatalogEntryDTO] {
+        var entries = PluginCatalog.catalog(category: category)
+        if category == nil || category == .skill {
+            entries += await skillEntries(tenantID: tenantID)
+        }
+        return entries.sorted { $0.slug < $1.slug }
+    }
+
+    /// Read-only catalog of skills already installed in the tenant's Hermes
+    /// agent (proxied from Hermes `GET /v1/skills`). Empty if Hermes is
+    /// unresolved/unreachable.
+    func hermesInstalledSkills(baseURL: URL?, authHeader: String?) async -> [PluginCatalogEntryDTO] {
+        guard let baseURL else { return [] }
+        return await hermesSkills.installedSkills(baseURL: baseURL, authHeader: authHeader)
+    }
+
+    private func skillEntries(tenantID: UUID) async -> [PluginCatalogEntryDTO] {
+        let manifests = await (try? skillCatalog.manifests(for: tenantID)) ?? []
+        return manifests.map { SkillPluginCatalog.entry(forSkillName: $0.name, description: $0.description) }
     }
 
     // MARK: - Installs
@@ -48,6 +72,13 @@ struct PluginService {
     }
 
     func install(tenantID: UUID, slug: String, config: [String: String]) async throws -> PluginInstallDTO {
+        // HER-43 Slice 3a — installing a `.skill` plugin enables the existing
+        // LV skill (SkillsState) rather than persisting connector config. A
+        // PluginInstall row is still created (empty config) so the generic
+        // store flow (list/enable-disable/uninstall by id) works unchanged.
+        if let skillName = SkillPluginCatalog.lvSkillName(fromSlug: slug) {
+            return try await installSkill(tenantID: tenantID, slug: slug, skillName: skillName)
+        }
         try validate(slug: slug, config: config)
         let sealed = try seal(config, tenantID: tenantID)
 
@@ -75,6 +106,16 @@ struct PluginService {
         status: PluginInstallStatus?,
     ) async throws -> PluginInstallDTO {
         let row = try await requireInstall(tenantID: tenantID, installID: installID)
+        // Skill installs carry no config; enable/disable mirrors to SkillsState
+        // (the runtime flag SkillRunner reads).
+        if let skillName = SkillPluginCatalog.lvSkillName(fromSlug: row.pluginSlug) {
+            if let status {
+                row.status = status.rawValue
+                try await setSkillEnabled(tenantID: tenantID, name: skillName, enabled: status == .enabled)
+            }
+            try await row.save(on: fluent.db())
+            return try Self.dto(row)
+        }
         if let config {
             try validate(slug: row.pluginSlug, config: config)
             let sealed = try seal(config, tenantID: tenantID)
@@ -90,6 +131,10 @@ struct PluginService {
 
     func uninstall(tenantID: UUID, installID: UUID) async throws {
         let row = try await requireInstall(tenantID: tenantID, installID: installID)
+        // Uninstalling a skill plugin disables the underlying LV skill.
+        if let skillName = SkillPluginCatalog.lvSkillName(fromSlug: row.pluginSlug) {
+            try await setSkillEnabled(tenantID: tenantID, name: skillName, enabled: false)
+        }
         try await row.delete(on: fluent.db())
     }
 
@@ -141,6 +186,56 @@ struct PluginService {
             staged: result.staged,
             skipped: result.skipped,
         )
+    }
+
+    // MARK: - Skill installs (HER-43 Slice 3a)
+
+    /// Enable an LV predefined skill via the plugin store. Verifies the skill
+    /// exists in the catalog, flips `SkillsState.enabled`, and records a
+    /// (config-less) PluginInstall row so the generic store flow works.
+    private func installSkill(tenantID: UUID, slug: String, skillName: String) async throws -> PluginInstallDTO {
+        guard try await skillCatalog.manifest(named: skillName, for: tenantID) != nil else {
+            throw HTTPError(.notFound, message: ErrorCode.unknownPlugin.rawValue)
+        }
+        try await setSkillEnabled(tenantID: tenantID, name: skillName, enabled: true)
+
+        let sealed = try seal([:], tenantID: tenantID)
+        let existing = try await loadInstall(tenantID: tenantID, slug: slug)
+        let row: PluginInstall = if let existing {
+            existing
+        } else {
+            PluginInstall(
+                tenantID: tenantID, pluginSlug: slug,
+                configCiphertext: sealed.ciphertext, configNonce: sealed.nonce,
+            )
+        }
+        row.configCiphertext = sealed.ciphertext
+        row.configNonce = sealed.nonce
+        row.status = PluginInstallState.enabled
+        try await row.save(on: fluent.db())
+        logger.info("skill plugin installed tenant=\(tenantID) skill=\(skillName)")
+        return try Self.dto(row)
+    }
+
+    /// Upsert the builtin `SkillsState` row's `enabled` flag for `name`.
+    private func setSkillEnabled(tenantID: UUID, name: String, enabled: Bool) async throws {
+        let db = fluent.db()
+        if let state = try await SkillsState.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$source == SkillManifest.Source.builtin.rawValue)
+            .filter(\.$name == name)
+            .first()
+        {
+            state.enabled = enabled
+            try await state.save(on: db)
+        } else {
+            try await SkillsState(
+                tenantID: tenantID,
+                source: SkillManifest.Source.builtin.rawValue,
+                name: name,
+                enabled: enabled,
+            ).create(on: db)
+        }
     }
 
     // MARK: - Helpers
