@@ -15,6 +15,12 @@ enum PluginCatalog {
     struct Entry {
         let dto: PluginCatalogEntryDTO
         let binding: String
+        /// HER-43 Slice 6 — marketplace curation flags (server-internal, not in
+        /// the DTO). `featured` surfaces in the store's Featured section;
+        /// `premium` gates install behind the pro/ultimate subscription tier.
+        /// Exposed to clients only via filtered catalog queries.
+        var featured: Bool = false
+        var premium: Bool = false
     }
 
     static let entries: [String: Entry] = [
@@ -46,6 +52,7 @@ enum PluginCatalog {
                 ],
             ),
             binding: "readwise",
+            featured: true,
         ),
         "rss": Entry(
             dto: PluginCatalogEntryDTO(
@@ -133,6 +140,7 @@ enum PluginCatalog {
                 ],
             ),
             binding: "byok-embeddings",
+            premium: true,
         ),
     ]
 
@@ -140,13 +148,28 @@ enum PluginCatalog {
         entries[slug]
     }
 
-    /// All catalog DTOs, optionally filtered by category. Stable ordering by
-    /// slug so the client list is deterministic.
-    static func catalog(category: PluginCategory? = nil) -> [PluginCatalogEntryDTO] {
+    /// All catalog DTOs, optionally filtered by category and/or the Slice 6
+    /// curation flags (`featured`/`premium`). Stable ordering by slug so the
+    /// client list is deterministic.
+    static func catalog(
+        category: PluginCategory? = nil,
+        featured: Bool? = nil,
+        premium: Bool? = nil,
+    ) -> [PluginCatalogEntryDTO] {
         entries.values
+            .filter { entry in
+                (category == nil || entry.dto.category == category)
+                    && (featured == nil || entry.featured == featured)
+                    && (premium == nil || entry.premium == premium)
+            }
             .map(\.dto)
-            .filter { category == nil || $0.category == category }
             .sorted { $0.slug < $1.slug }
+    }
+
+    /// HER-43 Slice 6 — whether a catalog plugin requires the paid tier.
+    /// (Skill/Hermes pseudo-slugs aren't in the static catalog → false.)
+    static func isPremium(slug: String) -> Bool {
+        entries[slug]?.premium ?? false
     }
 
     /// Validate a config dict against the entry's fields: every required field
