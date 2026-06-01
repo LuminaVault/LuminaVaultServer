@@ -4672,8 +4672,8 @@ components:
 
     GraphNodeKindDTO:
       type: string
-      enum: [memory, wikiPage]
-      description: "Which store the node's id belongs to (memories vs vault_files)."
+      enum: [memory, wikiPage, space]
+      description: "Which store the node's id belongs to: memory, wikiPage (vault_files source page), or space (synthetic Space hub node, id = Space UUID)."
 
     MemoryGraphNodeDTO:
       type: object

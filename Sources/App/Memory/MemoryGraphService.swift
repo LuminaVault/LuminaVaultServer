@@ -55,6 +55,10 @@ struct MemoryGraphService {
     /// Wiki pages have no `score`; render them at a modest constant size.
     private static let wikiNodeScore = 1.0
 
+    /// Space hubs render large; the client also styles `.space` distinctly, so
+    /// this is mostly a fallback size signal.
+    private static let spaceHubScore = 8.0
+
     /// Computes the derived graph for `tenantID`.
     ///
     /// - Parameters:
@@ -111,16 +115,38 @@ struct MemoryGraphService {
         let wikilinkEdges = kinds.contains(.wikilink)
             ? Self.lineageEdges(memRows: memRows, wikiIDs: wikiIDSet)
             : []
-        let spaceEdges = kinds.contains(.space)
-            ? Self.chainEdges(grouping: nodeMeta, by: { $0.spaceID.map(AnyGroupKey.uuid) }, kind: .space, weight: Self.spaceWeight)
-            : []
         let temporalEdges = kinds.contains(.temporal)
             ? Self.chainEdges(grouping: nodeMeta, by: { $0.createdAt.map { AnyGroupKey.day(Int($0.timeIntervalSince1970 / 86_400)) } }, kind: .temporal, weight: Self.temporalWeight)
             : []
 
+        // Space hubs: a synthetic `.space` node per Space that has ≥1 member in
+        // the current node set, with `.space` **star** edges from the hub to
+        // each member. Replaces the old space "chain" — a hub reads as a real
+        // cluster centre. Hubs are exempt from the per-node edge cap so they
+        // connect to all their members.
+        var spaceNodes: [MemoryGraphNodeDTO] = []
+        var spaceEdges: [MemoryGraphEdgeDTO] = []
+        var hubIDs: Set<UUID> = []
+        if kinds.contains(.space) {
+            let memberSpaceIDs = Array(Set(nodeMeta.compactMap(\.spaceID)))
+            if !memberSpaceIDs.isEmpty {
+                let names = try await fetchSpaceNames(sql: sql, tenantID: tenantID, ids: memberSpaceIDs)
+                hubIDs = Set(names.keys)
+                spaceNodes = names.map { id, name in
+                    MemoryGraphNodeDTO(
+                        id: id, title: name, tags: [],
+                        createdAt: Date(timeIntervalSince1970: 0),
+                        score: Self.spaceHubScore, kind: .space, spaceID: id,
+                    )
+                }
+                spaceEdges = Self.spaceStarEdges(nodeMeta: nodeMeta, hubIDs: hubIDs, weight: Self.spaceWeight)
+            }
+        }
+
         let merged = Self.mergeAndCap(
             groupsInPrecedence: [wikilinkEdges, tagEdges, spaceEdges, semanticEdges, temporalEdges],
             maxEdgesPerNode: maxEdgesPerNode,
+            uncapped: hubIDs,
         )
 
         let memoryNodes = memRows.map { row in
@@ -145,7 +171,7 @@ struct MemoryGraphService {
                 spaceID: row.space_id,
             )
         }
-        return MemoryGraphResponse(nodes: memoryNodes + wikiNodes, edges: merged, generatedAt: Date())
+        return MemoryGraphResponse(nodes: memoryNodes + wikiNodes + spaceNodes, edges: merged, generatedAt: Date())
     }
 
     // MARK: - Node selection
@@ -178,6 +204,33 @@ struct MemoryGraphService {
         ORDER BY created_at DESC NULLS LAST, id ASC
         LIMIT \(bind: limit)
         """).all(decoding: WikiNodeRow.self)
+    }
+
+    /// Space names for the given ids — drives the hub node titles.
+    private func fetchSpaceNames(sql: any SQLDatabase, tenantID: UUID, ids: [UUID]) async throws -> [UUID: String] {
+        guard !ids.isEmpty else { return [:] }
+        struct Row: Decodable { let id: UUID; let name: String }
+        let rows = try await sql.raw("""
+        SELECT id, name FROM spaces
+        WHERE tenant_id = \(bind: tenantID) AND id = ANY(\(unsafeRaw: Self.formatUUIDArray(ids)))
+        """).all(decoding: Row.self)
+        return Dictionary(rows.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    // MARK: - Space hub (star) edges
+
+    /// One edge from each member node to its Space hub (hub id = Space UUID).
+    /// Undirected, deduped by `ordered`. Members with no Space, or whose Space
+    /// has no hub in the current set, are skipped.
+    static func spaceStarEdges(nodeMeta: [NodeMeta], hubIDs: Set<UUID>, weight: Double) -> [MemoryGraphEdgeDTO] {
+        nodeMeta.compactMap { n -> MemoryGraphEdgeDTO? in
+            guard let space = n.spaceID, hubIDs.contains(space) else { return nil }
+            let (from, to) = ordered(n.id, space)
+            return MemoryGraphEdgeDTO(
+                from: from, to: to, kind: .space,
+                tag: nil, similarity: nil, weight: weight,
+            )
+        }
     }
 
     // MARK: - Tag edges
@@ -335,6 +388,7 @@ struct MemoryGraphService {
     static func mergeAndCap(
         groupsInPrecedence groups: [[MemoryGraphEdgeDTO]],
         maxEdgesPerNode: Int,
+        uncapped: Set<UUID> = [],
     ) -> [MemoryGraphEdgeDTO] {
         var byPair: [PairKey: (rank: Int, edge: MemoryGraphEdgeDTO)] = [:]
         for (rank, group) in groups.enumerated() {
@@ -354,12 +408,14 @@ struct MemoryGraphService {
         kept.reserveCapacity(ordered.count)
         for entry in ordered {
             let edge = entry.edge
-            let dFrom = degree[edge.from, default: 0]
-            let dTo = degree[edge.to, default: 0]
-            guard dFrom < maxEdgesPerNode, dTo < maxEdgesPerNode else { continue }
+            // Hubs (`uncapped`, e.g. Space nodes) connect to all members; the
+            // cap still applies to the non-hub endpoint.
+            let fromOK = uncapped.contains(edge.from) || degree[edge.from, default: 0] < maxEdgesPerNode
+            let toOK = uncapped.contains(edge.to) || degree[edge.to, default: 0] < maxEdgesPerNode
+            guard fromOK, toOK else { continue }
             kept.append(edge)
-            degree[edge.from] = dFrom + 1
-            degree[edge.to] = dTo + 1
+            if !uncapped.contains(edge.from) { degree[edge.from, default: 0] += 1 }
+            if !uncapped.contains(edge.to) { degree[edge.to, default: 0] += 1 }
         }
         return kept
     }
