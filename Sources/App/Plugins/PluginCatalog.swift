@@ -104,6 +104,36 @@ enum PluginCatalog {
             ),
             binding: "raindrop",
         ),
+        "byok-embeddings": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "byok-embeddings",
+                name: "Your own embeddings key",
+                summary: "Use your own API key for memory embeddings (same model — no re-embedding).",
+                description: """
+                Routes this workspace's embedding requests through your own \
+                provider API key instead of the shared one. It uses the same \
+                embedding model the platform already uses, so your existing \
+                memories stay searchable — no re-embedding. Provide the API key \
+                for the active embedding provider (OpenAI or Nomic).
+                """,
+                category: .memory,
+                capabilityKind: .memory,
+                iconSlug: "memory",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [
+                    PluginConfigField(
+                        key: "access_token",
+                        label: "Embedding API key",
+                        placeholder: "sk-… (OpenAI) or nomic key",
+                        kind: .secret,
+                        isRequired: true,
+                    ),
+                ],
+            ),
+            binding: "byok-embeddings",
+        ),
     ]
 
     static func entry(slug: String) -> Entry? {

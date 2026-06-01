@@ -1161,7 +1161,37 @@ func buildRouter(
         hermesHandleResolver: localHermesHandleResolver,
         logger: Logger(label: "lv.embedding.registry"),
     )
-    let embeddingService: any EmbeddingService = embeddingRegistry.active
+    // HER-43 Slice 4 — when a master secret is set, wrap the global embedding
+    // service so a tenant who installed the "byok-embeddings" memory plugin is
+    // routed through their own key, using the SAME active provider-kind + model
+    // (identical vector space → no re-embedding). Falls through to global for
+    // everyone else, and BYO is only buildable for keyable kinds (openai/nomic).
+    let embeddingService: any EmbeddingService
+    if let secretBox = secretBoxRef {
+        let activeKind = embeddingRegistry.activeKind
+        let openaiBaseRaw = reader.string(forKey: "llm.provider.openai.baseURL", default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let openaiBase = URL(string: openaiBaseRaw) ?? OpenAIEmbeddingService.defaultBaseURL
+        let makeKeyed: @Sendable (String) -> (any EmbeddingService)? = { apiKey in
+            switch activeKind {
+            case .openai:
+                OpenAIEmbeddingService(apiKey: apiKey, baseURL: openaiBase, logger: Logger(label: "lv.embedding.openai.byok"))
+            case .nomic:
+                NomicEmbeddingService(apiKey: apiKey, logger: Logger(label: "lv.embedding.nomic.byok"))
+            case .hermesLocal, .deterministic:
+                nil
+            }
+        }
+        let resolver = PerTenantEmbeddingResolver(
+            fluent: services.fluent,
+            secretBox: secretBox,
+            logger: Logger(label: "lv.embedding.byok"),
+            makeKeyedService: makeKeyed,
+        )
+        embeddingService = TenantAwareEmbeddingService(global: embeddingRegistry.active, resolver: resolver)
+    } else {
+        embeddingService = embeddingRegistry.active
+    }
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
