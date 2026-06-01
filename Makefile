@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -97,3 +97,21 @@ hermes-reprovision: ## Reprovision all per-tenant Hermes containers onto the cur
 		-H "Content-Type: application/json" \
 		&& echo "" \
 		&& echo "✓ reprovision complete (see \"reprovisioned\" count above)"
+
+# --- HER-131 — encrypted backups -------------------------------------------
+COMPOSE_PROD = $(DOCKER_COMPOSE) -p prod -f docker-compose.production.yml --env-file .env.production
+
+backup-image: ## Build the encrypted backup sidecar image (HER-131)
+	docker build -f docker/backup.Dockerfile -t luminavault-backup:local .
+	@echo "✓ built luminavault-backup:local (pg_dump + age + rclone)"
+
+backup-now: ## Run one backup immediately via the backup container (HER-131)
+	$(COMPOSE_PROD) --profile backup run --rm -e BACKUP_RUN_ON_START=false backup /usr/local/bin/run-backup.sh
+
+backup-restore: ## Restore a snapshot: make backup-restore DATE=YYYY-MM-DD [COMPONENT=pg|vault|hermes|all] (HER-131)
+	@if [ -z "$(DATE)" ]; then echo "error: set DATE=YYYY-MM-DD" >&2; exit 1; fi
+	$(COMPOSE_PROD) --profile backup run --rm backup \
+		/usr/local/bin/restore.sh "$(DATE)" --component "$(or $(COMPONENT),all)" --force
+
+backup-drill: ## Run the backup→restore round-trip locally with an ephemeral age key + local rclone remote (HER-131)
+	./scripts/backup-drill.sh

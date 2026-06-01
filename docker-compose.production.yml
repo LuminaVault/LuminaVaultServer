@@ -246,6 +246,55 @@ services:
       jaeger:
         condition: service_started
 
+  # HER-131 — nightly encrypted off-site backups (pg_dump + vault/hermes tars,
+  # age-encrypted, rclone-copied to B2/S3). Opt-in: gated behind the `backup`
+  # profile so the default deploy is unchanged until an operator configures the
+  # age recipient + rclone remote. Enable with:
+  #   docker compose -p prod -f docker-compose.production.yml \
+  #     --profile backup --env-file .env.production up -d backup
+  # See docs/backup.md for one-time setup (age keypair + rclone.conf) and the
+  # restore procedure.
+  backup:
+    build:
+      context: .
+      dockerfile: docker/backup.Dockerfile
+    image: luminavault-backup:local
+    restart: unless-stopped
+    profiles: ["backup"]
+    volumes:
+      - ./data/luminavault:/backup/src/luminavault:ro # tenant raw vault (read-only)
+      - ./data/hermes:/backup/src/hermes:ro           # hermes skills + memory (read-only)
+      - ./secrets/rclone.conf:/root/.config/rclone/rclone.conf:ro
+      - ./data/backup-logs:/var/log/backup
+    environment:
+      # --- Postgres (logical dump over the network) ---
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${POSTGRES_DB:-hermes_db}
+      POSTGRES_USER: ${POSTGRES_USER:-hermes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      # --- Backup config ---
+      BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT (age recipient public key) to enable the backup profile}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:?set BACKUP_RCLONE_REMOTE (e.g. b2:bucket/luminavault) to enable the backup profile}
+      BACKUP_RETAIN_DAILY: ${BACKUP_RETAIN_DAILY:-7}
+      BACKUP_RETAIN_WEEKLY: ${BACKUP_RETAIN_WEEKLY:-4}
+      BACKUP_RETAIN_MONTHLY: ${BACKUP_RETAIN_MONTHLY:-6}
+      BACKUP_WEEKLY_DOW: ${BACKUP_WEEKLY_DOW:-7}
+      BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START:-false}
+      # Failure alerting (optional). Slack-compatible incoming-webhook URL;
+      # empty = log only. BACKUP_ALERT_ON_SUCCESS also pings on green runs.
+      BACKUP_ALERT_WEBHOOK: ${BACKUP_ALERT_WEBHOOK:-}
+      BACKUP_ALERT_ON_SUCCESS: ${BACKUP_ALERT_ON_SUCCESS:-false}
+      TZ: ${BACKUP_TZ:-UTC}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 networks:
   default:
     name: hermes-prod-net
