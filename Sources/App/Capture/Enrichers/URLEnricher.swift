@@ -12,6 +12,10 @@ struct EnrichedMetadata: Codable {
     /// primary enricher already produced sufficient body via `description`
     /// or `transcript`, or when no jina key is configured.
     var body: String?
+    /// HER-54 (Slice 1) — estimated reading time in minutes. Populated by the
+    /// `reading-time` capture hook (post-enrichment) when installed; nil
+    /// otherwise. Rendered into the vault file frontmatter as `reading_time`.
+    var readingTimeMinutes: Int?
 }
 
 protocol URLEnricher: Sendable {

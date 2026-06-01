@@ -13,6 +13,10 @@ struct URLEnrichmentService {
     /// runs after the primary enricher to fill in `body` if metadata was
     /// shallow. Nil disables silently.
     let jinaEnricher: JinaEnricher?
+    /// HER-54 (Slice 1) — capture-hook engine. When set, the tenant's enabled
+    /// `.captureHook` plugins transform the enriched metadata at `.postEnrich`
+    /// before markdown is rendered. Nil disables silently (failure-isolated).
+    let captureHooks: CaptureHookDispatcher?
 
     /// Register the enrichers in order of priority. Jina is NOT in this
     /// list — it runs as a tier-2 post-processor (`applyJinaIfShallow`)
@@ -23,11 +27,18 @@ struct URLEnrichmentService {
         GenericOGEnricher(),
     ]
 
-    init(vaultPaths: VaultPathService, fluent: Fluent, logger: Logger, jinaEnricher: JinaEnricher? = nil) {
+    init(
+        vaultPaths: VaultPathService,
+        fluent: Fluent,
+        logger: Logger,
+        jinaEnricher: JinaEnricher? = nil,
+        captureHooks: CaptureHookDispatcher? = nil,
+    ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
         self.logger = logger
         self.jinaEnricher = jinaEnricher
+        self.captureHooks = captureHooks
     }
 
     /// HER-240 / spec ticket #4 — lightweight enrichment for chat
@@ -70,7 +81,20 @@ struct URLEnrichmentService {
 
             logger.info("enrichment started tenant=\(tenantID) file=\(vaultFileID) url=\(urlString)")
             let primary = try await enricher.enrich(url: url)
-            let metadata = await applyJinaIfShallow(metadata: primary, url: url, tenantID: tenantID)
+            var metadata = await applyJinaIfShallow(metadata: primary, url: url, tenantID: tenantID)
+
+            // HER-54 (Slice 1) — let the tenant's installed `.captureHook`
+            // plugins transform the enriched metadata before render. The
+            // dispatcher is failure-isolated, so a bad hook can't break capture.
+            if let captureHooks {
+                let context = CaptureHookContext(
+                    tenantID: tenantID,
+                    url: urlString,
+                    config: [:],
+                    metadata: metadata,
+                )
+                metadata = await captureHooks.run(point: .postEnrich, context: context).metadata
+            }
 
             // Format the new markdown
             var markdown = ""
@@ -85,6 +109,10 @@ struct URLEnrichmentService {
             }
             if let imageURL = metadata.imageURL, !imageURL.isEmpty {
                 markdown += "image: \"\(imageURL)\"\n"
+            }
+            // HER-54 — emitted by the `reading-time` capture hook when installed.
+            if let readingTime = metadata.readingTimeMinutes {
+                markdown += "reading_time: \(readingTime)\n"
             }
             markdown += "---\n\n"
 

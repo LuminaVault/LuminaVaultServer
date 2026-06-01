@@ -901,11 +901,22 @@ func buildRouter(
         apiKey: services.jinaAPIKey.isEmpty ? nil : services.jinaAPIKey,
         logger: Logger(label: "lv.capture.jina"),
     )
+    // HER-54 (Slice 1) — capture-hook engine. First-party hooks only; resolved
+    // by `binding` exactly like connectors. The dispatcher is failure-isolated
+    // so an installed hook can never break a capture.
+    let captureHookDispatcher = CaptureHookDispatcher(
+        fluent: services.fluent,
+        registry: CaptureHookRegistry(hooks: [
+            ReadingTimeHook(),
+        ]),
+        logger: Logger(label: "lv.capture.hooks"),
+    )
     let urlEnrichmentService = URLEnrichmentService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         logger: Logger(label: "lv.capture"),
         jinaEnricher: jinaEnricher,
+        captureHooks: captureHookDispatcher,
     )
     let chatURLPreEnricher = ChatURLPreEnricher(
         urlEnrichmentService: urlEnrichmentService,
