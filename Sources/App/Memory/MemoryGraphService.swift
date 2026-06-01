@@ -5,11 +5,23 @@ import HummingbirdFluent
 import LuminaVaultShared
 import SQLKit
 
-/// HER-235 — derives a tenant-scoped graph view of memories on read.
+/// HER-235 — derives a tenant-scoped second-brain graph on read.
 ///
-/// v1 ships **no persistence**: edges are computed from data already on
-/// `memories` (shared `tags` + pgvector `embedding`). A later iteration can
-/// materialise a `memory_edges` table without changing this contract.
+/// Nodes are **memories** (recall layer) and, when requested, **wiki pages**
+/// (one per `vault_files` row — the same source pages the compile pipeline
+/// writes to `wiki/sources/<slug>.md`). Edges are derived on read:
+///
+///   - `wikilink`  — `memory.source_vault_file_id` → its source page. The
+///                   explicit lineage link the wiki export renders as the
+///                   `[[Source file]]` backlink. Strongest signal.
+///   - `tag`       — memories sharing ≥1 tag.
+///   - `space`     — nodes filed under the same Space (memories + pages).
+///   - `semantic`  — pgvector cosine neighbours among memories.
+///   - `temporal`  — nodes captured in the same day bucket.
+///
+/// v1 ships **no persistence**: everything is computed from existing rows
+/// (`memories`, `vault_files`). A later iteration can materialise a
+/// `graph_edges` table at compile time without changing this contract.
 ///
 /// Concurrency: pure read service. `Fluent` is `Sendable` (wraps the
 /// connection pool); the struct holds no mutable state so a value-type
@@ -26,74 +38,150 @@ struct MemoryGraphService {
     static let defaultMaxEdgesPerNode = 8
     static let maxMaxEdgesPerNode = 50
 
+    /// All edge kinds, used as the default when the caller doesn't filter.
+    static let allEdgeKinds: Set<MemoryEdgeKindDTO> = [.wikilink, .tag, .space, .semantic, .temporal]
+
+    // Fixed weights for the binary / structural edge kinds. Semantic keeps
+    // its cosine similarity as weight; these are constants chosen so the
+    // visual hierarchy reads wikilink > tag > space > temporal.
+    // Weight drives only visual alpha/thickness; capping priority is handled
+    // separately by edge-kind precedence in `mergeAndCap`. Tag overlap is a
+    // strong binary signal, so it keeps weight 1.0 alongside wikilink.
+    private static let wikilinkWeight = 1.0
+    private static let tagWeight = 1.0
+    private static let spaceWeight = 0.45
+    private static let temporalWeight = 0.30
+
+    /// Wiki pages have no `score`; render them at a modest constant size.
+    private static let wikiNodeScore = 1.0
+
     /// Computes the derived graph for `tenantID`.
     ///
     /// - Parameters:
-    ///   - limit: Max nodes returned (top-scored first).
+    ///   - limit: Max nodes returned **per source** (memories, and pages).
     ///   - similarity: Floor for cosine similarity edges (1 − pgvector `<=>`).
-    ///   - maxEdgesPerNode: Per-node cap after tag + semantic edges merge.
+    ///   - maxEdgesPerNode: Per-node cap after all edge kinds merge.
+    ///   - includeWikiPages: When true, `vault_files` are added as wiki-page nodes.
+    ///   - kinds: Which edge kinds to compute. Defaults to all.
     func graph(
         tenantID: UUID,
         limit: Int,
         similarity: Double,
         maxEdgesPerNode: Int,
+        includeWikiPages: Bool = true,
+        kinds: Set<MemoryEdgeKindDTO> = MemoryGraphService.allEdgeKinds,
     ) async throws -> MemoryGraphResponse {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for graph query")
         }
 
-        let nodeRows = try await fetchNodes(sql: sql, tenantID: tenantID, limit: limit)
-        guard !nodeRows.isEmpty else {
+        let memRows = try await fetchMemoryNodes(sql: sql, tenantID: tenantID, limit: limit)
+        let wikiRows = includeWikiPages
+            ? try await fetchWikiNodes(sql: sql, tenantID: tenantID, limit: limit)
+            : []
+        guard !memRows.isEmpty || !wikiRows.isEmpty else {
             return MemoryGraphResponse(nodes: [], edges: [], generatedAt: Date())
         }
-        let nodeIDs = nodeRows.map(\.id)
 
-        async let tagEdgesTask = computeTagEdges(sql: sql, tenantID: tenantID, ids: nodeIDs)
-        async let semanticEdgesTask = computeSemanticEdges(
-            sql: sql,
-            tenantID: tenantID,
-            ids: nodeIDs,
-            similarity: similarity,
-            maxEdgesPerNode: maxEdgesPerNode,
-        )
+        let memoryIDs = memRows.map(\.id)
+        let wikiIDSet = Set(wikiRows.map(\.id))
+
+        // Combined node metadata used by the Swift-side edge builders.
+        let nodeMeta: [NodeMeta] =
+            memRows.map { NodeMeta(id: $0.id, spaceID: $0.space_id, createdAt: $0.created_at) }
+                + wikiRows.map { NodeMeta(id: $0.id, spaceID: $0.space_id, createdAt: $0.created_at) }
+
+        // SQL-derived edges (memories only — pages have no tags column / embedding).
+        async let tagEdgesTask: [MemoryGraphEdgeDTO] = kinds.contains(.tag) && !memoryIDs.isEmpty
+            ? computeTagEdges(sql: sql, tenantID: tenantID, ids: memoryIDs)
+            : []
+        async let semanticEdgesTask: [MemoryGraphEdgeDTO] = kinds.contains(.semantic) && !memoryIDs.isEmpty
+            ? computeSemanticEdges(
+                sql: sql,
+                tenantID: tenantID,
+                ids: memoryIDs,
+                similarity: similarity,
+                maxEdgesPerNode: maxEdgesPerNode,
+            )
+            : []
         let tagEdges = try await tagEdgesTask
         let semanticEdges = try await semanticEdgesTask
 
+        // Swift-derived edges from the fetched metadata (no extra round-trips).
+        let wikilinkEdges = kinds.contains(.wikilink)
+            ? Self.lineageEdges(memRows: memRows, wikiIDs: wikiIDSet)
+            : []
+        let spaceEdges = kinds.contains(.space)
+            ? Self.chainEdges(grouping: nodeMeta, by: { $0.spaceID.map(AnyGroupKey.uuid) }, kind: .space, weight: Self.spaceWeight)
+            : []
+        let temporalEdges = kinds.contains(.temporal)
+            ? Self.chainEdges(grouping: nodeMeta, by: { $0.createdAt.map { AnyGroupKey.day(Int($0.timeIntervalSince1970 / 86_400)) } }, kind: .temporal, weight: Self.temporalWeight)
+            : []
+
         let merged = Self.mergeAndCap(
-            tagEdges: tagEdges,
-            semanticEdges: semanticEdges,
+            groupsInPrecedence: [wikilinkEdges, tagEdges, spaceEdges, semanticEdges, temporalEdges],
             maxEdgesPerNode: maxEdgesPerNode,
         )
 
-        let nodes = nodeRows.map { row -> MemoryGraphNodeDTO in
+        let memoryNodes = memRows.map { row in
             MemoryGraphNodeDTO(
                 id: row.id,
                 title: Self.titleFromContent(row.content),
                 tags: row.tags ?? [],
                 createdAt: row.created_at ?? Date(timeIntervalSince1970: 0),
                 score: row.score,
+                kind: .memory,
+                spaceID: row.space_id,
             )
         }
-        return MemoryGraphResponse(nodes: nodes, edges: merged, generatedAt: Date())
+        let wikiNodes = wikiRows.map { row in
+            MemoryGraphNodeDTO(
+                id: row.id,
+                title: Self.titleFromWiki(title: row.title, path: row.path),
+                tags: [],
+                createdAt: row.created_at ?? Date(timeIntervalSince1970: 0),
+                score: Self.wikiNodeScore,
+                kind: .wikiPage,
+                spaceID: row.space_id,
+            )
+        }
+        return MemoryGraphResponse(nodes: memoryNodes + wikiNodes, edges: merged, generatedAt: Date())
     }
 
     // MARK: - Node selection
 
-    private func fetchNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [NodeRow] {
+    private func fetchMemoryNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [MemoryNodeRow] {
         try await sql.raw("""
-        SELECT id, content, tags, created_at, score
+        SELECT id, content, tags, created_at, score, space_id, source_vault_file_id
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
         ORDER BY score DESC, last_accessed_at DESC NULLS LAST, id ASC
         LIMIT \(bind: limit)
-        """).all(decoding: NodeRow.self)
+        """).all(decoding: MemoryNodeRow.self)
+    }
+
+    /// Wiki-page nodes — one per text-like `vault_files` row. These are the
+    /// same source pages the compile pipeline renders under `wiki/sources/`.
+    private func fetchWikiNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [WikiNodeRow] {
+        try await sql.raw("""
+        SELECT id,
+               path,
+               metadata->>'title' AS title,
+               space_id,
+               created_at
+        FROM vault_files
+        WHERE tenant_id = \(bind: tenantID)
+          AND content_type LIKE 'text/%'
+        ORDER BY created_at DESC NULLS LAST, id ASC
+        LIMIT \(bind: limit)
+        """).all(decoding: WikiNodeRow.self)
     }
 
     // MARK: - Tag edges
 
     /// One edge per pair that shares ≥1 tag. The shared tag chosen is the
     /// lexicographically smallest (`min(tag)`) so the result is deterministic
-    /// across runs. Weight is fixed at 1.0; tag overlap is a binary signal.
+    /// across runs.
     private func computeTagEdges(
         sql: any SQLDatabase,
         tenantID: UUID,
@@ -120,7 +208,7 @@ struct MemoryGraphService {
                 kind: .tag,
                 tag: $0.tag,
                 similarity: nil,
-                weight: 1.0,
+                weight: Self.tagWeight,
             )
         }
     }
@@ -177,40 +265,92 @@ struct MemoryGraphService {
         }
     }
 
+    // MARK: - Lineage (wikilink) edges
+
+    /// A memory → its source page. This is the explicit, human-meaningful
+    /// link the wiki export renders as `[[Source file]]`. Emitted only when
+    /// the source page is in the current node set (an included wiki node).
+    static func lineageEdges(memRows: [MemoryNodeRow], wikiIDs: Set<UUID>) -> [MemoryGraphEdgeDTO] {
+        memRows.compactMap { row -> MemoryGraphEdgeDTO? in
+            guard let source = row.source_vault_file_id, wikiIDs.contains(source) else { return nil }
+            let (from, to) = Self.ordered(row.id, source)
+            return MemoryGraphEdgeDTO(
+                from: from, to: to, kind: .wikilink,
+                tag: nil, similarity: nil, weight: Self.wikilinkWeight,
+            )
+        }
+    }
+
+    // MARK: - Chain edges (space / temporal)
+
+    /// Builds a light "chain" of edges within each group: nodes are sorted by
+    /// `(createdAt, id)` and consecutive nodes are linked. This gives each
+    /// Space / day-bucket visual cohesion in O(n) edges rather than the
+    /// O(n²) hairball a full clique would produce. Deterministic across runs.
+    static func chainEdges(
+        grouping nodes: [NodeMeta],
+        by key: (NodeMeta) -> AnyGroupKey?,
+        kind: MemoryEdgeKindDTO,
+        weight: Double,
+    ) -> [MemoryGraphEdgeDTO] {
+        var buckets: [AnyGroupKey: [NodeMeta]] = [:]
+        for node in nodes {
+            guard let k = key(node) else { continue }
+            buckets[k, default: []].append(node)
+        }
+        var edges: [MemoryGraphEdgeDTO] = []
+        for (_, members) in buckets where members.count >= 2 {
+            let sorted = members.sorted { a, b in
+                let da = a.createdAt ?? Date(timeIntervalSince1970: 0)
+                let db = b.createdAt ?? Date(timeIntervalSince1970: 0)
+                if da != db { return da > db }
+                return a.id.uuidString < b.id.uuidString
+            }
+            for i in 0 ..< (sorted.count - 1) {
+                let (from, to) = ordered(sorted[i].id, sorted[i + 1].id)
+                edges.append(MemoryGraphEdgeDTO(
+                    from: from, to: to, kind: kind,
+                    tag: nil, similarity: nil, weight: weight,
+                ))
+            }
+        }
+        return edges
+    }
+
     // MARK: - Merge + cap
 
-    /// Combines tag + semantic edges (tag wins on dedupe — explicit signal
-    /// beats inferred similarity), then prunes greedily: walk edges by
-    /// weight DESC and admit an edge only when **both** endpoints still have
-    /// remaining capacity. This is the only policy that strictly enforces
-    /// `degree ≤ maxEdgesPerNode` for every node; the alternative
-    /// "kept-if-in-top-K-for-either-endpoint" rule lets popular hubs
-    /// retain every incident edge.
+    /// Combines all edge kinds, deduping by undirected pair with **precedence**
+    /// (the first group an edge appears in wins — explicit signals beat
+    /// inferred ones), then prunes greedily so every node keeps
+    /// `degree ≤ maxEdgesPerNode`. Capping order is `(precedence, weight DESC)`
+    /// so an explicit `wikilink` is never dropped in favour of a weaker
+    /// inferred edge. Tie-break is lexicographic over `(from, to)` for
+    /// determinism.
     ///
-    /// Tie-break on equal weights is lexicographic over `(from, to)` so the
-    /// pruned set is deterministic across runs.
+    /// `groupsInPrecedence` must be ordered strongest-first, e.g.
+    /// `[wikilink, tag, space, semantic, temporal]`.
     static func mergeAndCap(
-        tagEdges: [MemoryGraphEdgeDTO],
-        semanticEdges: [MemoryGraphEdgeDTO],
+        groupsInPrecedence groups: [[MemoryGraphEdgeDTO]],
         maxEdgesPerNode: Int,
     ) -> [MemoryGraphEdgeDTO] {
-        var byPair: [PairKey: MemoryGraphEdgeDTO] = [:]
-        for edge in tagEdges {
-            byPair[PairKey(edge)] = edge
-        }
-        for edge in semanticEdges where byPair[PairKey(edge)] == nil {
-            byPair[PairKey(edge)] = edge
+        var byPair: [PairKey: (rank: Int, edge: MemoryGraphEdgeDTO)] = [:]
+        for (rank, group) in groups.enumerated() {
+            for edge in group where byPair[PairKey(edge)] == nil {
+                byPair[PairKey(edge)] = (rank, edge)
+            }
         }
 
         let ordered = byPair.values.sorted { a, b in
-            if a.weight != b.weight { return a.weight > b.weight }
-            if a.from != b.from { return a.from.uuidString < b.from.uuidString }
-            return a.to.uuidString < b.to.uuidString
+            if a.rank != b.rank { return a.rank < b.rank }
+            if a.edge.weight != b.edge.weight { return a.edge.weight > b.edge.weight }
+            if a.edge.from != b.edge.from { return a.edge.from.uuidString < b.edge.from.uuidString }
+            return a.edge.to.uuidString < b.edge.to.uuidString
         }
         var degree: [UUID: Int] = [:]
         var kept: [MemoryGraphEdgeDTO] = []
         kept.reserveCapacity(ordered.count)
-        for edge in ordered {
+        for entry in ordered {
+            let edge = entry.edge
             let dFrom = degree[edge.from, default: 0]
             let dTo = degree[edge.to, default: 0]
             guard dFrom < maxEdgesPerNode, dTo < maxEdgesPerNode else { continue }
@@ -230,6 +370,21 @@ struct MemoryGraphService {
         return String(firstLine[..<idx]) + "…"
     }
 
+    /// Wiki-page title: prefer the metadata title, else the file's basename
+    /// (sans extension), else the raw path.
+    private static func titleFromWiki(title: String?, path: String) -> String {
+        if let title, !title.trimmingCharacters(in: .whitespaces).isEmpty { return title }
+        let base = (path as NSString).lastPathComponent
+        let noExt = (base as NSString).deletingPathExtension
+        return noExt.isEmpty ? path : noExt
+    }
+
+    /// Returns the pair `(from, to)` with the undirected invariant `from < to`
+    /// (lexicographic on `uuidString`) so it matches `PairKey` equality.
+    static func ordered(_ a: UUID, _ b: UUID) -> (UUID, UUID) {
+        a.uuidString < b.uuidString ? (a, b) : (b, a)
+    }
+
     /// PostgreSQL `uuid[]` literal. Inputs are `UUID` so there is no injection
     /// surface; spliced via `unsafeRaw` because SQLKit has no encoder for the
     /// uuid array type (same reason `formatTextArray` exists in MemoryRepository).
@@ -237,9 +392,9 @@ struct MemoryGraphService {
         "ARRAY[" + ids.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"
     }
 
-    /// Undirected pair key — invariant that `from < to`. Edges are produced
-    /// with this invariant by the SQL (`a.id < b.id` for tags;
-    /// `LEAST/GREATEST` for semantic), so equality on `(from, to)` is enough.
+    /// Undirected pair key — invariant that `from < to`. All edge producers
+    /// use `ordered(_:_:)` / `LEAST`/`GREATEST`, so equality on `(from, to)`
+    /// is enough.
     private struct PairKey: Hashable {
         let from: UUID
         let to: UUID
@@ -247,16 +402,39 @@ struct MemoryGraphService {
             from = edge.from; to = edge.to
         }
     }
+
+    /// Lightweight node metadata for the Swift-side chain builders.
+    struct NodeMeta {
+        let id: UUID
+        let spaceID: UUID?
+        let createdAt: Date?
+    }
+
+    /// Grouping key for `chainEdges` — either a Space id or a day bucket.
+    enum AnyGroupKey: Hashable {
+        case uuid(UUID)
+        case day(Int)
+    }
 }
 
 // MARK: - Row decoders
 
-private struct NodeRow: Decodable {
+struct MemoryNodeRow: Decodable {
     let id: UUID
     let content: String
     let tags: [String]?
     let created_at: Date?
     let score: Double
+    let space_id: UUID?
+    let source_vault_file_id: UUID?
+}
+
+private struct WikiNodeRow: Decodable {
+    let id: UUID
+    let path: String
+    let title: String?
+    let space_id: UUID?
+    let created_at: Date?
 }
 
 private struct TagEdgeRow: Decodable {
