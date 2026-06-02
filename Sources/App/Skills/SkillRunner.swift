@@ -290,6 +290,10 @@ actor SkillRunner {
         /// Apple Integration P4 — the user's current location + place name via
         /// device-RPC (gated by consent; read-only).
         case locationRecent = "location_recent"
+        /// Apple Integration P5 — prompt the user to pick documents on their
+        /// device; only derived text (PDF/plain-text) is returned, never the
+        /// file bytes. Requires Files access + a foregrounded app. Read-only.
+        case filesPick = "files_pick"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -647,6 +651,8 @@ actor SkillRunner {
             return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
         case AvailableTool.locationRecent.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
+        case AvailableTool.filesPick.rawValue:
+            return await deviceRead(tenantID: tenantID, domain: .files, payload: [:])
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -1011,6 +1017,12 @@ actor SkillRunner {
             ToolDefinition(function: .init(
                 name: tool.rawValue,
                 description: "Get the user's current location with a place name. Requires Location access. Returns a JSON array of {lat,lng,place,at}.",
+                parameters: .init(properties: [:], required: []),
+            ))
+        case .filesPick:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Prompt the user to pick one or more documents on their device; extracted text (from PDFs and plain-text files) is read on-device and only that text is returned, never the file bytes. Requires Files access and the app to be open. Returns a JSON array of {name,type,chars,text}.",
                 parameters: .init(properties: [:], required: []),
             ))
         }
