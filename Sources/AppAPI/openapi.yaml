@@ -68,6 +68,8 @@ tags:
   - name: Admin
   - name: Dashboard
     description: OS Shell home/dashboard surface (HER-244).
+  - name: Kanban
+    description: Native Kanban boards, columns, and cards.
 
 security:
   - bearerJWT: []
@@ -3480,6 +3482,296 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  # ──────────────────────────────── Kanban ────────────────────────────────
+
+  /v1/boards:
+    get:
+      tags: [Kanban]
+      operationId: boardsList
+      summary: List all boards for the authenticated tenant.
+      responses:
+        '200':
+          description: Array of board summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/KanbanBoardSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Kanban]
+      operationId: boardsCreate
+      summary: Create a new board.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BoardCreateRequest' }
+      responses:
+        '200':
+          description: The created board.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/boards/{boardID}:
+    get:
+      tags: [Kanban]
+      operationId: boardsGet
+      summary: Fetch a single board with all its columns and cards.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Full board snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Kanban]
+      operationId: boardsPatch
+      summary: Update board title and/or archived flag.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BoardPatchRequest' }
+      responses:
+        '200':
+          description: Updated board snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Kanban]
+      operationId: boardsDelete
+      summary: Delete a board and all its columns and cards.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Board deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/boards/{boardID}/version:
+    get:
+      tags: [Kanban]
+      operationId: boardsVersion
+      summary: Fetch only the current version counter for a board (cheap poll / ETag alternative).
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current board version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BoardVersionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/boards/{boardID}/columns:
+    post:
+      tags: [Kanban]
+      operationId: columnsCreate
+      summary: Append a new column to the board.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ColumnCreateRequest' }
+      responses:
+        '200':
+          description: Updated board snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/boards/{boardID}/columns/{columnID}:
+    patch:
+      tags: [Kanban]
+      operationId: columnsPatch
+      summary: Rename a column.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: columnID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ColumnPatchRequest' }
+      responses:
+        '200':
+          description: Updated board snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Kanban]
+      operationId: columnsDelete
+      summary: Delete a column and all its cards.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: columnID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated board snapshot (column removed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/boards/{boardID}/columns/reorder:
+    post:
+      tags: [Kanban]
+      operationId: columnsReorder
+      summary: Reorder a column relative to its siblings using fractional-index ranks.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ColumnReorderRequest' }
+      responses:
+        '200':
+          description: Updated board snapshot with new column order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanBoard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/boards/{boardID}/cards:
+    post:
+      tags: [Kanban]
+      operationId: cardsCreate
+      summary: Create a card in the specified column.
+      parameters:
+        - in: path
+          name: boardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardCreateRequest' }
+      responses:
+        '200':
+          description: The created card.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cards/{cardID}:
+    patch:
+      tags: [Kanban]
+      operationId: cardsPatch
+      summary: Update card fields (title, body, priority, dueAt).
+      parameters:
+        - in: path
+          name: cardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardPatchRequest' }
+      responses:
+        '200':
+          description: Updated card snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Kanban]
+      operationId: cardsDelete
+      summary: Delete a card.
+      parameters:
+        - in: path
+          name: cardID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Card deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cards/{cardID}/move:
+    post:
+      tags: [Kanban]
+      operationId: cardsMove
+      summary: Move a card to a different column and/or position using fractional-index ranks.
+      parameters:
+        - in: path
+          name: cardID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardMoveRequest' }
+      responses:
+        '200':
+          description: Updated card snapshot at its new position.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KanbanCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
 
   securitySchemes:
@@ -5841,3 +6133,128 @@ components:
         tier: { type: string }
         tierOverride: { type: string }
         tierExpiresAt: { type: string, format: date-time }
+
+    # ── Kanban ──
+
+    KanbanCardPriority:
+      type: string
+      enum: [low, medium, high, urgent]
+
+    KanbanCard:
+      type: object
+      required: [id, columnID, title, rank]
+      properties:
+        id: { type: string, format: uuid }
+        columnID: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string, nullable: true }
+        priority:
+          nullable: true
+          allOf:
+            - { $ref: '#/components/schemas/KanbanCardPriority' }
+        dueAt: { type: string, format: date-time, nullable: true }
+        rank: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
+
+    KanbanColumn:
+      type: object
+      required: [id, title, rank, cards]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        rank: { type: string }
+        cards:
+          type: array
+          items: { $ref: '#/components/schemas/KanbanCard' }
+
+    KanbanBoard:
+      type: object
+      required: [id, title, version, columns]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        version: { type: integer, format: int64 }
+        columns:
+          type: array
+          items: { $ref: '#/components/schemas/KanbanColumn' }
+
+    KanbanBoardSummary:
+      type: object
+      required: [id, title, version, columnCount, cardCount]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        version: { type: integer, format: int64 }
+        columnCount: { type: integer }
+        cardCount: { type: integer }
+        updatedAt: { type: string, format: date-time, nullable: true }
+
+    BoardVersionResponse:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, format: int64 }
+
+    BoardCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+
+    BoardPatchRequest:
+      type: object
+      properties:
+        title: { type: string, nullable: true }
+        archived: { type: boolean, nullable: true }
+
+    ColumnCreateRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+
+    ColumnPatchRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+
+    ColumnReorderRequest:
+      type: object
+      required: [columnID]
+      properties:
+        columnID: { type: string, format: uuid }
+        beforeID: { type: string, format: uuid, nullable: true }
+        afterID: { type: string, format: uuid, nullable: true }
+
+    CardCreateRequest:
+      type: object
+      required: [columnID, title]
+      properties:
+        columnID: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string, nullable: true }
+        priority:
+          nullable: true
+          allOf:
+            - { $ref: '#/components/schemas/KanbanCardPriority' }
+        dueAt: { type: string, format: date-time, nullable: true }
+
+    CardPatchRequest:
+      type: object
+      properties:
+        title: { type: string, nullable: true }
+        body: { type: string, nullable: true }
+        priority:
+          nullable: true
+          allOf:
+            - { $ref: '#/components/schemas/KanbanCardPriority' }
+        dueAt: { type: string, format: date-time, nullable: true }
+
+    CardMoveRequest:
+      type: object
+      required: [toColumnID]
+      properties:
+        toColumnID: { type: string, format: uuid }
+        beforeID: { type: string, format: uuid, nullable: true }
+        afterID: { type: string, format: uuid, nullable: true }
