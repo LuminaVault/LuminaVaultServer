@@ -4,14 +4,18 @@ import LuminaVaultShared
 /// HER-241 — static catalog of supported Hermes messaging gateways and
 /// the fields each one needs to be configured.
 ///
-/// The list mirrors what `hermes gateway setup <id>` accepts upstream
-/// (Telegram, Discord, Slack, WhatsApp). Per-field metadata (kind,
-/// label, placeholder) is served to the client so the iOS form can
-/// render dynamically without hardcoding gateway shapes.
+/// Field shapes are verified against the real Hermes image's
+/// `hermes_cli/gateway.py` `_PLATFORMS` registry (see the
+/// `hermes-gateway-env-schema` memory): activation is driven by the
+/// presence of each gateway's token **env-var** in the container's
+/// `.env`, not by a `config.yaml` block. `envVars(_:config:)` maps the
+/// catalog's field keys to those env-var names for the actuation flow.
 ///
-/// When Hermes ships per-gateway HTTP introspection, this catalog
-/// becomes the fallback for clients that can't reach Hermes directly;
-/// the controller can merge the upstream report into the static rows.
+/// WhatsApp is intentionally absent: it has no enterable credential — it
+/// needs interactive `hermes whatsapp` QR pairing — so it can't be
+/// configured remotely from the app yet. The `HermesGatewayID.whatsapp`
+/// enum case still exists (back-compat) but is not surfaced here, and the
+/// controller derives its supported set from `entries.keys`.
 enum HermesGatewayCatalog {
     static let entries: [HermesGatewayID: Entry] = [
         .telegram: Entry(
@@ -40,19 +44,12 @@ enum HermesGatewayCatalog {
                     kind: .secret,
                     isRequired: true,
                 ),
-                HermesGatewayField(
-                    key: "application_id",
-                    label: "Application ID",
-                    placeholder: "1234567890",
-                    kind: .text,
-                    isRequired: true,
-                ),
             ],
         ),
         .slack: Entry(
             displayName: "Slack",
             iconSlug: "slack",
-            description: "Pipe Lumina into a Slack workspace via your Slack app.",
+            description: "Pipe Lumina into a Slack workspace via your Slack app (Socket Mode).",
             requiredFields: [
                 HermesGatewayField(
                     key: "bot_token",
@@ -62,43 +59,40 @@ enum HermesGatewayCatalog {
                     isRequired: true,
                 ),
                 HermesGatewayField(
-                    key: "signing_secret",
-                    label: "Signing secret",
-                    placeholder: "8f7…",
+                    key: "app_token",
+                    label: "App token (xapp-…)",
+                    placeholder: "xapp-…",
                     kind: .secret,
-                    isRequired: true,
-                ),
-            ],
-        ),
-        .whatsapp: Entry(
-            displayName: "WhatsApp",
-            iconSlug: "whatsapp",
-            description: "Reach Lumina from WhatsApp via a Cloud API number.",
-            requiredFields: [
-                HermesGatewayField(
-                    key: "phone_number_id",
-                    label: "Phone number ID",
-                    placeholder: "10\u{200B}9876543210",
-                    kind: .text,
-                    isRequired: true,
-                ),
-                HermesGatewayField(
-                    key: "access_token",
-                    label: "Access token",
-                    placeholder: "EAAG…",
-                    kind: .secret,
-                    isRequired: true,
-                ),
-                HermesGatewayField(
-                    key: "verify_token",
-                    label: "Webhook verify token",
-                    placeholder: "user-defined string",
-                    kind: .text,
                     isRequired: true,
                 ),
             ],
         ),
     ]
+
+    /// Maps a gateway's saved field config to the Hermes `.env` env-vars that
+    /// activate it (`hermes_cli/gateway.py` `_PLATFORMS`). Only keys with a
+    /// non-empty value are emitted. Unknown gateways return `[:]`.
+    static func envVars(_ id: HermesGatewayID, config: [String: String]) -> [String: String] {
+        func value(_ key: String) -> String? {
+            guard let v = config[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !v.isEmpty else { return nil }
+            return v
+        }
+        var out: [String: String] = [:]
+        switch id {
+        case .telegram:
+            if let t = value("bot_token") { out["TELEGRAM_BOT_TOKEN"] = t }
+        case .discord:
+            if let t = value("bot_token") { out["DISCORD_BOT_TOKEN"] = t }
+        case .slack:
+            if let t = value("bot_token") { out["SLACK_BOT_TOKEN"] = t }
+            if let t = value("app_token") { out["SLACK_APP_TOKEN"] = t }
+        case .whatsapp:
+            // Not remotely configurable (interactive QR pairing). No env-vars.
+            break
+        }
+        return out
+    }
 
     struct Entry {
         let displayName: String

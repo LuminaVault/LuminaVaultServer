@@ -659,10 +659,30 @@ func buildRouter(
             // verify per-gateway operational status (Hermes exposes no
             // admin HTTP API yet).
             let gatewaysLogger = Logger(label: "lv.hermes-gateways")
+            // Actuation service: re-seeds the tenant `.env` from saved gateway
+            // rows and recreates the container, streaming progress over SSE.
+            // Health probe hits the container's loopback-published OpenAI
+            // gateway (same shape as the central self-update probe).
+            let gatewayHealthProbe: HermesGatewayApplyService.HealthProbe = { port, apiKey in
+                var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/v1/models")!)
+                req.timeoutInterval = 5
+                req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                guard let (_, response) = try? await URLSession.shared.data(for: req),
+                      let http = response as? HTTPURLResponse
+                else { return false }
+                return (200 ..< 300).contains(http.statusCode)
+            }
+            let gatewayApplyService = HermesGatewayApplyService(
+                fluent: services.fluent,
+                containerManager: containerManager,
+                healthProbe: gatewayHealthProbe,
+                logger: gatewaysLogger,
+            )
             hermesGatewaysController = HermesGatewaysController(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 gatewayClient: HermesGatewayClient(logger: gatewaysLogger),
+                applyService: gatewayApplyService,
                 logger: gatewaysLogger,
             )
 
