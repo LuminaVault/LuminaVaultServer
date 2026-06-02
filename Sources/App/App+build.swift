@@ -707,11 +707,23 @@ func buildRouter(
                 healthProbe: gatewayHealthProbe,
                 logger: gatewaysLogger,
             )
+            // WhatsApp QR pairing: runs `hermes whatsapp` in the tenant
+            // container and streams the QR to the app. Shares the docker exec
+            // + container manager with the other Hermes services.
+            let whatsAppPairingService = WhatsAppPairingService(
+                containerManager: containerManager,
+                backend: LiveWhatsAppPairingBackend(
+                    docker: dockerExec,
+                    logger: gatewaysLogger,
+                ),
+                logger: gatewaysLogger,
+            )
             hermesGatewaysController = HermesGatewaysController(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 gatewayClient: HermesGatewayClient(logger: gatewaysLogger),
                 applyService: gatewayApplyService,
+                whatsAppPairingService: whatsAppPairingService,
                 logger: gatewaysLogger,
             )
 

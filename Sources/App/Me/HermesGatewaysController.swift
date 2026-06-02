@@ -10,6 +10,7 @@ extension HermesGatewaysListResponse: @retroactive ResponseEncodable {}
 extension HermesGatewayTestResponse: @retroactive ResponseEncodable {}
 extension HermesGatewayApplyJobStatus: @retroactive ResponseEncodable {}
 extension StartHermesGatewayApplyResponse: @retroactive ResponseEncodable {}
+extension StartWhatsAppPairResponse: @retroactive ResponseEncodable {}
 
 /// HER-241 — `/v1/me/hermes-gateways` GET / GET-one / PUT / DELETE /
 /// POST-test.
@@ -46,10 +47,18 @@ struct HermesGatewaysController {
     /// restart the tenant container) with live SSE progress. `nil` when
     /// per-tenant containers are disabled — the apply routes then 404.
     let applyService: HermesGatewayApplyService?
+    /// Drives WhatsApp QR pairing (run `hermes whatsapp`, stream the QR, detect
+    /// link, unlink). `nil` when per-tenant containers are disabled — the
+    /// WhatsApp routes then 404.
+    let whatsAppPairingService: WhatsAppPairingService?
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: list)
+        // WhatsApp QR pairing (literal paths registered before `:id` catch-alls).
+        router.post("whatsapp/pair", use: whatsAppStartPair)
+        router.get("whatsapp/pair/:sessionID/stream", use: whatsAppPairStream)
+        router.delete("whatsapp/session", use: whatsAppUnlink)
         router.get(":id", use: getOne)
         router.put(":id", use: put)
         router.delete(":id", use: delete)
@@ -74,25 +83,12 @@ struct HermesGatewaysController {
             byID[row.gatewayID] = row
         }
 
-        // Only surface gateways present in the catalog (WhatsApp is excluded —
-        // it needs interactive QR pairing, not remote credential entry). Keep
-        // `HermesGatewayID.allCases` order for a stable list.
-        let entries = HermesGatewayID.allCases
-            .filter { HermesGatewayCatalog.entries[$0] != nil }
-            .map { id -> HermesGatewayCatalogEntry in
-                let entry = HermesGatewayCatalog.entry(for: id)
-            let row = byID[id.rawValue]
-            return HermesGatewayCatalogEntry(
-                id: id,
-                displayName: entry.displayName,
-                iconSlug: entry.iconSlug,
-                description: entry.description,
-                requiredFields: entry.requiredFields,
-                status: row.flatMap { HermesGatewayStatus(rawValue: $0.status) } ?? .notConfigured,
-                hasConfig: row != nil,
-                verifiedAt: row?.verifiedAt,
-                lastFailureCode: row?.lastFailureCode,
-            )
+        // Surface every catalog gateway in `HermesGatewayID.allCases` order.
+        // WhatsApp is a pairing gateway — its status comes from whether a
+        // session is persisted (via the pairing service), not a credential row.
+        var entries: [HermesGatewayCatalogEntry] = []
+        for id in HermesGatewayID.allCases where HermesGatewayCatalog.entries[id] != nil {
+            entries.append(await entryDTO(for: id, tenantID: tenantID, row: byID[id.rawValue]))
         }
         return HermesGatewaysListResponse(items: entries)
     }
@@ -104,17 +100,39 @@ struct HermesGatewaysController {
         let tenantID = try ctx.requireTenantID()
         let id = try parseID(ctx)
         let row = try await loadRow(tenantID: tenantID, gatewayID: id)
+        return await entryDTO(for: id, tenantID: tenantID, row: row)
+    }
+
+    /// Build the catalog-entry DTO for one gateway. Credential gateways derive
+    /// status from their `UserHermesGateway` row; pairing gateways (WhatsApp)
+    /// derive it from a persisted session via the pairing service.
+    private func entryDTO(
+        for id: HermesGatewayID,
+        tenantID: UUID,
+        row: UserHermesGateway?,
+    ) async -> HermesGatewayCatalogEntry {
         let entry = HermesGatewayCatalog.entry(for: id)
+        let status: HermesGatewayStatus
+        let hasConfig: Bool
+        if entry.pairingKind != nil {
+            let paired = await whatsAppPairingService?.isPaired(tenantID: tenantID) ?? false
+            status = paired ? .verified : .notConfigured
+            hasConfig = paired
+        } else {
+            status = row.flatMap { HermesGatewayStatus(rawValue: $0.status) } ?? .notConfigured
+            hasConfig = row != nil
+        }
         return HermesGatewayCatalogEntry(
             id: id,
             displayName: entry.displayName,
             iconSlug: entry.iconSlug,
             description: entry.description,
             requiredFields: entry.requiredFields,
-            status: row.flatMap { HermesGatewayStatus(rawValue: $0.status) } ?? .notConfigured,
-            hasConfig: row != nil,
+            status: status,
+            hasConfig: hasConfig,
             verifiedAt: row?.verifiedAt,
             lastFailureCode: row?.lastFailureCode,
+            pairingKind: entry.pairingKind,
         )
     }
 
@@ -124,6 +142,7 @@ struct HermesGatewaysController {
     func put(_ req: Request, ctx: AppRequestContext) async throws -> HermesGatewayCatalogEntry {
         let tenantID = try ctx.requireTenantID()
         let id = try parseID(ctx)
+        try rejectPairingGateway(id)
         let body = try await req.decode(as: HermesGatewayPutRequest.self, context: ctx)
 
         switch HermesGatewayCatalog.validate(id, config: body.config) {
@@ -178,6 +197,7 @@ struct HermesGatewaysController {
     func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
         let tenantID = try ctx.requireTenantID()
         let id = try parseID(ctx)
+        try rejectPairingGateway(id) // WhatsApp uses DELETE .../whatsapp/session
         try await UserHermesGateway.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .filter(\.$gatewayID == id.rawValue)
@@ -191,6 +211,7 @@ struct HermesGatewaysController {
     func test(_: Request, ctx: AppRequestContext) async throws -> HermesGatewayTestResponse {
         let tenantID = try ctx.requireTenantID()
         let id = try parseID(ctx)
+        try rejectPairingGateway(id)
 
         guard let resolution = ctx.hermesResolution else {
             throw HTTPError(.badRequest, message: ErrorCode.hermesNotConfigured.rawValue)
@@ -283,7 +304,54 @@ struct HermesGatewaysController {
         return await HermesGatewayApplySSEResponse(events: service.subscribe(jobID: jobID, tenantID: tenantID))
     }
 
+    // MARK: - POST /v1/me/hermes-gateways/whatsapp/pair
+
+    @Sendable
+    func whatsAppStartPair(_: Request, ctx: AppRequestContext) async throws -> StartWhatsAppPairResponse {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireWhatsAppService()
+        let sessionID = try await service.startPairing(tenantID: tenantID)
+        return StartWhatsAppPairResponse(sessionID: sessionID)
+    }
+
+    // MARK: - GET /v1/me/hermes-gateways/whatsapp/pair/:sessionID/stream (SSE)
+
+    @Sendable
+    func whatsAppPairStream(_: Request, ctx: AppRequestContext) async throws -> WhatsAppPairSSEResponse {
+        _ = try ctx.requireTenantID()
+        let service = try requireWhatsAppService()
+        guard let sessionID = ctx.parameters.get("sessionID", as: UUID.self) else {
+            throw HTTPError(.badRequest, message: "invalid_session_id")
+        }
+        return await WhatsAppPairSSEResponse(events: service.subscribe(sessionID: sessionID))
+    }
+
+    // MARK: - DELETE /v1/me/hermes-gateways/whatsapp/session
+
+    @Sendable
+    func whatsAppUnlink(_: Request, ctx: AppRequestContext) async throws -> HermesGatewayCatalogEntry {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireWhatsAppService()
+        _ = try await service.unlink(tenantID: tenantID)
+        return await entryDTO(for: .whatsapp, tenantID: tenantID, row: nil)
+    }
+
     // MARK: - Helpers
+
+    private func requireWhatsAppService() throws -> WhatsAppPairingService {
+        guard let whatsAppPairingService else {
+            throw HTTPError(.notFound, message: "whatsapp_pairing_unavailable")
+        }
+        return whatsAppPairingService
+    }
+
+    /// Reject credential routes (PUT/DELETE/test) for pairing gateways like
+    /// WhatsApp, which has no enterable credential.
+    private func rejectPairingGateway(_ id: HermesGatewayID) throws {
+        if HermesGatewayCatalog.entry(for: id).pairingKind != nil {
+            throw HTTPError(.badRequest, message: ErrorCode.unsupportedGateway.rawValue)
+        }
+    }
 
     private func requireApplyService() throws -> HermesGatewayApplyService {
         guard let applyService else {

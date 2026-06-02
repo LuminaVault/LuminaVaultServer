@@ -1288,6 +1288,78 @@ paths:
               schema: { type: string }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/me/hermes-gateways/whatsapp/pair:
+    post:
+      tags: [Me]
+      operationId: hermesGatewaysWhatsAppPair
+      summary: Start a WhatsApp QR pairing session.
+      description: |
+        WhatsApp has no enterable credential — it pairs via the interactive
+        `hermes whatsapp` CLI. This runs that CLI inside the tenant's Hermes
+        container and returns a `sessionID`; the client then opens the SSE
+        stream to receive the QR (Unicode block-art) and live status until the
+        device is linked. The user scans the QR with their phone's
+        *WhatsApp → Linked Devices*.
+      responses:
+        '200':
+          description: Pairing session started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartWhatsAppPairResponse' }
+        '404':
+          description: '`whatsapp_pairing_unavailable` — per-tenant containers are disabled.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/me/hermes-gateways/whatsapp/pair/{sessionID}/stream:
+    get:
+      tags: [Me]
+      operationId: hermesGatewaysWhatsAppPairStream
+      summary: SSE stream of HermesWhatsAppPairEvent for a pairing session.
+      description: >
+        `text/event-stream`; each `data:` line is one JSON-encoded
+        `HermesWhatsAppPairEvent` (discriminated by `type`: `qr` | `status` |
+        `linked` | `error`), blank-line terminated. The latest QR + status are
+        replayed on connect.
+      parameters:
+        - in: path
+          name: sessionID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '400':
+          description: '`invalid_session_id`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/me/hermes-gateways/whatsapp/session:
+    delete:
+      tags: [Me]
+      operationId: hermesGatewaysWhatsAppUnlink
+      summary: Unlink WhatsApp (delete the persisted session) and restart.
+      description: |
+        Deletes the tenant's persisted WhatsApp session from the container
+        volume and recreates the container so Hermes drops the connection.
+        Returns the refreshed gateway entry (status back to `not_configured`).
+      responses:
+        '200':
+          description: Updated WhatsApp gateway entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayCatalogEntry' }
+        '404':
+          description: '`whatsapp_pairing_unavailable` — per-tenant containers are disabled.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   # ─────────────── Me — LLM routing preferences (HER-252) ────────────────
 
   /v1/me/preferences/llm:
@@ -4796,6 +4868,16 @@ components:
           description: |
             Stable code from the last failed /test probe:
             `hermes_unauthorized` / `hermes_unreachable:<reason>`.
+        pairingKind:
+          allOf: [{ $ref: '#/components/schemas/HermesGatewayPairingKind' }]
+          description: |
+            Non-null → this gateway uses an interactive pairing flow instead
+            of a credential form (WhatsApp). Absent/null for credential
+            gateways. The client branches its detail screen on this.
+
+    HermesGatewayPairingKind:
+      type: string
+      enum: [whatsappQR]
 
     HermesGatewaysListResponse:
       type: object
@@ -4870,6 +4952,36 @@ components:
       properties:
         jobID: { type: string, format: uuid }
         state: { $ref: '#/components/schemas/HermesGatewayApplyJobState' }
+
+    # ─── Hermes WhatsApp QR Pairing ─────────────────────────────────
+
+    HermesWhatsAppPairStatus:
+      type: string
+      enum: [starting, awaitingScan, linking, linked, expired, failed]
+
+    HermesWhatsAppPairEvent:
+      type: object
+      description: >
+        Discriminated-union SSE frame. `type` selects the case; `payload`
+        carries the case value (absent for `linked`).
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [qr, status, linked, error]
+        payload:
+          description: >
+            `qr` → QR block-art string; `status` → HermesWhatsAppPairStatus;
+            `error` → message string; `linked` → omitted.
+          oneOf:
+            - type: string
+            - { $ref: '#/components/schemas/HermesWhatsAppPairStatus' }
+
+    StartWhatsAppPairResponse:
+      type: object
+      required: [sessionID]
+      properties:
+        sessionID: { type: string, format: uuid }
 
     # ─── Hermes Profiles (HER-273) ──────────────────────────────────
 

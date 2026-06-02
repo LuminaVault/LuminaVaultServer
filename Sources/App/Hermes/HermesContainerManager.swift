@@ -343,6 +343,13 @@ actor HermesContainerManager {
             "--env", "API_SERVER_PORT=8642",
             "--env", "API_SERVER_KEY=\(apiServerKey)",
             "--env", "HERMES_HOME=/opt/data",
+            // WhatsApp pairing: Baileys stores its session under
+            // `~/.hermes/platforms/whatsapp/session`. Pin HOME onto the
+            // bind-mounted volume so that path lands at
+            // `/opt/data/.hermes/...` and survives the `rm -f` + `run` that
+            // `applyGatewayConfig` does on every gateway change. Without this
+            // the pairing would be wiped by the next credential apply.
+            "--env", "HOME=/opt/data",
             // HER-XXX — persist the Mnemosyne memory store on this tenant's
             // volume (the baked image also sets this as ENV; explicit here so
             // it holds even if the image default changes).

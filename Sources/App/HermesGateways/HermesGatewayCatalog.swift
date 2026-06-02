@@ -11,11 +11,12 @@ import LuminaVaultShared
 /// `.env`, not by a `config.yaml` block. `envVars(_:config:)` maps the
 /// catalog's field keys to those env-var names for the actuation flow.
 ///
-/// WhatsApp is intentionally absent: it has no enterable credential — it
-/// needs interactive `hermes whatsapp` QR pairing — so it can't be
-/// configured remotely from the app yet. The `HermesGatewayID.whatsapp`
-/// enum case still exists (back-compat) but is not surfaced here, and the
-/// controller derives its supported set from `entries.keys`.
+/// WhatsApp is special: it has no enterable credential — it pairs via the
+/// interactive `hermes whatsapp` QR flow. It is surfaced here with
+/// `pairingKind: .whatsappQR` and **no** `requiredFields`, so the client
+/// routes it to the QR-pairing screen instead of a credential form. Its
+/// `envVars`/`validate` paths intentionally produce nothing; the credential
+/// routes (PUT/test) reject pairing gateways. See `WhatsAppPairingService`.
 enum HermesGatewayCatalog {
     static let entries: [HermesGatewayID: Entry] = [
         .telegram: Entry(
@@ -151,6 +152,13 @@ enum HermesGatewayCatalog {
                 ),
             ],
         ),
+        .whatsapp: Entry(
+            displayName: "WhatsApp",
+            iconSlug: "whatsapp",
+            description: "Chat with Lumina on WhatsApp. Pairs by scanning a QR with your phone — no token to enter.",
+            requiredFields: [],
+            pairingKind: .whatsappQR,
+        ),
     ]
 
     /// Maps a gateway's saved field config to the Hermes `.env` env-vars that
@@ -195,6 +203,23 @@ enum HermesGatewayCatalog {
         let iconSlug: String
         let description: String
         let requiredFields: [HermesGatewayField]
+        /// Non-nil → interactive pairing gateway (WhatsApp). Credential
+        /// gateways leave this `nil`.
+        var pairingKind: HermesGatewayPairingKind?
+
+        init(
+            displayName: String,
+            iconSlug: String,
+            description: String,
+            requiredFields: [HermesGatewayField],
+            pairingKind: HermesGatewayPairingKind? = nil,
+        ) {
+            self.displayName = displayName
+            self.iconSlug = iconSlug
+            self.description = description
+            self.requiredFields = requiredFields
+            self.pairingKind = pairingKind
+        }
     }
 
     static func entry(for id: HermesGatewayID) -> Entry {
