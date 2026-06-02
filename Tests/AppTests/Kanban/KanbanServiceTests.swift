@@ -106,7 +106,7 @@ struct KanbanServiceTests {
         await fluent.migrations.add(M66_AddSkillRunLogOutput())
         await fluent.migrations.add(M67_AddSkillsStateJobFields())
         await fluent.migrations.add(M68_CreateAppleConsent())
-        await fluent.migrations.add(M69_CreateKanban())
+        await fluent.migrations.add(M71_CreateKanban())
         // HER-310 — wrap migrate() so transient PG errors shut the pool down
         // before propagating; prevents EventLoopGroupConnectionPool leak and
         // SIGILL on process exit.
