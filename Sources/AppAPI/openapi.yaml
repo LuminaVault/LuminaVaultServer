@@ -4431,7 +4431,7 @@ components:
 
     HermesGatewayID:
       type: string
-      enum: [telegram, discord, slack, whatsapp]
+      enum: [telegram, discord, slack, whatsapp, email]
       description: |
         Identifier for a Hermes messaging gateway the user can configure.
         Today this is the MVP four; the broader Hermes list (Matrix,

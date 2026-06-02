@@ -67,6 +67,69 @@ enum HermesGatewayCatalog {
                 ),
             ],
         ),
+        .email: Entry(
+            displayName: "Email",
+            iconSlug: "email",
+            description: "Send and receive email as Lumina over IMAP/SMTP.",
+            requiredFields: [
+                HermesGatewayField(
+                    key: "address",
+                    label: "Email address",
+                    placeholder: "lumina@gmail.com",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "password",
+                    label: "Password (or app password)",
+                    placeholder: "app password",
+                    kind: .secret,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "imap_host",
+                    label: "IMAP host",
+                    placeholder: "imap.gmail.com",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "smtp_host",
+                    label: "SMTP host",
+                    placeholder: "smtp.gmail.com",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Allowed senders (comma-separated)",
+                    placeholder: "you@email.com",
+                    kind: .text,
+                    isRequired: false,
+                ),
+                HermesGatewayField(
+                    key: "imap_port",
+                    label: "IMAP port",
+                    placeholder: "993",
+                    kind: .text,
+                    isRequired: false,
+                ),
+                HermesGatewayField(
+                    key: "smtp_port",
+                    label: "SMTP port",
+                    placeholder: "587",
+                    kind: .text,
+                    isRequired: false,
+                ),
+                HermesGatewayField(
+                    key: "home_address",
+                    label: "Home address (cron delivery)",
+                    placeholder: "you@email.com",
+                    kind: .text,
+                    isRequired: false,
+                ),
+            ],
+        ),
     ]
 
     /// Maps a gateway's saved field config to the Hermes `.env` env-vars that
@@ -90,6 +153,15 @@ enum HermesGatewayCatalog {
         case .whatsapp:
             // Not remotely configurable (interactive QR pairing). No env-vars.
             break
+        case .email:
+            if let t = value("address") { out["EMAIL_ADDRESS"] = t }
+            if let t = value("password") { out["EMAIL_PASSWORD"] = t }
+            if let t = value("imap_host") { out["EMAIL_IMAP_HOST"] = t }
+            if let t = value("smtp_host") { out["EMAIL_SMTP_HOST"] = t }
+            if let t = value("allowed_users") { out["EMAIL_ALLOWED_USERS"] = t }
+            if let t = value("imap_port") { out["EMAIL_IMAP_PORT"] = t }
+            if let t = value("smtp_port") { out["EMAIL_SMTP_PORT"] = t }
+            if let t = value("home_address") { out["EMAIL_HOME_ADDRESS"] = t }
         }
         return out
     }
