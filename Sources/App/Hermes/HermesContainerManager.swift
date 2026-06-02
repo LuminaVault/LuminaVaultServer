@@ -160,6 +160,7 @@ actor HermesContainerManager {
             port: port,
             apiServerKey: apiServerKey,
             xaiConnectedAt: nil,
+            nousConnectedAt: nil,
         )
     }
 
@@ -187,14 +188,35 @@ actor HermesContainerManager {
         try await row.update(on: fluent.db())
     }
 
+    /// Marks the tenant's container as having a live Nous Portal OAuth
+    /// session. The refresh token lives in `auth.json` on the volume; this
+    /// marker exempts the container from idle eviction. Idempotent.
+    func recordNousConnected(tenantID: UUID, at: Date) async throws {
+        guard let row = try await loadRow(tenantID: tenantID) else { return }
+        row.nousConnectedAt = at
+        row.lastUsedAt = at
+        try await row.update(on: fluent.db())
+    }
+
+    /// Clears the Nous connect marker (after a revoke). Container becomes
+    /// eligible for idle eviction once no other connect marker is set.
+    func recordNousDisconnected(tenantID: UUID) async throws {
+        guard let row = try await loadRow(tenantID: tenantID) else { return }
+        row.nousConnectedAt = nil
+        try await row.update(on: fluent.db())
+    }
+
     /// Stops + removes containers whose `last_used_at` is older than the
-    /// idle TTL AND that have no xai-oauth token. Returns the number of
+    /// idle TTL AND that have no xai-oauth token AND no Nous connection.
+    /// A connected container holds the user's credential in `auth.json` on
+    /// its volume, so it must survive idle eviction. Returns the number of
     /// containers evicted.
     @discardableResult
     func evictIdle() async throws -> Int {
         let cutoff = now().addingTimeInterval(-TimeInterval(config.idleTTLSeconds))
         let stale = try await HermesTenantContainer.query(on: fluent.db())
             .filter(\.$xaiConnectedAt == nil)
+            .filter(\.$nousConnectedAt == nil)
             .filter(\.$lastUsedAt, .lessThan, cutoff)
             .all()
         for row in stale {
@@ -263,6 +285,7 @@ actor HermesContainerManager {
             port: row.port,
             apiServerKey: key,
             xaiConnectedAt: row.xaiConnectedAt,
+            nousConnectedAt: row.nousConnectedAt,
         )
     }
 

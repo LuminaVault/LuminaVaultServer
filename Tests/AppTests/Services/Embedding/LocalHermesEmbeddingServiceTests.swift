@@ -51,6 +51,7 @@ struct LocalHermesEmbeddingServiceTests {
             port: 8642,
             apiServerKey: "test-key",
             xaiConnectedAt: nil,
+            nousConnectedAt: nil,
         )
     }
 

@@ -546,6 +546,10 @@ func buildRouter(
     // Gated on the same SecretBox the BYO Hermes flow depends on because
     // the tenant's encrypted `API_SERVER_KEY` is sealed with the same KDF.
     var xaiOAuthController: XaiOAuthController?
+    // Nous Subscription Integration — per-tenant Nous Portal OAuth device-code
+    // service. Built alongside the xai bits; shares the same container manager
+    // + docker exec. Gated on the same SecretBox branch.
+    var nousOAuthController: NousOAuthController?
     // HER-240c — Grok runtime proxy. Built alongside the xai bits so it
     // shares the same container manager instance.
     var grokController: GrokController?
@@ -640,6 +644,25 @@ func buildRouter(
             xaiOAuthController = XaiOAuthController(
                 service: xaiService,
                 logger: xaiLogger,
+            )
+            // Nous Subscription Integration — Nous Portal OAuth device-code
+            // service. Shares the container manager + docker exec with xai.
+            let nousLogger = Logger(label: "lv.nous-oauth")
+            let nousProcessRegistry = NousOAuthProcessRegistry()
+            let nousService = NousOAuthService(
+                containerManager: containerManager,
+                sessionStore: NousOAuthSessionStore(),
+                backend: LiveNousOAuthBackend(
+                    docker: dockerExec,
+                    registry: nousProcessRegistry,
+                    logger: nousLogger,
+                ),
+                fluent: services.fluent,
+                logger: nousLogger,
+            )
+            nousOAuthController = NousOAuthController(
+                service: nousService,
+                logger: nousLogger,
             )
             // HER-240c — Grok runtime proxy shares the container manager.
             // Use the AsyncHTTPClient-managed shared client so the process
@@ -1887,6 +1910,15 @@ func buildRouter(
         let integrationsGroup = router.group("/v1")
             .add(middleware: jwtAuthenticator)
         xaiOAuthController.addRoutes(to: integrationsGroup)
+    }
+
+    // Nous Subscription Integration — /v1/integrations/nous routes. Same
+    // secret gate as xai: without the master secret the tenant container
+    // manager can't run, so these routes 404 in that mode.
+    if let nousOAuthController {
+        let nousIntegrationsGroup = router.group("/v1")
+            .add(middleware: jwtAuthenticator)
+        nousOAuthController.addRoutes(to: nousIntegrationsGroup)
     }
 
     // HER-240c — /v1/grok/* routes. JWT-protected + premium-gated. 402 for

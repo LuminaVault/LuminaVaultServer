@@ -15,6 +15,7 @@ struct HermesContainerHandle: Equatable {
     /// container. Never logged.
     let apiServerKey: String
     let xaiConnectedAt: Date?
+    let nousConnectedAt: Date?
 
     /// Internal base URL used by the server to reach the container over the
     /// shared docker network. Container resolves by name on the network.

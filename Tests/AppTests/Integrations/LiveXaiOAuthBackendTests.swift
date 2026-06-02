@@ -15,6 +15,7 @@ struct LiveXaiOAuthBackendTests {
             port: 9000,
             apiServerKey: "stub-key",
             xaiConnectedAt: nil,
+            nousConnectedAt: nil,
         )
     }
 

@@ -163,6 +163,41 @@ struct HermesContainerManagerTests {
     }
 
     @Test
+    func `evictIdle never reaps a stale Nous-connected container`() async throws {
+        try await withTestFluent(label: "lv.test.nous.evict") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            try await Self.truncate(fluent)
+
+            let nousTenant = UUID()
+            try await Self.makeUser(nousTenant, "her240a-nous").save(on: fluent.db())
+
+            let docker = StubDockerExec()
+            let manager = try Self.makeManager(docker: docker, fluent: fluent)
+
+            try await manager.ensureRunning(tenantID: nousTenant)
+            try await manager.recordNousConnected(tenantID: nousTenant, at: Date())
+
+            // Age the container well past the idle TTL.
+            guard let sql = fluent.db() as? any SQLDatabase else {
+                Issue.record("SQL driver required")
+                return
+            }
+            try await sql.raw("""
+            UPDATE hermes_tenant_containers
+            SET last_used_at = now() - interval '120 seconds'
+            WHERE tenant_id = \(bind: nousTenant)
+            """).run()
+
+            let evicted = try await manager.evictIdle()
+            #expect(evicted == 0)
+
+            let surviving = try await HermesTenantContainer.query(on: fluent.db()).all().map(\.tenantID)
+            #expect(surviving.contains(nousTenant))
+        }
+    }
+
+    @Test
     func `port range exhaustion throws`() async throws {
         try await withTestFluent(label: "lv.test.her240a.exhaust") { fluent in
             await registerMigrations(on: fluent)

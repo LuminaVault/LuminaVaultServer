@@ -23,6 +23,11 @@ final class HermesTenantContainer: Model, TenantModel, @unchecked Sendable {
     /// `nil` until the user has successfully completed xai-oauth. When set,
     /// the container is exempt from idle eviction.
     @OptionalField(key: "xai_connected_at") var xaiConnectedAt: Date?
+    /// `nil` until the user has connected their own Nous Portal subscription
+    /// via the OAuth device-code flow. When set, the container is exempt from
+    /// idle eviction so the refresh token in `auth.json` on the volume stays
+    /// associated with this tenant. Mirrors `xaiConnectedAt`.
+    @OptionalField(key: "nous_connected_at") var nousConnectedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     /// Manually updated by `HermesContainerManager.ensureRunning` on every
     /// touch. Drives `evictIdle()`. Optional rather than `@Timestamp`
@@ -39,6 +44,7 @@ final class HermesTenantContainer: Model, TenantModel, @unchecked Sendable {
         apiServerKeyCiphertext: Data,
         apiServerKeyNonce: Data,
         xaiConnectedAt: Date? = nil,
+        nousConnectedAt: Date? = nil,
         lastUsedAt: Date? = nil,
     ) {
         self.tenantID = tenantID
@@ -47,6 +53,7 @@ final class HermesTenantContainer: Model, TenantModel, @unchecked Sendable {
         self.apiServerKeyCiphertext = apiServerKeyCiphertext
         self.apiServerKeyNonce = apiServerKeyNonce
         self.xaiConnectedAt = xaiConnectedAt
+        self.nousConnectedAt = nousConnectedAt
         self.lastUsedAt = lastUsedAt
     }
 }
