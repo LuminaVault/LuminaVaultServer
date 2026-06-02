@@ -273,6 +273,9 @@ actor SkillRunner {
         case memoryUpsert = "memory_upsert"
         case sessionSearch = "session_search"
         case vaultRead = "vault_read"
+        /// Apple Integration P1 — read the tenant's synced HealthKit data
+        /// (gated by per-domain consent). Daily aggregates for trends/correlation.
+        case healthQuery = "health_query"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -549,6 +552,53 @@ actor SkillRunner {
             } catch {
                 return Self.toolErrorJSON("vault_read failed: \(error)")
             }
+        case AvailableTool.healthQuery.rawValue:
+            struct HealthQueryArgs: Decodable { let metric: String?; let days: Int? }
+            struct AggRow: Decodable { let event_type: String; let unit: String?; let day: Date; let total: Double?; let avg: Double? }
+            do {
+                guard let sql = fluent.db() as? any SQLDatabase else {
+                    return Self.toolErrorJSON("sql unavailable")
+                }
+                // Consent gate — the user must have allowed the Health domain.
+                let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .health, sql: sql)
+                guard allowed else {
+                    return Self.toolErrorJSON("health access not allowed by the user")
+                }
+                let args = (try? decoder.decode(HealthQueryArgs.self, from: argsData)) ?? HealthQueryArgs(metric: nil, days: nil)
+                let days = max(1, min(args.days ?? 30, 365))
+                let rows: [AggRow]
+                if let metric = args.metric, !metric.isEmpty {
+                    rows = try await sql.raw("""
+                    SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
+                           SUM(value_numeric) AS total, AVG(value_numeric) AS avg
+                    FROM health_events
+                    WHERE tenant_id = \(bind: tenantID) AND event_type = \(bind: metric)
+                      AND recorded_at >= NOW() - (\(bind: days) * INTERVAL '1 day')
+                    GROUP BY event_type, unit, day ORDER BY day
+                    """).all(decoding: AggRow.self)
+                } else {
+                    rows = try await sql.raw("""
+                    SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
+                           SUM(value_numeric) AS total, AVG(value_numeric) AS avg
+                    FROM health_events
+                    WHERE tenant_id = \(bind: tenantID)
+                      AND recorded_at >= NOW() - (\(bind: days) * INTERVAL '1 day')
+                    GROUP BY event_type, unit, day ORDER BY day
+                    """).all(decoding: AggRow.self)
+                }
+                let points = rows.map { r in
+                    [
+                        "metric": r.event_type,
+                        "unit": r.unit ?? "",
+                        "day": Self.fileDateStamp(r.day),
+                        "total": String(format: "%.2f", r.total ?? 0),
+                        "avg": String(format: "%.2f", r.avg ?? 0),
+                    ]
+                }
+                return Self.encodeJSON(["status": "ok", "days": String(days), "points": points])
+            } catch {
+                return Self.toolErrorJSON("health_query failed: \(error)")
+            }
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -795,6 +845,18 @@ actor SkillRunner {
                     properties: [
                         "path": .init(type: "string", description: "Vault path relative to raw root."),
                         "vault_file_id": .init(type: "string", description: "Vault file UUID."),
+                    ],
+                    required: [],
+                ),
+            ))
+        case .healthQuery:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Read the user's Apple Health data as daily aggregates (for trends/correlation). Requires the user to have allowed Health access.",
+                parameters: .init(
+                    properties: [
+                        "metric": .init(type: "string", description: "Optional event type to filter (e.g. step_count, sleep, heart_rate). Omit for all."),
+                        "days": .init(type: "integer", description: "Lookback window in days, 1-365 (default 30)."),
                     ],
                     required: [],
                 ),
