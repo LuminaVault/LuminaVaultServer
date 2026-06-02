@@ -280,6 +280,10 @@ actor SkillRunner {
         /// user's device via device-RPC (gated by consent + "allow writes").
         case reminderCreate = "reminder_create"
         case calendarCreate = "calendar_create"
+        /// Apple Integration P2b — fresh read of upcoming calendar events /
+        /// open reminders via device-RPC (gated by consent; read-only).
+        case calendarQuery = "calendar_query"
+        case remindersList = "reminders_list"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -623,6 +627,13 @@ actor SkillRunner {
             } catch {
                 return Self.toolErrorJSON("calendar_create failed: \(error)")
             }
+        case AvailableTool.calendarQuery.rawValue:
+            struct Args: Decodable { let days: Int? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(days: nil)
+            let days = max(1, min(args.days ?? 7, 90))
+            return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+        case AvailableTool.remindersList.rawValue:
+            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -646,6 +657,26 @@ actor SkillRunner {
             var out: [String: String] = ["status": "ok"]
             for (k, v) in result.payload ?? [:] { out[k] = v }
             return Self.encodeJSON(out)
+        } catch {
+            return Self.toolErrorJSON("device did not respond (offline or timed out)")
+        }
+    }
+
+    /// Apple Integration P2b — gate consent, then round-trip a fresh read
+    /// (device_fetch) to the device; returns the device's `items` JSON.
+    private func deviceRead(tenantID: UUID, domain: AppleDataDomain, payload: [String: String]) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: domain, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("\(domain.rawValue) access not allowed by the user") }
+        do {
+            let result = try await DeviceCommandBroker.shared.request(
+                tenantID: tenantID,
+                command: DeviceCommand(kind: .deviceFetch, domain: domain, payload: payload),
+            )
+            guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
+            return Self.encodeJSON(["status": "ok", "items": result.payload?["items"] ?? "[]"])
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
@@ -934,6 +965,23 @@ actor SkillRunner {
                     ],
                     required: ["title", "start"],
                 ),
+            ))
+        case .calendarQuery:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "List the user's upcoming Apple Calendar events. Requires the user to have allowed Calendar access. Returns a JSON array of {title,start,end,location}.",
+                parameters: .init(
+                    properties: [
+                        "days": .init(type: "integer", description: "How many days ahead to include, 1-90 (default 7)."),
+                    ],
+                    required: [],
+                ),
+            ))
+        case .remindersList:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "List the user's open (incomplete) Apple Reminders. Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
+                parameters: .init(properties: [:], required: []),
             ))
         }
     }
