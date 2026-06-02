@@ -96,7 +96,9 @@ struct JobsController {
             }
         }
         let core = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let base = core.isEmpty ? UUID().uuidString.prefix(8).lowercased() : core.prefix(40)
+        let base: String = core.isEmpty
+            ? String(UUID().uuidString.prefix(8)).lowercased()
+            : String(core.prefix(40))
         return "job-\(base)"
     }
 

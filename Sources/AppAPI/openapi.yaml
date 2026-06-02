@@ -612,6 +612,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SkillListResponse' }
 
+  /v1/apple/consent:
+    get:
+      tags: [Apple]
+      operationId: appleConsentGet
+      summary: Per-domain Apple data-access consent snapshot.
+      responses:
+        '200':
+          description: Consent snapshot (every domain; absent = not allowed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleConsentResponse' }
+    put:
+      tags: [Apple]
+      operationId: appleConsentPut
+      summary: Set one domain's consent; disallow purges the synced server copy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleConsentUpdateRequest' }
+      responses:
+        '200':
+          description: Updated snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleConsentResponse' }
+
   /v1/jobs/detect:
     post:
       tags: [Skills]
@@ -3852,6 +3879,35 @@ components:
             type: object
             required: [key, value]
             properties: { key: { type: string }, value: { type: string } }
+
+    AppleDataDomain:
+      type: string
+      enum: [health, calendar, reminders, photos, location, files]
+
+    AppleConsentDTO:
+      type: object
+      required: [domain, allowed, allowWrites]
+      properties:
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        allowed: { type: boolean }
+        allowWrites: { type: boolean }
+        lastSyncAt: { type: string, format: date-time }
+
+    AppleConsentResponse:
+      type: object
+      required: [consents]
+      properties:
+        consents:
+          type: array
+          items: { $ref: '#/components/schemas/AppleConsentDTO' }
+
+    AppleConsentUpdateRequest:
+      type: object
+      required: [domain, allowed]
+      properties:
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        allowed: { type: boolean }
+        allowWrites: { type: boolean }
 
     JobProposalDTO:
       type: object

@@ -1976,6 +1976,13 @@ func buildRouter(
         logger: Logger(label: "lv.jobs"),
     ).addRoutes(to: jobsGroup)
 
+    // Apple Ecosystem Integration P0 — per-domain data-access consent.
+    let appleGroup = router.group("/v1/apple").add(middleware: jwtAuthenticator)
+    AppleConsentController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.apple.consent"),
+    ).addRoutes(to: appleGroup)
+
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
     ApnsCategoryPrefsController(
