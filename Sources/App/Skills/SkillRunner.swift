@@ -284,6 +284,9 @@ actor SkillRunner {
         /// open reminders via device-RPC (gated by consent; read-only).
         case calendarQuery = "calendar_query"
         case remindersList = "reminders_list"
+        /// Apple Integration P3 — recent photos analyzed on-device (OCR text);
+        /// only derived text leaves the device, never pixels. Read-only.
+        case photosSearch = "photos_search"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -634,6 +637,11 @@ actor SkillRunner {
             return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
         case AvailableTool.remindersList.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
+        case AvailableTool.photosSearch.rawValue:
+            struct Args: Decodable { let limit: Int? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
+            let limit = max(1, min(args.limit ?? 10, 30))
+            return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -982,6 +990,17 @@ actor SkillRunner {
                 name: tool.rawValue,
                 description: "List the user's open (incomplete) Apple Reminders. Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
                 parameters: .init(properties: [:], required: []),
+            ))
+        case .photosSearch:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Analyze the user's most recent photos on-device (OCR text + date); only extracted text is returned, never the images. Requires Photos access. Returns a JSON array of {takenAt,text,screenshot}.",
+                parameters: .init(
+                    properties: [
+                        "limit": .init(type: "integer", description: "How many recent photos to analyze, 1-30 (default 10)."),
+                    ],
+                    required: [],
+                ),
             ))
         }
     }
