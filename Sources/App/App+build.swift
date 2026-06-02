@@ -1843,6 +1843,11 @@ func buildRouter(
     let deviceController = DeviceController(fluent: services.fluent)
     let deviceGroup = router.group("/v1/devices").add(middleware: jwtAuthenticator)
     deviceController.addRoutes(to: deviceGroup)
+    // Apple Integration P0b — device-RPC result callback.
+    DeviceCommandController(
+        broker: .shared,
+        logger: Logger(label: "lv.apple.device-rpc"),
+    ).addRoutes(to: deviceGroup)
 
     // Onboarding state (HER-93) — server-tracked resumable onboarding.
     let onboardingController = OnboardingController(fluent: services.fluent)

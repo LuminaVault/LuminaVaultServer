@@ -1372,6 +1372,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DeviceRegistrationResponse' }
 
+  /v1/devices/command/{id}/result:
+    post:
+      tags: [Devices]
+      operationId: deviceCommandResult
+      summary: App posts a device-RPC command's result (Apple Integration P0b).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceCommandResult' }
+      responses:
+        '200': { description: Result accepted. }
+
   /v1/devices/{token}:
     delete:
       tags: [Devices]
@@ -3988,6 +4003,16 @@ components:
         domain: { $ref: '#/components/schemas/AppleDataDomain' }
         allowed: { type: boolean }
         allowWrites: { type: boolean }
+
+    DeviceCommandResult:
+      type: object
+      required: [id, ok]
+      description: "Apple Integration P0b — result of a server→device command."
+      properties:
+        id: { type: string, format: uuid }
+        ok: { type: boolean }
+        payload: { type: object, additionalProperties: { type: string } }
+        error: { type: string }
 
     JobProposalDTO:
       type: object
