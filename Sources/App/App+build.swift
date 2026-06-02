@@ -2044,10 +2044,14 @@ func buildRouter(
 
     // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
     let jobsGroup = router.group("/v1/jobs").add(middleware: jwtAuthenticator)
-    JobsController(
-        classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
+    let jobAuthoring = JobAuthoring(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
+        logger: Logger(label: "lv.jobs"),
+    )
+    JobsController(
+        classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
+        authoring: jobAuthoring,
         logger: Logger(label: "lv.jobs"),
     ).addRoutes(to: jobsGroup)
 
@@ -2113,7 +2117,9 @@ func buildRouter(
     }
 
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
-    let kanbanController = KanbanController(service: KanbanService(fluent: services.fluent))
+    let kanbanController = KanbanController(
+        service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
+    )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))

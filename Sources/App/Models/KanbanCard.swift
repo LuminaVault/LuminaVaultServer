@@ -13,6 +13,8 @@ final class KanbanCard: Model, TenantModel, @unchecked Sendable {
     @Field(key: "rank") var rank: String
     @OptionalField(key: "priority") var priority: String?
     @OptionalField(key: "due_at") var dueAt: Date?
+    /// Structured card metadata (M72) — card→Job promotion config. See CardExtra.
+    @OptionalField(key: "extra") var extra: CardExtra?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

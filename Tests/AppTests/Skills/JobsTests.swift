@@ -27,13 +27,13 @@ struct JobsTests {
 
     @Test
     func `slug is namespaced and filesystem-safe`() {
-        #expect(JobsController.slug("Daily Stock Prices!") == "job-daily-stock-prices")
-        #expect(JobsController.slug("AI / Papers").hasPrefix("job-"))
+        #expect(JobAuthoring.slug("Daily Stock Prices!") == "job-daily-stock-prices")
+        #expect(JobAuthoring.slug("AI / Papers").hasPrefix("job-"))
     }
 
     @Test
     func `authored SKILL.md parses as a valid scheduled vault skill`() throws {
-        let md = JobsController.skillMarkdown(
+        let md = JobAuthoring.skillMarkdown(
             slug: "job-x", title: "Stock Watch", cron: "0 8 * * *", domain: "stocks", spec: "Report prices",
         )
         let manifest = try SkillManifestParser().parse(source: .vault, contents: md)

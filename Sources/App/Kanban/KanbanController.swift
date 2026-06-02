@@ -33,6 +33,7 @@ struct KanbanController {
         router.patch(":cardID", use: patchCard)
         router.delete(":cardID", use: deleteCard)
         router.post(":cardID/move", use: moveCard)
+        router.post(":cardID/promote", use: promoteCard)
     }
 
     @Sendable func listBoards(_ req: Request, ctx: AppRequestContext) async throws -> [BoardSummaryDTO] {
@@ -141,6 +142,28 @@ struct KanbanController {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: CardMoveRequest.self, context: ctx)
         return try await service.moveCard(tenantID: tenant, cardID: try cardID(ctx), req: body)
+    }
+
+    /// Card → Job promotion (gap #1). Reads structured `card.extra.job` config,
+    /// authors a vault cron skill, and returns the created Job as a `SkillDTO`
+    /// (same shape as `POST /v1/jobs`). Idempotent on re-promote.
+    @Sendable func promoteCard(_ req: Request, ctx: AppRequestContext) async throws -> SkillDTO {
+        let tenant = try ctx.requireTenantID()
+        let promoted = try await service.promoteCard(tenantID: tenant, cardID: try cardID(ctx))
+        return SkillDTO(
+            id: promoted.slug,
+            source: .vault,
+            name: promoted.slug,
+            title: promoted.title,
+            descriptionText: promoted.spec,
+            capability: .medium,
+            schedule: promoted.cron,
+            enabled: true,
+            dailyRunCount: 0,
+            dailyRunCap: 0,
+            apnsCategory: nil,
+            bodyExcerpt: String(promoted.spec.prefix(160)),
+        )
     }
 
     // MARK: - Path-parameter helpers

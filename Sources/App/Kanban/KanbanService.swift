@@ -6,7 +6,22 @@ import LuminaVaultShared
 
 struct KanbanService: Sendable {
     let fluent: Fluent
+    /// Authors promoted cards as vault cron skills. Optional so plain board
+    /// callers/tests can construct the service without the Jobs subsystem;
+    /// `promoteCard` requires it.
+    var authoring: JobAuthoring? = nil
     private var db: any Database { fluent.db() }
+
+    /// Outcome of promoting a card to a scheduled Job. Carries enough to build
+    /// the `SkillDTO` response without a `CardDTO`/Shared change.
+    struct PromotedJob: Sendable {
+        let slug: String
+        let title: String
+        let cron: String
+        let spec: String
+        /// True when the card already had a `jobSlug` — no re-author happened.
+        let alreadyPromoted: Bool
+    }
 
     // MARK: - Boards
 
@@ -151,6 +166,53 @@ struct KanbanService: Sendable {
         try await card.save(on: db)
         try await bumpBoard(tenantID: tenantID, boardID: card.boardID)
         return Self.cardDTO(card)
+    }
+
+    // MARK: - Promotion (card → Job)
+
+    /// Promotes a card to a scheduled Job (gap #1). Reads structured config from
+    /// `card.extra.job`, authors a vault cron skill via `JobAuthoring`, and
+    /// writes the resulting slug back onto the card. Idempotent: a card that was
+    /// already promoted (has `jobSlug`) is not re-authored.
+    func promoteCard(tenantID: UUID, cardID: UUID) async throws -> PromotedJob {
+        guard let authoring else {
+            throw HTTPError(.internalServerError, message: "job_authoring_unavailable")
+        }
+        let card = try await requireCard(tenantID: tenantID, cardID: cardID)
+        var extra = card.extra ?? CardExtra()
+        guard var job = extra.job else {
+            throw HTTPError(.badRequest, message: "card_missing_job_config")
+        }
+        guard let cron = job.cron, !cron.trimmingCharacters(in: .whitespaces).isEmpty else {
+            // run_at one-shot scheduling is gap #10 — recurring cron only for now.
+            throw HTTPError(.badRequest, message: "card_job_requires_cron")
+        }
+        guard let spec = (job.prompt ?? card.body)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !spec.isEmpty
+        else {
+            throw HTTPError(.badRequest, message: "card_job_requires_prompt_or_body")
+        }
+
+        // Idempotency: already promoted → return the existing job, no re-author.
+        if let slug = job.jobSlug {
+            return PromotedJob(slug: slug, title: card.title, cron: cron, spec: spec, alreadyPromoted: true)
+        }
+
+        let slug = try await authoring.author(
+            tenantID: tenantID,
+            title: card.title,
+            cron: cron,
+            domain: job.domain,
+            spec: spec,
+            spaceID: job.spaceID,
+        )
+        job.jobSlug = slug
+        job.promotedAt = Date()
+        extra.job = job
+        card.extra = extra
+        try await card.save(on: db)
+        try await bumpBoard(tenantID: tenantID, boardID: card.boardID)
+        return PromotedJob(slug: slug, title: card.title, cron: cron, spec: spec, alreadyPromoted: false)
     }
 
     // MARK: - Snapshot

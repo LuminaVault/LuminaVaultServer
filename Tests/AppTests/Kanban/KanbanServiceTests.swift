@@ -5,6 +5,7 @@ import Foundation
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 import Testing
 
 /// Kanban service tests — createBoard→createColumn(x2)→createCard(x2)→snapshot.
@@ -106,7 +107,10 @@ struct KanbanServiceTests {
         await fluent.migrations.add(M66_AddSkillRunLogOutput())
         await fluent.migrations.add(M67_AddSkillsStateJobFields())
         await fluent.migrations.add(M68_CreateAppleConsent())
+        await fluent.migrations.add(M69_CreateHermesGatewayApplyJobs())
+        await fluent.migrations.add(M70_AddNousConnectedAt())
         await fluent.migrations.add(M71_CreateKanban())
+        await fluent.migrations.add(M72_AddKanbanCardExtra())
         // HER-310 — wrap migrate() so transient PG errors shut the pool down
         // before propagating; prevents EventLoopGroupConnectionPool leak and
         // SIGILL on process exit.
@@ -131,6 +135,30 @@ struct KanbanServiceTests {
     private static func makeService(_ fluent: Fluent) -> KanbanService {
         KanbanService(fluent: fluent)
     }
+
+    /// Service wired with a `JobAuthoring` writing into a throwaway temp vault.
+    /// Returns the vault root so tests can assert the authored SKILL.md exists.
+    private static func makePromoteService(_ fluent: Fluent) -> (svc: KanbanService, vaultRoot: URL) {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("lv-promote-\(UUID().uuidString)")
+        let authoring = JobAuthoring(
+            vaultPaths: VaultPathService(rootPath: root.path),
+            fluent: fluent,
+            logger: Logger(label: "test.authoring"),
+        )
+        return (KanbanService(fluent: fluent, authoring: authoring), root)
+    }
+
+    private static func seedBoardColumn(
+        _ svc: KanbanService, _ tenantID: UUID,
+    ) async throws -> (boardID: UUID, columnID: UUID) {
+        let board = try await svc.createBoard(tenantID: tenantID, title: "Jobs Board")
+        let boardID = try board.requireID()
+        let col = try await svc.createColumn(tenantID: tenantID, boardID: boardID, title: "Jobs")
+        return (boardID, try col.requireID())
+    }
+
+    private struct EnabledRow: Decodable { let enabled: Bool }
 
     // MARK: - Tests
 
@@ -204,6 +232,133 @@ struct KanbanServiceTests {
             #expect(updatedCol1.cards.count == 1)
             #expect(updatedCol2.cards.count == 1)
             #expect(dto2.version > v1, "version must increment after moveCard")
+        }
+    }
+
+    // MARK: - Promotion (card → Job)
+
+    /// Happy path: a card with structured job config promotes to a vault cron
+    /// skill — slug returned, SKILL.md written, skills_state enabled, and the
+    /// card's `extra.job.jobSlug`/`promotedAt` back-filled.
+    @Test
+    func `promote authors a job and back-fills the card`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "pr\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, vaultRoot) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Weekly Digest"),
+            )
+            card.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * 1", domain: "life", prompt: "Summarize the week"))
+            try await card.save(on: fluent.db())
+
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            #expect(promoted.alreadyPromoted == false)
+            #expect(promoted.slug == "job-weekly-digest")
+            #expect(promoted.cron == "0 9 * * 1")
+            #expect(promoted.spec == "Summarize the week")
+
+            // SKILL.md authored on disk.
+            let skill = vaultRoot
+                .appendingPathComponent("tenants/\(tenantID.uuidString)/skills/\(promoted.slug)/SKILL.md")
+            #expect(FileManager.default.fileExists(atPath: skill.path))
+
+            // skills_state row enabled.
+            let sql = try #require(fluent.db() as? any SQLDatabase)
+            let row = try await sql.raw("""
+            SELECT enabled FROM skills_state
+            WHERE tenant_id = \(bind: tenantID) AND source = 'vault' AND name = \(bind: promoted.slug)
+            """).first(decoding: EnabledRow.self)
+            #expect(row?.enabled == true)
+
+            // Card back-filled with the job slug.
+            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
+            #expect(reloaded.extra?.job?.promotedAt != nil)
+        }
+    }
+
+    /// Re-promoting a card returns the existing job without re-authoring.
+    @Test
+    func `promote is idempotent`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "id\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Daily Brief"),
+            )
+            card.extra = CardExtra(job: CardJobConfig(cron: "0 8 * * *", prompt: "Brief me"))
+            try await card.save(on: fluent.db())
+
+            let first = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            let second = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            #expect(first.alreadyPromoted == false)
+            #expect(second.alreadyPromoted == true)
+            #expect(first.slug == second.slug)
+        }
+    }
+
+    /// `prompt` is optional — promotion falls back to the card body as the spec.
+    @Test
+    func `promote falls back to card body when prompt is absent`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "bd\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Body Job", body: "Watch the markets"),
+            )
+            card.extra = CardExtra(job: CardJobConfig(cron: "*/30 * * * *"))
+            try await card.save(on: fluent.db())
+
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            #expect(promoted.spec == "Watch the markets")
+        }
+    }
+
+    /// A card with no job config cannot be promoted.
+    @Test
+    func `promote rejects a card without job config`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "nc\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Plain Card"),
+            )
+            await #expect(throws: (any Error).self) {
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            }
+        }
+    }
+
+    /// An invalid cron is rejected (no job authored).
+    @Test
+    func `promote rejects an invalid cron`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "ic\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Bad Cron"),
+            )
+            card.extra = CardExtra(job: CardJobConfig(cron: "not a cron", prompt: "x"))
+            try await card.save(on: fluent.db())
+            await #expect(throws: (any Error).self) {
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            }
         }
     }
 }
