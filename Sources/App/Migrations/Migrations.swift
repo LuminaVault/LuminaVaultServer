@@ -75,4 +75,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M68_CreateAppleConsent())
     await fluent.migrations.add(M69_CreateHermesGatewayApplyJobs())
     await fluent.migrations.add(M70_AddNousConnectedAt())
+    await fluent.migrations.add(M71_CreateKanban())
 }

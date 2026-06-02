@@ -2094,6 +2094,17 @@ func buildRouter(
         }
     }
 
+    // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
+    let kanbanController = KanbanController(service: KanbanService(fluent: services.fluent))
+    let boardsGroup = router.group("/v1/boards")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    kanbanController.addRoutes(to: boardsGroup)
+    let cardsGroup = router.group("/v1/cards")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    kanbanController.addCardRoutes(to: cardsGroup)
+
     return router
 }
 
