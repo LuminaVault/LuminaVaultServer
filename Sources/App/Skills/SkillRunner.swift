@@ -287,6 +287,9 @@ actor SkillRunner {
         /// Apple Integration P3 — recent photos analyzed on-device (OCR text);
         /// only derived text leaves the device, never pixels. Read-only.
         case photosSearch = "photos_search"
+        /// Apple Integration P4 — the user's current location + place name via
+        /// device-RPC (gated by consent; read-only).
+        case locationRecent = "location_recent"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -642,6 +645,8 @@ actor SkillRunner {
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
             let limit = max(1, min(args.limit ?? 10, 30))
             return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
+        case AvailableTool.locationRecent.rawValue:
+            return await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
         }
@@ -1001,6 +1006,12 @@ actor SkillRunner {
                     ],
                     required: [],
                 ),
+            ))
+        case .locationRecent:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Get the user's current location with a place name. Requires Location access. Returns a JSON array of {lat,lng,place,at}.",
+                parameters: .init(properties: [:], required: []),
             ))
         }
     }
