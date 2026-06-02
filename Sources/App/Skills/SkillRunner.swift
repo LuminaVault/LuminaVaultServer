@@ -610,6 +610,7 @@ actor SkillRunner {
         content: String,
         contentType: String,
         existing: VaultFile? = nil,
+        spaceID: UUID? = nil,
     ) async throws {
         let safePath = try Self.validateRelativePath(path)
         try vaultPaths.ensureTenantDirectories(for: tenantID)
@@ -633,10 +634,12 @@ actor SkillRunner {
             row.sha256 = digest
             row.contentType = contentType
             row.processedAt = nil
+            if let spaceID { row.spaceID = spaceID }
             try await row.update(on: fluent.db())
         } else {
             let row = VaultFile(
                 tenantID: tenantID,
+                spaceID: spaceID,
                 path: safePath,
                 contentType: contentType,
                 sizeBytes: Int64(data.count),
@@ -644,6 +647,45 @@ actor SkillRunner {
             )
             try await row.save(on: fluent.db())
         }
+    }
+
+    /// Jobs P4 — file a job's run output into its target Space as a vault file
+    /// so the result shows up in the Space browser and the Brain graph (as a
+    /// source node under that Space's hub). Best-effort: a job is a vault skill
+    /// with a `skills_state.space_id`; non-jobs / spaceless skills no-op, and
+    /// any failure is swallowed so it never fails the run.
+    private func fileJobResultIfNeeded(result: SkillRunResult, skill: SkillManifest, tenantID: UUID) async {
+        guard result.status == "ok",
+              !result.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let sql = fluent.db() as? any SQLDatabase
+        else { return }
+        struct SpaceRow: Decodable { let space_id: UUID?; let slug: String? }
+        let row: SpaceRow? = (try? await sql.raw("""
+        SELECT ss.space_id, s.slug
+        FROM skills_state ss
+        LEFT JOIN spaces s ON s.id = ss.space_id
+        WHERE ss.tenant_id = \(bind: tenantID)
+          AND ss.source = \(bind: skill.source.rawValue)
+          AND ss.name = \(bind: skill.name)
+        """).first(decoding: SpaceRow.self)) ?? nil
+        guard let spaceID = row?.space_id, let slug = row?.slug else { return }
+        let day = Self.fileDateStamp(result.endedAt)
+        let path = "\(slug)/jobs/\(skill.name)-\(day).md"
+        try? await persistVaultFile(
+            tenantID: tenantID,
+            path: path,
+            content: result.markdown,
+            contentType: "text/markdown",
+            spaceID: spaceID,
+        )
+    }
+
+    /// `YYYY-MM-DD` in UTC, DateFormatter-free (concurrency-safe).
+    static func fileDateStamp(_ date: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let c = cal.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     private func resolveVaultFile(tenantID: UUID, id: UUID?, path: String?) async throws -> VaultFile {
@@ -712,6 +754,9 @@ actor SkillRunner {
                 last_status = EXCLUDED.last_status,
                 last_error = EXCLUDED.last_error
         """).run()
+
+        // Jobs P4 — file the result into the job's Space (best-effort).
+        await fileJobResultIfNeeded(result: result, skill: skill, tenantID: tenantID)
     }
 
     // MARK: - Helpers

@@ -33,6 +33,7 @@ struct SkillRunnerTests {
         await fluent.migrations.add(M26_AddSkillsStateDailyRunCap())
         await fluent.migrations.add(M27_AddUserTimezone())
         await fluent.migrations.add(M66_AddSkillRunLogOutput())
+        await fluent.migrations.add(M67_AddSkillsStateJobFields())
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-skill-runner-\(UUID().uuidString)", isDirectory: true)
 
