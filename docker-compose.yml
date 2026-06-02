@@ -75,6 +75,23 @@ services:
       # --- Auth ---
       JWT_HMAC_SECRET: ${JWT_HMAC_SECRET:-dev-secret-32chars-not-for-prod-x}
       JWT_KID: lv-dev
+      # At-rest encryption master key. Without it SecretBox is not built and
+      # the BYOK providers + BYO Hermes routes never mount (404).
+      LV_SECRET_MASTER_KEY: ${LV_SECRET_MASTER_KEY:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # OAuth providers — interpolated from .env so dev matches configured IDs.
+      OAUTH_APPLE_CLIENTID: ${OAUTH_APPLE_CLIENTID:-}
+      OAUTH_GOOGLE_CLIENTID: ${OAUTH_GOOGLE_CLIENTID:-}
+      OAUTH_X_CLIENTID: ${OAUTH_X_CLIENTID:-}
+      # Passkeys / WebAuthn.
+      WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
+      WEBAUTHN_RELYINGPARTYID: ${WEBAUTHN_RELYINGPARTYID:-localhost}
+      WEBAUTHN_RELYINGPARTYNAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
+      WEBAUTHN_RELYINGPARTYORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-http://localhost:8080}
+      # Phone OTP + email magic-link delivery. Default to logging (OTP→stderr);
+      # set SMS_KIND=twilio / EMAIL_KIND=resend + creds for real delivery.
+      SMS_KIND: ${SMS_KIND:-logging}
+      EMAIL_KIND: ${EMAIL_KIND:-logging}
       # --- Hermes profile + chat ---
       HERMES_GATEWAYKIND: filesystem
       HERMES_GATEWAYURL: http://hermes:8642
