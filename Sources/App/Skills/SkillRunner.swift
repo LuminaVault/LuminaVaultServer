@@ -276,6 +276,10 @@ actor SkillRunner {
         /// Apple Integration P1 — read the tenant's synced HealthKit data
         /// (gated by per-domain consent). Daily aggregates for trends/correlation.
         case healthQuery = "health_query"
+        /// Apple Integration P2 — create a reminder / calendar event on the
+        /// user's device via device-RPC (gated by consent + "allow writes").
+        case reminderCreate = "reminder_create"
+        case calendarCreate = "calendar_create"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -599,8 +603,51 @@ actor SkillRunner {
             } catch {
                 return Self.toolErrorJSON("health_query failed: \(error)")
             }
+        case AvailableTool.reminderCreate.rawValue:
+            struct Args: Decodable { let title: String; let notes: String?; let due: String? }
+            do {
+                let args = try decoder.decode(Args.self, from: argsData)
+                return await deviceWrite(tenantID: tenantID, domain: .reminders, kind: .reminderCreate, payload: [
+                    "title": args.title, "notes": args.notes ?? "", "due": args.due ?? "",
+                ])
+            } catch {
+                return Self.toolErrorJSON("reminder_create failed: \(error)")
+            }
+        case AvailableTool.calendarCreate.rawValue:
+            struct Args: Decodable { let title: String; let start: String; let end: String?; let location: String? }
+            do {
+                let args = try decoder.decode(Args.self, from: argsData)
+                return await deviceWrite(tenantID: tenantID, domain: .calendar, kind: .calendarCreate, payload: [
+                    "title": args.title, "start": args.start, "end": args.end ?? "", "location": args.location ?? "",
+                ])
+            } catch {
+                return Self.toolErrorJSON("calendar_create failed: \(error)")
+            }
         default:
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
+        }
+    }
+
+    /// Apple Integration P2 — gate consent + writes, then round-trip a write
+    /// command to the device via the broker and shape the result as tool JSON.
+    private func deviceWrite(tenantID: UUID, domain: AppleDataDomain, kind: DeviceCommandKind, payload: [String: String]) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, writes) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: domain, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("\(domain.rawValue) access not allowed by the user") }
+        guard writes else { return Self.toolErrorJSON("\(domain.rawValue) changes not allowed by the user") }
+        do {
+            let result = try await DeviceCommandBroker.shared.request(
+                tenantID: tenantID,
+                command: DeviceCommand(kind: kind, domain: domain, payload: payload),
+            )
+            guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
+            var out: [String: String] = ["status": "ok"]
+            for (k, v) in result.payload ?? [:] { out[k] = v }
+            return Self.encodeJSON(out)
+        } catch {
+            return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
     }
 
@@ -859,6 +906,33 @@ actor SkillRunner {
                         "days": .init(type: "integer", description: "Lookback window in days, 1-365 (default 30)."),
                     ],
                     required: [],
+                ),
+            ))
+        case .reminderCreate:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Create a reminder in the user's Apple Reminders. Requires the user to have allowed Reminders access with changes enabled.",
+                parameters: .init(
+                    properties: [
+                        "title": .init(type: "string", description: "Reminder title."),
+                        "notes": .init(type: "string", description: "Optional notes/body."),
+                        "due": .init(type: "string", description: "Optional ISO-8601 due date-time."),
+                    ],
+                    required: ["title"],
+                ),
+            ))
+        case .calendarCreate:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "Create an event in the user's Apple Calendar. Requires the user to have allowed Calendar access with changes enabled.",
+                parameters: .init(
+                    properties: [
+                        "title": .init(type: "string", description: "Event title."),
+                        "start": .init(type: "string", description: "ISO-8601 start date-time."),
+                        "end": .init(type: "string", description: "ISO-8601 end date-time."),
+                        "location": .init(type: "string", description: "Optional location."),
+                    ],
+                    required: ["title", "start"],
                 ),
             ))
         }
