@@ -30,6 +30,13 @@ enum HermesGatewayCatalog {
                     kind: .secret,
                     isRequired: true,
                 ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Your Telegram user ID(s)",
+                    placeholder: "476978568 (from @userinfobot)",
+                    kind: .text,
+                    isRequired: true,
+                ),
             ],
         ),
         .discord: Entry(
@@ -42,6 +49,13 @@ enum HermesGatewayCatalog {
                     label: "Bot token",
                     placeholder: "MTE3…",
                     kind: .secret,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Your Discord user ID(s)",
+                    placeholder: "184264928281100288",
+                    kind: .text,
                     isRequired: true,
                 ),
             ],
@@ -63,6 +77,13 @@ enum HermesGatewayCatalog {
                     label: "App token (xapp-…)",
                     placeholder: "xapp-…",
                     kind: .secret,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Your Slack member ID(s)",
+                    placeholder: "U01234567",
+                    kind: .text,
                     isRequired: true,
                 ),
             ],
@@ -105,7 +126,7 @@ enum HermesGatewayCatalog {
                     label: "Allowed senders (comma-separated)",
                     placeholder: "you@email.com",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: true,
                 ),
                 HermesGatewayField(
                     key: "imap_port",
@@ -145,11 +166,14 @@ enum HermesGatewayCatalog {
         switch id {
         case .telegram:
             if let t = value("bot_token") { out["TELEGRAM_BOT_TOKEN"] = t }
+            if let u = value("allowed_users") { out["TELEGRAM_ALLOWED_USERS"] = u }
         case .discord:
             if let t = value("bot_token") { out["DISCORD_BOT_TOKEN"] = t }
+            if let u = value("allowed_users") { out["DISCORD_ALLOWED_USERS"] = u }
         case .slack:
             if let t = value("bot_token") { out["SLACK_BOT_TOKEN"] = t }
             if let t = value("app_token") { out["SLACK_APP_TOKEN"] = t }
+            if let u = value("allowed_users") { out["SLACK_ALLOWED_USERS"] = u }
         case .whatsapp:
             // Not remotely configurable (interactive QR pairing). No env-vars.
             break

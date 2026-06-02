@@ -120,8 +120,12 @@ enum HermesTenantConfigTemplate {
         # in `.env` (see HermesGatewayCatalog.envVars). Listing them with
         # `enabled: false` is inert for messaging and only risks confusion.
 
+        # Access is restricted per-gateway via each platform's *_ALLOWED_USERS
+        # env-var (seeded from the owner's IDs). NOT open: allow_all_users stays
+        # false (and is inert anyway — `gateway run` reads GATEWAY_ALLOW_ALL_USERS
+        # from .env, which we deliberately do NOT set).
         gateway:
-          allow_all_users: true
+          allow_all_users: false
 
         logging:
           level: INFO
