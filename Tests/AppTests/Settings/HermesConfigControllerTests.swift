@@ -149,7 +149,7 @@ struct HermesConfigControllerTests {
         // requires a separate reader and is covered by SSRFGuardTests.
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
-            environment: "prod",
+            requireHTTPS: true,
             resolver: SSRFGuardTests.StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]]),
         )
         await #expect(throws: SSRFGuard.Rejection.self) {

@@ -536,6 +536,12 @@ func buildRouter(
     let secretMasterKey = reader.string(forKey: "lv.secretMasterKey", default: legacySecretMasterKey)
     let byoHermesAllowPrivate = reader.string(forKey: "byoHermes.allowPrivate", default: "false")
         .lowercased() == "true"
+    // BYO_HERMES_REQUIRE_HTTPS — default false. When false, self-hosters may
+    // point at a plain-http / bare-IP Hermes (plaintext auth header; the iOS
+    // client warns). Set true to force TLS. Private-range SSRF blocks apply
+    // regardless (see `byoHermesAllowPrivate`).
+    let byoHermesRequireHttps = reader.string(forKey: "byoHermes.requireHttps", default: "false")
+        .lowercased() == "true"
     var byoHermesController: HermesConfigController?
     var byoHermesMiddleware: HermesResolutionMiddleware?
     // HER-252 — captured from the same SecretBox the BYO Hermes flow
@@ -574,7 +580,7 @@ func buildRouter(
             secretBoxRef = secretBox
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: byoHermesAllowPrivate,
-                environment: lvEnvironment,
+                requireHTTPS: byoHermesRequireHttps,
             )
             byoHermesController = HermesConfigController(
                 fluent: services.fluent,

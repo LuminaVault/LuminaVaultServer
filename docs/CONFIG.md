@@ -90,8 +90,13 @@ Production values:
 - `LV_SECRET_MASTER_KEY=<32-byte-base64-secret>`
 - `LV_ENVIRONMENT=production`
 - `BYO_HERMES_ALLOW_PRIVATE=false`
+- `BYO_HERMES_REQUIRE_HTTPS=false`
 
 Set `BYO_HERMES_ALLOW_PRIVATE=true` only for local/dev networks where private IP gateway URLs are intentional.
+
+`BYO_HERMES_REQUIRE_HTTPS` defaults to `false`, so self-hosters may point at a plain-`http://` or bare-IP Hermes (the iOS client shows an insecurity warning). Set it to `true` to force TLS and reject `http://` at config time. Private/loopback/link-local/metadata targets stay blocked regardless of this flag (controlled by `BYO_HERMES_ALLOW_PRIVATE`).
+
+See **[byo-hermes.md](byo-hermes.md)** for the end-user guide to exposing a self-hosted Hermes (nginx + HTTPS, Cloudflare Tunnel, SSRF behaviour, troubleshooting).
 
 ### Per-tenant Hermes containers
 

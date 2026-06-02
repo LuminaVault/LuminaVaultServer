@@ -57,7 +57,7 @@ struct HermesEndpointResolverTests {
             let secretBox = try SecretBox(masterKeyBase64: testMasterKeyBase64)
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: allowPrivate,
-                environment: "test",
+                requireHTTPS: false,
                 resolver: ssrfResolver,
             )
             let resolver = HermesEndpointResolver(

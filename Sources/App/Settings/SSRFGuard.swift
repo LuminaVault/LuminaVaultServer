@@ -43,9 +43,14 @@ struct SSRFGuard {
     /// machine. Set via `LV_BYO_HERMES_ALLOW_PRIVATE`.
     let allowPrivateRanges: Bool
 
-    /// `"prod"` blocks `http://`. Any other value allows it (dev, test,
-    /// staging). Set via `LV_ENV`.
-    let environment: String
+    /// When `true`, `http://` endpoints are rejected (scheme must be
+    /// `https`). Defaults to `false` — plain `http` is allowed so
+    /// self-hosters can point at a bare-IP / non-TLS Hermes, at the cost
+    /// of a plaintext auth header (the iOS client warns about this).
+    /// Set via `BYO_HERMES_REQUIRE_HTTPS=true` for operators who want to
+    /// force TLS. Independent of `allowPrivateRanges`: private/loopback/
+    /// link-local/metadata targets stay blocked regardless of scheme.
+    let requireHTTPS: Bool
 
     /// Resolves hostnames to IP literals. Tests inject a stub; prod uses
     /// the default `getaddrinfo`-backed implementation.
@@ -53,11 +58,11 @@ struct SSRFGuard {
 
     init(
         allowPrivateRanges: Bool,
-        environment: String,
+        requireHTTPS: Bool,
         resolver: any HostResolver = SystemHostResolver(),
     ) {
         self.allowPrivateRanges = allowPrivateRanges
-        self.environment = environment
+        self.requireHTTPS = requireHTTPS
         self.resolver = resolver
     }
 
@@ -76,7 +81,7 @@ struct SSRFGuard {
         case "https":
             break
         case "http":
-            if environment.lowercased() == "prod" {
+            if requireHTTPS {
                 throw Rejection.schemeNotAllowed(scheme)
             }
         default:
