@@ -1206,6 +1206,86 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/me/hermes-gateways/apply:
+    post:
+      tags: [Me]
+      operationId: hermesGatewaysApply
+      summary: Apply all configured gateways to the running Hermes container.
+      description: |
+        Re-seeds the tenant's `/opt/data/.env` from the saved gateway rows
+        (token env-vars) and recreates the container so the new config takes
+        effect, streaming progress over SSE. Detached: returns a job id
+        immediately; observe via the stream or by polling the status route.
+      responses:
+        '200':
+          description: Apply job accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartHermesGatewayApplyResponse' }
+        '404':
+          description: '`apply_unavailable` — per-tenant containers are disabled.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: An apply is already in progress for this tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/me/hermes-gateways/apply/current:
+    get:
+      tags: [Me]
+      operationId: hermesGatewaysApplyCurrent
+      summary: Most recent in-flight (or last) apply job, for reconnect.
+      responses:
+        '200':
+          description: Job snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayApplyJobStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/me/hermes-gateways/apply/{jobID}:
+    get:
+      tags: [Me]
+      operationId: hermesGatewaysApplyStatus
+      summary: Full status snapshot for one apply job (poll fallback).
+      parameters:
+        - in: path
+          name: jobID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Job snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesGatewayApplyJobStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/me/hermes-gateways/apply/{jobID}/stream:
+    get:
+      tags: [Me]
+      operationId: hermesGatewaysApplyStream
+      summary: SSE stream of HermesGatewayApplyEvent for one job.
+      description: >
+        `text/event-stream`; each `data:` line is one JSON-encoded
+        `HermesGatewayApplyEvent` (discriminated by `type`), blank-line
+        terminated.
+      parameters:
+        - in: path
+          name: jobID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ─────────────── Me — LLM routing preferences (HER-252) ────────────────
 
   /v1/me/preferences/llm:
@@ -4429,6 +4509,50 @@ components:
         verifiedAt: { type: string, format: date-time }
         errorCode: { type: string }
         errorMessage: { type: string }
+
+    # ─── Hermes Gateway Apply (actuation) ───────────────────────────
+
+    HermesGatewayApplyStepID:
+      type: string
+      enum: [writeEnv, restartContainer, healthCheck]
+
+    HermesGatewayApplyStepState:
+      type: string
+      enum: [pending, running, succeeded, failed, skipped]
+
+    HermesGatewayApplyStep:
+      type: object
+      required: [id, state]
+      properties:
+        id: { $ref: '#/components/schemas/HermesGatewayApplyStepID' }
+        state: { $ref: '#/components/schemas/HermesGatewayApplyStepState' }
+        detail: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+
+    HermesGatewayApplyJobState:
+      type: string
+      enum: [running, succeeded, failed]
+
+    HermesGatewayApplyJobStatus:
+      type: object
+      required: [jobID, state, steps, startedAt, updatedAt]
+      properties:
+        jobID: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/HermesGatewayApplyJobState' }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/HermesGatewayApplyStep' }
+        errorMessage: { type: string }
+        startedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    StartHermesGatewayApplyResponse:
+      type: object
+      required: [jobID, state]
+      properties:
+        jobID: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/HermesGatewayApplyJobState' }
 
     # ─── Hermes Profiles (HER-273) ──────────────────────────────────
 

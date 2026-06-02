@@ -8,6 +8,8 @@ import LuminaVaultShared
 extension HermesGatewayCatalogEntry: @retroactive ResponseEncodable {}
 extension HermesGatewaysListResponse: @retroactive ResponseEncodable {}
 extension HermesGatewayTestResponse: @retroactive ResponseEncodable {}
+extension HermesGatewayApplyJobStatus: @retroactive ResponseEncodable {}
+extension StartHermesGatewayApplyResponse: @retroactive ResponseEncodable {}
 
 /// HER-241 — `/v1/me/hermes-gateways` GET / GET-one / PUT / DELETE /
 /// POST-test.
@@ -40,6 +42,10 @@ struct HermesGatewaysController {
     let fluent: Fluent
     let secretBox: SecretBox
     let gatewayClient: any HermesGatewayClienting
+    /// Drives the "apply gateway config" actuation flow (re-seed `.env` +
+    /// restart the tenant container) with live SSE progress. `nil` when
+    /// per-tenant containers are disabled — the apply routes then 404.
+    let applyService: HermesGatewayApplyService?
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -48,6 +54,11 @@ struct HermesGatewaysController {
         router.put(":id", use: put)
         router.delete(":id", use: delete)
         router.post(":id/test", use: test)
+        // Actuation: apply all configured gateways to the running container.
+        router.post("apply", use: apply)
+        router.get("apply/current", use: applyCurrent)
+        router.get("apply/:jobID", use: applyStatus)
+        router.get("apply/:jobID/stream", use: applyStream)
     }
 
     // MARK: - GET /v1/me/hermes-gateways
@@ -218,7 +229,75 @@ struct HermesGatewaysController {
         }
     }
 
+    // MARK: - POST /v1/me/hermes-gateways/apply
+
+    @Sendable
+    func apply(_: Request, ctx: AppRequestContext) async throws -> StartHermesGatewayApplyResponse {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireApplyService()
+        do {
+            let snapshot = try await service.startApply(tenantID: tenantID)
+            return StartHermesGatewayApplyResponse(jobID: snapshot.jobID, state: snapshot.state)
+        } catch HermesGatewayApplyError.alreadyRunning {
+            throw HTTPError(.conflict, message: "apply_in_progress")
+        }
+    }
+
+    // MARK: - GET /v1/me/hermes-gateways/apply/current
+
+    @Sendable
+    func applyCurrent(_: Request, ctx: AppRequestContext) async throws -> HermesGatewayApplyJobStatus {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireApplyService()
+        guard let snapshot = try await service.currentJob(tenantID: tenantID) else {
+            throw HTTPError(.notFound, message: "no_apply_job")
+        }
+        return snapshot
+    }
+
+    // MARK: - GET /v1/me/hermes-gateways/apply/:jobID
+
+    @Sendable
+    func applyStatus(_: Request, ctx: AppRequestContext) async throws -> HermesGatewayApplyJobStatus {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireApplyService()
+        let jobID = try requireJobID(ctx)
+        guard let snapshot = try await service.job(id: jobID, tenantID: tenantID) else {
+            throw HTTPError(.notFound, message: "job_not_found")
+        }
+        return snapshot
+    }
+
+    // MARK: - GET /v1/me/hermes-gateways/apply/:jobID/stream (SSE)
+
+    @Sendable
+    func applyStream(_: Request, ctx: AppRequestContext) async throws -> HermesGatewayApplySSEResponse {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requireApplyService()
+        let jobID = try requireJobID(ctx)
+        // 404 early (tenant-scoped) so the client doesn't open a long-lived
+        // stream against a typo or another tenant's job.
+        guard try await service.job(id: jobID, tenantID: tenantID) != nil else {
+            throw HTTPError(.notFound, message: "job_not_found")
+        }
+        return await HermesGatewayApplySSEResponse(events: service.subscribe(jobID: jobID, tenantID: tenantID))
+    }
+
     // MARK: - Helpers
+
+    private func requireApplyService() throws -> HermesGatewayApplyService {
+        guard let applyService else {
+            throw HTTPError(.notFound, message: "apply_unavailable")
+        }
+        return applyService
+    }
+
+    private func requireJobID(_ ctx: AppRequestContext) throws -> UUID {
+        guard let jobID = ctx.parameters.get("jobID", as: UUID.self) else {
+            throw HTTPError(.badRequest, message: "invalid_job_id")
+        }
+        return jobID
+    }
 
     private func parseID(_ ctx: AppRequestContext) throws -> HermesGatewayID {
         let raw = try ctx.parameters.require("id", as: String.self)

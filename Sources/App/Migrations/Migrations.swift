@@ -73,4 +73,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M66_AddSkillRunLogOutput())
     await fluent.migrations.add(M67_AddSkillsStateJobFields())
     await fluent.migrations.add(M68_CreateAppleConsent())
+    await fluent.migrations.add(M69_CreateHermesGatewayApplyJobs())
 }

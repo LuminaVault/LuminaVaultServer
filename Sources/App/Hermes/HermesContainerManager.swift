@@ -366,6 +366,25 @@ actor HermesContainerManager {
         return seeds
     }
 
+    /// Seed (only) the tenant's `config.yaml` + `.env` from the current gateway
+    /// rows, without restarting. Used as the `writeEnv` step of an apply job so
+    /// a write failure is reported distinctly from the restart. Returns the
+    /// number of gateway env-vars written, or `nil` if the tenant has no
+    /// container yet (nothing to seed until first launch).
+    @discardableResult
+    func seedGatewayConfig(tenantID: UUID) async throws -> Int? {
+        guard let row = try await loadRow(tenantID: tenantID) else { return nil }
+        let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
+        let gateways = try await gatewaySeeds(tenantID: tenantID)
+        try HermesTenantConfigTemplate.seed(
+            volumePath: volumePath,
+            apiKey: decrypt(row: row, tenantID: tenantID),
+            defaultModel: config.defaultModel,
+            gateways: gateways,
+        )
+        return gateways.reduce(0) { $0 + HermesGatewayCatalog.envVars($1.gatewayID, config: $1.config).count }
+    }
+
     /// Apply the tenant's saved gateway config: recreate the container so the
     /// freshly-seeded `.env` (with gateway token env-vars) takes effect. Mirrors
     /// a single-tenant `reprovisionAll` — `rm -f` then `dockerRun` (which
