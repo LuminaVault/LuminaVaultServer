@@ -207,6 +207,7 @@ struct ProvidersController {
     private func serverKind(for id: ProviderID) -> ProviderKind {
         switch id {
         case .xai: .xai
+        case .nvidia: .nvidia
         case .anthropic: .anthropic
         case .openai: .openai
         case .ollama: .ollama
@@ -216,7 +217,7 @@ struct ProvidersController {
 
     private func defaultKind(for id: ProviderID) -> ProviderCredentialKind {
         switch id {
-        case .xai, .anthropic, .openai, .openRouter: .apiKey
+        case .xai, .nvidia, .anthropic, .openai, .openRouter: .apiKey
         case .ollama: .hostURL
         }
     }
@@ -230,7 +231,7 @@ struct ProvidersController {
         case .ollama:
             let base = resolved.baseURL ?? URL(string: "http://localhost:11434")!
             return OllamaAdapter(defaultBaseURL: base, session: probeSession, logger: logger)
-        case .xai, .openai, .openRouter:
+        case .xai, .nvidia, .openai, .openRouter:
             let base = resolved.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             return OpenAICompatibleAdapter(kind: kind, apiKey: key, baseURL: base, session: probeSession, logger: logger)
         default:
@@ -253,6 +254,7 @@ struct ProvidersController {
     static func pingPayload(for provider: ProviderID) -> [String: Any] {
         let model = switch provider {
         case .xai: "grok-4"
+        case .nvidia: "meta/llama-3.1-8b-instruct"
         case .anthropic: "claude-sonnet-4-6"
         case .openai: "gpt-4o-mini"
         case .openRouter: "openrouter/auto"

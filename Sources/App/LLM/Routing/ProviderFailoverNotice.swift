@@ -63,6 +63,7 @@ extension ProviderKind {
     func toShared() -> ProviderID? {
         switch self {
         case .xai: .xai
+        case .nvidia: .nvidia
         case .anthropic: .anthropic
         case .openai: .openai
         case .openRouter: .openRouter

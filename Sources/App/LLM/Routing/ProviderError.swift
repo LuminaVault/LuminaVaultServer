@@ -134,6 +134,7 @@ extension ProviderKind {
         case .kimi: "Kimi"
         case .ollama: "Ollama"
         case .xai: "Grok"
+        case .nvidia: "NVIDIA NIM"
         }
     }
 }
