@@ -98,6 +98,7 @@ struct LLMPreferencesController {
     private static func toKind(_ id: ProviderID) -> ProviderKind {
         switch id {
         case .xai: .xai
+        case .nvidia: .nvidia
         case .anthropic: .anthropic
         case .openai: .openai
         case .ollama: .ollama

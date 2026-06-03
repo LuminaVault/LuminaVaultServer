@@ -28,6 +28,12 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
     /// `user_provider_credentials`.
     case xai
 
+    /// NVIDIA NIM — OpenAI-compatible API-key path
+    /// (`https://integrate.api.nvidia.com/v1/...`). Adapter is the
+    /// OpenAI-compatible one with a per-user `Authorization: Bearer <nvapi-key>`
+    /// resolved from `user_provider_credentials`. US-hosted.
+    case nvidia
+
     /// HER-164 — hosting / weight-origin region tag used by the privacy
     /// filter to exclude `.cn` providers when `privacy_no_cn_origin=true`.
     /// `deepseek` (non-direct) and `deepseekDirect` are both Chinese-hosted
@@ -50,6 +56,6 @@ extension ProviderKind {
     /// default for free-tier users) and not exposed in the iOS providers
     /// pane / LLM preferences UI.
     static let userCredentialTargets: Set<ProviderKind> = [
-        .xai, .anthropic, .openai, .openRouter, .ollama,
+        .xai, .anthropic, .openai, .openRouter, .ollama, .nvidia,
     ]
 }

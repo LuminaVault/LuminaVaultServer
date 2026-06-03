@@ -193,6 +193,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         case .deepseekDirect: URL(string: "https://api.deepseek.com")!
         // HER-252 — direct API-key paths for per-user credential providers.
         case .xai: URL(string: "https://api.x.ai")!
+        case .nvidia: URL(string: "https://integrate.api.nvidia.com")!
         case .openai: URL(string: "https://api.openai.com")!
         case .openRouter: URL(string: "https://openrouter.ai/api")!
         default: URL(string: "https://invalid.local")!
