@@ -53,17 +53,34 @@ struct UserPreferenceModelRouter: ModelRouter {
 
         let primary = ModelRoute(provider: pref.primaryProvider, modelID: pref.primaryModel)
         let chain = pref.fallbackChain.map { ModelRoute(provider: $0.provider, modelID: $0.model) }
-        // Stitch the static table's candidates on as the final cascade so
-        // even a user whose entire chain has no available creds still
-        // gets a route. Dedupe trivially by provider+model.
+
+        // Provider allow/block lists constrain every candidate, including the
+        // stitched-on table defaults. Block-list always wins; a non-empty
+        // allow-list means "only these providers".
+        func isAllowed(_ provider: ProviderKind) -> Bool {
+            if pref.blockedProviders.contains(provider) { return false }
+            if !pref.allowedProviders.isEmpty, !pref.allowedProviders.contains(provider) { return false }
+            return true
+        }
+
+        // Primary first, then user chain, then the static table cascade so a
+        // user whose entire chain lacks creds still gets a route. Dedupe by
+        // provider+model and drop anything the lists exclude.
         var seen = Set<ModelRoute>()
-        var allFallbacks: [ModelRoute] = []
-        for route in chain + tableDecision.candidates {
-            if route == primary { continue }
+        var allowed: [ModelRoute] = []
+        for route in [primary] + chain + tableDecision.candidates {
+            guard isAllowed(route.provider) else { continue }
             guard !seen.contains(route) else { continue }
             seen.insert(route)
-            allFallbacks.append(route)
+            allowed.append(route)
         }
-        return RouteDecision(primary: primary, fallbacks: allFallbacks)
+
+        guard let newPrimary = allowed.first else {
+            // Lists filtered everything out — never hand back an empty
+            // candidate list; fall through to the unfiltered table cascade.
+            logger.warning("llm allow/block lists filtered out all routes; using table cascade")
+            return tableDecision
+        }
+        return RouteDecision(primary: newPrimary, fallbacks: Array(allowed.dropFirst()))
     }
 }

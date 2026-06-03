@@ -78,6 +78,8 @@ struct LLMPreferencesController {
                         model: $0.model,
                     )
                 },
+                allowedProviders: body.allowedProviders.map(Self.toKind),
+                blockedProviders: body.blockedProviders.map(Self.toKind),
             )
         } catch {
             logger.error("llm preference upsert failed: \(error)")
@@ -133,6 +135,8 @@ struct LLMPreferencesController {
             primaryProvider: primary,
             primaryModel: snapshot.primaryModel,
             fallbackChain: chain,
+            allowedProviders: snapshot.allowedProviders.compactMap { $0.toShared() },
+            blockedProviders: snapshot.blockedProviders.compactMap { $0.toShared() },
         )
     }
 }

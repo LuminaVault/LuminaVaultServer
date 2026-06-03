@@ -16,6 +16,9 @@ actor UserLLMPreferenceRepository {
         let primaryProvider: ProviderKind
         let primaryModel: String
         let fallbackChain: [Step]
+        /// Empty = all providers allowed.
+        let allowedProviders: [ProviderKind]
+        let blockedProviders: [ProviderKind]
 
         struct Step: Equatable {
             let provider: ProviderKind
@@ -62,6 +65,8 @@ actor UserLLMPreferenceRepository {
         primaryProvider: ProviderKind,
         primaryModel: String,
         fallbackChain: [Snapshot.Step],
+        allowedProviders: [ProviderKind],
+        blockedProviders: [ProviderKind],
     ) async throws -> Snapshot {
         let existing = try await UserLLMPreference.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
@@ -74,6 +79,8 @@ actor UserLLMPreferenceRepository {
         row.fallbackChain = UserLLMPreference.FallbackChain(steps: fallbackChain.map {
             UserLLMPreference.FallbackStep(provider: $0.provider.rawValue, model: $0.model)
         })
+        row.allowedProviders = UserLLMPreference.ProviderList(providers: allowedProviders.map(\.rawValue))
+        row.blockedProviders = UserLLMPreference.ProviderList(providers: blockedProviders.map(\.rawValue))
         try await row.save(on: fluent.db())
         let snapshot = Self.decode(row)
         cache[tenantID] = CacheEntry(snapshot: snapshot, expiresAt: Date().addingTimeInterval(ttl))
@@ -96,6 +103,8 @@ actor UserLLMPreferenceRepository {
                 guard let provider = ProviderKind(rawValue: step.provider) else { return nil }
                 return Snapshot.Step(provider: provider, model: step.model)
             },
+            allowedProviders: (row.allowedProviders?.providers ?? []).compactMap { ProviderKind(rawValue: $0) },
+            blockedProviders: (row.blockedProviders?.providers ?? []).compactMap { ProviderKind(rawValue: $0) },
         )
     }
 }

@@ -43,12 +43,25 @@ final class UserLLMPreference: Model, TenantModel, @unchecked Sendable {
         case byok
     }
 
+    /// HER — provider allow/block list, stored as a single `jsonb` value
+    /// (same wrapper rationale as `FallbackChain`).
+    struct ProviderList: Codable, Hashable {
+        var providers: [String]
+
+        init(providers: [String]) {
+            self.providers = providers
+        }
+    }
+
     @ID(key: .id) var id: UUID?
     @Field(key: "tenant_id") var tenantID: UUID
     @Field(key: "mode") var mode: String
     @Field(key: "primary_provider") var primaryProvider: String
     @Field(key: "primary_model") var primaryModel: String
     @Field(key: "fallback_chain") var fallbackChain: FallbackChain
+    /// Empty / nil = all providers allowed.
+    @OptionalField(key: "allowed_providers") var allowedProviders: ProviderList?
+    @OptionalField(key: "blocked_providers") var blockedProviders: ProviderList?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
