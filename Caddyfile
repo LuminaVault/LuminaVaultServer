@@ -10,7 +10,7 @@
 # be open). Set the ACME contact email below before going live.
 
 {
-	email REPLACE_WITH_OPS_EMAIL
+	email fernandocorreia316@gmail.com
 }
 
 api.luminavault.fyi {
