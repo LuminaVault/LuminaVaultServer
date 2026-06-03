@@ -174,14 +174,21 @@ struct KanbanService: Sendable {
     /// `card.extra.job`, authors a vault cron skill via `JobAuthoring`, and
     /// writes the resulting slug back onto the card. Idempotent: a card that was
     /// already promoted (has `jobSlug`) is not re-authored.
-    func promoteCard(tenantID: UUID, cardID: UUID) async throws -> PromotedJob {
+    func promoteCard(tenantID: UUID, cardID: UUID, request: CardPromoteRequest? = nil) async throws -> PromotedJob {
         guard let authoring else {
             throw HTTPError(.internalServerError, message: "job_authoring_unavailable")
         }
         let card = try await requireCard(tenantID: tenantID, cardID: cardID)
         var extra = card.extra ?? CardExtra()
-        guard var job = extra.job else {
-            throw HTTPError(.badRequest, message: "card_missing_job_config")
+        // Merge any inline request config onto the card's existing config so a
+        // card can be promoted in a single call (request fields win).
+        var job = extra.job ?? CardJobConfig()
+        if let request {
+            if let v = request.cron { job.cron = v }
+            if let v = request.runAt { job.runAt = v }
+            if let v = request.domain { job.domain = v }
+            if let v = request.prompt { job.prompt = v }
+            if let v = request.spaceID { job.spaceID = v }
         }
         guard let cron = job.cron, !cron.trimmingCharacters(in: .whitespaces).isEmpty else {
             // run_at one-shot scheduling is gap #10 — recurring cron only for now.
@@ -246,9 +253,15 @@ struct KanbanService: Sendable {
         } else {
             priority = nil
         }
+        let jobConfig = c.extra?.job.map {
+            CardJobConfigDTO(
+                source: $0.source, cron: $0.cron, runAt: $0.runAt, domain: $0.domain,
+                prompt: $0.prompt, spaceID: $0.spaceID, jobSlug: $0.jobSlug, promotedAt: $0.promotedAt,
+            )
+        }
         return CardDTO(id: c.id ?? UUID(), columnID: c.columnID, title: c.title, body: c.body,
                        priority: priority,
-                       dueAt: c.dueAt, rank: c.rank, updatedAt: c.updatedAt)
+                       dueAt: c.dueAt, rank: c.rank, updatedAt: c.updatedAt, jobConfig: jobConfig)
     }
 
     private func requireBoard(tenantID: UUID, boardID: UUID) async throws -> KanbanBoard {

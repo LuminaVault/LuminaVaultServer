@@ -28,12 +28,12 @@ enabled, domain, space_id`). `CronScheduler` ticks, fires due skills via
 | 2 | result flood | **resolved by design** — vault-only |
 | 3 | P4 space-filing exists | ✅ real (`SkillRunner.fileJobResultIfNeeded`) |
 | 4 | SkillRunResult shape | ✅ `.markdown` + `.blocks` (not `.output`) |
-| 5 | Jobs column identity fragile | **TODO** — add `column.kind` system marker |
+| 5 | Jobs column identity fragile | **MOOT (verified)** — no Jobs column exists, no title-matching anywhere; vault-only means no result cards to group; promote works on any card |
 | 6 | result-card version bump | MOOT (no result cards) |
-| 7 | run-now vs cron dedup | **TODO** — shared `sameMinute`/key guard |
+| 7 | run-now vs cron dedup | **Already handled (verified)** — manual run → `SkillRunner.persist` stamps `skills_state.last_run_at`; cron `tick` skips `sameMinute`. Residual = narrow race only (stamp at completion, not start) |
 | 8 | result-card recursion | MOOT (no result cards) |
 | 9 | M72 migration collision | ✅ clear — M71 last committed |
-| 10 | one-shot run_at TZ | **TODO** — UTC basis, align to `fileDateStamp` |
+| 10 | one-shot run_at TZ | **TODO (real feature)** — CronScheduler is cron-only; `promoteCard` rejects run_at; one-shot needs ReminderScheduler-style wiring |
 
 ## Build order (this branch)
 

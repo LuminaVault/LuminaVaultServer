@@ -324,6 +324,33 @@ struct KanbanServiceTests {
         }
     }
 
+    /// Single-call promote: a plain card promotes using inline request config,
+    /// which is persisted onto the card and surfaced via cardDTO.jobConfig.
+    @Test
+    func `promote applies inline request config in one call`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "rq\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Inline Job"),
+            )
+            let promoted = try await svc.promoteCard(
+                tenantID: tenantID, cardID: try card.requireID(),
+                request: CardPromoteRequest(cron: "0 7 * * *", domain: "tech", prompt: "Scan tech news"),
+            )
+            #expect(promoted.alreadyPromoted == false)
+            #expect(promoted.spec == "Scan tech news")
+
+            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            #expect(reloaded.extra?.job?.cron == "0 7 * * *")
+            #expect(reloaded.extra?.job?.domain == "tech")
+            #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
+        }
+    }
+
     /// A card with no job config cannot be promoted.
     @Test
     func `promote rejects a card without job config`() async throws {

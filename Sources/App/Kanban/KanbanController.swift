@@ -149,7 +149,11 @@ struct KanbanController {
     /// (same shape as `POST /v1/jobs`). Idempotent on re-promote.
     @Sendable func promoteCard(_ req: Request, ctx: AppRequestContext) async throws -> SkillDTO {
         let tenant = try ctx.requireTenantID()
-        let promoted = try await service.promoteCard(tenantID: tenant, cardID: try cardID(ctx))
+        // Body is optional: when present, its fields are written onto the card
+        // before authoring (single-call promote); when absent, the card's
+        // existing `extra.job` config is used.
+        let body = try? await req.decode(as: CardPromoteRequest.self, context: ctx)
+        let promoted = try await service.promoteCard(tenantID: tenant, cardID: try cardID(ctx), request: body)
         return SkillDTO(
             id: promoted.slug,
             source: .vault,
