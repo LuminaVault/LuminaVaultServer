@@ -641,6 +641,30 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AppleConsentResponse' }
 
+  /v1/photos/index:
+    post:
+      tags: [Apple]
+      operationId: photosIndex
+      summary: Ingest derived photo text (OCR + scene tags + metadata) into the semantic index.
+      description: >
+        Apple Photos derived-text index. Privacy-critical: only OCR text,
+        on-device scene tags, and metadata are accepted — never pixel data.
+        Consent-gated on the `photos` domain. Each item is embedded and
+        upserted by `assetLocalID` (PHAsset localIdentifier).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhotoIndexSyncRequest' }
+      responses:
+        '200':
+          description: Per-batch insert/update/skip counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '403':
+          description: Photos access not allowed by the user.
+
   /v1/jobs/detect:
     post:
       tags: [Skills]
@@ -4367,6 +4391,39 @@ components:
         domain: { $ref: '#/components/schemas/AppleDataDomain' }
         allowed: { type: boolean }
         allowWrites: { type: boolean }
+
+    PhotoIndexInput:
+      type: object
+      required: [assetLocalID, isScreenshot]
+      description: >
+        One photo's derived data. PRIVACY: OCR text + scene tags + metadata
+        only — never pixels.
+      properties:
+        assetLocalID: { type: string, description: "PHAsset localIdentifier — the upsert key." }
+        takenAt: { type: string, format: date-time }
+        isScreenshot: { type: boolean }
+        ocrText: { type: string, description: "On-device VNRecognizeTextRequest output." }
+        sceneTags:
+          type: array
+          items: { type: string }
+          description: "On-device VNClassifyImageRequest labels."
+
+    PhotoIndexSyncRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PhotoIndexInput' }
+
+    AppleSyncResponse:
+      type: object
+      required: [inserted, updated, skipped]
+      description: "Shared result shape for Apple selective-sync ingest endpoints."
+      properties:
+        inserted: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
 
     DeviceCommandResult:
       type: object
