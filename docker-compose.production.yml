@@ -3,7 +3,10 @@ services:
     image: ${APP_IMAGE}
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8080}:8080"
+      # Bound to loopback only — public traffic enters via the `caddy` service
+      # (TLS + HTTP/2 on :443). 127.0.0.1:8080 stays reachable for the on-host
+      # health pre-gate and manual curls.
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
     volumes:
       - ./data/luminavault:/app/data/luminavault # tenant raw vault root (shared with hermes)
       - ./data/hermes:/app/data/hermes           # hermes filesystem gateway target
@@ -161,6 +164,29 @@ services:
       otel-collector:
         condition: service_started
 
+  # TLS termination + HTTP/2 (and HTTP/3 over :443/udp) front door. Caddy
+  # auto-provisions a Let's Encrypt cert for the domain in ./Caddyfile once
+  # DNS resolves to this host; until then it serves its internal CA. The app
+  # itself stays HTTP/1.1 on the private network behind this proxy.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    depends_on:
+      app:
+        condition: service_started
+
   postgres:
     image: pgvector/pgvector:pg18
     restart: unless-stopped
@@ -294,6 +320,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+volumes:
+  caddy-data: # ACME account + issued certs — must persist across deploys
+  caddy-config:
 
 networks:
   default:

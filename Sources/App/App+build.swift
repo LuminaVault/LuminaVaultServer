@@ -287,6 +287,21 @@ func buildRouter(
         ))
     }
     router.get("/health") { _, _ -> String in "ok" }
+    // Apple App Site Association — backs Sign in with Apple associated domain
+    // and WebAuthn/passkey credentials for the iOS app (`TEAMID.bundleID`).
+    // Public + unauthenticated; served at the WebAuthn relying-party domain
+    // (api.luminavault.com). Static for the single production app identity
+    // `com.lumina.fernando` (team 84X9WYBF36).
+    router.get("/.well-known/apple-app-site-association") { _, _ -> Response in
+        let json = #"{"webcredentials":{"apps":["84X9WYBF36.com.lumina.fernando"]}}"#
+        var headers = HTTPFields()
+        headers[.contentType] = "application/json"
+        return Response(
+            status: .ok,
+            headers: headers,
+            body: .init(byteBuffer: ByteBuffer(string: json)),
+        )
+    }
     // HER-227 — root greeting served as a plain Hummingbird route. The
     // generated `APIProtocol` server stubs were never registered for any
     // other path; openapi-generator now emits `types` only (see

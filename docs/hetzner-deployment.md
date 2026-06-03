@@ -270,9 +270,16 @@ the LapseArchiver writes there. See `docs/jobs.md` §LapseArchiver.
 
 ## 5. Reverse proxy + TLS
 
-Caddy is the recommended default — automatic ACME, the smallest Caddyfile
-that survives the next 12 months, and zero config churn when you renew or
-rotate certs.
+Caddy is the recommended default — automatic ACME, HTTP/2 + HTTP/3, the
+smallest Caddyfile that survives the next 12 months, and zero config churn when
+you renew or rotate certs.
+
+> **Now shipped in the stack.** A `caddy` service and a root `Caddyfile` are
+> committed in `docker-compose.production.yml`; the deploy pipeline brings it up
+> each release. The standalone-`override` recipe in §5.2 is retained only for
+> custom single-host setups. Edit the root `Caddyfile` (set the ACME `email`
+> and the domain) rather than hand-rolling an override. The app service name is
+> `app` (ports bound to loopback); Caddy reaches it at `app:8080`.
 
 ### 5.1 Caddyfile
 
@@ -291,11 +298,11 @@ lv.example.com {
         header Upgrade websocket
     }
     handle @websockets {
-        reverse_proxy hummingbird:8080
+        reverse_proxy app:8080
     }
     handle {
-        reverse_proxy hummingbird:8080 {
-            health_path /healthz
+        reverse_proxy app:8080 {
+            health_path /health
             health_interval 10s
             health_timeout 3s
         }
@@ -347,10 +354,10 @@ dig +short AAAA lv.example.com
 docker compose logs caddy | grep "certificate obtained successfully"
 
 # Health endpoint over HTTPS
-curl -I https://lv.example.com/healthz   # expect: HTTP/2 200
+curl -I --http2 https://lv.example.com/health   # expect: HTTP/2 200
 ```
 
-If `/healthz` returns 200, the chain is wired correctly. If you see a
+If `/health` returns 200, the chain is wired correctly. If you see a
 self-signed warning, Caddy is still using its internal CA — DNS or ACME
 hasn't completed yet; wait 60 s and retry.
 

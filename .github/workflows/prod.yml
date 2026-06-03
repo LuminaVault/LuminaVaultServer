@@ -190,6 +190,16 @@ jobs:
               --env-file .env.production \
               up -d --no-deps app
 
+            # TLS + HTTP/2 front door. Created/refreshed each deploy so a
+            # Caddyfile change ships without a manual step. ACME issuance only
+            # succeeds once DNS for the configured domain points at this host;
+            # before that Caddy serves its internal CA and the public HTTPS
+            # smoke gate below stays red (expected during initial bring-up).
+            APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              up -d --no-deps caddy
+
             # On-server health pre-gate (fast, localhost). A failure here
             # fails the step and triggers the rollback step below; the
             # public smoke test (next step) is the authoritative gate.

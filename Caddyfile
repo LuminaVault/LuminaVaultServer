@@ -1,0 +1,29 @@
+# LuminaVaultServer production reverse proxy.
+#
+# Caddy terminates TLS and speaks HTTP/2 (and HTTP/3 over :443/udp) to clients
+# automatically once it has a certificate. The Swift app stays HTTP/1.1 on the
+# internal compose network; WebSocket upgrades (chat SSE/WS) are proxied
+# transparently — no extra matcher needed.
+#
+# DNS is not pointed yet. Once `api.luminavault.com` resolves to this host,
+# Caddy provisions a Let's Encrypt cert on first request (ports 80 + 443 must
+# be open). Set the ACME contact email below before going live.
+
+{
+	email REPLACE_WITH_OPS_EMAIL
+}
+
+api.luminavault.com {
+	encode zstd gzip
+	reverse_proxy app:8080
+}
+
+# --- Local / pre-DNS testing -------------------------------------------------
+# To verify HTTP/2 before DNS exists, comment out the block above and use this
+# self-signed variant, then `curl -kI --http2 https://localhost/health`:
+#
+# localhost {
+# 	tls internal
+# 	encode zstd gzip
+# 	reverse_proxy app:8080
+# }
