@@ -22,6 +22,12 @@ import ServiceLifecycle
 ///   `Insight` row per pattern with `section=patterns`. Skips users
 ///   whose most recent pattern row is < 24h old.
 ///
+/// - **Daily contradiction detection** — 04:00 UTC. HER-248. Same
+///   ≥3-memory gate + 24h cooldown as patterns, but asks Hermes to
+///   surface logically incompatible positions on the same subject and
+///   inserts one `Insight` row per contradiction with
+///   `section=contradictions`.
+///
 /// Single-replica. Multi-replica = double-fire — add Postgres
 /// advisory-lock leader election when scaling out (out of scope for
 /// HER-37). Off by default; enable via `SYNTHESIS_WORKER_ENABLED=true`.
@@ -65,15 +71,16 @@ actor SynthesisWorker: Service {
     }
 
     /// Single tick. Exposed so tests can drive at specific instants.
-    /// Returns counts of (weekly, pattern) rows inserted.
+    /// Returns counts of (weekly, pattern, contradiction) rows inserted.
     @discardableResult
-    func tick(at now: Date) async throws -> (weekly: Int, patterns: Int) {
+    func tick(at now: Date) async throws -> (weekly: Int, patterns: Int, contradictions: Int) {
         let hour = Self.hourComponent(of: now)
         let weekday = Self.weekdayComponent(of: now)
-        var weekly = 0, patterns = 0
+        var weekly = 0, patterns = 0, contradictions = 0
         if hour == 2, weekday == 1 { weekly = try await runWeeklyForAllUsers(now: now) }
         if hour == 3 { patterns = try await runPatternsForAllUsers(now: now) }
-        return (weekly, patterns)
+        if hour == 4 { contradictions = try await runContradictionsForAllUsers(now: now) }
+        return (weekly, patterns, contradictions)
     }
 
     // MARK: - Weekly synthesis
@@ -174,6 +181,55 @@ actor SynthesisWorker: Service {
         return inserted
     }
 
+    // MARK: - Contradiction detection (HER-248)
+
+    func runContradictionsForAllUsers(now: Date) async throws -> Int {
+        let users = try await User.query(on: fluent.db()).all()
+        var inserted = 0
+        for user in users {
+            let tenantID = try user.requireID()
+            do {
+                inserted += try await runContradictionJob(tenantID: tenantID, sessionKey: tenantID.uuidString, now: now)
+            } catch {
+                logger.warning("synthesis.contradictions tenant=\(tenantID) error: \(error)")
+            }
+        }
+        return inserted
+    }
+
+    /// Contradiction job for a single tenant. Returns the number of rows
+    /// inserted (0 to `maxPatternsPerRun`). Skips users whose most recent
+    /// contradiction row is less than 24h old. Mirrors `runPatternJob`.
+    func runContradictionJob(tenantID: UUID, sessionKey: String, now: Date) async throws -> Int {
+        let cutoff = now.addingTimeInterval(-24 * 3600)
+        if let recent = try await Insight.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$section == InsightSection.contradictions.rawValue)
+            .sort(\.$createdAt, .descending)
+            .first(),
+            let createdAt = recent.createdAt,
+            createdAt > cutoff { return 0 }
+        let windowStart = now.addingTimeInterval(-7 * 24 * 3600)
+        let rows = try await loadMemories(tenantID: tenantID, since: windowStart, limit: memorySampleSize)
+        guard rows.count >= 3 else { return 0 }
+        guard let contradictions = await detectContradictions(
+            sessionKey: sessionKey,
+            prompt: Self.contradictionsPrompt(for: rows, max: maxPatternsPerRun),
+        ), !contradictions.isEmpty else { return 0 }
+        var inserted = 0
+        for contradiction in contradictions.prefix(maxPatternsPerRun) {
+            let insight = Insight(
+                tenantID: tenantID,
+                section: .contradictions,
+                headline: contradiction.headline,
+                summary: contradiction.summary,
+                sourceMemoryIDs: rows.map { $0.id ?? UUID() },
+            )
+            try await insight.save(on: fluent.db())
+            inserted += 1
+        }
+        return inserted
+    }
+
     // MARK: - Hermes helpers
 
     struct Synthesised: Equatable {
@@ -197,6 +253,14 @@ actor SynthesisWorker: Service {
               let response = try? await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
         else { return nil }
         return Self.parsePatterns(response: response)
+    }
+
+    private func detectContradictions(sessionKey: String, prompt: [ChatMessage]) async -> [Synthesised]? {
+        let body = OutboundBody(model: defaultModel, messages: prompt, temperature: 0.5, response_format: .init(type: "json_object"), stream: false)
+        guard let payload = try? JSONEncoder().encode(body),
+              let response = try? await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
+        else { return nil }
+        return Self.parseContradictions(response: response)
     }
 
     private func loadMemories(tenantID: UUID, since: Date, limit: Int) async throws -> [Memory] {
@@ -267,6 +331,21 @@ actor SynthesisWorker: Service {
         ]
     }
 
+    static func contradictionsPrompt(for memories: [Memory], max: Int) -> [ChatMessage] {
+        let context = renderMemoryList(memories)
+        return [
+            ChatMessage(role: "system", content: "You surface genuine contradictions in someone's own thinking. You never invent or exaggerate; a contradiction must survive a sympathetic reading. Absence of a contradiction is a valid answer."),
+            ChatMessage(role: "user", content: """
+            Find up to \(max) pairs of logically incompatible positions the user has taken on the SAME subject. Each must cite ≥2 memories. Reply ONLY with JSON: {"contradictions": [{"headline": "...", "summary": "..."}, ...]}
+            - Each headline ≤ 60 chars, naming the subject in tension.
+            - Each summary ≤ 400 chars: state both positions plainly, cite memories by bracket number. Do NOT moralise or resolve it.
+            - If there is no real contradiction, return {"contradictions": []}.
+            Memories:
+            \(context)
+            """),
+        ]
+    }
+
     private static func renderMemoryList(_ memories: [Memory]) -> String {
         memories.enumerated().map { offset, mem in
             let snippet = mem.content.prefix(180).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -297,6 +376,20 @@ actor SynthesisWorker: Service {
         return inner.patterns.compactMap { p in
             let h = p.headline.trimmingCharacters(in: .whitespacesAndNewlines)
             let s = p.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !h.isEmpty, !s.isEmpty else { return nil }
+            return Synthesised(headline: h, summary: s)
+        }
+    }
+
+    static func parseContradictions(response: Data) -> [Synthesised]? {
+        guard let envelope = try? JSONDecoder().decode(Envelope.self, from: response),
+              let content = envelope.choices.first?.message.content,
+              let data = content.data(using: .utf8),
+              let inner = try? JSONDecoder().decode(ContradictionsBody.self, from: data)
+        else { return nil }
+        return inner.contradictions.compactMap { c in
+            let h = c.headline.trimmingCharacters(in: .whitespacesAndNewlines)
+            let s = c.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !h.isEmpty, !s.isEmpty else { return nil }
             return Synthesised(headline: h, summary: s)
         }
@@ -333,4 +426,13 @@ private struct PatternsBody: Decodable {
     }
 
     let patterns: [Pattern]
+}
+
+private struct ContradictionsBody: Decodable {
+    struct Contradiction: Decodable {
+        let headline: String
+        let summary: String
+    }
+
+    let contradictions: [Contradiction]
 }
