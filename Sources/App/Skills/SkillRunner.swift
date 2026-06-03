@@ -639,9 +639,55 @@ actor SkillRunner {
             }
         case AvailableTool.calendarQuery.rawValue:
             struct Args: Decodable { let days: Int? }
+            struct CalRow: Decodable {
+                let title: String
+                let starts_at: Date
+                let ends_at: Date
+                let location: String?
+            }
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(days: nil)
             let days = max(1, min(args.days ?? 7, 90))
-            return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+            guard let sql = fluent.db() as? any SQLDatabase else {
+                return Self.toolErrorJSON("sql unavailable")
+            }
+            // Consent gate — the user must have allowed the Calendar domain.
+            let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .calendar, sql: sql)
+            guard allowed else {
+                return Self.toolErrorJSON("calendar access not allowed by the user")
+            }
+            // Read the synced cache (all sources — apple_eventkit + google) for the
+            // requested day window. Excludes tombstoned (cancelled) rows.
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime]
+            do {
+                let rows = try await sql.raw("""
+                SELECT title, starts_at, ends_at, location
+                FROM calendar_events
+                WHERE tenant_id = \(bind: tenantID)
+                  AND status <> 'cancelled'
+                  AND starts_at >= NOW()
+                  AND starts_at < NOW() + (\(bind: days) * INTERVAL '1 day')
+                ORDER BY starts_at ASC
+                """).all(decoding: CalRow.self)
+                if rows.isEmpty {
+                    // Cache miss — fall back to a live device round-trip so the user
+                    // still gets an answer before the first sync (or when offline
+                    // sync hasn't run). Device-RPC is the fallback, not the path.
+                    return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+                }
+                let events = rows.map { r in
+                    [
+                        "title": r.title,
+                        "start": iso.string(from: r.starts_at),
+                        "end": iso.string(from: r.ends_at),
+                        "location": r.location ?? "",
+                    ]
+                }
+                return Self.encodeJSON(["status": "ok", "items": events])
+            } catch {
+                // On a DB error, fall back to device-RPC rather than failing the tool.
+                return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+            }
         case AvailableTool.remindersList.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
         case AvailableTool.photosSearch.rawValue:
@@ -988,7 +1034,7 @@ actor SkillRunner {
         case .calendarQuery:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "List the user's upcoming Apple Calendar events. Requires the user to have allowed Calendar access. Returns a JSON array of {title,start,end,location}.",
+                description: "List the user's upcoming calendar events from the synced server cache (Apple EventKit + Google Calendar), falling back to a live device read when the cache is empty. Requires the user to have allowed Calendar access. Returns a JSON array of {title,start,end,location}.",
                 parameters: .init(
                     properties: [
                         "days": .init(type: "integer", description: "How many days ahead to include, 1-90 (default 7)."),

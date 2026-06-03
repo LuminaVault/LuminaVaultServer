@@ -2062,6 +2062,17 @@ func buildRouter(
         logger: Logger(label: "lv.apple.consent"),
     ).addRoutes(to: appleGroup)
 
+    // Apple Calendar (EventKit) selective-sync — persists derived event
+    // metadata into `calendar_events` (source = "apple_eventkit") so the
+    // `calendar_query` Hermes tool reads a server cache in the background.
+    // Consent-gated on `.calendar` inside the controller. Mirrors the
+    // `/v1/health` ingest wiring (JWT + per-user rate-limit only).
+    let calendarSyncGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
+    AppleCalendarController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.apple.calendar"),
+    ).addRoutes(to: calendarSyncGroup)
+
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
     ApnsCategoryPrefsController(
