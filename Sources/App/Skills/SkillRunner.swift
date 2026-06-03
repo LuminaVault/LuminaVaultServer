@@ -645,10 +645,10 @@ actor SkillRunner {
         case AvailableTool.remindersList.rawValue:
             return await remindersList(tenantID: tenantID)
         case AvailableTool.photosSearch.rawValue:
-            struct Args: Decodable { let limit: Int? }
-            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
+            struct Args: Decodable { let limit: Int?; let query: String? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil, query: nil)
             let limit = max(1, min(args.limit ?? 10, 30))
-            return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
+            return await photosSearch(tenantID: tenantID, query: args.query, limit: limit)
         case AvailableTool.locationRecent.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
         case AvailableTool.filesPick.rawValue:
@@ -746,6 +746,50 @@ actor SkillRunner {
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
+    }
+
+    /// Apple Photos derived-text recall. When a `query` is given and the tenant
+    /// has indexed photos (M81), runs a consent-gated cosine semantic search
+    /// over `photo_index` and returns the matching derived text + metadata.
+    /// Falls back to a live device fetch when the index is empty (or no query),
+    /// so a freshly-onboarded user still gets answers before the first sync.
+    private func photosSearch(tenantID: UUID, query: String?, limit: Int) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .photos, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("photos access not allowed by the user") }
+
+        let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let indexed = await PhotoIndexController.hasRows(tenantID: tenantID, sql: sql)
+
+        // Semantic path: needs both a query and a populated index.
+        if !trimmedQuery.isEmpty, indexed {
+            do {
+                let embedding = try await embeddings.embed(trimmedQuery, tenantID: tenantID)
+                let hits = try await PhotoIndexController.semanticSearch(
+                    tenantID: tenantID,
+                    queryEmbedding: embedding,
+                    limit: limit,
+                    sql: sql,
+                )
+                let items: [[String: String]] = hits.map { hit in
+                    [
+                        "taken_at": hit.takenAt.map(Self.fileDateStamp) ?? "",
+                        "is_screenshot": hit.isScreenshot ? "true" : "false",
+                        "ocr_text": hit.ocrText ?? "",
+                        "scene_tags": hit.sceneTags.joined(separator: ", "),
+                        "score": String(format: "%.3f", hit.score),
+                    ]
+                }
+                return Self.encodeJSON(["status": "ok", "source": "index", "items": items])
+            } catch {
+                return Self.toolErrorJSON("photos_search failed: \(error)")
+            }
+        }
+
+        // Fallback: live device fetch (no query, or nothing indexed yet).
+        return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
     }
 
     // MARK: - Output dispatch
@@ -1052,10 +1096,11 @@ actor SkillRunner {
         case .photosSearch:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "Analyze the user's most recent photos on-device (OCR text + date); only extracted text is returned, never the images. Requires Photos access. Returns a JSON array of {takenAt,text,screenshot}.",
+                description: "Search the user's photos by their derived text. Pass `query` for a semantic search over previously-indexed OCR text + scene tags (e.g. \"the screenshot about the flight\", \"a receipt\") — only derived text + metadata are stored server-side, never the images. Omit `query` to analyze the most recent photos live on-device. Requires Photos access. Returns a JSON array of {taken_at, is_screenshot, ocr_text, scene_tags, score}.",
                 parameters: .init(
                     properties: [
-                        "limit": .init(type: "integer", description: "How many recent photos to analyze, 1-30 (default 10)."),
+                        "query": .init(type: "string", description: "Natural-language description of the photo/screenshot to find. Omit to list recent photos instead."),
+                        "limit": .init(type: "integer", description: "Maximum results, 1-30 (default 10)."),
                     ],
                     required: [],
                 ),

@@ -2150,6 +2150,15 @@ func buildRouter(
         logger: Logger(label: "lv.apple.consent"),
     ).addRoutes(to: appleGroup)
 
+    // Apple Photos derived-text index (M81) — consent-gated OCR + scene-tag
+    // ingest into pgvector for semantic recall. /v1/photos/index.
+    let photosGroup = router.group("/v1/photos").add(middleware: jwtAuthenticator)
+    PhotoIndexController(
+        fluent: services.fluent,
+        embeddings: embeddingService,
+        logger: Logger(label: "lv.apple.photos"),
+    ).addRoutes(to: photosGroup)
+
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
     ApnsCategoryPrefsController(
