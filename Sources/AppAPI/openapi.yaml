@@ -3027,6 +3027,41 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/reminders/sync:
+    post:
+      tags: [Reminders]
+      operationId: appleRemindersSync
+      summary: Ingest Apple Reminders (EventKit) selective-sync deltas.
+      description: |
+        Batch-upserts the iOS client's EventKit reminder deltas into the
+        server-side `apple_reminders` cache (DISTINCT from the app-scheduled
+        `reminders` table). Upsert key is `(tenant_id, externalID)` where
+        `externalID` is the EventKit `calendarItemIdentifier`; last-writer-wins
+        on `remoteUpdatedAt` keeps overlapping pushes idempotent. Consent-gated
+        on the `reminders` Apple data domain. The persisted cache backs the
+        Hermes `reminders_list` tool (device-RPC stays as a fallback).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleRemindersSyncRequest' }
+      responses:
+        '200':
+          description: Sync result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '400':
+          description: Empty reminders array.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '403':
+          description: Reminders access not allowed by the user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /v1/reminders/{id}:
     parameters:
       - in: path
@@ -6102,6 +6137,43 @@ components:
       required: [ingested]
       properties:
         ingested: { type: integer }
+
+    AppleReminderInput:
+      type: object
+      required: [externalID, title, completed]
+      properties:
+        externalID:
+          type: string
+          description: EventKit `calendarItemIdentifier` — upsert key.
+        title: { type: string }
+        notes: { type: string }
+        dueAt: { type: string, format: date-time }
+        completed: { type: boolean }
+        completedAt: { type: string, format: date-time }
+        listName: { type: string }
+        priority:
+          type: integer
+          description: EventKit priority 0–9 (0 = none).
+        remoteUpdatedAt:
+          type: string
+          format: date-time
+          description: EventKit `lastModifiedDate`; drives last-writer-wins on upsert.
+
+    AppleRemindersSyncRequest:
+      type: object
+      required: [reminders]
+      properties:
+        reminders:
+          type: array
+          items: { $ref: '#/components/schemas/AppleReminderInput' }
+
+    AppleSyncResponse:
+      type: object
+      required: [inserted, updated, skipped]
+      properties:
+        inserted: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
 
     HealthListResponse:
       type: object

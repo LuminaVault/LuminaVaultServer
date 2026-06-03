@@ -82,4 +82,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M75_AddSkillsStateRunAt())
     await fluent.migrations.add(M76_AddProviderListsToLLMPrefs())
     await fluent.migrations.add(M77_CreateProviderCredentialPool())
+    await fluent.migrations.add(M80_CreateAppleReminders())
 }
