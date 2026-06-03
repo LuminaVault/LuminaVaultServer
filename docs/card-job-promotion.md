@@ -50,9 +50,15 @@ enabled, domain, space_id`). `CronScheduler` ticks, fires due skills via
 2. **#5** column `kind` marker (migration + KanbanColumn field + default-board Jobs col).
 3. **#7** unify run-now/cron dedup guard.
 4. **#10** one-shot `run_at` UTC handling.
-5. **Shared bump + client wiring** — `CardDTO.jobConfig`, promote request DTO,
-   iOS promote action. Requires LuminaVaultShared version bump (tag-dep landmine —
-   check pin after). Out of THIS commit; server-first.
+5. **Shared bump + client wiring** — ✅ DONE. LuminaVaultShared v0.63.0 adds
+   `CardJobConfigDTO`, `CardDTO.jobConfig`, `CardPromoteRequest`. Server repinned
+   0.63 (Package.swift `from: 0.63.0`): `cardDTO` surfaces `jobConfig`;
+   `promoteCard` accepts an optional `CardPromoteRequest` (inline config → one-call
+   promote). iOS (LuminaVaultClient): `promoteCard` on the Kanban client +
+   `KanbanPromoteSheet` (cron presets/custom, prompt, domain) wired into the card
+   detail sheet; client repinned **0.64.0** (a parallel session shipped NVIDIA as
+   v0.64.0 on top of 0.63 — 0.64 ⊇ the card DTOs). Server stays on 0.63 to avoid
+   pulling NVIDIA into provider switches; skew is transient.
 
 ## Notes / constraints
 
