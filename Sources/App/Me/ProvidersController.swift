@@ -12,6 +12,8 @@ import LuminaVaultShared
 extension ProviderCredentialDTO: @retroactive ResponseEncodable {}
 extension ProviderCredentialsListResponse: @retroactive ResponseEncodable {}
 extension ProviderTestResponse: @retroactive ResponseEncodable {}
+extension ProviderPoolKeyDTO: @retroactive ResponseEncodable {}
+extension ProviderPoolListResponse: @retroactive ResponseEncodable {}
 
 /// HER-252 — `/v1/me/providers` GET/PUT/DELETE + `POST /test`.
 ///
@@ -51,6 +53,49 @@ struct ProvidersController {
         router.put(":provider", use: put)
         router.delete(":provider", use: delete)
         router.post(":provider/test", use: test)
+        // Round-robin credential pool (Phase 2 item 6, layer 2).
+        router.get(":provider/pool", use: listPool)
+        router.post(":provider/pool", use: addPool)
+        router.delete(":provider/pool/:keyID", use: deletePool)
+    }
+
+    // MARK: - Credential pool
+
+    @Sendable
+    func listPool(_: Request, ctx: AppRequestContext) async throws -> ProviderPoolListResponse {
+        let tenantID = try ctx.requireTenantID()
+        let providerID = try parseProvider(ctx)
+        let rows = try await credentialStore.listPoolKeys(tenantID: tenantID, provider: serverKind(for: providerID))
+        let keys = rows.map { ProviderPoolKeyDTO(id: $0.id ?? UUID(), label: $0.label, createdAt: $0.createdAt) }
+        return ProviderPoolListResponse(provider: providerID, keys: keys)
+    }
+
+    @Sendable
+    func addPool(_ req: Request, ctx: AppRequestContext) async throws -> ProviderPoolKeyDTO {
+        let tenantID = try ctx.requireTenantID()
+        let providerID = try parseProvider(ctx)
+        let body = try await req.decode(as: ProviderPoolAddRequest.self, context: ctx)
+        guard !body.apiKey.isEmpty else {
+            throw HTTPError(.badRequest, message: "api_key_required")
+        }
+        let row = try await credentialStore.addPoolKey(
+            tenantID: tenantID,
+            provider: serverKind(for: providerID),
+            apiKey: body.apiKey,
+            label: body.label,
+        )
+        return ProviderPoolKeyDTO(id: row.id ?? UUID(), label: row.label, createdAt: row.createdAt)
+    }
+
+    @Sendable
+    func deletePool(_: Request, ctx: AppRequestContext) async throws -> Response {
+        let tenantID = try ctx.requireTenantID()
+        let providerID = try parseProvider(ctx)
+        guard let raw = ctx.parameters.get("keyID"), let keyID = UUID(uuidString: raw) else {
+            throw HTTPError(.badRequest, message: "invalid_key_id")
+        }
+        try await credentialStore.deletePoolKey(tenantID: tenantID, provider: serverKind(for: providerID), id: keyID)
+        return Response(status: .noContent)
     }
 
     // MARK: - GET /v1/me/providers

@@ -29,7 +29,9 @@ actor UserCredentialStore {
     }
 
     private struct CacheEntry {
-        let credential: ResolvedCredential?
+        /// Ordered candidate keys (primary first, then pool). Round-robin
+        /// rotates across these; empty = no usable credential.
+        let candidates: [ResolvedCredential]
         let expiresAt: Date
     }
 
@@ -39,6 +41,9 @@ actor UserCredentialStore {
     private let ttl: TimeInterval
 
     private var cache: [CacheKey: CacheEntry] = [:]
+    /// Per-(tenant,provider) round-robin cursor. Not persisted — rotation is
+    /// best-effort and resets on restart, which is fine for load-spreading.
+    private var rotation: [CacheKey: Int] = [:]
 
     init(fluent: Fluent, secretBox: SecretBox, logger: Logger, ttl: TimeInterval = 600) {
         self.fluent = fluent
@@ -49,19 +54,53 @@ actor UserCredentialStore {
 
     /// Look up a credential. Returns `nil` (cached) when no row exists.
     /// Never throws on a missing row — adapters fall back to the
-    /// deployment-wide env API key in that case.
+    /// deployment-wide env API key in that case. When a round-robin pool is
+    /// configured, rotates across [primary + pool keys] per call to spread
+    /// rate limits; the candidate list is cached (TTL) while the rotation
+    /// cursor advances live.
     func credential(for provider: ProviderKind, tenantID: UUID) async throws -> ResolvedCredential? {
         let key = CacheKey(tenantID: tenantID, provider: provider.rawValue)
+        let candidates: [ResolvedCredential]
         if let cached = cache[key], cached.expiresAt > Date() {
-            return cached.credential
+            candidates = cached.candidates
+        } else {
+            candidates = try await loadCandidates(provider: provider, tenantID: tenantID)
+            cache[key] = CacheEntry(candidates: candidates, expiresAt: Date().addingTimeInterval(ttl))
         }
-        let row = try await UserProviderCredential.query(on: fluent.db())
+        guard !candidates.isEmpty else { return nil }
+        guard candidates.count > 1 else { return candidates[0] }
+        let idx = (rotation[key] ?? 0) % candidates.count
+        rotation[key] = idx + 1
+        return candidates[idx]
+    }
+
+    /// Builds the ordered candidate list: the primary credential (if usable)
+    /// followed by pool keys. Pool keys inherit the primary's `baseURL` so a
+    /// custom endpoint still applies to every rotated key.
+    private func loadCandidates(provider: ProviderKind, tenantID: UUID) async throws -> [ResolvedCredential] {
+        var candidates: [ResolvedCredential] = []
+        let primaryRow = try await UserProviderCredential.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .filter(\.$provider == provider.rawValue)
             .first()
-        let resolved = try row.map { try decode($0, tenantID: tenantID) }
-        cache[key] = CacheEntry(credential: resolved, expiresAt: Date().addingTimeInterval(ttl))
-        return resolved
+        let primaryBaseURL = primaryRow?.baseURL.flatMap { URL(string: $0) }
+        if let primaryRow {
+            let resolved = try decode(primaryRow, tenantID: tenantID)
+            if resolved.apiKey != nil || resolved.baseURL != nil {
+                candidates.append(resolved)
+            }
+        }
+        let poolRows = try await UserProviderCredentialPoolKey.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$provider == provider.rawValue)
+            .sort(\.$createdAt)
+            .all()
+        for row in poolRows {
+            guard let ct = row.ciphertext, let nonce = row.nonce else { continue }
+            let apiKey = try secretBox.open(.init(ciphertext: ct, nonce: nonce), tenantID: tenantID)
+            candidates.append(ResolvedCredential(apiKey: apiKey, baseURL: primaryBaseURL, label: row.label))
+        }
+        return candidates
     }
 
     /// Upsert a credential. Encrypts `apiKey` if provided. `baseURL` is
@@ -146,6 +185,47 @@ actor UserCredentialStore {
     /// proactively bust the cache without waiting for TTL.
     func invalidate(tenantID: UUID, provider: ProviderKind) {
         cache[CacheKey(tenantID: tenantID, provider: provider.rawValue)] = nil
+    }
+
+    // MARK: - Credential pool (round-robin)
+
+    /// Adds an API key to the provider's round-robin pool. Returns the saved
+    /// row so the controller can echo its id/label/createdAt (never the key).
+    func addPoolKey(
+        tenantID: UUID,
+        provider: ProviderKind,
+        apiKey: String,
+        label: String?,
+    ) async throws -> UserProviderCredentialPoolKey {
+        let row = UserProviderCredentialPoolKey()
+        row.tenantID = tenantID
+        row.provider = provider.rawValue
+        let sealed = try secretBox.seal(apiKey, tenantID: tenantID)
+        row.ciphertext = sealed.ciphertext
+        row.nonce = sealed.nonce
+        row.label = label
+        try await row.save(on: fluent.db())
+        invalidate(tenantID: tenantID, provider: provider)
+        return row
+    }
+
+    /// Lists pool keys (rows; the controller maps to a key-free DTO).
+    func listPoolKeys(tenantID: UUID, provider: ProviderKind) async throws -> [UserProviderCredentialPoolKey] {
+        try await UserProviderCredentialPoolKey.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$provider == provider.rawValue)
+            .sort(\.$createdAt)
+            .all()
+    }
+
+    /// Removes one pool key by id (scoped to the tenant + provider).
+    func deletePoolKey(tenantID: UUID, provider: ProviderKind, id: UUID) async throws {
+        try await UserProviderCredentialPoolKey.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$provider == provider.rawValue)
+            .filter(\.$id == id)
+            .delete()
+        invalidate(tenantID: tenantID, provider: provider)
     }
 
     // MARK: - Internals
