@@ -14,10 +14,6 @@ struct SoulController {
     let telemetry: RouteTelemetry
     let achievements: AchievementsWorker?
 
-    /// Cap matches `SOULService.maxSizeBytes`; here we collect at most that
-    /// many bytes from the request before failing fast.
-    private let maxBodyBytes = SOULService.maxSizeBytes
-
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: get)
         router.put("", use: put)
@@ -29,19 +25,17 @@ struct SoulController {
         let user = try ctx.requireIdentity()
         return try await telemetry.observe("soul.get") {
             let body = try service.read(for: user)
-            return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
+            return SoulResponse(markdown: body, updatedAt: service.updatedAt(for: user))
         }
     }
 
     @Sendable
     func put(_ req: Request, ctx: AppRequestContext) async throws -> SoulResponse {
         let user = try ctx.requireIdentity()
-        var mutableRequest = req
-        let buffer = try await mutableRequest.collectBody(upTo: maxBodyBytes)
-        let data = Data(buffer: buffer)
-        guard let body = String(data: data, encoding: .utf8) else {
-            throw HTTPError(.badRequest, message: "body must be UTF-8 text")
-        }
+        // Canonical contract (openapi `SoulPutRequest`): JSON `{ markdown }`.
+        // The 64 KiB cap is enforced by `SOULService.write`.
+        let putRequest = try await req.decode(as: SoulPutRequest.self, context: ctx)
+        let body = putRequest.markdown
         return try await telemetry.observe("soul.put") {
             do {
                 try service.write(for: user, body: body)
@@ -52,16 +46,17 @@ struct SoulController {
                 let tenantID = try user.requireID()
                 achievements.enqueue(tenantID: tenantID, event: .soulConfigured)
             }
-            return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
+            return SoulResponse(markdown: body, updatedAt: service.updatedAt(for: user))
         }
     }
 
     @Sendable
-    func delete(_: Request, ctx: AppRequestContext) async throws -> SoulResponse {
+    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
         let user = try ctx.requireIdentity()
-        return try await telemetry.observe("soul.delete") {
-            let body = try service.reset(for: user)
-            return SoulResponse(content: body, sizeBytes: body.lengthOfBytes(using: .utf8))
+        try await telemetry.observe("soul.delete") {
+            _ = try service.reset(for: user)
         }
+        // openapi: 204 No Content. Client re-fetches to show the reset template.
+        return Response(status: .noContent)
     }
 }

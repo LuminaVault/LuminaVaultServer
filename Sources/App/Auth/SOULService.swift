@@ -99,6 +99,15 @@ struct SOULService {
         return body
     }
 
+    /// Best-effort last-modified timestamp of the vault SOUL.md, surfaced via
+    /// `SoulResponse.updatedAt`. Returns nil when the file does not exist yet.
+    func updatedAt(for user: User) -> Date? {
+        guard let tenantID = try? user.requireID() else { return nil }
+        let target = vaultFilePath(for: tenantID)
+        let attrs = try? FileManager.default.attributesOfItem(atPath: target.path)
+        return attrs?[.modificationDate] as? Date
+    }
+
     // MARK: - Internals
 
     private func writeBoth(body: String, tenantID: UUID, username: String) throws {
