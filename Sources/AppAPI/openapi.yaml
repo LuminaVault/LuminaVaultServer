@@ -667,6 +667,31 @@ paths:
         '403':
           description: Photos access not allowed by the user.
 
+  /v1/calendar/sync:
+    post:
+      tags: [Apple]
+      operationId: appleCalendarSync
+      summary: Batch-upsert Apple Calendar (EventKit) event deltas into the server cache.
+      description: >-
+        Promotes Calendar from on-demand device-RPC to a persisted server cache
+        (`calendar_events`, source `apple_eventkit`) that the `calendar_query`
+        Hermes tool reads in the background. Consent-gated on the `calendar`
+        domain. Upsert key is `(tenant_id, source, external_id)`; last-writer-wins
+        on `remoteUpdatedAt`. Cancelled events are tombstoned, not deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleCalendarSyncRequest' }
+      responses:
+        '200':
+          description: Sync result counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '403':
+          description: Calendar access not allowed by the user.
+
   /v1/jobs/detect:
     post:
       tags: [Skills]
@@ -4594,6 +4619,30 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/PhotoIndexInput' }
+
+    AppleCalendarEventInput:
+      type: object
+      required: [externalID, title, startsAt, endsAt, allDay]
+      properties:
+        externalID: { type: string, description: EventKit eventIdentifier — upsert key. }
+        calendarID: { type: string }
+        title: { type: string }
+        notes: { type: string }
+        location: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        status: { type: string, description: '"confirmed" | "cancelled"; cancelled rows are tombstoned.' }
+        organizer: { type: string }
+        remoteUpdatedAt: { type: string, format: date-time, description: EventKit lastModifiedDate — drives last-writer-wins. }
+
+    AppleCalendarSyncRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/AppleCalendarEventInput' }
 
     DeviceCommandResult:
       type: object
