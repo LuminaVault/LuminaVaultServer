@@ -18,6 +18,10 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     @Field(key: "name") var name: String
     @Field(key: "enabled") var enabled: Bool
     @OptionalField(key: "schedule_override") var scheduleOverride: String?
+    /// One-shot fire time (#10, M75). When set with no cron schedule, the
+    /// scheduler fires the skill once at/after this instant then disables the
+    /// row. Null for recurring (cron) + built-in skills.
+    @OptionalField(key: "run_at") var runAt: Date?
     @OptionalField(key: "last_run_at") var lastRunAt: Date?
     @OptionalField(key: "last_status") var lastStatus: String?
     @OptionalField(key: "last_error") var lastError: String?
@@ -32,6 +36,7 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         name: String,
         enabled: Bool = true,
         scheduleOverride: String? = nil,
+        runAt: Date? = nil,
         lastRunAt: Date? = nil,
         lastStatus: String? = nil,
         lastError: String? = nil,
@@ -43,6 +48,7 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         self.name = name
         self.enabled = enabled
         self.scheduleOverride = scheduleOverride
+        self.runAt = runAt
         self.lastRunAt = lastRunAt
         self.lastStatus = lastStatus
         self.lastError = lastError

@@ -79,4 +79,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M72_AddKanbanCardExtra())
     await fluent.migrations.add(M73_CreateCostLedger())
     await fluent.migrations.add(M74_CreateNvidiaBatchJobs())
+    await fluent.migrations.add(M75_AddSkillsStateRunAt())
 }

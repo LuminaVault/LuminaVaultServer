@@ -40,4 +40,15 @@ struct JobsTests {
         #expect(manifest.name == "job-x")
         #expect(manifest.schedule == "0 8 * * *")
     }
+
+    @Test
+    func `one-shot SKILL.md omits the schedule (run_at lives on skills_state)`() throws {
+        let md = JobAuthoring.skillMarkdown(
+            slug: "job-y", title: "One Off", cron: nil, domain: nil, spec: "Do it once",
+        )
+        #expect(!md.contains("schedule:"))
+        let manifest = try SkillManifestParser().parse(source: .vault, contents: md)
+        #expect(manifest.name == "job-y")
+        #expect(manifest.schedule == nil)
+    }
 }

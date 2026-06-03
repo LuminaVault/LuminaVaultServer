@@ -76,6 +76,16 @@ actor CronScheduler: Service {
         let pairs = try await loadEnabledPairs()
         var due: [DuePair] = []
         for pair in pairs {
+            // One-shot (#10) takes precedence over any cron. Fire once when the
+            // instant has arrived (catch-up: >=, like reminders); the row is
+            // disabled after dispatch so it never reloads. `lastRunAt >= runAt`
+            // guards a same-tick re-fire before the disable lands.
+            if let runAt = pair.runAt {
+                guard now >= runAt else { continue }
+                if let last = pair.lastRunAt, last >= runAt { continue }
+                due.append(pair)
+                continue
+            }
             guard let scheduleRaw = pair.schedule else { continue }
             guard let expression = try? CronExpression(scheduleRaw) else {
                 logger.warning("skills.cron skipping bad schedule \(scheduleRaw) tenant=\(pair.tenantID)")
@@ -179,6 +189,9 @@ actor CronScheduler: Service {
         let skillName: String
         let source: String // "builtin" | "vault"
         let schedule: String?
+        /// One-shot fire time (#10). Non-nil ⇒ one-shot job: fired once when
+        /// `now >= runAt`, then the row is disabled.
+        let runAt: Date?
         let lastRunAt: Date?
         /// HER-Cron — per-skill APNS opt-in. When non-nil, a successful cron
         /// run fires a `notifyCron` push.
@@ -223,7 +236,10 @@ actor CronScheduler: Service {
                 let enabled = state?.enabled ?? true
                 guard enabled else { continue }
                 let schedule = state?.scheduleOverride ?? manifest.schedule
-                guard schedule != nil else { continue }
+                let runAt = state?.runAt
+                // Include the pair if it has either a cron schedule or a
+                // one-shot run_at; otherwise it's not schedulable.
+                guard schedule != nil || runAt != nil else { continue }
                 pairs.append(DuePair(
                     tenantID: tenantID,
                     username: user.username,
@@ -232,6 +248,7 @@ actor CronScheduler: Service {
                     skillName: manifest.name,
                     source: manifest.source.rawValue,
                     schedule: schedule,
+                    runAt: runAt,
                     lastRunAt: state?.lastRunAt,
                     apnsCategory: state?.apnsCategory,
                     manifest: manifest,
@@ -265,6 +282,11 @@ actor CronScheduler: Service {
         row.lastRunAt = now
         row.lastStatus = status
         row.lastError = error
+        // One-shot (#10): fired — disable so it never reloads. last_run_at is
+        // also stamped, so even a same-tick reload before commit is guarded.
+        if pair.runAt != nil {
+            row.enabled = false
+        }
         try await row.save(on: fluent.db())
     }
 

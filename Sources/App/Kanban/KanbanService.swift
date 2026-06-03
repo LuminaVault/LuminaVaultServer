@@ -17,7 +17,10 @@ struct KanbanService: Sendable {
     struct PromotedJob: Sendable {
         let slug: String
         let title: String
-        let cron: String
+        /// Cron for recurring jobs; nil for one-shot (#10).
+        let cron: String?
+        /// Fire time for one-shot jobs; nil for recurring.
+        let runAt: Date?
         let spec: String
         /// True when the card already had a `jobSlug` — no re-author happened.
         let alreadyPromoted: Bool
@@ -190,10 +193,15 @@ struct KanbanService: Sendable {
             if let v = request.prompt { job.prompt = v }
             if let v = request.spaceID { job.spaceID = v }
         }
-        guard let cron = job.cron, !cron.trimmingCharacters(in: .whitespaces).isEmpty else {
-            // run_at one-shot scheduling is gap #10 — recurring cron only for now.
-            throw HTTPError(.badRequest, message: "card_job_requires_cron")
+        // Exactly one of cron (recurring) or run_at (one-shot, #10).
+        let cron = job.cron?.trimmingCharacters(in: .whitespaces)
+        let hasCron = !(cron?.isEmpty ?? true)
+        let hasRunAt = job.runAt != nil
+        guard hasCron != hasRunAt else {
+            throw HTTPError(.badRequest, message: "card_job_requires_cron_or_run_at")
         }
+        let effectiveCron = hasCron ? cron : nil
+        let effectiveRunAt = hasRunAt ? job.runAt : nil
         guard let spec = (job.prompt ?? card.body)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !spec.isEmpty
         else {
@@ -202,13 +210,15 @@ struct KanbanService: Sendable {
 
         // Idempotency: already promoted → return the existing job, no re-author.
         if let slug = job.jobSlug {
-            return PromotedJob(slug: slug, title: card.title, cron: cron, spec: spec, alreadyPromoted: true)
+            return PromotedJob(slug: slug, title: card.title, cron: effectiveCron,
+                               runAt: effectiveRunAt, spec: spec, alreadyPromoted: true)
         }
 
         let slug = try await authoring.author(
             tenantID: tenantID,
             title: card.title,
-            cron: cron,
+            cron: effectiveCron,
+            runAt: effectiveRunAt,
             domain: job.domain,
             spec: spec,
             spaceID: job.spaceID,
@@ -219,7 +229,8 @@ struct KanbanService: Sendable {
         card.extra = extra
         try await card.save(on: db)
         try await bumpBoard(tenantID: tenantID, boardID: card.boardID)
-        return PromotedJob(slug: slug, title: card.title, cron: cron, spec: spec, alreadyPromoted: false)
+        return PromotedJob(slug: slug, title: card.title, cron: effectiveCron,
+                           runAt: effectiveRunAt, spec: spec, alreadyPromoted: false)
     }
 
     // MARK: - Snapshot

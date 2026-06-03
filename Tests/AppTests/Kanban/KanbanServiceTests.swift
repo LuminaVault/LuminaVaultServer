@@ -111,6 +111,9 @@ struct KanbanServiceTests {
         await fluent.migrations.add(M70_AddNousConnectedAt())
         await fluent.migrations.add(M71_CreateKanban())
         await fluent.migrations.add(M72_AddKanbanCardExtra())
+        await fluent.migrations.add(M73_CreateCostLedger())
+        await fluent.migrations.add(M74_CreateNvidiaBatchJobs())
+        await fluent.migrations.add(M75_AddSkillsStateRunAt())
         // HER-310 — wrap migrate() so transient PG errors shut the pool down
         // before propagating; prevents EventLoopGroupConnectionPool leak and
         // SIGILL on process exit.
@@ -385,6 +388,85 @@ struct KanbanServiceTests {
             try await card.save(on: fluent.db())
             await #expect(throws: (any Error).self) {
                 _ = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            }
+        }
+    }
+
+    private struct RunAtRow: Decodable { let run_at: Date?; let enabled: Bool }
+
+    /// One-shot promote (#10): a card with run_at (no cron) authors a one-shot
+    /// job — skills_state.run_at is set, enabled, and the SKILL.md carries no
+    /// schedule.
+    @Test
+    func `promote authors a one-shot job from run_at`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "os\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, vaultRoot) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+            let card = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "One Shot"),
+            )
+            let fireAt = Date(timeIntervalSince1970: 2_000_000_000)
+            card.extra = CardExtra(job: CardJobConfig(runAt: fireAt, prompt: "Run me once"))
+            try await card.save(on: fluent.db())
+
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            #expect(promoted.cron == nil)
+            #expect(promoted.runAt == fireAt)
+
+            // SKILL.md has no schedule frontmatter.
+            let skill = vaultRoot
+                .appendingPathComponent("tenants/\(tenantID.uuidString)/skills/\(promoted.slug)/SKILL.md")
+            let md = try String(contentsOf: skill, encoding: .utf8)
+            #expect(!md.contains("schedule:"))
+
+            // skills_state.run_at set + enabled.
+            let sql = try #require(fluent.db() as? any SQLDatabase)
+            let row = try await sql.raw("""
+            SELECT run_at, enabled FROM skills_state
+            WHERE tenant_id = \(bind: tenantID) AND source = 'vault' AND name = \(bind: promoted.slug)
+            """).first(decoding: RunAtRow.self)
+            #expect(row?.enabled == true)
+            #expect(row?.run_at == fireAt)
+
+            // Card back-filled.
+            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            #expect(reloaded.extra?.job?.runAt == fireAt)
+            #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
+        }
+    }
+
+    /// A card with neither cron nor run_at, or both, cannot be promoted.
+    @Test
+    func `promote rejects ambiguous schedule (neither or both)`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "am\(UUID().uuidString.prefix(4).lowercased())").save(on: fluent.db())
+            let (svc, _) = Self.makePromoteService(fluent)
+            let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+
+            // Neither.
+            let c1 = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Neither"),
+            )
+            c1.extra = CardExtra(job: CardJobConfig(prompt: "x"))
+            try await c1.save(on: fluent.db())
+            await #expect(throws: (any Error).self) {
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try c1.requireID())
+            }
+
+            // Both.
+            let c2 = try await svc.createCard(
+                tenantID: tenantID, boardID: boardID, columnID: columnID,
+                req: CardCreateRequest(columnID: columnID, title: "Both"),
+            )
+            c2.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * *", runAt: Date(), prompt: "x"))
+            try await c2.save(on: fluent.db())
+            await #expect(throws: (any Error).self) {
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try c2.requireID())
             }
         }
     }
