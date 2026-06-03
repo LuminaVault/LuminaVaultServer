@@ -135,6 +135,17 @@ struct InsightTests {
         #expect(parsed[0].headline == "A")
     }
 
+    @Test
+    func `parseContradictions drops empty entries and trims whitespace`() throws {
+        let envelope = """
+        {"choices":[{"message":{"content":"{\\"contradictions\\": [{\\"headline\\": \\"  A  \\", \\"summary\\": \\"a\\"}, {\\"headline\\": \\"\\", \\"summary\\": \\"x\\"}, {\\"headline\\": \\"B\\", \\"summary\\": \\"\\"}]}"}}]}
+        """
+        let data = try #require(envelope.data(using: .utf8))
+        let parsed = try #require(SynthesisWorker.parseContradictions(response: data))
+        #expect(parsed.count == 1)
+        #expect(parsed[0].headline == "A")
+    }
+
     // MARK: - Worker idempotency (DB-backed)
 
     @Test
@@ -230,6 +241,73 @@ struct InsightTests {
             #expect(inserted == 2)
             let count = try await Insight.query(on: fluent.db(), tenantID: tenantID).count()
             #expect(count == 2)
+        }
+    }
+
+    @Test
+    func `runContradictionJob skips when recent contradiction row exists`() async throws {
+        try await withTestFluent(label: "lv.test.synth.contradiction.cooldown") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+
+            let tenantID = try await Self.makeTenant(on: fluent)
+            for _ in 0 ..< 5 {
+                try await Self.makeMemory(on: fluent, tenantID: tenantID, content: "memo")
+            }
+            try await Insight(
+                tenantID: tenantID,
+                section: .contradictions,
+                headline: "recent",
+                summary: "still fresh",
+            ).save(on: fluent.db())
+
+            let transport = StubSynthTransport(plainContent: """
+            {"contradictions": [{"headline": "X", "summary": "x"}]}
+            """)
+            let worker = SynthesisWorker(
+                fluent: fluent,
+                memories: MemoryRepository(fluent: fluent),
+                transport: transport,
+                defaultModel: "test-model",
+                logger: Logger(label: "test.synth"),
+            )
+
+            let inserted = try await worker.runContradictionJob(tenantID: tenantID, sessionKey: "u", now: Date())
+            #expect(inserted == 0)
+            let calls = await transport.callCount
+            #expect(calls == 0)
+        }
+    }
+
+    @Test
+    func `runContradictionJob inserts contradiction rows up to the cap`() async throws {
+        try await withTestFluent(label: "lv.test.synth.contradiction.cap") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+
+            let tenantID = try await Self.makeTenant(on: fluent)
+            for _ in 0 ..< 5 {
+                try await Self.makeMemory(on: fluent, tenantID: tenantID, content: "memo")
+            }
+
+            let transport = StubSynthTransport(plainContent: """
+            {"contradictions": [{"headline": "A", "summary": "a"}, {"headline": "B", "summary": "b"}, {"headline": "C", "summary": "c"}]}
+            """)
+            let worker = SynthesisWorker(
+                fluent: fluent,
+                memories: MemoryRepository(fluent: fluent),
+                transport: transport,
+                defaultModel: "test-model",
+                logger: Logger(label: "test.synth"),
+                maxPatternsPerRun: 2,
+            )
+
+            let inserted = try await worker.runContradictionJob(tenantID: tenantID, sessionKey: "u", now: Date())
+            #expect(inserted == 2)
+            let rows = try await Insight.query(on: fluent.db(), tenantID: tenantID)
+                .filter(\.$section == InsightSection.contradictions.rawValue)
+                .all()
+            #expect(rows.count == 2)
         }
     }
 
