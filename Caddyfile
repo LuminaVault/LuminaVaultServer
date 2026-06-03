@@ -5,7 +5,7 @@
 # internal compose network; WebSocket upgrades (chat SSE/WS) are proxied
 # transparently — no extra matcher needed.
 #
-# DNS is not pointed yet. Once `api.luminavault.com` resolves to this host,
+# DNS is not pointed yet. Once `api.luminavault.fyi` resolves to this host,
 # Caddy provisions a Let's Encrypt cert on first request (ports 80 + 443 must
 # be open). Set the ACME contact email below before going live.
 
@@ -13,7 +13,7 @@
 	email REPLACE_WITH_OPS_EMAIL
 }
 
-api.luminavault.com {
+api.luminavault.fyi {
 	encode zstd gzip
 	reverse_proxy app:8080
 }

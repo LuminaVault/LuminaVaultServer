@@ -247,7 +247,7 @@ jobs:
       # Fails the job if not HTTP 200 within ~30s, which triggers rollback.
       - name: Post-deploy smoke test (public endpoint)
         env:
-          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL || 'https://api.luminavault.com/health' }}
+          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL || 'https://api.luminavault.fyi/health' }}
         run: |
           set -euo pipefail
           for ATTEMPT in $(seq 1 15); do

@@ -2,7 +2,7 @@
 
 This is the operator checklist for taking LuminaVault to **TestFlight** (and, by
 promotion, the App Store). TestFlight and live share **one app identity**
-(`com.lumina.fernando`), **one API** (`https://api.luminavault.com`), and **one
+(`com.lumina.fernando`), **one API** (`https://api.luminavault.fyi`), and **one
 Postgres database**. Every auth method must work against the live API.
 
 The codebase changes (Caddy/HTTP-2, AASA endpoint, Release entitlements,
@@ -23,9 +23,9 @@ Legend: ☐ = you do it. Each item ends with **→ where the value goes**.
   → `.p8` to host `./secrets/apns-key.p8`; note **Key ID** → `APNS_KEYID`;
   Team ID is `84X9WYBF36` → `APNS_TEAMID`.
 - ☐ **Associated Domain** is served by the API already
-  (`https://api.luminavault.com/.well-known/apple-app-site-association` →
+  (`https://api.luminavault.fyi/.well-known/apple-app-site-association` →
   `{"webcredentials":{"apps":["84X9WYBF36.com.lumina.fernando"]}}`). No portal
-  field; just confirm the entitlement (client `webcredentials:api.luminavault.com`)
+  field; just confirm the entitlement (client `webcredentials:api.luminavault.fyi`)
   matches once DNS is live.
 - ☐ **App Store Connect**: create the app record for `com.lumina.fernando`,
   enable **TestFlight**, add internal testers.
@@ -76,7 +76,7 @@ POSTGRES_PASSWORD=<strong>
 JWT_HMAC_SECRET=<openssl rand -base64 32>      # or JWT_HMAC_SECRETS=kid:secret,... for rotation
 HERMES_API_KEY=<32-byte hex>                    # `make hermes-bootstrap`
 LV_SECRET_MASTER_KEY=<openssl rand -base64 32>  # 32 bytes b64 — enables SecretBox / per-user creds
-CORS_ALLOWEDORIGINS=https://app.luminavault.com # compose marks this REQUIRED; set web origin(s)
+CORS_ALLOWEDORIGINS=https://app.luminavault.fyi # compose marks this REQUIRED; set web origin(s)
 
 # --- OAuth (empty = provider disabled) ---
 OAUTH_APPLE_CLIENTID=com.lumina.fernando
@@ -97,9 +97,9 @@ TWILIO_FROM_NUMBER=+1555XXXXXXX
 
 # --- WebAuthn / passkeys ---
 WEBAUTHN_ENABLED=true
-WEBAUTHN_RELYINGPARTYID=api.luminavault.com
+WEBAUTHN_RELYINGPARTYID=api.luminavault.fyi
 WEBAUTHN_RELYINGPARTYNAME=LuminaVault
-WEBAUTHN_RELYINGPARTYORIGIN=https://api.luminavault.com
+WEBAUTHN_RELYINGPARTYORIGIN=https://api.luminavault.fyi
 
 # --- APNS (production) ---
 APNS_ENABLED=true
@@ -121,9 +121,9 @@ at `/app/secrets`).
 - ☐ Set the ACME contact in the root `Caddyfile` (`email REPLACE_WITH_OPS_EMAIL`).
 - ☐ DNS records → the VPS public IP:
   ```text
-  A     api.luminavault.com.  <VPS-IPv4>  300
-  AAAA  api.luminavault.com.  <VPS-IPv6>  300
-  CAA   api.luminavault.com.  0 issue "letsencrypt.org"  3600
+  A     api.luminavault.fyi.  <VPS-IPv4>  300
+  AAAA  api.luminavault.fyi.  <VPS-IPv6>  300
+  CAA   api.luminavault.fyi.  0 issue "letsencrypt.org"  3600
   ```
 - ☐ Firewall: 80 + 443 (tcp **and** udp/443 for HTTP/3) open. Caddy mints the
   cert on first request once DNS resolves.
@@ -134,7 +134,7 @@ Fill `LuminaVaultClient/Config/Config.Release.xcconfig` (placeholders today):
 `GID_CLIENT_ID`, `REVERSED_CLIENT_ID` (§2), `X_CLIENT_ID` (§3),
 `LV_RC_API_KEY` (RevenueCat). `API_BASE_URL` and `APPLE_SERVICE_ID` are already
 correct. Entitlements (`aps-environment=production`,
-`webcredentials:api.luminavault.com`) and the single-identity fastlane lane are
+`webcredentials:api.luminavault.fyi`) and the single-identity fastlane lane are
 already wired.
 
 ---
@@ -162,7 +162,7 @@ already wired.
 | X                 | 3 | exchange returns session |
 | Passkey reg + auth| 1, 6, 7 | system passkey sheet; register + authenticate OK |
 | Push notification | 1, 6 | a notification arrives (production APNS) |
-| HTTP/2            | 7 | `curl -I --http2 https://api.luminavault.com/health` → `HTTP/2 200` |
+| HTTP/2            | 7 | `curl -I --http2 https://api.luminavault.fyi/health` → `HTTP/2 200` |
 
 See [`hetzner-deployment.md`](./hetzner-deployment.md) for host/proxy detail and
 [`deploy.md`](./deploy.md) for the CI/CD pipeline + rollback.

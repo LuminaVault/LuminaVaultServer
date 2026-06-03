@@ -26,7 +26,7 @@ PR ──► CI (lint + test)  ──merge──►  push to main
                  on-server health pre-gate (http://127.0.0.1:8080/health)
                                          │
                                          ▼
-            runner smoke test (https://api.luminavault.com/health → 200, ≤30s)
+            runner smoke test (https://api.luminavault.fyi/health → 200, ≤30s)
                                    │              │
                               success           failure
                                    ▼              ▼
@@ -104,7 +104,7 @@ APP_PORT=8080 APP_IMAGE="$TARGET" docker compose -p prod \
 
 # 3. Verify.
 curl -fsS http://127.0.0.1:8080/health        # on-server
-curl -fsS https://api.luminavault.com/health   # public
+curl -fsS https://api.luminavault.fyi/health   # public
 
 # 4. (optional) Re-point :latest to the rolled-back image so a plain
 #    `docker compose pull` elsewhere converges on the good image.
@@ -123,7 +123,7 @@ echo "$TARGET" > .green_image
 
 ## Observability & on-call
 
-- **Health:** `https://api.luminavault.com/health` (public, returns `ok`).
+- **Health:** `https://api.luminavault.fyi/health` (public, returns `ok`).
 - **Sentry:** errors/traces for env `production`. Project/org are set via
   the `SENTRY_ORG_SLUG` / `SENTRY_PROJECT_SLUG` GitHub secrets; releases
   are tagged with the deploy commit SHA (`SENTRY_RELEASE`).
@@ -146,7 +146,7 @@ echo "$TARGET" > .green_image
 | `POSTHOG_OTEL_TOKEN` | deploy | otel-collector log export |
 | `SENTRY_*` | deploy | Sentry release + env wiring |
 | `SLACK_WEBHOOK_URL` | notify (optional) | deploy notifications (deferred) |
-| `vars.PRODUCTION_HEALTH_URL` (optional) | smoke test | override the smoke URL (default `https://api.luminavault.com/health`) |
+| `vars.PRODUCTION_HEALTH_URL` (optional) | smoke test | override the smoke URL (default `https://api.luminavault.fyi/health`) |
 | `BACKUP_AGE_RECIPIENT` (optional) | deploy | HER-131 backup encryption recipient (age public key) |
 | `BACKUP_RCLONE_REMOTE` (optional) | deploy | HER-131 backup destination, e.g. `b2:bucket/luminavault` |
 | `BACKUP_ALERT_WEBHOOK` (optional) | deploy | HER-131 Slack webhook for backup-failure alerts |
