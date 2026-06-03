@@ -46,6 +46,12 @@ final class User: Model, @unchecked Sendable {
     /// Default `true`; URLs mentioned in chat get captured to vault.
     /// Toggle via `PUT /v1/me/privacy { autoSaveLinks: false }`.
     @Field(key: "auto_save_links") var autoSaveLinks: Bool
+    /// Mnemosyne default-memory toggle for this tenant's managed Hermes.
+    /// Default `true`: the seeded `config.yaml` wires the Mnemosyne MCP server
+    /// and disables Hermes' native curated memory (HermesTenantConfigTemplate).
+    /// Set `false` to fall back to Hermes' built-in file memory. Takes effect on
+    /// the tenant container's next restart (drift rewrite re-seeds config.yaml).
+    @Field(key: "mnemosyne_enabled") var mnemosyneEnabled: Bool
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -56,6 +62,7 @@ final class User: Model, @unchecked Sendable {
         isAdmin = false
         vaultInitialized = false
         autoSaveLinks = true
+        mnemosyneEnabled = true
     }
 
     init(
@@ -88,5 +95,6 @@ final class User: Model, @unchecked Sendable {
         isAdmin = false
         vaultInitialized = false
         autoSaveLinks = true
+        mnemosyneEnabled = true
     }
 }

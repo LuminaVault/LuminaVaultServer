@@ -70,6 +70,8 @@ tags:
     description: OS Shell home/dashboard surface (HER-244).
   - name: Kanban
     description: Native Kanban boards, columns, and cards.
+  - name: Calendar
+    description: Google Calendar integration — OAuth connect, sync, events.
 
 security:
   - bearerJWT: []
@@ -3074,6 +3076,136 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/calendar/status:
+    get:
+      tags: [Calendar]
+      operationId: calendarStatus
+      summary: Google Calendar connection state.
+      description: |
+        Reports whether the authed tenant has a connected Google Calendar,
+        the account email, and the last successful sync time. `needsReauth`
+        is true when the stored refresh token was rejected (revoked / expired)
+        — the client should prompt a reconnect.
+      responses:
+        '200':
+          description: Connection status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarStatusResponse' }
+
+  /v1/calendar/connect:
+    post:
+      tags: [Calendar]
+      operationId: calendarConnect
+      summary: Begin the Google Calendar OAuth flow.
+      description: |
+        Returns the Google consent URL. The client opens it in an in-app
+        browser session (ASWebAuthenticationSession, scheme `luminavault`).
+        Google redirects to the server callback, which exchanges the code and
+        hands back to the app via `luminavault://oauth/google-calendar`.
+      responses:
+        '200':
+          description: Consent URL to open.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarConnectStartResponse' }
+        '503':
+          description: Google Calendar not configured on this server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/calendar/disconnect:
+    post:
+      tags: [Calendar]
+      operationId: calendarDisconnect
+      summary: Disconnect Google Calendar.
+      description: |
+        Revokes the grant at Google (best-effort), deletes the stored tokens,
+        and purges this tenant's cached Google calendar events.
+      responses:
+        '204':
+          description: Disconnected and purged.
+
+  /v1/calendar/events:
+    get:
+      tags: [Calendar]
+      operationId: calendarEvents
+      summary: Upcoming cached calendar events.
+      description: |
+        Returns the tenant's non-cancelled events ending at or after now,
+        soonest first, from the local sync cache (window −7d…+30d).
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 50 }
+      responses:
+        '200':
+          description: Upcoming events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarEventsResponse' }
+    post:
+      tags: [Calendar]
+      operationId: calendarCreateEvent
+      summary: Create a calendar event.
+      description: |
+        Creates an event on the user's Google calendar (the app's explicit
+        "Add to Calendar" action), caches it, and returns it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalendarCreateEventRequest' }
+      responses:
+        '200':
+          description: Created event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarEventDTO' }
+        '400':
+          description: Missing title or end not after start.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Google Calendar not connected.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/calendar/oauth/callback:
+    get:
+      tags: [Calendar]
+      operationId: calendarOAuthCallback
+      summary: Google OAuth redirect target (public).
+      description: |
+        Hit by the user's browser when Google redirects after consent. The
+        server exchanges the `code`, stores tokens, kicks an initial sync, and
+        303-redirects to the app via `luminavault://oauth/google-calendar`.
+        Unauthenticated — correlation + CSRF protection come from `state`.
+      security: []
+      parameters:
+        - in: query
+          name: state
+          required: true
+          schema: { type: string }
+        - in: query
+          name: code
+          required: false
+          schema: { type: string }
+        - in: query
+          name: error
+          required: false
+          schema: { type: string }
+      responses:
+        '303':
+          description: Redirect back to the app via the luminavault:// scheme.
+          headers:
+            Location:
+              schema: { type: string }
+
   /v1/projects:
     get:
       tags: [Projects]
@@ -4199,6 +4331,13 @@ components:
             `true` (default), URLs detected in chat prompts and replies
             are auto-captured to the vault and surfaced as `link_saved`
             SSE events.
+        mnemosyneEnabled:
+          type: boolean
+          description: |
+            Mnemosyne default-memory toggle for the tenant's managed Hermes.
+            When `true` (default), Mnemosyne is the memory layer and Hermes'
+            native file memory is disabled; when `false`, Hermes falls back to
+            its built-in file memory. Applied on the container's next restart.
 
     UpdatePrivacyRequest:
       type: object
@@ -4208,6 +4347,11 @@ components:
         autoSaveLinks:
           type: boolean
           description: HER-274 — opt out of the chat auto-save-link behavior.
+        mnemosyneEnabled:
+          type: boolean
+          description: |
+            Toggle Mnemosyne as the tenant's default memory layer. `false`
+            falls back to Hermes' native file memory; applied on next restart.
 
     MeBillingResponse:
       type: object
@@ -4495,6 +4639,66 @@ components:
           type: array
           items: { $ref: '#/components/schemas/SessionDTO' }
         nextCursor: { type: string }
+
+    CalendarStatusResponse:
+      type: object
+      required: [connected, needsReauth]
+      description: Google Calendar connection state (HER-340).
+      properties:
+        connected: { type: boolean }
+        needsReauth:
+          type: boolean
+          description: Refresh token rejected — client should prompt reconnect.
+        accountEmail: { type: string }
+        lastSyncedAt: { type: string, format: date-time }
+
+    CalendarConnectStartResponse:
+      type: object
+      required: [authorizeURL]
+      properties:
+        authorizeURL:
+          type: string
+          description: Google consent URL to open in ASWebAuthenticationSession.
+
+    CalendarEventDTO:
+      type: object
+      required: [id, source, externalID, title, startsAt, endsAt, allDay, status]
+      description: A cached calendar event (source-agnostic).
+      properties:
+        id: { type: string, format: uuid }
+        source: { type: string, description: '`google` | `apple_eventkit`.' }
+        externalID: { type: string, description: Provider event id. }
+        title: { type: string }
+        notes: { type: string }
+        location: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        status: { type: string, description: '`confirmed` | `tentative` | `cancelled`.' }
+        organizer: { type: string }
+        htmlLink: { type: string }
+
+    CalendarEventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/CalendarEventDTO' }
+
+    CalendarCreateEventRequest:
+      type: object
+      required: [title, startsAt, endsAt]
+      description: Create an event on the user's Google calendar.
+      properties:
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        location: { type: string }
+        notes: { type: string }
+        attendees:
+          type: array
+          items: { type: string, description: Attendee email. }
 
     DashboardStatsResponse:
       type: object

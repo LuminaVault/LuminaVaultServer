@@ -126,6 +126,9 @@ func buildApplication(
         logLevel: logger.logLevel,
         appleClientID: reader.string(forKey: "oauth.apple.clientId", default: ""),
         googleClientID: reader.string(forKey: "oauth.google.clientId", default: ""),
+        googleCalendarClientID: reader.string(forKey: "oauth.googleCalendar.clientId", default: ""),
+        googleCalendarClientSecret: reader.string(forKey: "oauth.googleCalendar.clientSecret", isSecret: true, default: ""),
+        googleCalendarRedirectURI: reader.string(forKey: "oauth.googleCalendar.redirectUri", default: ""),
         vaultRootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
         hermesGatewayKind: reader.string(forKey: "hermes.gatewayKind", default: "filesystem"),
         hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
@@ -290,7 +293,7 @@ func buildRouter(
     // Apple App Site Association — backs Sign in with Apple associated domain
     // and WebAuthn/passkey credentials for the iOS app (`TEAMID.bundleID`).
     // Public + unauthenticated; served at the WebAuthn relying-party domain
-    // (api.luminavault.com). Static for the single production app identity
+    // (api.luminavault.fyi). Static for the single production app identity
     // `com.lumina.fernando` (team 84X9WYBF36).
     router.get("/.well-known/apple-app-site-association") { _, _ -> Response in
         let json = #"{"webcredentials":{"apps":["84X9WYBF36.com.lumina.fernando"]}}"#
@@ -631,6 +634,11 @@ func buildRouter(
                     portRangeEnd: services.hermesPerTenantPortRangeEnd,
                     idleTTLSeconds: services.hermesPerTenantIdleTTLSeconds,
                     defaultModel: services.hermesDefaultModel,
+                    // Operator fallback for the per-tenant Mnemosyne toggle
+                    // (env `MNEMOSYNE_ENABLED`); `User.mnemosyneEnabled` wins
+                    // when a row is loaded. On by default — Mnemosyne is the
+                    // managed default memory layer.
+                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true",
                 ),
                 logger: Logger(label: "lv.hermes-tenant"),
             )
@@ -1704,6 +1712,61 @@ func buildRouter(
     let remindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
     remindersController.addRoutes(to: remindersGroup)
 
+    // HER-340 — Google Calendar (server-owned OAuth + sync). Requires
+    // SecretBox to seal OAuth tokens; absent the master key the integration
+    // is disabled (the connect endpoint would 503 anyway). The actual
+    // Google client id/secret/redirect come from `oauth.googleCalendar.*`
+    // and are surfaced as `isConfigured` to gate the connect flow + worker.
+    if let secretBox = secretBoxRef {
+        let calendarLogger = Logger(label: "lv.calendar")
+        let calendarConfigured = !services.googleCalendarClientID.isEmpty
+            && !services.googleCalendarClientSecret.isEmpty
+            && !services.googleCalendarRedirectURI.isEmpty
+        let calendarOAuthClient = GoogleCalendarOAuthClient(
+            clientID: services.googleCalendarClientID,
+            clientSecret: services.googleCalendarClientSecret,
+            redirectURI: services.googleCalendarRedirectURI,
+            logger: calendarLogger,
+        )
+        let calendarTokenStore = CalendarTokenStore(
+            fluent: services.fluent,
+            secretBox: secretBox,
+            oauth: calendarOAuthClient,
+            logger: calendarLogger,
+        )
+        let calendarSyncService = CalendarSyncService(
+            fluent: services.fluent,
+            tokenStore: calendarTokenStore,
+            client: GoogleCalendarClient(logger: calendarLogger),
+            logger: calendarLogger,
+        )
+        let calendarOAuthService = GoogleCalendarOAuthService(
+            fluent: services.fluent,
+            oauth: calendarOAuthClient,
+            tokenStore: calendarTokenStore,
+            syncService: calendarSyncService,
+            sessionStore: CalendarOAuthSessionStore(),
+            isConfigured: calendarConfigured,
+            logger: calendarLogger,
+        )
+        let calendarController = CalendarController(
+            fluent: services.fluent,
+            oauthService: calendarOAuthService,
+            syncService: calendarSyncService,
+            logger: calendarLogger,
+        )
+        let calendarGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
+        calendarController.addRoutes(to: calendarGroup)
+        calendarController.addPublicRoutes(to: router)
+        if calendarConfigured {
+            managedServices.append(CalendarSyncWorker(
+                fluent: services.fluent,
+                syncService: calendarSyncService,
+                logger: calendarLogger,
+            ))
+        }
+    }
+
     // HER-Projects — todo containers (the Home "Projects" card). Note-todos
     // link to a project via `VaultFileMetadata.projectID`; this controller
     // owns the project rows + live per-project todo counts.
@@ -2289,6 +2352,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         privacyNoCNOrigin: user.privacyNoCNOrigin,
         contextRouting: user.contextRouting,
         autoSaveLinks: user.autoSaveLinks,
+        mnemosyneEnabled: user.mnemosyneEnabled,
     )
 }
 
@@ -2312,6 +2376,9 @@ private func updatePrivacyHandler(
         if let autoSave = body.autoSaveLinks {
             user.autoSaveLinks = autoSave
         }
+        if let mnemosyne = body.mnemosyneEnabled {
+            user.mnemosyneEnabled = mnemosyne
+        }
         try await user.save(on: fluent.db())
         return try MeResponse(
             userId: user.requireID(),
@@ -2321,6 +2388,7 @@ private func updatePrivacyHandler(
             privacyNoCNOrigin: user.privacyNoCNOrigin,
             contextRouting: user.contextRouting,
             autoSaveLinks: user.autoSaveLinks,
+            mnemosyneEnabled: user.mnemosyneEnabled,
         )
     }
 }

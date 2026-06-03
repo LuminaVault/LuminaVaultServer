@@ -13,6 +13,16 @@ struct ServiceContainer {
     /// OAuth provider client IDs (audience claim). Empty string disables that provider.
     let appleClientID: String
     let googleClientID: String
+    /// HER-340 — Google Calendar OAuth (dedicated **Web** client). Distinct
+    /// from `googleClientID` (Sign-In id-token client): Calendar needs a
+    /// client secret for the server-side authorization-code → offline
+    /// refresh-token exchange. `redirectURI` is the server's HTTPS callback
+    /// registered in GCP (Web clients reject custom-scheme redirects); the
+    /// server hands back to the app via `luminavault://` afterward. All
+    /// empty disables the integration (connect endpoint returns 503).
+    let googleCalendarClientID: String
+    let googleCalendarClientSecret: String
+    let googleCalendarRedirectURI: String
     /// Filesystem root for `tenants/<id>/raw/` Hermes/vault directories.
     let vaultRootPath: String
     /// Selects which `HermesGateway` impl to use:

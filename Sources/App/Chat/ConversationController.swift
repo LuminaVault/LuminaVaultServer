@@ -173,8 +173,13 @@ struct ConversationController {
         }
         log.info("chat grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
+        // HER-340 — inject lightweight schedule awareness (today + next).
+        // `nil` (no calendar / no upcoming events) leaves the prompt clean.
+        let scheduleTimeZone = TimeZone(identifier: user.timezone) ?? TimeZone.gmt
+        let schedule = await scheduleContext(tenantID: tenantID, timezone: scheduleTimeZone)
+
         let chatRequest = ChatRequest(
-            messages: Self.buildPrompt(history: history, hits: hits),
+            messages: Self.buildPrompt(history: history, hits: hits, schedule: schedule),
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4,
         )
@@ -353,6 +358,7 @@ struct ConversationController {
     static func buildPrompt(
         history: [ConversationMessage],
         hits: [MemorySearchResult],
+        schedule: String? = nil,
     ) -> [ChatMessage] {
         let context: String = if hits.isEmpty {
             "(no relevant memories were found)"
@@ -361,6 +367,9 @@ struct ConversationController {
                 "[\(offset + 1)] \(hit.content)"
             }.joined(separator: "\n\n")
         }
+        // HER-340 — lightweight schedule awareness (today + next event only).
+        // Omitted entirely when the calendar isn't connected.
+        let scheduleSection = schedule.map { "\n\n\($0)" } ?? ""
         let system = ChatMessage(role: "system", content: """
         You are Lumina, the user's second-brain assistant. Use the
         retrieved memories below to ground your answer. Cite by their
@@ -369,9 +378,54 @@ struct ConversationController {
         say so plainly rather than inventing detail.
 
         Retrieved memories:
-        \(context)
+        \(context)\(scheduleSection)
         """)
         let turns = history.map { ChatMessage(role: $0.role, content: $0.content) }
         return [system] + turns
+    }
+
+    /// HER-340 — compact schedule block for prompt injection: whether the
+    /// user is busy right now, today's remaining events, and the next one.
+    /// Returns `nil` when no calendar is connected or no upcoming events
+    /// exist, so the prompt stays clean for non-calendar users. Times are
+    /// rendered in `timezone` (the user's tz, falling back to UTC).
+    func scheduleContext(tenantID: UUID, timezone: TimeZone, now: Date = Date()) async -> String? {
+        let rows = try? await CalendarEvent.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$status != "cancelled")
+            .filter(\.$endsAt >= now)
+            .sort(\.$startsAt, .ascending)
+            .limit(12)
+            .all()
+        guard let rows, !rows.isEmpty else { return nil }
+
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timezone
+        let fmt = DateFormatter()
+        fmt.timeZone = timezone
+        fmt.dateFormat = "HH:mm"
+
+        let ongoing = rows.first { $0.startsAt <= now && now < $0.endsAt }
+        let today = rows.filter { cal.isDate($0.startsAt, inSameDayAs: now) && $0.startsAt >= now }
+        let next = rows.first { $0.startsAt > now }
+
+        var lines = ["The user's calendar (times in their local timezone):"]
+        if let ongoing {
+            lines.append("- Now: in \"\(ongoing.title)\" until \(fmt.string(from: ongoing.endsAt))")
+        } else {
+            lines.append("- Now: no event in progress")
+        }
+        if today.isEmpty {
+            lines.append("- Today: nothing else scheduled")
+        } else {
+            let preview = today.prefix(4).map { "\($0.title) \(fmt.string(from: $0.startsAt))" }.joined(separator: ", ")
+            lines.append("- Today: \(today.count) more — \(preview)")
+        }
+        if let next, !cal.isDate(next.startsAt, inSameDayAs: now) {
+            let dayFmt = DateFormatter()
+            dayFmt.timeZone = timezone
+            dayFmt.dateFormat = "EEE d MMM, HH:mm"
+            lines.append("- Next: \"\(next.title)\" \(dayFmt.string(from: next.startsAt))")
+        }
+        return lines.joined(separator: "\n")
     }
 }

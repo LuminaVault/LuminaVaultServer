@@ -30,6 +30,10 @@ actor HermesContainerManager {
         /// HER-254 — model alias rendered into the seeded `config.yaml` so
         /// `/v1/chat/completions` returns a deterministic default.
         let defaultModel: String
+        /// Operator-level default for Mnemosyne when a tenant has no User row
+        /// loaded (env `MNEMOSYNE_ENABLED`). The per-user `User.mnemosyneEnabled`
+        /// flag takes precedence when present; this is only the fallback.
+        let mnemosyneDefault: Bool
         init(
             image: String,
             network: String,
@@ -38,6 +42,7 @@ actor HermesContainerManager {
             portRangeEnd: Int,
             idleTTLSeconds: Int,
             defaultModel: String = "hermes-3",
+            mnemosyneDefault: Bool = true,
         ) {
             self.image = image
             self.network = network
@@ -46,6 +51,7 @@ actor HermesContainerManager {
             self.portRangeEnd = portRangeEnd
             self.idleTTLSeconds = idleTTLSeconds
             self.defaultModel = defaultModel
+            self.mnemosyneDefault = mnemosyneDefault
         }
     }
 
@@ -324,11 +330,16 @@ actor HermesContainerManager {
     ) async throws {
         let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
         let gateways = try await gatewaySeeds(tenantID: tenantID)
+        // Per-tenant Mnemosyne toggle (User IS the tenant, id == tenantID).
+        // Falls back to the operator default when no User row is loaded.
+        let mnemosyneEnabled = try await User.find(tenantID, on: fluent.db())?.mnemosyneEnabled
+            ?? config.mnemosyneDefault
         try HermesTenantConfigTemplate.seed(
             volumePath: volumePath,
             apiKey: apiServerKey,
             defaultModel: config.defaultModel,
             gateways: gateways,
+            mnemosyneEnabled: mnemosyneEnabled,
         )
         let args = [
             "run",
@@ -406,11 +417,14 @@ actor HermesContainerManager {
         guard let row = try await loadRow(tenantID: tenantID) else { return nil }
         let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
         let gateways = try await gatewaySeeds(tenantID: tenantID)
+        let mnemosyneEnabled = try await User.find(tenantID, on: fluent.db())?.mnemosyneEnabled
+            ?? config.mnemosyneDefault
         try HermesTenantConfigTemplate.seed(
             volumePath: volumePath,
             apiKey: decrypt(row: row, tenantID: tenantID),
             defaultModel: config.defaultModel,
             gateways: gateways,
+            mnemosyneEnabled: mnemosyneEnabled,
         )
         return gateways.reduce(0) { $0 + HermesGatewayCatalog.envVars($1.gatewayID, config: $1.config).count }
     }
