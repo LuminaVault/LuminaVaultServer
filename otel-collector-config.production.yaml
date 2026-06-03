@@ -22,16 +22,17 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
-  # PostHog's OTLP ingest currently only accepts traces; the logs path
-  # (`/otlp/v1/logs`) returns 404 and the collector drops every batch.
-  # Keep the exporter definition commented for future revival once
-  # PostHog Cloud exposes OTLP logs; production logs already drain to
-  # Sentry below, so removing PostHog from the pipeline has no fallout.
-  #
-  # otlphttp/posthog:
-  #   logs_endpoint: https://us.i.posthog.com/otlp/v1/logs
-  #   headers:
-  #     Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
+  # PostHog Logs (OTLP). The correct ingest path is `/i/v1/logs` (the old
+  # `/otlp/v1/logs` 404'd, which is why this was disabled). Auth is the PostHog
+  # project token (phc_...) in POSTHOG_OTEL_TOKEN. Logs also drain to Sentry
+  # below, so a PostHog outage degrades gracefully.
+  otlphttp/posthog:
+    logs_endpoint: https://us.i.posthog.com/i/v1/logs
+    headers:
+      Authorization: "Bearer ${env:POSTHOG_OTEL_TOKEN}"
+    timeout: 30s
+    sending_queue:
+      enabled: true
   sentry:
     url: ${env:SENTRY_BASE_URL}
     org_slug: ${env:SENTRY_ORG_SLUG}
@@ -66,7 +67,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [resource/sentry, batch]
-      exporters: [sentry]
+      exporters: [sentry, otlphttp/posthog]
     metrics:
       receivers: [otlp]
       processors: [batch]
