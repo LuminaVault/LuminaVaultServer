@@ -1831,6 +1831,16 @@ func buildRouter(
     let healthReadGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
     healthController.addReadRoutes(to: healthReadGroup)
 
+    // Apple Reminders (EventKit) selective-sync ingest — persists the device's
+    // reminder deltas into the `apple_reminders` cache that the Hermes
+    // `reminders_list` tool reads in the background (device-RPC stays fallback).
+    let appleRemindersController = AppleRemindersController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.apple.reminders"),
+    )
+    let appleRemindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
+    appleRemindersController.addRoutes(to: appleRemindersGroup)
+
     // Admin: hermes-profile reconciliation. Shared-secret gated; off when
     // `admin.token` is empty.
     // HER-226 — gateway-reachability probe shared by reconciler + service

@@ -643,7 +643,7 @@ actor SkillRunner {
             let days = max(1, min(args.days ?? 7, 90))
             return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
         case AvailableTool.remindersList.rawValue:
-            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
+            return await remindersList(tenantID: tenantID)
         case AvailableTool.photosSearch.rawValue:
             struct Args: Decodable { let limit: Int? }
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
@@ -679,6 +679,53 @@ actor SkillRunner {
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
+    }
+
+    /// Apple Reminders selective-sync read path. Serves the persisted
+    /// `apple_reminders` cache (open/overdue items, soonest due first) the iOS
+    /// client pushes via `POST /v1/reminders/sync`, so Hermes answers without a
+    /// live device round-trip. Falls back to a fresh device_fetch when the
+    /// cache is empty (device never synced, or just-installed client).
+    /// Consent-gated on `.reminders`, same as the device-RPC path.
+    private func remindersList(tenantID: UUID) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .reminders, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("reminders access not allowed by the user") }
+
+        struct Row: Decodable { let title: String; let due_at: Date?; let notes: String? }
+        let rows: [Row]
+        do {
+            // Open (incomplete) reminders, overdue + upcoming, soonest due
+            // first; NULLs (no due date) sort last. Capped to keep the tool
+            // payload bounded.
+            rows = try await sql.raw("""
+            SELECT title, due_at, notes
+            FROM apple_reminders
+            WHERE tenant_id = \(bind: tenantID) AND completed = false
+            ORDER BY due_at ASC NULLS LAST
+            LIMIT 100
+            """).all(decoding: Row.self)
+        } catch {
+            return Self.toolErrorJSON("reminders_list failed: \(error)")
+        }
+
+        // Cache miss → fall back to a live device fetch.
+        guard !rows.isEmpty else {
+            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let items = rows.map { row -> [String: String] in
+            var item: [String: String] = ["title": row.title]
+            if let due = row.due_at { item["due"] = iso.string(from: due) }
+            if let notes = row.notes, !notes.isEmpty { item["notes"] = notes }
+            return item
+        }
+        let itemsJSON = Self.encodeJSON(items)
+        return Self.encodeJSON(["status": "ok", "items": itemsJSON])
     }
 
     /// Apple Integration P2b — gate consent, then round-trip a fresh read
@@ -999,7 +1046,7 @@ actor SkillRunner {
         case .remindersList:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "List the user's open (incomplete) Apple Reminders. Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
+                description: "List the user's open (incomplete) Apple Reminders, overdue and upcoming items soonest-due first. Served from the synced server-side cache when available (falls back to a live device fetch). Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
                 parameters: .init(properties: [:], required: []),
             ))
         case .photosSearch:
