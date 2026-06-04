@@ -163,7 +163,7 @@ private struct PhotoSearchRow: Decodable {
 
 /// Internal search result (server-only; not a wire DTO). Serialised to the
 /// `photos_search` tool's JSON contract in `SkillRunner`.
-struct PhotoSearchHit: Sendable {
+struct PhotoSearchHit {
     let takenAt: Date?
     let isScreenshot: Bool
     let ocrText: String?

@@ -83,7 +83,7 @@ struct AppleConsentController {
     /// Fails closed (not allowed) on any error.
     static func isAllowed(tenantID: UUID, domain: AppleDataDomain, sql: any SQLDatabase) async -> (allowed: Bool, writes: Bool) {
         struct Row: Decodable { let allowed: Bool; let allow_writes: Bool }
-        let row: Row? = (try? await sql.raw("""
+        let row: Row? = await (try? sql.raw("""
         SELECT allowed, allow_writes FROM apple_consent
         WHERE tenant_id = \(bind: tenantID) AND domain = \(bind: domain.rawValue)
         """).first(decoding: Row.self)) ?? nil

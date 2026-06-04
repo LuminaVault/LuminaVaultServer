@@ -89,8 +89,8 @@ final class CalendarEvent: Model, TenantModel, @unchecked Sendable {
 
 /// JSONB wrapper — Fluent `.json` rejects top-level arrays, so attendees
 /// are nested under a struct field.
-struct CalendarAttendees: Codable, Sendable {
-    struct Attendee: Codable, Sendable {
+struct CalendarAttendees: Codable {
+    struct Attendee: Codable {
         var email: String?
         var displayName: String?
         var responseStatus: String?
@@ -105,7 +105,7 @@ struct CalendarAttendees: Codable, Sendable {
 
 /// JSONB wrapper for RRULE/recurrence rules (Google returns an array of
 /// strings); nested to satisfy the same `.json` array limitation.
-struct CalendarRecurrence: Codable, Sendable {
+struct CalendarRecurrence: Codable {
     var rules: [String]
 
     init(rules: [String] = []) {

@@ -4,7 +4,7 @@ import Foundation
 /// Server-only lifecycle state for a `NvidiaBatchJob`. Not a wire DTO — the
 /// client renders job status via the generic Jobs surface; this enum is the
 /// persisted `state` column's domain.
-enum NvidiaBatchJobState: String, Sendable, CaseIterable {
+enum NvidiaBatchJobState: String, CaseIterable {
     case queued
     case running
     case succeeded

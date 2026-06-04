@@ -2,11 +2,11 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdFluent
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 import SQLKit
 
-// SkillDTO already conforms to ResponseEncodable in SkillsController.
+/// SkillDTO already conforms to ResponseEncodable in SkillsController.
 extension JobProposalDTO: @retroactive ResponseEncodable {}
 
 /// Lumina Jobs P3 — chat→job detection + creation.

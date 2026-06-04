@@ -584,9 +584,8 @@ actor SkillRunner {
                 }
                 let args = (try? decoder.decode(HealthQueryArgs.self, from: argsData)) ?? HealthQueryArgs(metric: nil, days: nil)
                 let days = max(1, min(args.days ?? 30, 365))
-                let rows: [AggRow]
-                if let metric = args.metric, !metric.isEmpty {
-                    rows = try await sql.raw("""
+                let rows: [AggRow] = if let metric = args.metric, !metric.isEmpty {
+                    try await sql.raw("""
                     SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
                            SUM(value_numeric) AS total, AVG(value_numeric) AS avg
                     FROM health_events
@@ -595,7 +594,7 @@ actor SkillRunner {
                     GROUP BY event_type, unit, day ORDER BY day
                     """).all(decoding: AggRow.self)
                 } else {
-                    rows = try await sql.raw("""
+                    try await sql.raw("""
                     SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
                            SUM(value_numeric) AS total, AVG(value_numeric) AS avg
                     FROM health_events
@@ -719,8 +718,10 @@ actor SkillRunner {
                 command: DeviceCommand(kind: kind, domain: domain, payload: payload),
             )
             guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
-            var out: [String: String] = ["status": "ok"]
-            for (k, v) in result.payload ?? [:] { out[k] = v }
+            var out = ["status": "ok"]
+            for (k, v) in result.payload ?? [:] {
+                out[k] = v
+            }
             return Self.encodeJSON(out)
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
@@ -944,7 +945,7 @@ actor SkillRunner {
               let sql = fluent.db() as? any SQLDatabase
         else { return }
         struct SpaceRow: Decodable { let space_id: UUID?; let slug: String? }
-        let row: SpaceRow? = (try? await sql.raw("""
+        let row: SpaceRow? = await (try? sql.raw("""
         SELECT ss.space_id, s.slug
         FROM skills_state ss
         LEFT JOIN spaces s ON s.id = ss.space_id

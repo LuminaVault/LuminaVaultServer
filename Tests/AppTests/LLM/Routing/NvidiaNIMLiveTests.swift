@@ -15,7 +15,6 @@ import Testing
 ///   NVIDIA_API_KEY=nvapi-... swift test --filter NvidiaNIMLiveTests
 @Suite(.serialized)
 struct NvidiaNIMLiveTests {
-
     private static var apiKey: String? {
         guard let key = ProcessInfo.processInfo.environment["NVIDIA_API_KEY"],
               !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -29,6 +28,7 @@ struct NvidiaNIMLiveTests {
             struct Message: Decodable { let content: String }
             let message: Message
         }
+
         let choices: [Choice]
     }
 

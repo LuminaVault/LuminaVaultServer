@@ -12,10 +12,10 @@ import Foundation
 /// cache idempotent across overlapping delta pushes. Indexed on
 /// `(tenant_id, due_at)` for the "open/overdue, soonest-first" read path.
 final class AppleReminder: Model, TenantModel, @unchecked Sendable {
-    // @unchecked Sendable: Fluent property wrappers are not Sendable, but
-    // instances never cross isolation boundaries while mutable — they are
-    // constructed, saved, and discarded within a single request task. Mirrors
-    // `HealthEvent`.
+    /// @unchecked Sendable: Fluent property wrappers are not Sendable, but
+    /// instances never cross isolation boundaries while mutable — they are
+    /// constructed, saved, and discarded within a single request task. Mirrors
+    /// `HealthEvent`.
     static let schema = "apple_reminders"
 
     @ID(key: .id) var id: UUID?

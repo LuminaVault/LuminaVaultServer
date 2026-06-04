@@ -68,7 +68,7 @@ actor WhatsAppPairingService {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.pump(sessionID: sessionID, exec: exec)
+            await pump(sessionID: sessionID, exec: exec)
         }
         sessions[sessionID]?.task = task
         logger.info("whatsapp pairing started", metadata: [
@@ -183,10 +183,14 @@ actor WhatsAppPairingService {
         }
         sessions[sessionID] = session
 
-        for cont in session.subscribers.values { cont.yield(event) }
+        for cont in session.subscribers.values {
+            cont.yield(event)
+        }
 
         if session.terminal != nil {
-            for cont in session.subscribers.values { cont.finish() }
+            for cont in session.subscribers.values {
+                cont.finish()
+            }
             // Keep the session briefly so a late subscriber still sees the
             // terminal event, then reap.
             Task { [weak self] in
@@ -199,7 +203,9 @@ actor WhatsAppPairingService {
     private func teardown(sessionID: UUID) async {
         guard let session = sessions.removeValue(forKey: sessionID) else { return }
         session.task?.cancel()
-        for cont in session.subscribers.values { cont.finish() }
+        for cont in session.subscribers.values {
+            cont.finish()
+        }
         await session.handle?.cancel()
         for (tenant, sid) in tenantSession where sid == sessionID {
             tenantSession[tenant] = nil

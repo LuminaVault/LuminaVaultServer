@@ -16,7 +16,7 @@ import Logging
 /// server-side HTTP flow with DB-stored tokens, so it works identically for
 /// managed and BYO-Hermes tenants.
 actor GoogleCalendarOAuthService {
-    struct Status: Sendable {
+    struct Status {
         let connected: Bool
         let needsReauth: Bool
         let accountEmail: String?
@@ -126,7 +126,8 @@ actor GoogleCalendarOAuthService {
         let db = fluent.db()
         if let account = try await CalendarAccount.query(on: db, tenantID: tenantID)
             .filter(\.$provider == "google")
-            .first() {
+            .first()
+        {
             // Best-effort remote revoke using the refresh token.
             // (Decryption handled by token store internals is overkill here;
             // skip if we can't read it — the row is deleted regardless.)
@@ -138,7 +139,7 @@ actor GoogleCalendarOAuthService {
             .delete()
     }
 
-    private func revokeRemote(account: CalendarAccount, tenantID: UUID) async throws {
+    private func revokeRemote(account _: CalendarAccount, tenantID: UUID) async throws {
         // The refresh token is the durable grant; revoking it invalidates
         // all derived access tokens. Token plaintext is resealed in the DB,
         // so we ask the token store for a usable access token and revoke
@@ -163,9 +164,12 @@ actor GoogleCalendarOAuthService {
         var b64 = String(segments[1])
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
-        while b64.count % 4 != 0 { b64 += "=" }
+        while b64.count % 4 != 0 {
+            b64 += "="
+        }
         guard let data = Data(base64Encoded: b64),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
             return nil
         }
         return json["email"] as? String

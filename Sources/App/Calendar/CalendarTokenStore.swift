@@ -89,7 +89,8 @@ actor CalendarTokenStore {
         let db = fluent.db()
         guard let account = try await CalendarAccount.query(on: db, tenantID: tenantID)
             .filter(\.$provider == provider)
-            .first() else {
+            .first()
+        else {
             throw Error.notConnected
         }
         guard account.status == "connected" else {
@@ -99,7 +100,8 @@ actor CalendarTokenStore {
         if let ciphertext = account.accessCiphertext,
            let nonce = account.accessNonce,
            let expiry = account.accessExpiresAt,
-           expiry.timeIntervalSince(now()) > refreshSkew {
+           expiry.timeIntervalSince(now()) > refreshSkew
+        {
             return try secretBox.open(.init(ciphertext: ciphertext, nonce: nonce), tenantID: tenantID)
         }
         // Slow path: refresh under single-flight.

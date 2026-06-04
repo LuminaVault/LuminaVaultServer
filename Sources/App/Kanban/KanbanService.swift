@@ -4,17 +4,19 @@ import Hummingbird
 import HummingbirdFluent
 import LuminaVaultShared
 
-struct KanbanService: Sendable {
+struct KanbanService {
     let fluent: Fluent
     /// Authors promoted cards as vault cron skills. Optional so plain board
     /// callers/tests can construct the service without the Jobs subsystem;
     /// `promoteCard` requires it.
-    var authoring: JobAuthoring? = nil
-    private var db: any Database { fluent.db() }
+    var authoring: JobAuthoring?
+    private var db: any Database {
+        fluent.db()
+    }
 
     /// Outcome of promoting a card to a scheduled Job. Carries enough to build
     /// the `SkillDTO` response without a `CardDTO`/Shared change.
-    struct PromotedJob: Sendable {
+    struct PromotedJob {
         let slug: String
         let title: String
         /// Cron for recurring jobs; nil for one-shot (#10).
@@ -42,7 +44,7 @@ struct KanbanService: Sendable {
             let cols = try await KanbanColumn.query(on: db).filter(\.$boardID == bid).count()
             let cards = try await KanbanCard.query(on: db).filter(\.$boardID == bid).count()
             out.append(BoardSummaryDTO(id: bid, title: b.title, version: b.version,
-                                      columnCount: cols, cardCount: cards, updatedAt: b.updatedAt))
+                                       columnCount: cols, cardCount: cards, updatedAt: b.updatedAt))
         }
         return out
     }
@@ -53,7 +55,7 @@ struct KanbanService: Sendable {
             .sort(\.$createdAt).first() { return existing }
         let b = try await createBoard(tenantID: tenantID, title: "My Board")
         for t in ["Todo", "Doing", "Done"] {
-            _ = try await createColumn(tenantID: tenantID, boardID: try b.requireID(), title: t)
+            _ = try await createColumn(tenantID: tenantID, boardID: b.requireID(), title: t)
         }
         return b
     }
@@ -98,17 +100,15 @@ struct KanbanService: Sendable {
 
     func reorderColumn(tenantID: UUID, boardID: UUID, req: ColumnReorderRequest) async throws -> BoardDTO {
         let c = try await requireColumn(tenantID: tenantID, columnID: req.columnID)
-        let before: KanbanColumn?
-        if let beforeID = req.beforeID {
-            before = try await KanbanColumn.find(beforeID, on: db)
+        let before: KanbanColumn? = if let beforeID = req.beforeID {
+            try await KanbanColumn.find(beforeID, on: db)
         } else {
-            before = nil
+            nil
         }
-        let after: KanbanColumn?
-        if let afterID = req.afterID {
-            after = try await KanbanColumn.find(afterID, on: db)
+        let after: KanbanColumn? = if let afterID = req.afterID {
+            try await KanbanColumn.find(afterID, on: db)
         } else {
-            after = nil
+            nil
         }
         c.rank = RankString.between(before?.rank, after?.rank)
         try await c.save(on: db)
@@ -152,17 +152,15 @@ struct KanbanService: Sendable {
     func moveCard(tenantID: UUID, cardID: UUID, req: CardMoveRequest) async throws -> CardDTO {
         let card = try await requireCard(tenantID: tenantID, cardID: cardID)
         _ = try await requireColumn(tenantID: tenantID, columnID: req.toColumnID)
-        let before: KanbanCard?
-        if let beforeID = req.beforeID {
-            before = try await KanbanCard.find(beforeID, on: db)
+        let before: KanbanCard? = if let beforeID = req.beforeID {
+            try await KanbanCard.find(beforeID, on: db)
         } else {
-            before = nil
+            nil
         }
-        let after: KanbanCard?
-        if let afterID = req.afterID {
-            after = try await KanbanCard.find(afterID, on: db)
+        let after: KanbanCard? = if let afterID = req.afterID {
+            try await KanbanCard.find(afterID, on: db)
         } else {
-            after = nil
+            nil
         }
         card.columnID = req.toColumnID
         card.rank = RankString.between(before?.rank, after?.rank)
@@ -247,8 +245,8 @@ struct KanbanService: Sendable {
             colDTOs.append(ColumnDTO(id: cid, title: col.title, rank: col.rank,
                                      cards: cards.map(Self.cardDTO)))
         }
-        return BoardDTO(id: try board.requireID(), title: board.title,
-                        version: board.version, columns: colDTOs)
+        return try BoardDTO(id: board.requireID(), title: board.title,
+                            version: board.version, columns: colDTOs)
     }
 
     func version(tenantID: UUID, boardID: UUID) async throws -> Int64 {
@@ -258,11 +256,10 @@ struct KanbanService: Sendable {
     // MARK: - Helpers
 
     private static func cardDTO(_ c: KanbanCard) -> CardDTO {
-        let priority: CardPriority?
-        if let raw = c.priority {
-            priority = CardPriority(rawValue: raw)
+        let priority: CardPriority? = if let raw = c.priority {
+            CardPriority(rawValue: raw)
         } else {
-            priority = nil
+            nil
         }
         let jobConfig = c.extra?.job.map {
             CardJobConfigDTO(
@@ -296,7 +293,9 @@ struct KanbanService: Sendable {
         return c
     }
 
-    private func bump(_ b: KanbanBoard) async throws { b.version += 1; try await b.save(on: db) }
+    private func bump(_ b: KanbanBoard) async throws {
+        b.version += 1; try await b.save(on: db)
+    }
 
     private func bumpBoard(tenantID: UUID, boardID: UUID) async throws {
         let b = try await requireBoard(tenantID: tenantID, boardID: boardID); try await bump(b)

@@ -20,7 +20,7 @@ enum CostBudgetDecision: Equatable {
 /// (1 USD = 1_000_000 micros). Lets `usdMicros(...)` turn a token count into
 /// a money figure without floats. Defaults are placeholders — set real NIM
 /// rates via env before enabling managed mode.
-struct ProviderCostRate: Sendable, Equatable {
+struct ProviderCostRate: Equatable {
     /// Micro-USD charged per 1M input tokens.
     let inputPerMtokUsdMicros: Int64
     /// Micro-USD charged per 1M output tokens.

@@ -9,7 +9,7 @@ import SQLKit
 /// (cron in frontmatter) and upserts the `skills_state` row `CronScheduler`
 /// reads. Shared by `JobsController` (POST /v1/jobs) and Kanban card→Job
 /// promotion so both paths produce identical, schedulable jobs.
-struct JobAuthoring: Sendable {
+struct JobAuthoring {
     let vaultPaths: VaultPathService
     let fluent: HummingbirdFluent.Fluent
     let logger: Logger
@@ -29,7 +29,7 @@ struct JobAuthoring: Sendable {
         runAt: Date? = nil,
         domain: String?,
         spec: String,
-        spaceID: UUID?
+        spaceID: UUID?,
     ) async throws -> String {
         switch (cron, runAt) {
         case let (cron?, nil):

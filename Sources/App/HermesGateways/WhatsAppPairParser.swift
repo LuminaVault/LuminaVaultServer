@@ -56,7 +56,8 @@ struct WhatsAppPairParser {
         // error wording first, but don't fire on a success line that happens
         // to contain a benign word.
         if Self.errorMarkers.contains(where: lower.contains),
-           !Self.linkedMarkers.contains(where: lower.contains) {
+           !Self.linkedMarkers.contains(where: lower.contains)
+        {
             events.append(.error(trimmed))
         } else if Self.linkedMarkers.contains(where: lower.contains) {
             events.append(.linked)
@@ -98,7 +99,9 @@ struct WhatsAppPairParser {
                 var j = s.index(after: i)
                 if j < s.endIndex, s[j] == "[" { j = s.index(after: j) }
                 // CSI runs until a final byte in @A–Z[a–z~ range.
-                while j < s.endIndex, !Self.isCSIFinal(s[j]) { j = s.index(after: j) }
+                while j < s.endIndex, !Self.isCSIFinal(s[j]) {
+                    j = s.index(after: j)
+                }
                 if j < s.endIndex { j = s.index(after: j) } // consume final byte
                 i = j
             } else {

@@ -6,7 +6,7 @@ import LuminaVaultShared
 /// container's `.env`. `config` keys are the catalog field keys (e.g.
 /// `bot_token`); `HermesGatewayCatalog.envVars(_:config:)` maps them to the
 /// Hermes env-var names.
-struct HermesGatewaySeed: Sendable, Equatable {
+struct HermesGatewaySeed: Equatable {
     let gatewayID: HermesGatewayID
     let config: [String: String]
 }

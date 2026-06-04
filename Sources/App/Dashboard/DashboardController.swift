@@ -247,6 +247,6 @@ struct DashboardController {
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         let components = DateComponents(year: year, month: month, day: day)
         guard let date = calendar.date(from: components) else { return nil }
-        return Int(date.timeIntervalSince1970 / 86_400)
+        return Int(date.timeIntervalSince1970 / 86400)
     }
 }

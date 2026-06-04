@@ -36,7 +36,7 @@ struct KanbanController {
         router.post(":cardID/promote", use: promoteCard)
     }
 
-    @Sendable func listBoards(_ req: Request, ctx: AppRequestContext) async throws -> [BoardSummaryDTO] {
+    @Sendable func listBoards(_: Request, ctx: AppRequestContext) async throws -> [BoardSummaryDTO] {
         let tenant = try ctx.requireTenantID()
         _ = try await service.defaultBoard(tenantID: tenant)
         return try await service.listBoards(tenantID: tenant)
@@ -46,28 +46,28 @@ struct KanbanController {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: BoardCreateRequest.self, context: ctx)
         let b = try await service.createBoard(tenantID: tenant, title: body.title)
-        return try await service.snapshot(tenantID: tenant, boardID: try b.requireID())
+        return try await service.snapshot(tenantID: tenant, boardID: b.requireID())
     }
 
-    @Sendable func getBoard(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
+    @Sendable func getBoard(_: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let tenant = try ctx.requireTenantID()
-        return try await service.snapshot(tenantID: tenant, boardID: try boardID(ctx))
+        return try await service.snapshot(tenantID: tenant, boardID: boardID(ctx))
     }
 
-    @Sendable func getVersion(_ req: Request, ctx: AppRequestContext) async throws -> BoardVersionDTO {
+    @Sendable func getVersion(_: Request, ctx: AppRequestContext) async throws -> BoardVersionDTO {
         let tenant = try ctx.requireTenantID()
-        return BoardVersionDTO(version: try await service.version(tenantID: tenant, boardID: try boardID(ctx)))
+        return try await BoardVersionDTO(version: service.version(tenantID: tenant, boardID: boardID(ctx)))
     }
 
     @Sendable func patchBoard(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: BoardPatchRequest.self, context: ctx)
-        return try await service.patchBoard(tenantID: tenant, boardID: try boardID(ctx), req: body)
+        return try await service.patchBoard(tenantID: tenant, boardID: boardID(ctx), req: body)
     }
 
-    @Sendable func deleteBoard(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    @Sendable func deleteBoard(_: Request, ctx: AppRequestContext) async throws -> Response {
         let tenant = try ctx.requireTenantID()
-        try await service.deleteBoard(tenantID: tenant, boardID: try boardID(ctx))
+        try await service.deleteBoard(tenantID: tenant, boardID: boardID(ctx))
         return Response(status: .noContent)
     }
 
@@ -84,25 +84,25 @@ struct KanbanController {
         let body = try await req.decode(as: ColumnPatchRequest.self, context: ctx)
         return try await service.patchColumn(
             tenantID: tenant,
-            boardID: try boardID(ctx),
-            columnID: try columnID(ctx),
-            title: body.title
+            boardID: boardID(ctx),
+            columnID: columnID(ctx),
+            title: body.title,
         )
     }
 
-    @Sendable func deleteColumn(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
+    @Sendable func deleteColumn(_: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let tenant = try ctx.requireTenantID()
         return try await service.deleteColumn(
             tenantID: tenant,
-            boardID: try boardID(ctx),
-            columnID: try columnID(ctx)
+            boardID: boardID(ctx),
+            columnID: columnID(ctx),
         )
     }
 
     @Sendable func reorderColumn(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: ColumnReorderRequest.self, context: ctx)
-        return try await service.reorderColumn(tenantID: tenant, boardID: try boardID(ctx), req: body)
+        return try await service.reorderColumn(tenantID: tenant, boardID: boardID(ctx), req: body)
     }
 
     @Sendable func createCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
@@ -110,38 +110,38 @@ struct KanbanController {
         let body = try await req.decode(as: CardCreateRequest.self, context: ctx)
         let card = try await service.createCard(
             tenantID: tenant,
-            boardID: try boardID(ctx),
+            boardID: boardID(ctx),
             columnID: body.columnID,
-            req: body
+            req: body,
         )
-        return CardDTO(
-            id: try card.requireID(),
+        return try CardDTO(
+            id: card.requireID(),
             columnID: card.columnID,
             title: card.title,
             body: card.body,
             priority: card.priority.flatMap { CardPriority(rawValue: $0) },
             dueAt: card.dueAt,
             rank: card.rank,
-            updatedAt: card.updatedAt
+            updatedAt: card.updatedAt,
         )
     }
 
     @Sendable func patchCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: CardPatchRequest.self, context: ctx)
-        return try await service.patchCard(tenantID: tenant, cardID: try cardID(ctx), req: body)
+        return try await service.patchCard(tenantID: tenant, cardID: cardID(ctx), req: body)
     }
 
-    @Sendable func deleteCard(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    @Sendable func deleteCard(_: Request, ctx: AppRequestContext) async throws -> Response {
         let tenant = try ctx.requireTenantID()
-        try await service.deleteCard(tenantID: tenant, cardID: try cardID(ctx))
+        try await service.deleteCard(tenantID: tenant, cardID: cardID(ctx))
         return Response(status: .noContent)
     }
 
     @Sendable func moveCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
         let tenant = try ctx.requireTenantID()
         let body = try await req.decode(as: CardMoveRequest.self, context: ctx)
-        return try await service.moveCard(tenantID: tenant, cardID: try cardID(ctx), req: body)
+        return try await service.moveCard(tenantID: tenant, cardID: cardID(ctx), req: body)
     }
 
     /// Card → Job promotion (gap #1). Reads structured `card.extra.job` config,
@@ -153,7 +153,7 @@ struct KanbanController {
         // before authoring (single-call promote); when absent, the card's
         // existing `extra.job` config is used.
         let body = try? await req.decode(as: CardPromoteRequest.self, context: ctx)
-        let promoted = try await service.promoteCard(tenantID: tenant, cardID: try cardID(ctx), request: body)
+        let promoted = try await service.promoteCard(tenantID: tenant, cardID: cardID(ctx), request: body)
         return SkillDTO(
             id: promoted.slug,
             source: .vault,
@@ -171,6 +171,7 @@ struct KanbanController {
     }
 
     // MARK: - Path-parameter helpers
+
     // Mirroring MemoryController / ConversationController: ctx.parameters.get(name)
 
     private func boardID(_ ctx: AppRequestContext) throws -> UUID {

@@ -158,7 +158,7 @@ struct KanbanServiceTests {
         let board = try await svc.createBoard(tenantID: tenantID, title: "Jobs Board")
         let boardID = try board.requireID()
         let col = try await svc.createColumn(tenantID: tenantID, boardID: boardID, title: "Jobs")
-        return (boardID, try col.requireID())
+        return try (boardID, col.requireID())
     }
 
     private struct EnabledRow: Decodable { let enabled: Bool }
@@ -225,7 +225,7 @@ struct KanbanServiceTests {
 
             // moveCard: move card2 to col2
             let moveReq = CardMoveRequest(toColumnID: col2ID)
-            let moved = try await svc.moveCard(tenantID: tenantID, cardID: try card2.requireID(), req: moveReq)
+            let moved = try await svc.moveCard(tenantID: tenantID, cardID: card2.requireID(), req: moveReq)
             #expect(moved.columnID == col2ID)
 
             // snapshot again: col1 has 1 card, col2 has 1 card
@@ -258,7 +258,7 @@ struct KanbanServiceTests {
             card.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * 1", domain: "life", prompt: "Summarize the week"))
             try await card.save(on: fluent.db())
 
-            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             #expect(promoted.alreadyPromoted == false)
             #expect(promoted.slug == "job-weekly-digest")
             #expect(promoted.cron == "0 9 * * 1")
@@ -278,7 +278,7 @@ struct KanbanServiceTests {
             #expect(row?.enabled == true)
 
             // Card back-filled with the job slug.
-            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            let reloaded = try #require(try await KanbanCard.find(card.requireID(), on: fluent.db()))
             #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
             #expect(reloaded.extra?.job?.promotedAt != nil)
         }
@@ -299,8 +299,8 @@ struct KanbanServiceTests {
             card.extra = CardExtra(job: CardJobConfig(cron: "0 8 * * *", prompt: "Brief me"))
             try await card.save(on: fluent.db())
 
-            let first = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
-            let second = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            let first = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
+            let second = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             #expect(first.alreadyPromoted == false)
             #expect(second.alreadyPromoted == true)
             #expect(first.slug == second.slug)
@@ -322,7 +322,7 @@ struct KanbanServiceTests {
             card.extra = CardExtra(job: CardJobConfig(cron: "*/30 * * * *"))
             try await card.save(on: fluent.db())
 
-            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             #expect(promoted.spec == "Watch the markets")
         }
     }
@@ -341,13 +341,13 @@ struct KanbanServiceTests {
                 req: CardCreateRequest(columnID: columnID, title: "Inline Job"),
             )
             let promoted = try await svc.promoteCard(
-                tenantID: tenantID, cardID: try card.requireID(),
+                tenantID: tenantID, cardID: card.requireID(),
                 request: CardPromoteRequest(cron: "0 7 * * *", domain: "tech", prompt: "Scan tech news"),
             )
             #expect(promoted.alreadyPromoted == false)
             #expect(promoted.spec == "Scan tech news")
 
-            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            let reloaded = try #require(try await KanbanCard.find(card.requireID(), on: fluent.db()))
             #expect(reloaded.extra?.job?.cron == "0 7 * * *")
             #expect(reloaded.extra?.job?.domain == "tech")
             #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
@@ -367,7 +367,7 @@ struct KanbanServiceTests {
                 req: CardCreateRequest(columnID: columnID, title: "Plain Card"),
             )
             await #expect(throws: (any Error).self) {
-                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             }
         }
     }
@@ -387,7 +387,7 @@ struct KanbanServiceTests {
             card.extra = CardExtra(job: CardJobConfig(cron: "not a cron", prompt: "x"))
             try await card.save(on: fluent.db())
             await #expect(throws: (any Error).self) {
-                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             }
         }
     }
@@ -412,7 +412,7 @@ struct KanbanServiceTests {
             card.extra = CardExtra(job: CardJobConfig(runAt: fireAt, prompt: "Run me once"))
             try await card.save(on: fluent.db())
 
-            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: try card.requireID())
+            let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
             #expect(promoted.cron == nil)
             #expect(promoted.runAt == fireAt)
 
@@ -432,7 +432,7 @@ struct KanbanServiceTests {
             #expect(row?.run_at == fireAt)
 
             // Card back-filled.
-            let reloaded = try #require(try await KanbanCard.find(try card.requireID(), on: fluent.db()))
+            let reloaded = try #require(try await KanbanCard.find(card.requireID(), on: fluent.db()))
             #expect(reloaded.extra?.job?.runAt == fireAt)
             #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
         }
@@ -455,7 +455,7 @@ struct KanbanServiceTests {
             c1.extra = CardExtra(job: CardJobConfig(prompt: "x"))
             try await c1.save(on: fluent.db())
             await #expect(throws: (any Error).self) {
-                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try c1.requireID())
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: c1.requireID())
             }
 
             // Both.
@@ -466,7 +466,7 @@ struct KanbanServiceTests {
             c2.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * *", runAt: Date(), prompt: "x"))
             try await c2.save(on: fluent.db())
             await #expect(throws: (any Error).self) {
-                _ = try await svc.promoteCard(tenantID: tenantID, cardID: try c2.requireID())
+                _ = try await svc.promoteCard(tenantID: tenantID, cardID: c2.requireID())
             }
         }
     }

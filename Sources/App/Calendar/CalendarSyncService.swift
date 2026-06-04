@@ -13,7 +13,7 @@ import Logging
 /// `(tenant_id, source, external_id)`; cancelled deltas flip the local row's
 /// `status` to `cancelled` rather than deleting (a later incremental delta
 /// could otherwise resurrect a stale row).
-struct CalendarSyncService: Sendable {
+struct CalendarSyncService {
     static let source = "google"
     let windowBack: TimeInterval = 7 * 24 * 3600
     let windowForward: TimeInterval = 30 * 24 * 3600
@@ -45,7 +45,8 @@ struct CalendarSyncService: Sendable {
         let db = fluent.db()
         guard let account = try await CalendarAccount.query(on: db, tenantID: tenantID)
             .filter(\.$provider == Self.source)
-            .first(), account.status == "connected" else {
+            .first(), account.status == "connected"
+        else {
             return 0
         }
 
@@ -129,7 +130,8 @@ struct CalendarSyncService: Sendable {
         guard let saved = try await CalendarEvent.query(on: db, tenantID: tenantID)
             .filter(\.$source == Self.source)
             .filter(\.$externalID == remote.externalID)
-            .first() else {
+            .first()
+        else {
             throw GoogleCalendarClient.Error.malformedResponse
         }
         return saved

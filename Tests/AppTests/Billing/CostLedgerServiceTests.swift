@@ -7,7 +7,6 @@ import Testing
 /// no actor I/O — `ProviderCostRate.usdMicros` and `secondsUntilUTCMidnight`
 /// are deterministic.
 struct CostLedgerServiceTests {
-
     // MARK: - ProviderCostRate.usdMicros
 
     @Test
@@ -46,19 +45,19 @@ struct CostLedgerServiceTests {
     func `retry hint is positive and within a day`() {
         let secs = CostLedgerService.secondsUntilUTCMidnight()
         #expect(secs >= 60)
-        #expect(secs <= 86_400)
+        #expect(secs <= 86400)
     }
 
     @Test
-    func `retry hint from a known instant points at next UTC midnight`() {
+    func `retry hint from a known instant points at next UTC midnight`() throws {
         // 2026-06-03 23:00:00 UTC → 1 hour to midnight.
         var comps = DateComponents()
         comps.year = 2026; comps.month = 6; comps.day = 3
         comps.hour = 23; comps.minute = 0; comps.second = 0
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        let now = cal.date(from: comps)!
+        cal.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let now = try #require(cal.date(from: comps))
         let secs = CostLedgerService.secondsUntilUTCMidnight(now: now)
-        #expect(secs == 3_600)
+        #expect(secs == 3600)
     }
 }
