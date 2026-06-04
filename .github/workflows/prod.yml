@@ -140,6 +140,10 @@ jobs:
             BACKUP_RCLONE_REMOTE="${{ secrets.BACKUP_RCLONE_REMOTE }}"
             BACKUP_ALERT_WEBHOOK="${{ secrets.BACKUP_ALERT_WEBHOOK }}"
 
+            # Admin bearer token for /v1/admin/* (e.g. tier-override comping for
+            # TestFlight/review). Empty = admin endpoints stay disabled.
+            ADMIN_TOKEN="${{ secrets.ADMIN_TOKEN }}"
+
             # Login to container registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
@@ -162,7 +166,7 @@ jobs:
               fi
             fi
             for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE \
-                       BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK; do
+                       BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK ADMIN_TOKEN; do
               value="$(printenv "$key" || true)"
               if [ -n "${value}" ]; then
                 if grep -q "^${key}=" .env.production; then
