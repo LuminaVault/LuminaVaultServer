@@ -301,8 +301,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
       # --- Backup config ---
       BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
-      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT (age recipient public key) to enable the backup profile}
-      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:?set BACKUP_RCLONE_REMOTE (e.g. b2:bucket/luminavault) to enable the backup profile}
+      # Default to empty so non-backup `docker compose up` calls don't fail
+      # interpolation (compose parses the whole file before profile filtering).
+      # The backup profile only starts when both are set + ./secrets/rclone.conf
+      # exists — gated in prod.yml and docs/backup.md.
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
       BACKUP_RETAIN_DAILY: ${BACKUP_RETAIN_DAILY:-7}
       BACKUP_RETAIN_WEEKLY: ${BACKUP_RETAIN_WEEKLY:-4}
       BACKUP_RETAIN_MONTHLY: ${BACKUP_RETAIN_MONTHLY:-6}
