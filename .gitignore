@@ -18,3 +18,4 @@ data
 # Each is tracked as a gitlink entry, which clutters `git status` on the
 # host repo for every concurrent worktree session.
 .claude/worktrees/
+secrets
