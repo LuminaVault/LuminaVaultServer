@@ -13,12 +13,14 @@ struct WhatsAppPairParserTests {
     private func run(_ lines: [String]) -> [HermesWhatsAppPairEvent] {
         var parser = WhatsAppPairParser()
         var events: [HermesWhatsAppPairEvent] = []
-        for line in lines { events += parser.consume(line: line) }
+        for line in lines {
+            events += parser.consume(line: line)
+        }
         events += parser.finish()
         return events
     }
 
-    @Test func emitsQRFrameOnceBlockEnds() {
+    @Test func `emits QR frame once block ends`() {
         let qrRows = Array(repeating: "█▀▀▀█ ▄▄ █▀▀▀█", count: 6)
         let events = run(["Scan this QR code:", ""] + qrRows + ["", "Waiting for scan…"])
         let qrs = events.compactMap { event -> String? in
@@ -31,47 +33,47 @@ struct WhatsAppPairParserTests {
         #expect(qrs[0].split(separator: "\n").count == 6)
     }
 
-    @Test func ignoresShortBlockNoise() {
+    @Test func `ignores short block noise`() {
         // Fewer than the 5-row minimum → not treated as a QR.
         let events = run(["██", "██", "done"])
-        #expect(!events.contains { if case .qr = $0 { return true } else { return false } })
+        #expect(!events.contains { if case .qr = $0 { true } else { false } })
     }
 
-    @Test func detectsLinkedSuccess() {
+    @Test func `detects linked success`() {
         let events = run(["Device linked! You're all set."])
         #expect(events.contains(.linked))
     }
 
-    @Test func detectsExpiry() {
+    @Test func `detects expiry`() {
         let events = run(["The QR code expired, generating a new one…"])
         #expect(events.contains(.status(.expired)))
     }
 
-    @Test func detectsError() {
+    @Test func `detects error`() {
         let events = run(["Error: could not connect to WhatsApp"])
-        guard case let .error(msg)? = events.first(where: { if case .error = $0 { return true } else { return false } }) else {
+        guard case let .error(msg)? = events.first(where: { if case .error = $0 { true } else { false } }) else {
             Issue.record("expected an .error event")
             return
         }
         #expect(msg.lowercased().contains("could not connect"))
     }
 
-    @Test func stripsANSIBeforeClassifying() {
+    @Test func `strips ANSI before classifying`() {
         // A status line wrapped in colour escapes still classifies.
         let colored = "\u{1B}[32mDevice linked successfully\u{1B}[0m"
         #expect(run([colored]).contains(.linked))
     }
 
-    @Test func ansiOnlyAndBlankLinesAreInert() {
+    @Test func `ansi only and blank lines are inert`() {
         let events = run(["\u{1B}[2J", "\u{1B}[H", "   "])
         #expect(events.isEmpty)
     }
 
-    @Test func emitsFreshQRFrameAfterRefresh() {
+    @Test func `emits fresh QR frame after refresh`() {
         let frame = Array(repeating: "█ █ █ █ █ █", count: 5)
         let events = run(frame + ["refreshing"] + frame + ["scan now"])
         let count = events.reduce(0) { acc, e in
-            if case .qr = e { return acc + 1 } else { return acc }
+            if case .qr = e { acc + 1 } else { acc }
         }
         #expect(count == 2)
     }

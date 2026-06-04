@@ -584,9 +584,8 @@ actor SkillRunner {
                 }
                 let args = (try? decoder.decode(HealthQueryArgs.self, from: argsData)) ?? HealthQueryArgs(metric: nil, days: nil)
                 let days = max(1, min(args.days ?? 30, 365))
-                let rows: [AggRow]
-                if let metric = args.metric, !metric.isEmpty {
-                    rows = try await sql.raw("""
+                let rows: [AggRow] = if let metric = args.metric, !metric.isEmpty {
+                    try await sql.raw("""
                     SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
                            SUM(value_numeric) AS total, AVG(value_numeric) AS avg
                     FROM health_events
@@ -595,7 +594,7 @@ actor SkillRunner {
                     GROUP BY event_type, unit, day ORDER BY day
                     """).all(decoding: AggRow.self)
                 } else {
-                    rows = try await sql.raw("""
+                    try await sql.raw("""
                     SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
                            SUM(value_numeric) AS total, AVG(value_numeric) AS avg
                     FROM health_events
@@ -639,16 +638,62 @@ actor SkillRunner {
             }
         case AvailableTool.calendarQuery.rawValue:
             struct Args: Decodable { let days: Int? }
+            struct CalRow: Decodable {
+                let title: String
+                let starts_at: Date
+                let ends_at: Date
+                let location: String?
+            }
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(days: nil)
             let days = max(1, min(args.days ?? 7, 90))
-            return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+            guard let sql = fluent.db() as? any SQLDatabase else {
+                return Self.toolErrorJSON("sql unavailable")
+            }
+            // Consent gate — the user must have allowed the Calendar domain.
+            let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .calendar, sql: sql)
+            guard allowed else {
+                return Self.toolErrorJSON("calendar access not allowed by the user")
+            }
+            // Read the synced cache (all sources — apple_eventkit + google) for the
+            // requested day window. Excludes tombstoned (cancelled) rows.
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime]
+            do {
+                let rows = try await sql.raw("""
+                SELECT title, starts_at, ends_at, location
+                FROM calendar_events
+                WHERE tenant_id = \(bind: tenantID)
+                  AND status <> 'cancelled'
+                  AND starts_at >= NOW()
+                  AND starts_at < NOW() + (\(bind: days) * INTERVAL '1 day')
+                ORDER BY starts_at ASC
+                """).all(decoding: CalRow.self)
+                if rows.isEmpty {
+                    // Cache miss — fall back to a live device round-trip so the user
+                    // still gets an answer before the first sync (or when offline
+                    // sync hasn't run). Device-RPC is the fallback, not the path.
+                    return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+                }
+                let events = rows.map { r in
+                    [
+                        "title": r.title,
+                        "start": iso.string(from: r.starts_at),
+                        "end": iso.string(from: r.ends_at),
+                        "location": r.location ?? "",
+                    ]
+                }
+                return Self.encodeJSON(["status": "ok", "items": events])
+            } catch {
+                // On a DB error, fall back to device-RPC rather than failing the tool.
+                return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
+            }
         case AvailableTool.remindersList.rawValue:
-            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
+            return await remindersList(tenantID: tenantID)
         case AvailableTool.photosSearch.rawValue:
-            struct Args: Decodable { let limit: Int? }
-            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
+            struct Args: Decodable { let limit: Int?; let query: String? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil, query: nil)
             let limit = max(1, min(args.limit ?? 10, 30))
-            return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
+            return await photosSearch(tenantID: tenantID, query: args.query, limit: limit)
         case AvailableTool.locationRecent.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
         case AvailableTool.filesPick.rawValue:
@@ -673,12 +718,61 @@ actor SkillRunner {
                 command: DeviceCommand(kind: kind, domain: domain, payload: payload),
             )
             guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
-            var out: [String: String] = ["status": "ok"]
-            for (k, v) in result.payload ?? [:] { out[k] = v }
+            var out = ["status": "ok"]
+            for (k, v) in result.payload ?? [:] {
+                out[k] = v
+            }
             return Self.encodeJSON(out)
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
+    }
+
+    /// Apple Reminders selective-sync read path. Serves the persisted
+    /// `apple_reminders` cache (open/overdue items, soonest due first) the iOS
+    /// client pushes via `POST /v1/reminders/sync`, so Hermes answers without a
+    /// live device round-trip. Falls back to a fresh device_fetch when the
+    /// cache is empty (device never synced, or just-installed client).
+    /// Consent-gated on `.reminders`, same as the device-RPC path.
+    private func remindersList(tenantID: UUID) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .reminders, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("reminders access not allowed by the user") }
+
+        struct Row: Decodable { let title: String; let due_at: Date?; let notes: String? }
+        let rows: [Row]
+        do {
+            // Open (incomplete) reminders, overdue + upcoming, soonest due
+            // first; NULLs (no due date) sort last. Capped to keep the tool
+            // payload bounded.
+            rows = try await sql.raw("""
+            SELECT title, due_at, notes
+            FROM apple_reminders
+            WHERE tenant_id = \(bind: tenantID) AND completed = false
+            ORDER BY due_at ASC NULLS LAST
+            LIMIT 100
+            """).all(decoding: Row.self)
+        } catch {
+            return Self.toolErrorJSON("reminders_list failed: \(error)")
+        }
+
+        // Cache miss → fall back to a live device fetch.
+        guard !rows.isEmpty else {
+            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let items = rows.map { row -> [String: String] in
+            var item: [String: String] = ["title": row.title]
+            if let due = row.due_at { item["due"] = iso.string(from: due) }
+            if let notes = row.notes, !notes.isEmpty { item["notes"] = notes }
+            return item
+        }
+        let itemsJSON = Self.encodeJSON(items)
+        return Self.encodeJSON(["status": "ok", "items": itemsJSON])
     }
 
     /// Apple Integration P2b — gate consent, then round-trip a fresh read
@@ -699,6 +793,50 @@ actor SkillRunner {
         } catch {
             return Self.toolErrorJSON("device did not respond (offline or timed out)")
         }
+    }
+
+    /// Apple Photos derived-text recall. When a `query` is given and the tenant
+    /// has indexed photos (M81), runs a consent-gated cosine semantic search
+    /// over `photo_index` and returns the matching derived text + metadata.
+    /// Falls back to a live device fetch when the index is empty (or no query),
+    /// so a freshly-onboarded user still gets answers before the first sync.
+    private func photosSearch(tenantID: UUID, query: String?, limit: Int) async -> String {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return Self.toolErrorJSON("sql unavailable")
+        }
+        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .photos, sql: sql)
+        guard allowed else { return Self.toolErrorJSON("photos access not allowed by the user") }
+
+        let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let indexed = await PhotoIndexController.hasRows(tenantID: tenantID, sql: sql)
+
+        // Semantic path: needs both a query and a populated index.
+        if !trimmedQuery.isEmpty, indexed {
+            do {
+                let embedding = try await embeddings.embed(trimmedQuery, tenantID: tenantID)
+                let hits = try await PhotoIndexController.semanticSearch(
+                    tenantID: tenantID,
+                    queryEmbedding: embedding,
+                    limit: limit,
+                    sql: sql,
+                )
+                let items: [[String: String]] = hits.map { hit in
+                    [
+                        "taken_at": hit.takenAt.map(Self.fileDateStamp) ?? "",
+                        "is_screenshot": hit.isScreenshot ? "true" : "false",
+                        "ocr_text": hit.ocrText ?? "",
+                        "scene_tags": hit.sceneTags.joined(separator: ", "),
+                        "score": String(format: "%.3f", hit.score),
+                    ]
+                }
+                return Self.encodeJSON(["status": "ok", "source": "index", "items": items])
+            } catch {
+                return Self.toolErrorJSON("photos_search failed: \(error)")
+            }
+        }
+
+        // Fallback: live device fetch (no query, or nothing indexed yet).
+        return await deviceRead(tenantID: tenantID, domain: .photos, payload: ["limit": String(limit)])
     }
 
     // MARK: - Output dispatch
@@ -807,7 +945,7 @@ actor SkillRunner {
               let sql = fluent.db() as? any SQLDatabase
         else { return }
         struct SpaceRow: Decodable { let space_id: UUID?; let slug: String? }
-        let row: SpaceRow? = (try? await sql.raw("""
+        let row: SpaceRow? = await (try? sql.raw("""
         SELECT ss.space_id, s.slug
         FROM skills_state ss
         LEFT JOIN spaces s ON s.id = ss.space_id
@@ -988,7 +1126,7 @@ actor SkillRunner {
         case .calendarQuery:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "List the user's upcoming Apple Calendar events. Requires the user to have allowed Calendar access. Returns a JSON array of {title,start,end,location}.",
+                description: "List the user's upcoming calendar events from the synced server cache (Apple EventKit + Google Calendar), falling back to a live device read when the cache is empty. Requires the user to have allowed Calendar access. Returns a JSON array of {title,start,end,location}.",
                 parameters: .init(
                     properties: [
                         "days": .init(type: "integer", description: "How many days ahead to include, 1-90 (default 7)."),
@@ -999,16 +1137,17 @@ actor SkillRunner {
         case .remindersList:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "List the user's open (incomplete) Apple Reminders. Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
+                description: "List the user's open (incomplete) Apple Reminders, overdue and upcoming items soonest-due first. Served from the synced server-side cache when available (falls back to a live device fetch). Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
                 parameters: .init(properties: [:], required: []),
             ))
         case .photosSearch:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
-                description: "Analyze the user's most recent photos on-device (OCR text + date); only extracted text is returned, never the images. Requires Photos access. Returns a JSON array of {takenAt,text,screenshot}.",
+                description: "Search the user's photos by their derived text. Pass `query` for a semantic search over previously-indexed OCR text + scene tags (e.g. \"the screenshot about the flight\", \"a receipt\") — only derived text + metadata are stored server-side, never the images. Omit `query` to analyze the most recent photos live on-device. Requires Photos access. Returns a JSON array of {taken_at, is_screenshot, ocr_text, scene_tags, score}.",
                 parameters: .init(
                     properties: [
-                        "limit": .init(type: "integer", description: "How many recent photos to analyze, 1-30 (default 10)."),
+                        "query": .init(type: "string", description: "Natural-language description of the photo/screenshot to find. Omit to list recent photos instead."),
+                        "limit": .init(type: "integer", description: "Maximum results, 1-30 (default 10)."),
                     ],
                     required: [],
                 ),

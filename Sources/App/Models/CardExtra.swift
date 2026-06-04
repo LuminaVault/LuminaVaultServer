@@ -3,7 +3,7 @@ import Foundation
 /// Free-form structured metadata stored on a `KanbanCard` (`extra` JSONB
 /// column, M72). Currently carries card→Job promotion config; namespaced under
 /// `job` so future card add-ons get their own keys without colliding.
-struct CardExtra: Codable, Sendable, Equatable {
+struct CardExtra: Codable, Equatable {
     var job: CardJobConfig?
 
     init(job: CardJobConfig? = nil) {
@@ -15,7 +15,7 @@ struct CardExtra: Codable, Sendable, Equatable {
 /// (gap #1 — deterministic, no free-text inference). The user supplies
 /// `cron`/`domain`/`prompt`/`spaceID`; the server fills `skillName`/`jobSlug`/
 /// `promotedAt` when the job is authored.
-struct CardJobConfig: Codable, Sendable, Equatable {
+struct CardJobConfig: Codable, Equatable {
     /// Skill catalog source the authored job lives under. Always "vault" today.
     var source: String
     /// Cron expression, e.g. "0 9 * * 1". Required for recurring jobs.
@@ -43,7 +43,7 @@ struct CardJobConfig: Codable, Sendable, Equatable {
         prompt: String? = nil,
         spaceID: UUID? = nil,
         jobSlug: String? = nil,
-        promotedAt: Date? = nil
+        promotedAt: Date? = nil,
     ) {
         self.source = source
         self.cron = cron

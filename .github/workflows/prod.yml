@@ -308,19 +308,18 @@ jobs:
               up -d --no-deps app
             echo "Rollback redeploy issued for ${ROLLBACK_IMAGE}"
 
-      # HER-272: deploy notification (success + failure). Channel wiring is
-      # deferred — this no-ops unless SLACK_WEBHOOK_URL is configured.
-      # TODO(HER-272 follow-up): wire Slack/email and remove the guard.
+      # HER-272: deploy notification (success + failure). Posts to a Discord
+      # channel webhook; no-ops unless DISCORD_WEBHOOK_URL is configured.
       - name: Notify deploy result
         if: always()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${SLACK_WEBHOOK_URL}" ]; then
-            echo "::notice::deploy result=${{ job.status }} (no SLACK_WEBHOOK_URL configured; notification skipped)"
+          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
+            echo "::notice::deploy result=${{ job.status }} (no DISCORD_WEBHOOK_URL configured; notification skipped)"
             exit 0
           fi
           curl -fsS -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"Production deploy ${{ job.status }} for ${{ needs.build.outputs.app_image }}\"}" \
-            "${SLACK_WEBHOOK_URL}"
+            --data "{\"content\":\"Production deploy ${{ job.status }} for ${{ needs.build.outputs.app_image }}\"}" \
+            "${DISCORD_WEBHOOK_URL}"

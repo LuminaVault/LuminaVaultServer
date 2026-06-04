@@ -34,7 +34,8 @@ struct JobIntentClassifier {
         let body = ChatRequestBody(model: model, messages: messages, temperature: 0.1, stream: false)
         guard let payload = try? JSONEncoder().encode(body),
               let meta = try? await transport.chatCompletionsWithMetadata(
-                  payload: payload, sessionKey: tenantID.uuidString, sessionID: nil),
+                  payload: payload, sessionKey: tenantID.uuidString, sessionID: nil,
+              ),
               let response = try? JSONDecoder().decode(ChatResponseBody.self, from: meta.data),
               let content = response.choices.first?.message.content
         else {
@@ -80,7 +81,7 @@ struct JobIntentClassifier {
         let spec: String?
     }
 
-    // Minimal OpenAI-compatible chat DTOs (each service owns its own).
+    /// Minimal OpenAI-compatible chat DTOs (each service owns its own).
     private struct AgentMessage: Codable {
         let role: String
         let content: String?

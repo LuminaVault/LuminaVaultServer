@@ -9,7 +9,7 @@ import Foundation
 /// Sessions expire after `ttl`; `take` is one-shot (consumed on callback).
 /// Mirrors `XaiOAuthSessionStore`.
 actor CalendarOAuthSessionStore {
-    struct Session: Sendable {
+    struct Session {
         let state: String
         let tenantID: UUID
         let startedAt: Date

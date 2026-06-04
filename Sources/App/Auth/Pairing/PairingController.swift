@@ -29,7 +29,9 @@ struct PairingController {
     /// lingers for the browser to pick up.
     private let ttl: Duration = .seconds(120)
 
-    private func key(_ pairingID: String) -> String { "pairing:\(pairingID)" }
+    private func key(_ pairingID: String) -> String {
+        "pairing:\(pairingID)"
+    }
 
     private func rl(_ policy: RateLimitPolicy) -> RateLimitMiddleware {
         RateLimitMiddleware(policy: policy, storage: rateLimitStorage)
@@ -178,5 +180,7 @@ struct PairingRecord: Codable {
 
 private extension Duration {
     /// Whole seconds component, for epoch math.
-    var seconds: TimeInterval { TimeInterval(components.seconds) }
+    var seconds: TimeInterval {
+        TimeInterval(components.seconds)
+    }
 }

@@ -1831,6 +1831,16 @@ func buildRouter(
     let healthReadGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
     healthController.addReadRoutes(to: healthReadGroup)
 
+    // Apple Reminders (EventKit) selective-sync ingest — persists the device's
+    // reminder deltas into the `apple_reminders` cache that the Hermes
+    // `reminders_list` tool reads in the background (device-RPC stays fallback).
+    let appleRemindersController = AppleRemindersController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.apple.reminders"),
+    )
+    let appleRemindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
+    appleRemindersController.addRoutes(to: appleRemindersGroup)
+
     // Admin: hermes-profile reconciliation. Shared-secret gated; off when
     // `admin.token` is empty.
     // HER-226 — gateway-reachability probe shared by reconciler + service
@@ -2139,6 +2149,26 @@ func buildRouter(
         fluent: services.fluent,
         logger: Logger(label: "lv.apple.consent"),
     ).addRoutes(to: appleGroup)
+
+    // Apple Photos derived-text index (M81) — consent-gated OCR + scene-tag
+    // ingest into pgvector for semantic recall. /v1/photos/index.
+    let photosGroup = router.group("/v1/photos").add(middleware: jwtAuthenticator)
+    PhotoIndexController(
+        fluent: services.fluent,
+        embeddings: embeddingService,
+        logger: Logger(label: "lv.apple.photos"),
+    ).addRoutes(to: photosGroup)
+
+    // Apple Calendar (EventKit) selective-sync — persists derived event
+    // metadata into `calendar_events` (source = "apple_eventkit") so the
+    // `calendar_query` Hermes tool reads a server cache in the background.
+    // Consent-gated on `.calendar` inside the controller. Mirrors the
+    // `/v1/health` ingest wiring (JWT + per-user rate-limit only).
+    let appleCalendarSyncGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
+    AppleCalendarController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.apple.calendar"),
+    ).addRoutes(to: appleCalendarSyncGroup)
 
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)

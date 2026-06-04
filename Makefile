@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill deploy deploy-dispatch deploy-watch deploy-status deploy-logs
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -115,3 +115,26 @@ backup-restore: ## Restore a snapshot: make backup-restore DATE=YYYY-MM-DD [COMP
 
 backup-drill: ## Run the backup→restore round-trip locally with an ephemeral age key + local rclone remote (HER-131)
 	./scripts/backup-drill.sh
+
+# --- Production deployment (GitHub Actions prod.yml) ------------------------
+# Requires the `gh` CLI authenticated against the repo. Override REPO for forks.
+REPO ?= LuminaVault/LuminaVaultServer
+
+deploy: deploy-dispatch deploy-watch ## Dispatch a production deploy and stream the run until it finishes
+
+deploy-dispatch: ## Trigger the production Deploy workflow (prod.yml) on main
+	gh workflow run prod.yml --repo $(REPO)
+	@echo "✓ deploy dispatched — run 'make deploy-watch' to follow"
+
+deploy-watch: ## Watch the most recent Deploy workflow run live
+	@run_id=$$(gh run list --repo $(REPO) --workflow prod.yml --limit 1 --json databaseId --jq '.[0].databaseId'); \
+		if [ -z "$$run_id" ]; then echo "no Deploy runs found"; exit 1; fi; \
+		gh run watch "$$run_id" --repo $(REPO) --exit-status
+
+deploy-status: ## List recent production Deploy runs
+	gh run list --repo $(REPO) --workflow prod.yml --limit 10
+
+deploy-logs: ## Show logs for the most recent (failed) Deploy run
+	@run_id=$$(gh run list --repo $(REPO) --workflow prod.yml --limit 1 --json databaseId --jq '.[0].databaseId'); \
+		if [ -z "$$run_id" ]; then echo "no Deploy runs found"; exit 1; fi; \
+		gh run view "$$run_id" --repo $(REPO) --log-failed

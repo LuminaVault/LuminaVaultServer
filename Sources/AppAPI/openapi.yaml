@@ -643,6 +643,55 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AppleConsentResponse' }
 
+  /v1/photos/index:
+    post:
+      tags: [Apple]
+      operationId: photosIndex
+      summary: Ingest derived photo text (OCR + scene tags + metadata) into the semantic index.
+      description: >
+        Apple Photos derived-text index. Privacy-critical: only OCR text,
+        on-device scene tags, and metadata are accepted — never pixel data.
+        Consent-gated on the `photos` domain. Each item is embedded and
+        upserted by `assetLocalID` (PHAsset localIdentifier).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PhotoIndexSyncRequest' }
+      responses:
+        '200':
+          description: Per-batch insert/update/skip counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '403':
+          description: Photos access not allowed by the user.
+
+  /v1/calendar/sync:
+    post:
+      tags: [Apple]
+      operationId: appleCalendarSync
+      summary: Batch-upsert Apple Calendar (EventKit) event deltas into the server cache.
+      description: >-
+        Promotes Calendar from on-demand device-RPC to a persisted server cache
+        (`calendar_events`, source `apple_eventkit`) that the `calendar_query`
+        Hermes tool reads in the background. Consent-gated on the `calendar`
+        domain. Upsert key is `(tenant_id, source, external_id)`; last-writer-wins
+        on `remoteUpdatedAt`. Cancelled events are tombstoned, not deleted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleCalendarSyncRequest' }
+      responses:
+        '200':
+          description: Sync result counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '403':
+          description: Calendar access not allowed by the user.
+
   /v1/jobs/detect:
     post:
       tags: [Skills]
@@ -3029,6 +3078,41 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/reminders/sync:
+    post:
+      tags: [Reminders]
+      operationId: appleRemindersSync
+      summary: Ingest Apple Reminders (EventKit) selective-sync deltas.
+      description: |
+        Batch-upserts the iOS client's EventKit reminder deltas into the
+        server-side `apple_reminders` cache (DISTINCT from the app-scheduled
+        `reminders` table). Upsert key is `(tenant_id, externalID)` where
+        `externalID` is the EventKit `calendarItemIdentifier`; last-writer-wins
+        on `remoteUpdatedAt` keeps overlapping pushes idempotent. Consent-gated
+        on the `reminders` Apple data domain. The persisted cache backs the
+        Hermes `reminders_list` tool (device-RPC stays as a fallback).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AppleRemindersSyncRequest' }
+      responses:
+        '200':
+          description: Sync result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppleSyncResponse' }
+        '400':
+          description: Empty reminders array.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '403':
+          description: Reminders access not allowed by the user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /v1/reminders/{id}:
     parameters:
       - in: path
@@ -4511,6 +4595,54 @@ components:
         domain: { $ref: '#/components/schemas/AppleDataDomain' }
         allowed: { type: boolean }
         allowWrites: { type: boolean }
+
+    PhotoIndexInput:
+      type: object
+      required: [assetLocalID, isScreenshot]
+      description: >
+        One photo's derived data. PRIVACY: OCR text + scene tags + metadata
+        only — never pixels.
+      properties:
+        assetLocalID: { type: string, description: "PHAsset localIdentifier — the upsert key." }
+        takenAt: { type: string, format: date-time }
+        isScreenshot: { type: boolean }
+        ocrText: { type: string, description: "On-device VNRecognizeTextRequest output." }
+        sceneTags:
+          type: array
+          items: { type: string }
+          description: "On-device VNClassifyImageRequest labels."
+
+    PhotoIndexSyncRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PhotoIndexInput' }
+
+    AppleCalendarEventInput:
+      type: object
+      required: [externalID, title, startsAt, endsAt, allDay]
+      properties:
+        externalID: { type: string, description: EventKit eventIdentifier — upsert key. }
+        calendarID: { type: string }
+        title: { type: string }
+        notes: { type: string }
+        location: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        status: { type: string, description: '"confirmed" | "cancelled"; cancelled rows are tombstoned.' }
+        organizer: { type: string }
+        remoteUpdatedAt: { type: string, format: date-time, description: EventKit lastModifiedDate — drives last-writer-wins. }
+
+    AppleCalendarSyncRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/AppleCalendarEventInput' }
 
     DeviceCommandResult:
       type: object
@@ -6306,6 +6438,43 @@ components:
       required: [ingested]
       properties:
         ingested: { type: integer }
+
+    AppleReminderInput:
+      type: object
+      required: [externalID, title, completed]
+      properties:
+        externalID:
+          type: string
+          description: EventKit `calendarItemIdentifier` — upsert key.
+        title: { type: string }
+        notes: { type: string }
+        dueAt: { type: string, format: date-time }
+        completed: { type: boolean }
+        completedAt: { type: string, format: date-time }
+        listName: { type: string }
+        priority:
+          type: integer
+          description: EventKit priority 0–9 (0 = none).
+        remoteUpdatedAt:
+          type: string
+          format: date-time
+          description: EventKit `lastModifiedDate`; drives last-writer-wins on upsert.
+
+    AppleRemindersSyncRequest:
+      type: object
+      required: [reminders]
+      properties:
+        reminders:
+          type: array
+          items: { $ref: '#/components/schemas/AppleReminderInput' }
+
+    AppleSyncResponse:
+      type: object
+      required: [inserted, updated, skipped]
+      properties:
+        inserted: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
 
     HealthListResponse:
       type: object

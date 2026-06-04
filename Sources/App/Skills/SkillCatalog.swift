@@ -71,7 +71,7 @@ actor SkillCatalog {
             guard fm.fileExists(atPath: skillFile.path) else { continue }
             do {
                 let contents = try String(contentsOf: skillFile, encoding: .utf8)
-                manifests.append(try parser.parse(source: source, contents: contents))
+                try manifests.append(parser.parse(source: source, contents: contents))
             } catch {
                 logger.warning("skill_catalog parse failure", metadata: [
                     "skill": .string(dir.lastPathComponent),

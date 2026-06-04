@@ -9,12 +9,12 @@ import Logging
 /// access token handed over by `CalendarTokenStore` (this type never sees
 /// refresh tokens). Maps Google's event JSON into source-agnostic
 /// `RemoteEvent` values the sync worker upserts into `CalendarEvent`.
-struct GoogleCalendarClient: Sendable {
+struct GoogleCalendarClient {
     static let base = "https://www.googleapis.com/calendar/v3"
 
     /// A provider event normalized for our cache. `cancelled == true` is a
     /// tombstone delta — the worker marks the local row cancelled.
-    struct RemoteEvent: Sendable {
+    struct RemoteEvent {
         let externalID: String
         let title: String
         let notes: String?
@@ -31,7 +31,7 @@ struct GoogleCalendarClient: Sendable {
         let updatedAt: Date
     }
 
-    struct ListResult: Sendable {
+    struct ListResult {
         let events: [RemoteEvent]
         let nextSyncToken: String?
         let nextPageToken: String?
@@ -145,7 +145,8 @@ struct GoogleCalendarClient: Sendable {
         default: throw Error.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let event = Self.parseEvent(json) else {
+              let event = Self.parseEvent(json)
+        else {
             throw Error.malformedResponse
         }
         return event
@@ -202,9 +203,9 @@ struct GoogleCalendarClient: Sendable {
         return (nil, false)
     }
 
-    // `ISO8601DateFormatter` is not `Sendable`, so it cannot be a shared
-    // static under Swift 6 strict concurrency — build a fresh instance per
-    // call (calendar sync volume makes the allocation cost negligible).
+    /// `ISO8601DateFormatter` is not `Sendable`, so it cannot be a shared
+    /// static under Swift 6 strict concurrency — build a fresh instance per
+    /// call (calendar sync volume makes the allocation cost negligible).
     private static func makeFormatter(fractional: Bool) -> ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = fractional ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]

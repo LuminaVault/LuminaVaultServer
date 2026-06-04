@@ -88,7 +88,7 @@ struct HermesGatewaysController {
         // session is persisted (via the pairing service), not a credential row.
         var entries: [HermesGatewayCatalogEntry] = []
         for id in HermesGatewayID.allCases where HermesGatewayCatalog.entries[id] != nil {
-            entries.append(await entryDTO(for: id, tenantID: tenantID, row: byID[id.rawValue]))
+            await entries.append(entryDTO(for: id, tenantID: tenantID, row: byID[id.rawValue]))
         }
         return HermesGatewaysListResponse(items: entries)
     }
@@ -373,7 +373,8 @@ struct HermesGatewaysController {
         // WhatsApp, which isn't remotely configurable — keeps `entry(for:)`'s
         // force-unwrap safe).
         guard let id = HermesGatewayID(rawValue: raw),
-              HermesGatewayCatalog.entries[id] != nil else {
+              HermesGatewayCatalog.entries[id] != nil
+        else {
             throw HTTPError(.notFound, message: ErrorCode.unsupportedGateway.rawValue)
         }
         return id

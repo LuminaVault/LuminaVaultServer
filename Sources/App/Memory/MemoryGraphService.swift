@@ -116,7 +116,7 @@ struct MemoryGraphService {
             ? Self.lineageEdges(memRows: memRows, wikiIDs: wikiIDSet)
             : []
         let temporalEdges = kinds.contains(.temporal)
-            ? Self.chainEdges(grouping: nodeMeta, by: { $0.createdAt.map { AnyGroupKey.day(Int($0.timeIntervalSince1970 / 86_400)) } }, kind: .temporal, weight: Self.temporalWeight)
+            ? Self.chainEdges(grouping: nodeMeta, by: { $0.createdAt.map { AnyGroupKey.day(Int($0.timeIntervalSince1970 / 86400)) } }, kind: .temporal, weight: Self.temporalWeight)
             : []
 
         // Space hubs: a synthetic `.space` node per Space that has ≥1 member in

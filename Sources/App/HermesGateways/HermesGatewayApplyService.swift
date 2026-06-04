@@ -153,7 +153,9 @@ actor HermesGatewayApplyService {
 
     private func broadcast(_ event: HermesGatewayApplyEvent, jobID: UUID) {
         guard let conts = subscribers[jobID] else { return }
-        for cont in conts.values { cont.yield(event) }
+        for cont in conts.values {
+            cont.yield(event)
+        }
     }
 
     private func finishSubscribers(jobID: UUID, with snapshot: HermesGatewayApplyJobStatus) {

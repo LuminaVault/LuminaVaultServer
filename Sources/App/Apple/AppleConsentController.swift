@@ -83,7 +83,7 @@ struct AppleConsentController {
     /// Fails closed (not allowed) on any error.
     static func isAllowed(tenantID: UUID, domain: AppleDataDomain, sql: any SQLDatabase) async -> (allowed: Bool, writes: Bool) {
         struct Row: Decodable { let allowed: Bool; let allow_writes: Bool }
-        let row: Row? = (try? await sql.raw("""
+        let row: Row? = await (try? sql.raw("""
         SELECT allowed, allow_writes FROM apple_consent
         WHERE tenant_id = \(bind: tenantID) AND domain = \(bind: domain.rawValue)
         """).first(decoding: Row.self)) ?? nil
@@ -92,6 +92,15 @@ struct AppleConsentController {
 
     /// Deletes the synced server copy for a domain on revoke. Per-domain data
     /// tables arrive in P1+ (Health already has its own store); wired here so
-    /// revoke is honored as each domain lands. No-op until then.
-    static func purgeDomain(tenantID _: UUID, domain _: AppleDataDomain, sql _: any SQLDatabase) async throws {}
+    /// revoke is honored as each domain lands. No-op for domains without a
+    /// server-side cache yet.
+    static func purgeDomain(tenantID: UUID, domain: AppleDataDomain, sql: any SQLDatabase) async throws {
+        switch domain {
+        case .photos:
+            // Privacy contract: revoking Photos deletes the derived-text index.
+            try await sql.raw("DELETE FROM photo_index WHERE tenant_id = \(bind: tenantID)").run()
+        default:
+            break
+        }
+    }
 }

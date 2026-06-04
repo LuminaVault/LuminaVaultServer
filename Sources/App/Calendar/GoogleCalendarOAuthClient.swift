@@ -13,7 +13,7 @@ import Logging
 /// `luminavault://` scheme afterwards.
 ///
 /// Stateless — `CalendarTokenStore` owns persistence + refresh scheduling.
-struct GoogleCalendarOAuthClient: Sendable {
+struct GoogleCalendarOAuthClient {
     static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
     static let revokeEndpoint = URL(string: "https://oauth2.googleapis.com/revoke")!
     static let authorizeEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -21,7 +21,7 @@ struct GoogleCalendarOAuthClient: Sendable {
     /// Scope granted in Phase 1: read+write events + account identity.
     static let scope = "https://www.googleapis.com/auth/calendar.events openid email"
 
-    struct TokenResponse: Sendable {
+    struct TokenResponse {
         let accessToken: String
         let refreshToken: String?
         let expiresIn: Int
@@ -97,7 +97,7 @@ struct GoogleCalendarOAuthClient: Sendable {
                 "client_secret": clientSecret,
                 "grant_type": "refresh_token",
             ])
-        } catch Error.http(let status, _) where status == 400 || status == 401 {
+        } catch let Error.http(status, _) where status == 400 || status == 401 {
             throw Error.refreshRejected
         }
     }
@@ -124,7 +124,8 @@ struct GoogleCalendarOAuthClient: Sendable {
             throw Error.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let accessToken = json["access_token"] as? String else {
+              let accessToken = json["access_token"] as? String
+        else {
             throw Error.malformedResponse
         }
         return TokenResponse(

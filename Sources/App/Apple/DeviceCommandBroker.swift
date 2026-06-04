@@ -1,6 +1,6 @@
 import Foundation
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 
 enum DeviceCommandError: Error, Equatable {
     case timeout
@@ -40,7 +40,7 @@ actor DeviceCommandBroker {
         logger.info("device.command sent tenant=\(tenantID) id=\(command.id) kind=\(command.kind.rawValue)")
 
         let id = command.id
-        let timeout = self.timeout
+        let timeout = timeout
         let timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: timeout)
             await self?.expire(id)
