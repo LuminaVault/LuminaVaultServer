@@ -34,13 +34,13 @@ services:
       # to stderr. Sender domain in EMAIL_FROM_ADDRESS must be verified
       # in Resend.
       EMAIL_KIND: ${EMAIL_KIND:-logging}
-      EMAIL_RESEND_APIKEY: ${EMAIL_RESEND_APIKEY:-}
+      EMAIL_RESEND_API_KEY: ${EMAIL_RESEND_APIKEY:-}
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
       EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
       # --- OAuth providers (empty = provider disabled) ---
-      OAUTH_APPLE_CLIENTID: ${OAUTH_APPLE_CLIENTID:-}
-      OAUTH_GOOGLE_CLIENTID: ${OAUTH_GOOGLE_CLIENTID:-}
-      OAUTH_X_CLIENTID: ${OAUTH_X_CLIENTID:-}
+      OAUTH_APPLE_CLIENT_ID: ${OAUTH_APPLE_CLIENTID:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENTID:-}
+      OAUTH_X_CLIENT_ID: ${OAUTH_X_CLIENTID:-}
       # --- Admin (bearer token for /admin/*; empty = endpoints disabled) ---
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       # --- Billing ---
@@ -62,11 +62,11 @@ services:
       # never set them in production — anyone with the value can sign in
       # as any user through those flows.
       # --- Hermes ---
-      HERMES_GATEWAYKIND: ${HERMES_GATEWAYKIND:-filesystem}
-      HERMES_GATEWAYURL: ${HERMES_GATEWAYURL:-http://hermes:8642}
-      HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
-      HERMES_DATAROOT: /app/data/hermes
-      HERMES_DEFAULTMODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
+      HERMES_GATEWAY_KIND: ${HERMES_GATEWAYKIND:-filesystem}
+      HERMES_GATEWAY_URL: ${HERMES_GATEWAYURL:-http://hermes:8642}
+      HERMES_API_KEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
+      HERMES_DATA_ROOT: /app/data/hermes
+      HERMES_DEFAULT_MODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
       # HER-XXX — default to the Mnemosyne-baked image so new tenant containers
       # ship persistent memory. Build it on this host (`make hermes-image`) or
       # override with a pinned registry digest.
@@ -86,18 +86,18 @@ services:
       # unmounted ephemeral path wiped on every rebuild, orphaning vault rows.
       VAULT_ROOT_PATH: /app/data/luminavault
       # --- CORS (prod MUST set explicit origins) ---
-      CORS_ALLOWEDORIGINS: ${CORS_ALLOWEDORIGINS:?required}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWEDORIGINS:?required}
       # --- WebAuthn ---
       WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
-      WEBAUTHN_RELYINGPARTYID: ${WEBAUTHN_RELYINGPARTYID:-}
-      WEBAUTHN_RELYINGPARTYNAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
-      WEBAUTHN_RELYINGPARTYORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
+      WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYINGPARTYID:-}
+      WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
+      WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
       # --- APNS ---
       APNS_ENABLED: ${APNS_ENABLED:-false}
-      APNS_BUNDLEID: ${APNS_BUNDLEID:-}
-      APNS_TEAMID: ${APNS_TEAMID:-}
-      APNS_KEYID: ${APNS_KEYID:-}
-      APNS_PRIVATEKEYPATH: ${APNS_PRIVATEKEYPATH:-/app/secrets/apns-key.p8}
+      APNS_BUNDLE_ID: ${APNS_BUNDLEID:-}
+      APNS_TEAM_ID: ${APNS_TEAMID:-}
+      APNS_KEY_ID: ${APNS_KEYID:-}
+      APNS_PRIVATE_KEY_PATH: ${APNS_PRIVATEKEYPATH:-/app/secrets/apns-key.p8}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}
       # --- LLM providers (OpenAI-compatible; empty APIKEY = unregistered) ---
       LLM_PROVIDER_TOGETHER_APIKEY: ${LLM_PROVIDER_TOGETHER_APIKEY:-}
@@ -138,7 +138,7 @@ services:
       TRANSCRIBE_RATECARD_GROQ_MTOKPERSECOND: ${TRANSCRIBE_RATECARD_GROQ_MTOKPERSECOND:-0.0001}
       # --- Observability (app → otel-collector → {jaeger, posthog, debug}) ---
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
-      OTEL_SERVICENAME: luminavault
+      OTEL_SERVICE_NAME: luminavault
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: ${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-http://otel-collector:4318/v1/logs}
       OTEL_TRACES_EXPORTER: otlp
