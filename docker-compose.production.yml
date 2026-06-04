@@ -38,8 +38,13 @@ services:
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
       EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
       # --- OAuth providers (empty = provider disabled) ---
-      OAUTH_APPLE_CLIENT_ID: ${OAUTH_APPLE_CLIENTID:-}
-      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENTID:-}
+      # These are PUBLIC client identifiers (shipped in the iOS app), not
+      # secrets. The server only verifies the id_token's `aud` against them
+      # (no client secret / Apple private key needed for native sign-in).
+      # Apple: native SiwA id_token aud = the app bundle id (com.lumina.fernando).
+      # Google: must equal the iOS GID_CLIENT_ID (Config.Release.xcconfig).
+      OAUTH_APPLE_CLIENT_ID: ${OAUTH_APPLE_CLIENTID:-com.lumina.fernando}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENTID:-215273295640-ctep44c52dbdb69436d29m0ftukukpd9.apps.googleusercontent.com}
       OAUTH_X_CLIENT_ID: ${OAUTH_X_CLIENTID:-}
       # --- Admin (bearer token for /admin/*; empty = endpoints disabled) ---
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
