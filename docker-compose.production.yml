@@ -8,7 +8,7 @@ services:
       # health pre-gate and manual curls.
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     volumes:
-      - ./data/luminavault:/app/data/luminavault # tenant raw vault root (shared with hermes)
+      - luminavault-data:/app/data/luminavault   # tenant raw vault root (named volume; seeds hummingbird ownership from image)
       - ./data/hermes:/app/data/hermes           # hermes filesystem gateway target
       - ./secrets:/app/secrets:ro                # APNS .p8 etc
     environment:
@@ -294,7 +294,7 @@ services:
     restart: unless-stopped
     profiles: ["backup"]
     volumes:
-      - ./data/luminavault:/backup/src/luminavault:ro # tenant raw vault (read-only)
+      - luminavault-data:/backup/src/luminavault:ro # tenant raw vault (named volume, read-only)
       - ./data/hermes:/backup/src/hermes:ro           # hermes skills + memory (read-only)
       - ./secrets/rclone.conf:/root/.config/rclone/rclone.conf:ro
       - ./data/backup-logs:/var/log/backup
@@ -334,6 +334,8 @@ services:
 volumes:
   caddy-data: # ACME account + issued certs — must persist across deploys
   caddy-config:
+  luminavault-data: # tenant raw vault root; ownership seeded from image's
+                    # hummingbird-owned /app/data/luminavault (see Dockerfile)
 
 networks:
   default:

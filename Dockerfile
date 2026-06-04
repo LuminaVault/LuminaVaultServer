@@ -79,6 +79,14 @@ ENV SWIFT_BACKTRACE=enable=yes,sanitize=yes,threads=all,images=all,interactive=n
 # Ensure all further commands run as the hummingbird user
 USER hummingbird:hummingbird
 
+# Pre-create the tenant vault root so a *named volume* mounted here seeds its
+# ownership from this hummingbird-owned directory. Without this, Docker creates
+# an empty named volume's mountpoint as root, and the non-root `hummingbird`
+# process gets EACCES writing /app/data/luminavault/tenants (the vault-create
+# 500). `/app` is the hummingbird home (COPY --chown above), so mkdir as
+# hummingbird makes /app/data + the subdir hummingbird-owned.
+RUN mkdir -p /app/data/luminavault
+
 # Let Docker bind to port 8080
 EXPOSE 8080
 
