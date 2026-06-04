@@ -178,6 +178,16 @@ jobs:
             export APP_IMAGE
             export APP_PORT=8080
 
+            # Bring up the stateful/backing services the app depends_on
+            # (postgres + hermes). Idempotent: compose leaves a running
+            # container untouched when its config is unchanged, so this does
+            # NOT churn the database on routine app-only redeploys — it just
+            # guarantees they exist on a fresh host (first bring-up).
+            APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              up -d postgres hermes
+
             # HER-236: bring up otel-collector before app so /v1/health logs go through.
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
               -f docker-compose.production.yml \
