@@ -18,6 +18,18 @@ api.luminavault.fyi {
 	reverse_proxy app:8080
 }
 
+# Apex marketing/legal site. Serves the static pages in ./web (mounted at
+# /srv/web in the caddy container). Clean URLs: /privacy -> privacy.html,
+# /terms -> terms.html. The iOS app's LV_PRIVACY_URL / LV_TERMS_URL and the
+# App Store privacy-policy URL all point here. ACME cert issues once the apex
+# A record resolves to this host (it does).
+luminavault.fyi {
+	encode zstd gzip
+	root * /srv/web
+	try_files {path} {path}.html {path}/index.html /index.html
+	file_server
+}
+
 # --- Local / pre-DNS testing -------------------------------------------------
 # To verify HTTP/2 before DNS exists, comment out the block above and use this
 # self-signed variant, then `curl -kI --http2 https://localhost/health`:
