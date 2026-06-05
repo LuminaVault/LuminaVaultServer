@@ -97,10 +97,15 @@ services:
       WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYINGPARTYID:-}
       WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
       WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
-      # --- APNS ---
+      # --- APNS (push) ---
+      # bundle id (= APNs topic) and team id are public + stable → baked.
+      # To enable push: drop ./secrets/apns-key.p8 on the VPS and set
+      # APNS_ENABLED=true + APNS_KEYID=<10-char key id> in .env.production.
+      # TestFlight AND App Store builds use the *production* APNs env.
+      # If enabled but the .p8 is missing, pushes no-op (app does not crash).
       APNS_ENABLED: ${APNS_ENABLED:-false}
-      APNS_BUNDLE_ID: ${APNS_BUNDLEID:-}
-      APNS_TEAM_ID: ${APNS_TEAMID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLEID:-com.lumina.fernando}
+      APNS_TEAM_ID: ${APNS_TEAMID:-84X9WYBF36}
       APNS_KEY_ID: ${APNS_KEYID:-}
       APNS_PRIVATE_KEY_PATH: ${APNS_PRIVATEKEYPATH:-/app/secrets/apns-key.p8}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}
