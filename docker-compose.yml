@@ -60,7 +60,10 @@ services:
       - "8080:8080"
     volumes:
       - .:/app # source mount for fast iteration
-      - lvs-build:/app/.build # Linux build artifacts — isolate from host macOS .build, persist across restarts (wiped only by `down -v`)
+      # Linux SwiftPM artifacts/cache. Keep them out of the macOS `.build`
+      # directory while avoiding OrbStack's Docker volume quota.
+      - ./data/swift-build:/app/.build
+      - ./data/swiftpm-cache:/root/.cache
       - ./data/luminavault:/app/data/luminavault # tenant raw vault root
     environment:
       HTTP_HOST: 0.0.0.0
@@ -162,6 +165,3 @@ services:
 networks:
   default:
     name: hermes-local-net
-
-volumes:
-  lvs-build: # persistent Linux SwiftPM build cache for hummingbird
