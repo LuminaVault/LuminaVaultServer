@@ -13,6 +13,8 @@ struct M00EnableExtensionsTests {
         try await withTestFluent(label: "test.m00.extensions") { fluent in
             let migration = M00_EnableExtensions()
             try await withThrowingTaskGroup(of: Void.self) { group in
+                // Stress enough concurrent callers to mimic CI fan-out (we
+                // use 8 workers here as a high-contention regression check).
                 for _ in 0 ..< 8 {
                     group.addTask {
                         try await migration.prepare(on: fluent.db())

@@ -9,6 +9,9 @@ struct M00_EnableExtensions: AsyncMigration {
             // concurrent workers: two sessions can both observe "missing" and
             // one loses on `pg_extension_name_index`. Serialize extension setup
             // with a transaction-scoped advisory lock.
+            // Lock key 33500 is derived from HER-335 and reserved for this
+            // migration so all workers coordinate on the same extension-
+            // bootstrap critical section.
             try await sql.raw("SELECT pg_advisory_xact_lock(33500)").run()
             try await sql.raw("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").run()
             try await sql.raw("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\"").run()
