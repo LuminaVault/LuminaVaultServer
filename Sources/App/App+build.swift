@@ -1405,14 +1405,12 @@ func buildRouter(
     // exists (same gate as the credential store) — without it BYOK keys
     // can't be decrypted, so we keep the unchanged managed behaviour.
     let conversationStreamService: any HermesLLMStreamService = {
-        guard let userCredentialStore else { return queryStreamService }
+        guard userCredentialStore != nil else { return queryStreamService }
         return RoutedHermesLLMStreamService(
             fallback: queryStreamService,
+            transport: routedTransport,
             preferences: userLLMPreferenceRepo,
-            credentials: userCredentialStore,
-            httpClient: HTTPClient.shared,
             logger: Logger(label: "lv.chat.stream.routed"),
-            streamIdleTimeout: .seconds(hermesStreamIdleSeconds),
         )
     }()
 

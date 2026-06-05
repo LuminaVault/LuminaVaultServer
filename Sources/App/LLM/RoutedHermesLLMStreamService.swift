@@ -6,63 +6,35 @@ import LuminaVaultShared
 import Metrics
 import NIOCore
 
-/// Routes the user-facing chat **stream** through a tenant's own provider
-/// when they are in BYOK mode, instead of always hitting the central Hermes
-/// gateway. HER-37 left streaming on the gateway only ("routed/Gemini
-/// streaming is out of scope"); this fills that gap so the iOS BYOK toggle
-/// actually changes the streaming chat, not just the non-streaming
-/// `/v1/query` + follow-up paths.
+/// Routes the user-facing chat **stream** by mode:
 ///
-/// Resolution per request (keyed by `sessionKey` = tenant UUID):
-///   1. No tenant / no pref / `managed` mode → delegate to `fallback`
-///      (the Hermes gateway, unchanged managed behaviour).
-///   2. `byok` + a provider we can stream natively + a stored credential →
-///      stream directly from that provider.
-///   3. `byok` but provider has no native streaming impl yet → delegate to
-///      `fallback` so the turn still completes (degrades, never blanks).
+/// - **managed** → delegate to `fallback` (the central Hermes gateway,
+///   `DefaultHermesLLMStreamService`). True token streaming + Hermes agentic
+///   loop. Unchanged behaviour.
+/// - **byok** → call the non-streaming `RoutedLLMTransport`
+///   (`transport`) — which resolves the tenant's own provider key + model and
+///   fails over across their fallback chain — then emit the full reply as a
+///   single `ChatStreamChunk`. Reliable for every provider on day one; true
+///   per-token SSE per provider is a Phase 2 enhancement.
 ///
-/// Phase 1 streams **Gemini** natively (`streamGenerateContent?alt=sse`).
-/// Other BYOK providers fall through to the gateway until their streaming
-/// adapters land. BYOK is already non-agentic in this codebase (the
-/// non-streaming `RoutedLLMTransport` calls providers directly, bypassing
-/// Hermes tools/memory), so this path is consistent — no skills/tools.
+/// HER-37 left streaming on the gateway only, so the BYOK toggle changed only
+/// the non-streaming paths and chat silently used the managed model
+/// (qwen/openrouter) → 402 → empty turn. This closes that gap.
+///
+/// Requires `LLMRoutingContext.currentUser` to be bound by the caller so the
+/// routed adapters can resolve the per-tenant credential — `ConversationController`
+/// binds it around `chatStream(...)`, and the work `Task` created here captures
+/// the task-local at creation time.
 struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     /// Managed-mode upstream (central Hermes gateway).
     let fallback: any HermesLLMStreamService
+    /// BYOK transport — direct-to-provider with key resolution + failover.
+    let transport: any HermesChatTransport
     let preferences: UserLLMPreferenceRepository
-    let credentials: UserCredentialStore
-    let httpClient: HTTPClient
     let logger: Logger
-    let requestTimeout: TimeAmount
-    let streamIdleTimeout: TimeAmount
 
     private let byokCounter = Counter(label: "luminavault.llm.chat.stream.byok")
     private let byokFailureCounter = Counter(label: "luminavault.llm.chat.stream.byok.failure")
-
-    init(
-        fallback: any HermesLLMStreamService,
-        preferences: UserLLMPreferenceRepository,
-        credentials: UserCredentialStore,
-        httpClient: HTTPClient,
-        logger: Logger,
-        requestTimeout: TimeAmount = .seconds(120),
-        streamIdleTimeout: TimeAmount = .seconds(60),
-    ) {
-        self.fallback = fallback
-        self.preferences = preferences
-        self.credentials = credentials
-        self.httpClient = httpClient
-        self.logger = logger
-        self.requestTimeout = requestTimeout
-        self.streamIdleTimeout = streamIdleTimeout
-    }
-
-    /// A resolved native-streaming plan for a BYOK tenant.
-    private struct GeminiPlan {
-        let apiKey: String
-        let model: String
-        let payload: Data
-    }
 
     func chatStream(
         sessionKey: String,
@@ -72,12 +44,17 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
             do {
-                if let plan = try await resolveGeminiPlan(sessionKey: sessionKey, request: request) {
+                if let model = await byokModel(sessionKey: sessionKey) {
                     byokCounter.increment()
-                    logger.info("chat stream routed to BYOK gemini", metadata: [
-                        "model": .string(plan.model),
-                    ])
-                    try await streamGemini(plan: plan, continuation: continuation)
+                    logger.info("chat stream routed to BYOK provider", metadata: ["model": .string(model)])
+                    let payload = try Self.makeOpenAIPayload(model: model, request: request)
+                    let metadata = try await transport.chatCompletionsWithMetadata(
+                        payload: payload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID,
+                    )
+                    let text = Self.extractContent(from: metadata.data)
+                    continuation.yield(ChatStreamChunk(delta: text, finishReason: "stop"))
                     continuation.finish()
                 } else {
                     for try await chunk in fallback.chatStream(
@@ -100,37 +77,21 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
 
     // MARK: - Resolution
 
-    /// Returns a Gemini streaming plan iff the tenant is BYOK, has selected
-    /// Gemini as primary, and has a stored Gemini key. Any miss returns nil
-    /// (→ caller delegates to the managed gateway).
-    private func resolveGeminiPlan(
-        sessionKey: String,
-        request: ChatRequest,
-    ) async throws -> GeminiPlan? {
-        guard let tenantID = UUID(uuidString: sessionKey) else { return nil }
+    /// Returns the tenant's BYOK primary model id when they are in BYOK mode,
+    /// else nil (→ caller delegates to the managed gateway). The actual key +
+    /// provider routing is resolved downstream by `RoutedLLMTransport` /
+    /// `UserPreferenceModelRouter` via `LLMRoutingContext.currentUser`.
+    private func byokModel(sessionKey: String) async -> String? {
         guard
+            let tenantID = UUID(uuidString: sessionKey),
             let pref = try? await preferences.get(tenantID: tenantID),
-            pref.mode == .byok,
-            pref.primaryProvider == .gemini
+            pref.mode == .byok
         else { return nil }
-        guard
-            let credential = try? await credentials.credential(for: .gemini, tenantID: tenantID),
-            let apiKey = credential.apiKey,
-            !apiKey.isEmpty
-        else {
-            logger.warning("byok gemini selected but no stored key; delegating to gateway", metadata: [
-                "tenant_id": .string(tenantID.uuidString),
-            ])
-            return nil
-        }
-        let model = pref.primaryModel.isEmpty ? "gemini-2.5-flash" : pref.primaryModel
-        let payload = try Self.makeOpenAIPayload(model: model, request: request)
-        return GeminiPlan(apiKey: apiKey, model: model, payload: payload)
+        return pref.primaryModel.isEmpty ? nil : pref.primaryModel
     }
 
-    /// Encode an OpenAI-style chat payload from a `ChatRequest`. Reused by
-    /// `GeminiContentsAdapter.makeStreamRequest` to build the Gemini body,
-    /// keeping the translation pipeline identical to the non-streaming path.
+    /// Encode an OpenAI-style chat payload from a `ChatRequest`, overriding the
+    /// model with the tenant's BYOK selection.
     static func makeOpenAIPayload(model: String, request: ChatRequest) throws -> Data {
         struct Payload: Encodable {
             let model: String
@@ -142,71 +103,17 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
         )
     }
 
-    // MARK: - Gemini SSE
-
-    private func streamGemini(
-        plan: GeminiPlan,
-        continuation: AsyncThrowingStream<ChatStreamChunk, Error>.Continuation,
-    ) async throws {
-        let (url, body) = try GeminiContentsAdapter.makeStreamRequest(payload: plan.payload, apiKey: plan.apiKey)
-
-        var httpReq = HTTPClientRequest(url: url.absoluteString)
-        httpReq.method = .POST
-        httpReq.headers.add(name: "Content-Type", value: "application/json")
-        httpReq.headers.add(name: "Accept", value: "text/event-stream")
-        httpReq.body = .bytes(body)
-
-        let response = try await httpClient.execute(httpReq, timeout: requestTimeout)
-        guard (200 ..< 300).contains(Int(response.status.code)) else {
-            // Drain a bounded slice of the error body for the log.
-            var detail = ""
-            if var bodyBuf = try? await response.body.collect(upTo: 4096) {
-                detail = bodyBuf.readString(length: bodyBuf.readableBytes) ?? ""
-            }
-            logger.error("gemini stream upstream non-2xx", metadata: [
-                "status": .stringConvertible(response.status.code),
-                "detail": .string(Logger.redact(detail)),
-            ])
-            throw HTTPError(.badGateway, message: "gemini stream upstream error (\(response.status.code))")
-        }
-
-        var buffer = ""
-        for try await chunk in response.body {
-            if Task.isCancelled { break }
-            if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
-                buffer.append(text)
-            }
-            while let terminator = buffer.range(of: "\n\n") {
-                let record = String(buffer[..<terminator.lowerBound])
-                buffer.removeSubrange(..<terminator.upperBound)
-                if processGeminiRecord(record, yield: { continuation.yield($0) }) { return }
-            }
-        }
-        if !buffer.isEmpty {
-            _ = processGeminiRecord(buffer, yield: { continuation.yield($0) })
-        }
-    }
-
-    /// Parse one SSE record (one or more lines). Returns `true` when the
-    /// terminal chunk (non-nil `finishReason`) was seen.
-    private func processGeminiRecord(
-        _ record: String,
-        yield: (ChatStreamChunk) -> Void,
-    ) -> Bool {
-        for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
-            let line = String(rawLine)
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload.isEmpty || payload == "[DONE]" { continue }
-            guard
-                let data = payload.data(using: .utf8),
-                let parsed = GeminiContentsAdapter.parseStreamObject(data)
-            else { continue }
-            if !parsed.delta.isEmpty || parsed.finishReason != nil {
-                yield(ChatStreamChunk(delta: parsed.delta, finishReason: parsed.finishReason))
-            }
-            if parsed.finishReason != nil { return true }
-        }
-        return false
+    /// Pull `choices[0].message.content` out of an OpenAI chat-completions
+    /// response. Empty string when absent (caller's empty-completion policy
+    /// then surfaces it as an error event rather than a blank turn).
+    static func extractContent(from data: Data) -> String {
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let choices = obj["choices"] as? [[String: Any]],
+            let first = choices.first,
+            let message = first["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else { return "" }
+        return content
     }
 }

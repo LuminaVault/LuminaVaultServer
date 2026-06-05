@@ -185,7 +185,13 @@ struct ConversationController {
         )
         let sessionKey = tenantID.uuidString
         let sessionID = conversationID.uuidString
-        let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
+        // Bind the authenticated user into the routing task-local so BYOK
+        // adapters can resolve this tenant's provider key. The stream's work
+        // Task is created synchronously inside `chatStream`, so it captures the
+        // binding here even though the chunks are consumed later.
+        let chunks = LLMRoutingContext.$currentUser.withValue(user) {
+            streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
+        }
         let fluent = fluent
         let logger = log
         let followUpGenerator = followUpGenerator
@@ -256,7 +262,12 @@ struct ConversationController {
                     logger.error("conversation stream upstream failed", metadata: [
                         "error": .string(Logger.redact(String(describing: error))),
                     ])
-                    continuation.yield(.error("upstream failure"))
+                    // Surface a provider-specific, actionable message when the
+                    // routed transport classified the failure (e.g. credit
+                    // exhausted, invalid key, rate limited) instead of a
+                    // generic "upstream failure" the user can't act on.
+                    let message = (error as? UpstreamErrorResponse)?.userMessage ?? "upstream failure"
+                    continuation.yield(.error(message))
                     continuation.finish()
                     return
                 }
