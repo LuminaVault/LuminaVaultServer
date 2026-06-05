@@ -56,18 +56,48 @@ Replace the `model:` block with:
 model:
   default: qwen/qwen-2.5-72b-instruct
   provider: openrouter      # was 'privider: xai-oauth' — typo + wrong provider
-  context_length: 131072    # Hermes' detector may otherwise read Qwen's base 32K config
 ```
 
 Leave `fallback_providers` as-is so failover paths still work when OpenRouter returns 5xx or rate-limits.
 
-If Hermes also rejects the auxiliary compression model with the same 32K-context detector error, add:
+Set `context_length` explicitly for this model. Hermes Agent hard-requires a
+**≥64K** context window for both the primary `model` and the
+`auxiliary.compression` model and refuses the turn otherwise. Hermes auto-detects
+`qwen/qwen-2.5-72b-instruct` at only **32,768**, so set both:
 
 ```yaml
+model:
+  # ...
+  context_length: 131072
 auxiliary:
   compression:
     context_length: 131072
 ```
+
+`make hermes-sync-context` refreshes these from provider metadata when the
+default model changes; after any swap confirm both values clear the 64K floor.
+`context_length` is the input window — independent of the `max_tokens` output cap
+and of the credit-based 402 below.
+
+### 1b-bis. Limiting output / avoiding OpenRouter 402
+
+OpenRouter pre-authorizes credits for `(prompt_tokens + max_tokens)`. With
+`model.max_tokens` unset, Hermes requests the model's **native output ceiling**
+(8192 for qwen-2.5-72b). On a low balance OpenRouter returns **HTTP 402**
+(*"requires more credits, or fewer max_tokens"*) and the assistant reply comes
+back blank. Cap it explicitly:
+
+```yaml
+model:
+  default: qwen/qwen-2.5-72b-instruct
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_mode: chat_completions
+  max_tokens: 1024          # OUTPUT cap — keep reservation under OpenRouter credits
+```
+
+`max_tokens` is independent of `context_length`. See `docs/CONFIG.md` for how to
+raise/remove the cap as credits or the default model change.
 
 ### 1c. Restart Hermes
 

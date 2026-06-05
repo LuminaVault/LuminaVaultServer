@@ -141,6 +141,48 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 
+#### Managed Hermes output cap (`model.max_tokens`)
+
+`model.max_tokens` in `data/hermes/config.yaml` limits tokens generated PER
+reply. It is independent of `context_length` (the input window). It is currently
+`1024`.
+
+Why it's set: OpenRouter reserves credits for `(prompt_tokens + max_tokens)`
+before generating. An unset cap makes Hermes request the model's native ceiling
+(8192 for qwen-2.5-72b), and on a low balance OpenRouter returns HTTP 402
+(*"requires more credits, or fewer max_tokens"*) → the assistant reply is blank.
+
+To raise the cap later:
+
+1. Ensure the OpenRouter balance covers it. Rough rule:
+   `affordable_output ≈ (balance / model_price_per_output_token) − prompt_tokens`.
+   The 402 message states the current affordable number directly.
+2. Edit `model.max_tokens` in `data/hermes/config.yaml` (and the prod config).
+3. `docker compose restart hermes`.
+4. Send a test chat; confirm a non-empty reply and no 402 in
+   `data/hermes/auth.json`.
+
+After switching the default model: native ceilings and per-token prices differ,
+so re-check the cap against the new model's affordable budget. To remove the cap
+entirely (use the native ceiling) delete the `max_tokens` line — only with enough
+credits to cover the model's full output ceiling.
+
+#### Managed Hermes context window (`context_length`)
+
+Hermes Agent **hard-requires a ≥64K context window** for both the primary
+`model` and the `auxiliary.compression` model, and refuses to start a turn
+otherwise (`"context window of N tokens ... below the minimum 64,000 required by
+Hermes Agent"`). For `qwen/qwen-2.5-72b-instruct` Hermes auto-detects only
+**32,768**, so `model.context_length` and `auxiliary.compression.context_length`
+**must be set explicitly** (currently `131072`). This is independent of the
+`max_tokens` output cap and of OpenRouter credits.
+
+`make hermes-sync-context` (and the optional
+`HERMES_DEFAULT_MANAGED_CONTEXT_LENGTH` /
+`HERMES_AUX_COMPRESSION_CONTEXT_LENGTH` env vars) is the mechanism to refresh
+these overrides from provider metadata when the default model changes. After any
+model swap, confirm both context_length values clear the 64K floor.
+
 ### Email magic-link (HER-33)
 
 The signup verification, password-reset, MFA, and magic-link sign-in flows all share one `EmailOTPSender`. In production set:

@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill deploy deploy-dispatch deploy-watch deploy-status deploy-logs
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-sync-context hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill deploy deploy-dispatch deploy-watch deploy-status deploy-logs
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -52,6 +52,13 @@ hermes-bootstrap: ## Generate HERMES_API_KEY in .env if missing (HER-254)
 		fi; \
 		echo "wrote HERMES_API_KEY to .env"; \
 	fi
+
+hermes-sync-context: ## Resolve Hermes context_length from configured model/provider metadata
+	@if [ ! -f data/hermes/config.yaml ]; then \
+		echo "no data/hermes/config.yaml — run make setup-hermes first"; exit 1; \
+	fi
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+	python3 scripts/sync-hermes-context.py --config data/hermes/config.yaml
 
 clean: ## Remove build artifacts and data
 	rm -rf .build
