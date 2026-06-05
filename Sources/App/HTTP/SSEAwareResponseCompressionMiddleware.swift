@@ -19,7 +19,7 @@ struct SSEAwareResponseCompressionMiddleware<Context: RequestContext>: RouterMid
     let base: ResponseCompressionMiddleware<Context>
 
     init(minimumResponseSizeToCompress: Int) {
-        self.base = ResponseCompressionMiddleware(minimumResponseSizeToCompress: minimumResponseSizeToCompress)
+        base = ResponseCompressionMiddleware(minimumResponseSizeToCompress: minimumResponseSizeToCompress)
     }
 
     func handle(

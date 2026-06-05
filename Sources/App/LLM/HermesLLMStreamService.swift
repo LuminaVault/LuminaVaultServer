@@ -385,13 +385,13 @@ private struct UpstreamStreamErrorEnvelope: Decodable {
 
         init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            self.message = try c.decodeIfPresent(String.self, forKey: .message) ?? "upstream error"
+            message = try c.decodeIfPresent(String.self, forKey: .message) ?? "upstream error"
             if let stringCode = try? c.decodeIfPresent(String.self, forKey: .code) {
-                self.code = stringCode
+                code = stringCode
             } else if let intCode = try? c.decodeIfPresent(Int.self, forKey: .code) {
-                self.code = String(intCode)
+                code = String(intCode)
             } else {
-                self.code = nil
+                code = nil
             }
         }
 
