@@ -56,9 +56,18 @@ Replace the `model:` block with:
 model:
   default: qwen/qwen-2.5-72b-instruct
   provider: openrouter      # was 'privider: xai-oauth' — typo + wrong provider
+  context_length: 131072    # Hermes' detector may otherwise read Qwen's base 32K config
 ```
 
 Leave `fallback_providers` as-is so failover paths still work when OpenRouter returns 5xx or rate-limits.
+
+If Hermes also rejects the auxiliary compression model with the same 32K-context detector error, add:
+
+```yaml
+auxiliary:
+  compression:
+    context_length: 131072
+```
 
 ### 1c. Restart Hermes
 

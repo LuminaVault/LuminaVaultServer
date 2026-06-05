@@ -186,6 +186,15 @@ struct QueryController {
                         "duration_ms": .stringConvertible(Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)),
                         "ttft_ms": .stringConvertible(firstTokenMs ?? -1),
                     ])
+                    if let emptyEvent = ChatStreamCompletionPolicy.emptyCompletionEvent(
+                        assistantBuffer: assistantBuffer,
+                        tokenCount: tokenCount,
+                    ) {
+                        logger.warning("query stream completed without assistant content")
+                        continuation.yield(emptyEvent)
+                        continuation.finish()
+                        return
+                    }
                 } catch {
                     logger.error("query stream upstream failed", metadata: [
                         "error": .string(Logger.redact(String(describing: error))),

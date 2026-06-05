@@ -271,7 +271,10 @@ func buildRouter(
         OpenAPIRequestContextMiddleware()
     }
     router.middlewares.add(RequestDecompressionMiddleware())
-    router.middlewares.add(ResponseCompressionMiddleware(minimumResponseSizeToCompress: 512))
+    // SSE-aware wrapper: skips gzip for `text/event-stream` so chat token
+    // frames stream live instead of being buffered in the zlib window and
+    // flushed in one burst at stream end (which broke the typewriter effect).
+    router.middlewares.add(SSEAwareResponseCompressionMiddleware(minimumResponseSizeToCompress: 512))
     // CORS — explicit origin list in prod (`cors.allowedOrigins=https://app.x,https://web.y`).
     // Empty list falls back to `.all` (dev only). For prod, AllowedOriginsMiddleware
     // strips Origin headers that aren't on the list before CORSMiddleware echoes them.

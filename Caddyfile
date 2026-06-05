@@ -14,7 +14,13 @@
 }
 
 api.luminavault.fyi {
-	encode zstd gzip
+	# Skip compression for SSE endpoints (all end in /stream). Caddy's `encode`
+	# buffers up to minimum_length before emitting, which batches token frames
+	# and breaks live streaming. Everything else still gets compressed.
+	@compressible {
+		not path */stream
+	}
+	encode @compressible zstd gzip
 	reverse_proxy app:8080
 }
 

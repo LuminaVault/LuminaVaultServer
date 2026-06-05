@@ -19,6 +19,21 @@ struct HermesStreamIdleTimeout: Error, CustomStringConvertible {
     }
 }
 
+/// Thrown when the upstream SSE body carries an OpenAI-compatible
+/// `{"error": ...}` payload. Without this, provider failures that arrive
+/// after the HTTP 200 headers look like an empty successful stream.
+struct HermesStreamUpstreamError: Error, CustomStringConvertible {
+    let message: String
+    let code: String?
+
+    var description: String {
+        if let code, !code.isEmpty {
+            return "hermes stream upstream error \(code): \(message)"
+        }
+        return "hermes stream upstream error: \(message)"
+    }
+}
+
 /// HER-37 — single delta produced by a streaming chat completion.
 /// Concatenate `delta`s in order to reconstruct the full reply.
 /// `finishReason` is non-nil on the terminal chunk.
@@ -182,7 +197,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                             while let terminator = buffer.range(of: "\n\n") {
                                 let record = String(buffer[..<terminator.lowerBound])
                                 buffer.removeSubrange(..<terminator.upperBound)
-                                if Self.processRecord(
+                                if try Self.processRecord(
                                     record,
                                     decoder: decoder,
                                     yield: { continuation.yield($0) },
@@ -197,7 +212,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                         // Flush a trailing record that arrived without the
                         // `\n\n` terminator (upstream closed mid-frame).
                         if !finished, !buffer.isEmpty {
-                            _ = Self.processRecord(
+                            _ = try Self.processRecord(
                                 buffer,
                                 decoder: decoder,
                                 yield: { continuation.yield($0) },
@@ -272,12 +287,12 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
     /// Parses one `data: ...` SSE record. Returns `true` when the
     /// upstream signalled end-of-stream (either `[DONE]` or
     /// `finish_reason`).
-    private static func processRecord(
+    static func processRecord(
         _ record: String,
         decoder: JSONDecoder,
         yield: (ChatStreamChunk) -> Void,
         logger: Logger,
-    ) -> Bool {
+    ) throws -> Bool {
         // Hermes frames a record as an optional `event:` line followed by
         // `data:`. We forward `chat.completion.chunk` deltas; the custom
         // `hermes.tool.progress` event (and any other non-delta event) is
@@ -300,6 +315,16 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 continue
             }
             guard let data = payload.data(using: .utf8) else { continue }
+            if let upstreamError = try? decoder.decode(UpstreamStreamErrorEnvelope.self, from: data) {
+                logger.error("hermes stream upstream error payload", metadata: [
+                    "code": .string(upstreamError.error.code ?? "unknown"),
+                    "message": .string(Logger.redact(upstreamError.error.message)),
+                ])
+                throw HermesStreamUpstreamError(
+                    message: upstreamError.error.message,
+                    code: upstreamError.error.code,
+                )
+            }
             do {
                 let chunk = try decoder.decode(UpstreamStreamChunk.self, from: data)
                 guard let choice = chunk.choices.first else {
@@ -351,4 +376,29 @@ private struct UpstreamStreamChunk: Decodable {
     }
 
     let choices: [Choice]
+}
+
+private struct UpstreamStreamErrorEnvelope: Decodable {
+    struct Payload: Decodable {
+        let message: String
+        let code: String?
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.message = try c.decodeIfPresent(String.self, forKey: .message) ?? "upstream error"
+            if let stringCode = try? c.decodeIfPresent(String.self, forKey: .code) {
+                self.code = stringCode
+            } else if let intCode = try? c.decodeIfPresent(Int.self, forKey: .code) {
+                self.code = String(intCode)
+            } else {
+                self.code = nil
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case message, code
+        }
+    }
+
+    let error: Payload
 }

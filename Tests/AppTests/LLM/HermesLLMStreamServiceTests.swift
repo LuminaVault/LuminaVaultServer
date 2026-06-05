@@ -1,6 +1,7 @@
 @testable import App
 import AsyncHTTPClient
 import Foundation
+import Logging
 import NIOHTTP1
 import Testing
 
@@ -72,5 +73,42 @@ struct HermesLLMStreamServiceTests {
         #expect(Self.headerValue(req, "X-Hermes-Session-Id") == nil)
         #expect(Self.headerValue(req, "X-Hermes-Session-Key") == "tenant-uuid")
         #expect(Self.headerValue(req, "Authorization") == "Bearer k-test")
+    }
+
+    @Test
+    func `stream parser throws when upstream sends error payload`() throws {
+        let record = #"data: {"error":{"message":"Provider returned error","code":400}}"#
+        let decoder = JSONDecoder()
+        var yielded: [ChatStreamChunk] = []
+
+        #expect(throws: HermesStreamUpstreamError.self) {
+            try DefaultHermesLLMStreamService.processRecord(
+                record,
+                decoder: decoder,
+                yield: { yielded.append($0) },
+                logger: Logger(label: "lv.test.hermes-stream"),
+            )
+        }
+        #expect(yielded.isEmpty)
+    }
+
+    @Test
+    func `empty assistant completion maps to stream error event`() {
+        let event = ChatStreamCompletionPolicy.emptyCompletionEvent(
+            assistantBuffer: "",
+            tokenCount: 0,
+        )
+
+        #expect(event == .error(ChatStreamCompletionPolicy.emptyResponseMessage))
+    }
+
+    @Test
+    func `non-empty assistant completion does not map to stream error event`() {
+        let event = ChatStreamCompletionPolicy.emptyCompletionEvent(
+            assistantBuffer: "Hello",
+            tokenCount: 1,
+        )
+
+        #expect(event == nil)
     }
 }
