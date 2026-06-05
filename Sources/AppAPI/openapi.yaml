@@ -5100,7 +5100,7 @@ components:
 
     ProviderID:
       type: string
-      enum: [xai, anthropic, openai, ollama, openRouter, nvidia]
+      enum: [xai, anthropic, openai, ollama, openRouter, nvidia, gemini]
       description: |
         Wire identifier for an external LLM provider the user can attach
         credentials to. `hermesGateway` is intentionally excluded — it's

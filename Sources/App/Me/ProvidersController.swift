@@ -257,12 +257,13 @@ struct ProvidersController {
         case .openai: .openai
         case .ollama: .ollama
         case .openRouter: .openRouter
+        case .gemini: .gemini
         }
     }
 
     private func defaultKind(for id: ProviderID) -> ProviderCredentialKind {
         switch id {
-        case .xai, .nvidia, .anthropic, .openai, .openRouter: .apiKey
+        case .xai, .nvidia, .anthropic, .openai, .openRouter, .gemini: .apiKey
         case .ollama: .hostURL
         }
     }
@@ -279,6 +280,8 @@ struct ProvidersController {
         case .xai, .nvidia, .openai, .openRouter:
             let base = resolved.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             return OpenAICompatibleAdapter(kind: kind, apiKey: key, baseURL: base, session: probeSession, logger: logger)
+        case .gemini:
+            return GeminiContentsAdapter(apiKey: key, session: probeSession, logger: logger)
         default:
             throw HTTPError(.badRequest, message: TestError.unsupportedProvider.rawValue)
         }
@@ -304,6 +307,7 @@ struct ProvidersController {
         case .openai: "gpt-4o-mini"
         case .openRouter: "openrouter/auto"
         case .ollama: "llama3.1"
+        case .gemini: "gemini-2.5-flash"
         }
         return [
             "model": model,

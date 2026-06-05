@@ -105,6 +105,7 @@ struct LLMPreferencesController {
         case .openai: .openai
         case .ollama: .ollama
         case .openRouter: .openRouter
+        case .gemini: .gemini
         }
     }
 
