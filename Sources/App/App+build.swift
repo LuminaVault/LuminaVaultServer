@@ -1398,14 +1398,32 @@ func buildRouter(
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
 
+    // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
+    // native-streaming provider (Gemini today), route the chat stream
+    // straight to their provider; otherwise fall through to the managed
+    // Hermes gateway (`queryStreamService`). Only built when the SecretBox
+    // exists (same gate as the credential store) — without it BYOK keys
+    // can't be decrypted, so we keep the unchanged managed behaviour.
+    let conversationStreamService: any HermesLLMStreamService = {
+        guard let userCredentialStore else { return queryStreamService }
+        return RoutedHermesLLMStreamService(
+            fallback: queryStreamService,
+            preferences: userLLMPreferenceRepo,
+            credentials: userCredentialStore,
+            httpClient: HTTPClient.shared,
+            logger: Logger(label: "lv.chat.stream.routed"),
+            streamIdleTimeout: .seconds(hermesStreamIdleSeconds),
+        )
+    }()
+
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
-    // streaming service + retrieval pipeline as /v1/query/stream. BYO
-    // Hermes middleware is in scope because each turn hits the gateway.
+    // retrieval pipeline as /v1/query/stream. BYO Hermes middleware is in
+    // scope because managed turns hit the gateway.
     let conversationController = ConversationController(
         fluent: services.fluent,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
-        streamService: queryStreamService,
+        streamService: conversationStreamService,
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         defaultModel: services.hermesDefaultModel,

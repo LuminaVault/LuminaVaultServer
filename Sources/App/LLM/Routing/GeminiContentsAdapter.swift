@@ -168,6 +168,76 @@ struct GeminiContentsAdapter: ProviderAdapter {
         Self.resolveGeminiModel(from: raw)
     }
 
+    // MARK: - Streaming (Path B — BYOK chat stream)
+
+    /// Streaming endpoint URL. `alt=sse` makes Gemini emit a standard
+    /// `text/event-stream` (one JSON object per `data:` frame) instead of
+    /// a single JSON array, so it can be read incrementally on Linux via
+    /// AsyncHTTPClient.
+    static func makeStreamURL(for model: String, apiKey: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "generativelanguage.googleapis.com"
+        components.path = "/v1beta/models/\(model):streamGenerateContent"
+        components.queryItems = [
+            URLQueryItem(name: "alt", value: "sse"),
+            URLQueryItem(name: "key", value: apiKey),
+        ]
+        guard let url = components.url else {
+            fatalError("invalid gemini stream url for model=\(model)")
+        }
+        return url
+    }
+
+    /// Build `(url, body)` for a streaming generateContent call from an
+    /// OpenAI-shaped payload. Reuses the same translation pipeline as the
+    /// non-streaming path (steps 1–4) so request shaping stays in one place.
+    static func makeStreamRequest(payload: Data, apiKey: String) throws -> (url: URL, body: Data) {
+        guard
+            let openAI = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+            let rawMessages = openAI["messages"] as? [[String: Any]]
+        else {
+            throw ProviderError.permanent(
+                provider: .gemini,
+                status: 400,
+                body: "invalid OpenAI payload: cannot parse messages",
+            )
+        }
+        let model = resolveGeminiModel(from: openAI["model"] as? String ?? "")
+        let translated = translateToGemini(
+            messages: rawMessages,
+            tools: openAI["tools"] as? [[String: Any]],
+            toolChoice: openAI["tool_choice"],
+            temperature: openAI["temperature"] as? Double,
+            maxTokens: openAI["max_tokens"] as? Int,
+            topP: openAI["top_p"] as? Double,
+            stopSequences: openAI["stop"] as? [String],
+        )
+        let body = try JSONSerialization.data(withJSONObject: translated)
+        return (makeStreamURL(for: model, apiKey: apiKey), body)
+    }
+
+    /// Parse one Gemini SSE `data:` JSON object into a text delta +
+    /// optional finish reason. Returns nil for frames with no candidate.
+    static func parseStreamObject(_ data: Data) -> (delta: String, finishReason: String?)? {
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let candidates = obj["candidates"] as? [[String: Any]],
+            let first = candidates.first
+        else { return nil }
+        let finishReason = first["finishReason"] as? String
+        var text = ""
+        if
+            let content = first["content"] as? [String: Any],
+            let parts = content["parts"] as? [[String: Any]]
+        {
+            for part in parts {
+                if let t = part["text"] as? String { text += t }
+            }
+        }
+        return (text, finishReason)
+    }
+
     // MARK: - OpenAI → Gemini Translation
 
     private static func translateToGemini(
