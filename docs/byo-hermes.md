@@ -126,6 +126,63 @@ migrate that instance's existing TUI history or cron jobs into the app.
 
 ---
 
+## Choose how to expose it
+
+There are several ways to make your Hermes reachable by LuminaVault. **The
+easiest (Cloudflare Tunnel / raw IP) work with no domain.** A domain is
+*recommended for production* but not required.
+
+| Method | Domain? | HTTPS? | Difficulty | Best for |
+|---|---|---|---|---|
+| **Cloudflare Tunnel** | No | ✅ | Easy | **Most users — recommended** |
+| **Raw IP + token** | No | ❌ | Easy | Testing / power users (with warnings) |
+| **Tailscale** | No | ✅ | Medium | Private / advanced, very secure |
+| **Domain + Nginx/Caddy** | Yes | ✅ | Medium | Serious self-hosting, cleanest long-term |
+| **NPM + domain** | Yes | ✅ | Medium | Optional, if you already run nginx-proxy-manager |
+
+All of them front the same `api_server` (`:8642`) from the previous section.
+Pick one below.
+
+---
+
+## Cloudflare Tunnel — recommended (no domain, no open ports, HTTPS)
+
+Works behind CGNAT / firewalls with no inbound ports and gives HTTPS for free.
+
+**Quick tunnel (fastest, ephemeral URL — great for testing):**
+```sh
+# install once
+curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
+# run it (keep it alive with systemd-run so it survives your SSH session)
+systemd-run --unit=hermes-tunnel --collect \
+  /usr/local/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8642
+# grab the public URL:
+journalctl -u hermes-tunnel | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1
+```
+The printed `https://….trycloudflare.com` is your app URL. ⚠️ It **changes** on
+restart/reboot and has no uptime guarantee — fine for testing, not production.
+
+**Named tunnel (stable URL — production):** needs a free Cloudflare account + a
+domain on Cloudflare. `cloudflared tunnel login`, `create hermes`,
+`route dns hermes hermes.yourdomain.com`, then run it pointing at
+`http://127.0.0.1:8642` (see below).
+
+Then in the app: URL = the tunnel URL, Auth = **Bearer** `API_SERVER_KEY`.
+
+---
+
+## Tailscale (private, no public exposure)
+
+Put the VPS and — for self-hosted LuminaVault — the LuminaVault server on the
+same tailnet. Hermes is reachable at the VPS's Tailscale IP/name with no public
+port. Note: this only works when the **LuminaVault server** is on the tailnet
+(self-host); the managed cloud LuminaVault can't reach a private tailnet, and
+`SSRFGuard` blocks private ranges for the managed service. `tailscale up` on both,
+then app URL = `http://<vps-tailscale-name>:8642` + Bearer key.
+
+---
+
 ## Recommended: domain + HTTPS
 
 Put Hermes behind a reverse proxy with a TLS cert on a domain you control
@@ -157,7 +214,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/hermes.yourdomain.com/privkey.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;   # your Hermes container/port
+        proxy_pass http://127.0.0.1:8642;   # the api_server port
         proxy_http_version 1.1;
 
         # --- SSE / streaming survival (required) ---
@@ -183,25 +240,25 @@ container so the proxy on the host can reach it.
 
 ---
 
-## Cloudflare Tunnel (no port-forwarding)
+## Cloudflare named tunnel (stable URL, production)
 
-Works behind CGNAT / home networks with no open inbound ports and gives you
-HTTPS automatically:
+The quick tunnel above is ephemeral. For a permanent `https://hermes.yourdomain.com`
+(needs a free Cloudflare account + a domain on Cloudflare):
 
 ```sh
 cloudflared tunnel login
 cloudflared tunnel create hermes
 cloudflared tunnel route dns hermes hermes.yourdomain.com
-cloudflared tunnel --url http://127.0.0.1:8080 run hermes
+cloudflared tunnel --url http://127.0.0.1:8642 run hermes   # the api_server port
 ```
 
-Paste the resulting `https://hermes.yourdomain.com` into the app.
+Paste the resulting `https://hermes.yourdomain.com` into the app (Bearer = `API_SERVER_KEY`).
 
 ---
 
-## Public IP / `http://` (advanced, discouraged)
+## Raw public IP + token (easy, with warnings)
 
-A bare public IP (`http://203.0.113.5:8080`) or plain `http://` is **allowed**
+A bare public IP (`http://203.0.113.5:8642`) or plain `http://` is **allowed**
 but insecure:
 
 - **`http://` sends your auth token in plaintext** — anyone on the network path
