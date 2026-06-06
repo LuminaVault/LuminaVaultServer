@@ -170,4 +170,70 @@ struct LLMPreferencesChatE2ETests {
             }
         }
     }
+
+    /// A Nous-served free model (`stepfun/step-3.7-flash:free`) is selected and
+    /// chatted with. Nous isn't a `ProviderID` — it's the Nous Portal OAuth
+    /// subscription powering the per-tenant Hermes container — so the user
+    /// selects its models through managed (gateway) mode carrying an
+    /// OpenRouter-style slug. The controller does no catalog validation, so the
+    /// slug rides through as a free-form string.
+    ///
+    /// Stubbed, this proves the model-selection → routing → reply path for the
+    /// slug; it can't distinguish nous from the managed default or prove the
+    /// live free tier answers (both share the gateway hop the stub backs). The
+    /// assertion that earns its keep: the `:free` suffix survives the
+    /// preference round-trip intact and reaches the chat hop unmangled.
+    @Test
+    func `select nous stepfun free model, then chat gets a reply`() async throws {
+        let reply = "Reply from stepfun/step-3.7-flash:free via Nous."
+        let model = "stepfun/step-3.7-flash:free"
+        let app = try await buildApplication(reader: dbTestReaderWithStubChat(replyContent: reply))
+        try await app.test(.router) { client in
+            let token = try await Self.signUpThenSignIn(client: client)
+
+            // Select the Nous free model: managed (gateway) mode, OpenRouter-style
+            // carrier slug. This is the request the model picker sends.
+            try await client.execute(
+                uri: "/v1/me/preferences/llm",
+                method: .put,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: """
+                {"mode":"managed","primaryProvider":"openRouter","primaryModel":"\(model)","fallbackChain":[]}
+                """),
+            ) { resp in
+                #expect(resp.status == .ok)
+                let prefs = try Self.decodePrefs(resp.body)
+                #expect(prefs.mode == .managed)
+                #expect(prefs.primaryProvider == .openRouter)
+                // The `:free` suffix must survive intact — no slug mangling.
+                #expect(prefs.primaryModel == model)
+            }
+
+            // Round-trips on GET with the suffix preserved.
+            try await client.execute(
+                uri: "/v1/me/preferences/llm",
+                method: .get,
+                headers: Self.auth(token),
+            ) { resp in
+                #expect(resp.status == .ok)
+                let prefs = try Self.decodePrefs(resp.body)
+                #expect(prefs.primaryModel == model)
+            }
+
+            // Chat routes through the gateway and returns the assistant reply.
+            try await client.execute(
+                uri: "/v1/llm/chat",
+                method: .post,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: """
+                {"messages":[{"role":"user","content":"Hello from the stepfun e2e test."}]}
+                """),
+            ) { resp in
+                #expect(resp.status == .ok)
+                let chat = try Self.decodeChat(resp.body)
+                #expect(chat.message.role == "assistant")
+                #expect(chat.message.content == reply)
+            }
+        }
+    }
 }
