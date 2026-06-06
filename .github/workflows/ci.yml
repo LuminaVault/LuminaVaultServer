@@ -100,12 +100,15 @@ jobs:
           LOG_LEVEL: error
         # HER-310: tests share ONE `hermes_test` DB with no per-suite schema
         # isolation, and each suite migrates/queries/tears-down its own Fluent.
-        # `--parallel` runs them concurrently against that shared DB → migration
-        # races ("relation \"users\" does not exist"), use-after-shutdown ("No
-        # default database configured"), and the AsyncKit ConnectionPool deinit
-        # SIGILL on parallel teardown. Run serially until per-suite DB isolation
-        # lands (the real fix for getting parallelism back).
-        run: swift test --enable-code-coverage
+        # Concurrent boots against that shared DB race the migrator into a
+        # duplicate-key on `_fluent_migrations` (sqlState 23505) and exhaust the
+        # Postgres connection pool. `--no-parallel` is REQUIRED: swift-testing
+        # parallelizes `@Suite`s by default and ignores the absence of
+        # `--parallel`, so only `--no-parallel` actually serializes them. Run
+        # serially until per-suite DB isolation lands (the real fix for getting
+        # parallelism back). `MigrationGate` guards the migrator if parallelism
+        # ever returns.
+        run: swift test --no-parallel --enable-code-coverage
 
       - name: Export coverage to lcov
         # Best-effort; emits a workflow notice on failure but does not
