@@ -25,11 +25,13 @@ struct HermesConfigController {
         let baseUrl: String
         let hasAuthHeader: Bool
         let verifiedAt: Date?
+        let name: String?
     }
 
     struct PutRequest: Codable {
         let baseUrl: String
         let authHeader: String?
+        let name: String?
     }
 
     struct TestResponse: Codable, ResponseEncodable {

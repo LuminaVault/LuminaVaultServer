@@ -12,6 +12,7 @@ import LuminaVaultShared
 extension ProviderCredentialDTO: @retroactive ResponseEncodable {}
 extension ProviderCredentialsListResponse: @retroactive ResponseEncodable {}
 extension ProviderTestResponse: @retroactive ResponseEncodable {}
+extension ProviderModelsResponse: @retroactive ResponseEncodable {}
 extension ProviderPoolKeyDTO: @retroactive ResponseEncodable {}
 extension ProviderPoolListResponse: @retroactive ResponseEncodable {}
 
@@ -53,6 +54,7 @@ struct ProvidersController {
         router.put(":provider", use: put)
         router.delete(":provider", use: delete)
         router.post(":provider/test", use: test)
+        router.get(":provider/models", use: models)
         // Round-robin credential pool (Phase 2 item 6, layer 2).
         router.get(":provider/pool", use: listPool)
         router.post(":provider/pool", use: addPool)
@@ -236,6 +238,81 @@ struct ProvidersController {
         }
     }
 
+    // MARK: - GET /v1/me/providers/{provider}/models
+
+    /// Dynamic model listing. For OpenAI-compatible providers we fetch the
+    /// upstream `/v1/models` (using the user's stored key when present) so
+    /// the client picker stays current with rotating model lists (e.g. Nous
+    /// free models). Any failure — unsupported provider, no credential,
+    /// network, non-2xx, or unparseable body — falls back to the offline
+    /// `LLMModelCatalog` with `fetchedLive: false`. Never throws on the
+    /// fetch path: a stale upstream must not break the picker.
+    @Sendable
+    func models(_: Request, ctx: AppRequestContext) async throws -> ProviderModelsResponse {
+        let tenantID = try ctx.requireTenantID()
+        let providerID = try parseProvider(ctx)
+        let kind = serverKind(for: providerID)
+
+        func fallback() -> ProviderModelsResponse {
+            ProviderModelsResponse(
+                provider: providerID,
+                models: LLMModelCatalog.models(for: providerID),
+                fetchedLive: false,
+            )
+        }
+
+        // Only OpenAI-compatible providers expose a standard `/v1/models`.
+        // Anthropic / Gemini / Ollama keep the curated catalog.
+        guard [.xai, .nvidia, .openai, .openRouter, .nous].contains(kind) else {
+            return fallback()
+        }
+
+        // `try?` over a throwing `-> ResolvedCredential?` yields a double
+        // optional; flatten with `?? nil`.
+        let resolved = (try? await credentialStore.credential(for: kind, tenantID: tenantID)) ?? nil
+        let key = resolved?.apiKey
+        let base = resolved?.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
+        let url = base.appendingPathComponent("v1").appendingPathComponent("models")
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.timeoutInterval = 8
+        if let key, !key.isEmpty {
+            req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        if kind == .openRouter {
+            req.setValue("https://luminavault.app", forHTTPHeaderField: "HTTP-Referer")
+            req.setValue("LuminaVault", forHTTPHeaderField: "X-Title")
+        }
+
+        guard
+            let (data, response) = try? await probeSession.data(for: req),
+            let http = response as? HTTPURLResponse,
+            (200 ..< 300).contains(http.statusCode),
+            let parsed = Self.parseModels(data)
+        else {
+            return fallback()
+        }
+        guard !parsed.isEmpty else { return fallback() }
+        return ProviderModelsResponse(provider: providerID, models: parsed, fetchedLive: true)
+    }
+
+    /// Parse a standard OpenAI `/v1/models` body — `{ "data": [{ "id": …,
+    /// "name": … }] }` — into `[LLMModelInfo]`. `name` is used for the label
+    /// when present (Nous supplies it), else the id is shown verbatim.
+    static func parseModels(_ data: Data) -> [LLMModelInfo]? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let list = root["data"] as? [[String: Any]]
+        else { return nil }
+        let models: [LLMModelInfo] = list.compactMap { entry in
+            guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
+            let label = (entry["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id
+            return LLMModelInfo(id: id, displayName: label)
+        }
+        return models
+    }
+
     // MARK: - Helpers
 
     private func parseProvider(_ ctx: AppRequestContext) throws -> ProviderID {
@@ -258,12 +335,13 @@ struct ProvidersController {
         case .ollama: .ollama
         case .openRouter: .openRouter
         case .gemini: .gemini
+        case .nous: .nous
         }
     }
 
     private func defaultKind(for id: ProviderID) -> ProviderCredentialKind {
         switch id {
-        case .xai, .nvidia, .anthropic, .openai, .openRouter, .gemini: .apiKey
+        case .xai, .nvidia, .anthropic, .openai, .openRouter, .gemini, .nous: .apiKey
         case .ollama: .hostURL
         }
     }
@@ -277,7 +355,7 @@ struct ProvidersController {
         case .ollama:
             let base = resolved.baseURL ?? URL(string: "http://localhost:11434")!
             return OllamaAdapter(defaultBaseURL: base, session: probeSession, logger: logger)
-        case .xai, .nvidia, .openai, .openRouter:
+        case .xai, .nvidia, .openai, .openRouter, .nous:
             let base = resolved.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             return OpenAICompatibleAdapter(kind: kind, apiKey: key, baseURL: base, session: probeSession, logger: logger)
         case .gemini:
@@ -308,6 +386,7 @@ struct ProvidersController {
         case .openRouter: "openrouter/auto"
         case .ollama: "llama3.1"
         case .gemini: "gemini-2.5-flash"
+        case .nous: "stepfun/step-3.7-flash:free"
         }
         return [
             "model": model,

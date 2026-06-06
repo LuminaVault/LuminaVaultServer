@@ -69,6 +69,7 @@ extension ProviderKind {
         case .openRouter: .openRouter
         case .ollama: .ollama
         case .gemini: .gemini
+        case .nous: .nous
         default: nil
         }
     }

@@ -18,6 +18,8 @@ final class UserHermesConfig: Model, TenantModel, @unchecked Sendable {
     /// deletion already FK-cascades).
     @Field(key: "tenant_id") var tenantID: UUID
     @Field(key: "base_url") var baseURL: String
+    /// Optional user-chosen friendly name (e.g. "My VPS"). Display-only.
+    @OptionalField(key: "name") var name: String?
     @OptionalField(key: "auth_header_ciphertext") var authHeaderCiphertext: Data?
     @OptionalField(key: "auth_header_nonce") var authHeaderNonce: Data?
     @OptionalField(key: "verified_at") var verifiedAt: Date?

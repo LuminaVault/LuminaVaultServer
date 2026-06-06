@@ -34,6 +34,13 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
     /// resolved from `user_provider_credentials`. US-hosted.
     case nvidia
 
+    /// Nous Research portal inference API — OpenAI-compatible
+    /// (`https://inference-api.nousresearch.com/v1/...`). Adapter is the
+    /// OpenAI-compatible one with a per-user `Authorization: Bearer <key>`
+    /// resolved from `user_provider_credentials`. US-hosted. Distinct from
+    /// the container-scoped Nous OAuth flow routed via `.hermesGateway`.
+    case nous
+
     /// HER-164 — hosting / weight-origin region tag used by the privacy
     /// filter to exclude `.cn` providers when `privacy_no_cn_origin=true`.
     /// `deepseek` (non-direct) and `deepseekDirect` are both Chinese-hosted
@@ -56,6 +63,6 @@ extension ProviderKind {
     /// default for free-tier users) and not exposed in the iOS providers
     /// pane / LLM preferences UI.
     static let userCredentialTargets: Set<ProviderKind> = [
-        .xai, .anthropic, .openai, .openRouter, .ollama, .nvidia,
+        .xai, .anthropic, .openai, .openRouter, .ollama, .nvidia, .nous,
     ]
 }

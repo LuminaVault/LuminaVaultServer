@@ -887,7 +887,7 @@ func buildRouter(
     // ollama via their bespoke adapters). Each is registered
     // unconditionally so a user can attach a personal key at any time;
     // the deployment env key is the fallback when no user creds exist.
-    for kind in [ProviderKind.xai, .openai, .openRouter] {
+    for kind in [ProviderKind.xai, .openai, .openRouter, .nous] {
         let envKey = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).apiKey"), isSecret: true, default: "")
         let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).baseURL"), default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

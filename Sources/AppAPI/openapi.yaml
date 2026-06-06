@@ -1153,6 +1153,36 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/me/providers/{provider}/models:
+    parameters:
+      - in: path
+        name: provider
+        required: true
+        schema: { $ref: '#/components/schemas/ProviderID' }
+    get:
+      tags: [Me]
+      operationId: providerModelsList
+      summary: List models for a provider, fetched live when possible.
+      description: |
+        For OpenAI-compatible providers (xai, nvidia, openai, openRouter,
+        nous) the server fetches the upstream `/v1/models` using the user's
+        stored credential and returns the live list (`fetchedLive: true`) —
+        keeping the client picker current with rotating model lists such as
+        Nous free models. On any failure, or for providers without a
+        standard `/v1/models` (anthropic, gemini, ollama), it returns the
+        offline curated catalog with `fetchedLive: false`. Always 200.
+      responses:
+        '200':
+          description: Model list (live or fallback).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderModelsResponse' }
+        '404':
+          description: '`unsupported_provider` — unknown path param.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   # ─────────────── Me — Hermes Messaging Gateways (HER-241) ────────────────
 
   /v1/me/hermes-gateways:
@@ -5100,11 +5130,13 @@ components:
 
     ProviderID:
       type: string
-      enum: [xai, anthropic, openai, ollama, openRouter, nvidia, gemini]
+      enum: [xai, anthropic, openai, ollama, openRouter, nvidia, gemini, nous]
       description: |
         Wire identifier for an external LLM provider the user can attach
         credentials to. `hermesGateway` is intentionally excluded — it's
-        deployment infrastructure, not user-credential surface.
+        deployment infrastructure, not user-credential surface. `nous` is
+        the OpenAI-compatible Nous Research portal inference API (rotating
+        free models), distinct from the container-scoped Nous OAuth flow.
 
     ProviderCredentialKind:
       type: string
@@ -5135,6 +5167,32 @@ components:
         providers:
           type: array
           items: { $ref: '#/components/schemas/ProviderCredentialDTO' }
+
+    LLMModelInfo:
+      type: object
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+          description: Wire model id sent to the provider (e.g. `stepfun/step-3.7-flash:free`).
+        displayName: { type: string }
+        contextWindow:
+          type: integer
+          description: Approximate context window in tokens, when known. UI hint only.
+
+    ProviderModelsResponse:
+      type: object
+      required: [provider, models, fetchedLive]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/LLMModelInfo' }
+        fetchedLive:
+          type: boolean
+          description: |
+            `true` when the list came from the provider's live `/v1/models`;
+            `false` when it fell back to the offline curated catalog.
 
     ProviderCredentialPutRequest:
       type: object

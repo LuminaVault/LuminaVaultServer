@@ -196,6 +196,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         case .nvidia: URL(string: "https://integrate.api.nvidia.com")!
         case .openai: URL(string: "https://api.openai.com")!
         case .openRouter: URL(string: "https://openrouter.ai/api")!
+        case .nous: URL(string: "https://inference-api.nousresearch.com")!
         default: URL(string: "https://invalid.local")!
         }
     }
