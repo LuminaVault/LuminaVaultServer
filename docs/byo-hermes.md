@@ -38,47 +38,91 @@ Requirements:
 ## Run a Hermes that serves the `/v1` API
 
 **This is the step most people miss.** LuminaVault talks to Hermes over its
-OpenAI-compatible HTTP API. Two common Hermes setups do **not** expose it:
+OpenAI-compatible HTTP API (`/v1/chat/completions`, `/v1/models`). Setups that do
+**not** expose it:
 
-- `hermes` (the interactive TUI) reads your config directly — no HTTP server.
-- `hermes gateway run` on bare metal is the **messaging** gateway (Telegram,
-  Discord, WhatsApp…). It does **not** serve `/v1`.
+- `hermes` (the interactive TUI) — reads config directly, no HTTP server.
+- `hermes gateway run` **without** the `api_server` env (below) — messaging only
+  (Telegram/Discord/WhatsApp), no `/v1`.
+- `hermes proxy start` — fronts a **single** provider (nous **or** xai) only. It
+  does **not** serve your full config, skills, or memory. Don't use it for BYO.
 
-The `/v1` HTTP API is served by the **Hermes Docker image** (an API server on
-`:8642`, authenticated with `API_SERVER_KEY`). Run that image with your existing
-config + provider credentials mounted:
+The fix: enable Hermes' **`api_server` adapter**. Then `hermes gateway run` serves
+the OpenAI `/v1` API backed by your **full `config.yaml`** — your model routing
+(deepseek primary + fallbacks), skills, memory, and agent behavior — authenticated
+with `API_SERVER_KEY`. It's env-driven, so it works **system-wide or in Docker**.
+
+Set these (anywhere Hermes reads env — `~/.hermes/.env`, the systemd unit, or the
+container `environment:`):
+
+```
+API_SERVER_ENABLED=true
+API_SERVER_HOST=127.0.0.1      # localhost; expose via the TLS proxy below
+API_SERVER_PORT=8642
+API_SERVER_KEY=<openssl rand -hex 32>   # the Bearer token you give LuminaVault
+API_SERVER_MODEL_NAME=hermes-3          # optional default model label
+```
+
+### System-wide install (no Docker)
+
+If Hermes already runs as `hermes-gateway.service`, add a drop-in and restart —
+no `config.yaml` edits, no restart loops:
+
+```sh
+sudo mkdir -p /etc/systemd/system/hermes-gateway.service.d
+sudo tee /etc/systemd/system/hermes-gateway.service.d/api-server.conf >/dev/null <<'EOF'
+[Service]
+Environment=API_SERVER_ENABLED=true
+Environment=API_SERVER_HOST=127.0.0.1
+Environment=API_SERVER_PORT=8642
+Environment=API_SERVER_KEY=REPLACE_WITH_STRONG_RANDOM
+EOF
+sudo systemctl daemon-reload && sudo systemctl restart hermes-gateway
+```
+
+### Docker Compose
 
 ```yaml
-# docker-compose.yml — Hermes API server
 services:
   hermes:
     image: ghcr.io/nousresearch/hermes-agent:latest   # or your pinned tag
+    command: ["gateway", "run"]
     restart: unless-stopped
     environment:
-      # The Bearer token LuminaVault sends. Generate a long random string.
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?set a strong token}
     volumes:
-      # Your working config + provider keys / OAuth tokens (deepseek, openrouter,
-      # nous, xai-oauth, …). This is the same ~/.hermes you use in the TUI.
-      - ./hermes-data:/root/.hermes
+      - ./hermes-data:/root/.hermes   # same config + creds the TUI uses
     ports:
-      - "127.0.0.1:8642:8642"   # bind localhost; expose via the TLS proxy below
+      - "127.0.0.1:8642:8642"          # expose via the TLS proxy below
 ```
 
-Verify the API is up (from the host):
+### Verify (from the host)
 
 ```sh
-curl -H "Authorization: Bearer $HERMES_API_SERVER_KEY" \
-     http://127.0.0.1:8642/v1/models      # → JSON model list (not HTML)
+curl -H "Authorization: Bearer <KEY>" http://127.0.0.1:8642/v1/models
+# → JSON model list backed by your config (deepseek, fallbacks, …) — NOT HTML
 ```
 
-If you get the **dashboard HTML** instead of JSON, you hit the web UI
-(`hermes dashboard`, default `:9119`) — that is **not** the API. Use the
-`:8642` API server above. (Also: do not leave the dashboard on
-`0.0.0.0 --insecure` — it has no auth.)
+If you get **dashboard HTML**, you hit the web UI (`hermes dashboard`, `:9119`) —
+that is **not** the API. Don't leave the dashboard on `0.0.0.0 --insecure` (no
+auth). Use the `:8642` api_server above.
 
-> The default `model.default` + `fallback_providers` in your mounted config drive
-> what the API answers with (e.g. `deepseek-chat` + nous/openrouter/xai-oauth).
+---
+
+## What you get over BYO (and what stays in LuminaVault)
+
+| Runs on **your** Hermes (via `/v1`) | Stays in **LuminaVault** |
+|---|---|
+| Model routing: deepseek primary + fallback chain | Conversation history (Postgres) |
+| Skills, agent tools | Vault + memories used for **grounding** (pgvector) injected per prompt |
+| Memory (Mnemosyne / native) | Provider/credential rows; Jobs/Kanban/analytics |
+| Hermes's own cron jobs (its scheduler, on your box) | |
+
+Connecting BYO routes **new** chats/agent calls to your Hermes — it does **not**
+migrate that instance's existing TUI history or cron jobs into the app.
 
 ---
 
@@ -202,8 +246,16 @@ Choose in the app when connecting:
 | Mode | Sent as | Use when |
 |------|---------|----------|
 | None | — | Hermes is open / unauthenticated |
-| Bearer token | `Authorization: Bearer <token>` | Hermes expects an API key |
-| Username & password | `Authorization: Basic <base64>` | Hermes is behind HTTP Basic auth |
+| Bearer token | `Authorization: Bearer <token>` | Hermes expects an API key — **this is the normal choice**: use your `API_SERVER_KEY` |
+| Username & password | `Authorization: Basic <base64>` | Only if a reverse proxy adds HTTP Basic in front of Hermes |
+
+For the `api_server` adapter the auth is the **`API_SERVER_KEY`** as a **Bearer
+token**.
+
+> ⚠️ This is **not** your server's SSH login. Never enter your VPS root username /
+> password here — it would be forwarded to the endpoint as an `Authorization`
+> header (and over plain HTTP, in clear text). If you've done this, set Auth to
+> the `API_SERVER_KEY` and rotate the SSH password.
 
 The header is forwarded to your Hermes verbatim. Use HTTPS so it isn't exposed.
 
