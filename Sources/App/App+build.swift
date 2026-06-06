@@ -82,7 +82,13 @@ func buildApplication(
             await registerMigrations(on: fluent)
             let autoMigrateStr = reader.string(forKey: "fluent.autoMigrate", default: "true")
             if autoMigrateStr.lowercased() != "false" {
-                try await fluent.migrate()
+                // Serialize + memoize the migrator across concurrent in-process
+                // boots (the parallel test suite shares one database) so they
+                // don't race the first migration insert into a duplicate-key
+                // on `_fluent_migrations`. No-op in prod. See `MigrationGate`.
+                try await MigrationGate.shared.migrateOnce {
+                    try await fluent.migrate()
+                }
             }
         } catch {
             fluentLogger.error("Failed to run migrations during boot", metadata: ["error": .string("\(error)")])
@@ -607,6 +613,7 @@ func buildRouter(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 ssrfGuard: ssrfGuard,
+                probeSession: BYOHTTP.session,
                 logger: byoHermesLogger,
             )
             let resolver = HermesEndpointResolver(
@@ -845,8 +852,10 @@ func buildRouter(
         )
     } else {
         HermesGatewayAdapter(
+            // SSRF hardening: no-redirect session so a BYO endpoint can't 30x
+            // the proxied request to an internal/metadata host post-validation.
             baseURL: hermesURL,
-            session: .shared,
+            session: BYOHTTP.session,
             logger: routingLogger,
             defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)",
         )
@@ -1367,8 +1376,10 @@ func buildRouter(
     // client's request timeout. Tune via HERMES_STREAM_IDLE_TIMEOUT.
     let hermesStreamIdleSeconds = Int64(reader.string(forKey: "hermes.streamIdleTimeout", default: "60")) ?? 60
     let queryStreamService = DefaultHermesLLMStreamService(
+        // SSRF hardening: no-redirect client so a BYO endpoint can't 30x the
+        // streamed request to an internal host post-validation.
         baseURL: hermesURL,
-        httpClient: HTTPClient.shared,
+        httpClient: BYOHTTP.httpClient,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,

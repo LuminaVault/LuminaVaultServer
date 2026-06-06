@@ -193,10 +193,19 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                         let decoder = JSONDecoder()
                         var finished = false
                         var rawChunks = 0
+                        // SSRF/abuse hardening: cap total streamed bytes so a
+                        // malicious or runaway (e.g. BYO) endpoint can't exhaust
+                        // memory. A real chat turn is far under this.
+                        var totalBytes = 0
+                        let maxStreamBytes = 64 * 1024 * 1024
                         for try await chunk in response.body {
                             if Task.isCancelled { break }
                             lastActivity.withLockedValue { $0 = .now() }
                             rawChunks += 1
+                            totalBytes += chunk.readableBytes
+                            if totalBytes > maxStreamBytes {
+                                throw HTTPError(.badGateway, message: "hermes stream exceeded \(maxStreamBytes) bytes")
+                            }
                             if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
                                 buffer.append(text)
                             }
