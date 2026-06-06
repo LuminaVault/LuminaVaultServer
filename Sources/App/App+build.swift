@@ -1619,6 +1619,21 @@ func buildRouter(
     let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
     importController.addRoutes(to: importGroup)
 
+    // Vault import bridge — bulk-ingest a user's Hermes/Obsidian markdown vault
+    // into LuminaVault (vault_files + memories + embeddings + Space) so chat
+    // grounding + the Brain graph use it. Mounted on the same JWT group.
+    let vaultImportController = VaultImportController(
+        ingest: VaultIngestService(
+            fluent: services.fluent,
+            vaultPaths: vaultPaths,
+            spaces: spacesService,
+            memories: MemoryRepository(fluent: services.fluent),
+            embeddings: embeddingService,
+            logger: Logger(label: "lv.import.vault"),
+        ),
+    )
+    vaultImportController.addRoutes(to: importGroup)
+
     // HER-43 (Slice 1) — /v1/plugins (declarative plugin foundation). Mounted
     // only when the master secret is set: install config (e.g. a connector API
     // token) is sealed at rest via the same SecretBox as BYO Hermes. Connector
