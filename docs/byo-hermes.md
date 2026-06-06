@@ -30,6 +30,55 @@ Requirements:
 - Reachable from the **public internet** (the server calls it, not your phone).
 - HTTPS with a real certificate is strongly recommended.
 - Private/LAN/localhost addresses are always rejected (see [SSRF](#whats-blocked-and-why-ssrf)).
+- Your Hermes must expose the **OpenAI-compatible HTTP API** (`/v1/models`,
+  `/v1/chat/completions`) — see the next section.
+
+---
+
+## Run a Hermes that serves the `/v1` API
+
+**This is the step most people miss.** LuminaVault talks to Hermes over its
+OpenAI-compatible HTTP API. Two common Hermes setups do **not** expose it:
+
+- `hermes` (the interactive TUI) reads your config directly — no HTTP server.
+- `hermes gateway run` on bare metal is the **messaging** gateway (Telegram,
+  Discord, WhatsApp…). It does **not** serve `/v1`.
+
+The `/v1` HTTP API is served by the **Hermes Docker image** (an API server on
+`:8642`, authenticated with `API_SERVER_KEY`). Run that image with your existing
+config + provider credentials mounted:
+
+```yaml
+# docker-compose.yml — Hermes API server
+services:
+  hermes:
+    image: ghcr.io/nousresearch/hermes-agent:latest   # or your pinned tag
+    restart: unless-stopped
+    environment:
+      # The Bearer token LuminaVault sends. Generate a long random string.
+      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?set a strong token}
+    volumes:
+      # Your working config + provider keys / OAuth tokens (deepseek, openrouter,
+      # nous, xai-oauth, …). This is the same ~/.hermes you use in the TUI.
+      - ./hermes-data:/root/.hermes
+    ports:
+      - "127.0.0.1:8642:8642"   # bind localhost; expose via the TLS proxy below
+```
+
+Verify the API is up (from the host):
+
+```sh
+curl -H "Authorization: Bearer $HERMES_API_SERVER_KEY" \
+     http://127.0.0.1:8642/v1/models      # → JSON model list (not HTML)
+```
+
+If you get the **dashboard HTML** instead of JSON, you hit the web UI
+(`hermes dashboard`, default `:9119`) — that is **not** the API. Use the
+`:8642` API server above. (Also: do not leave the dashboard on
+`0.0.0.0 --insecure` — it has no auth.)
+
+> The default `model.default` + `fallback_providers` in your mounted config drive
+> what the API answers with (e.g. `deepseek-chat` + nous/openrouter/xai-oauth).
 
 ---
 
