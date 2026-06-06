@@ -90,6 +90,7 @@ struct HermesConfigController {
             baseUrl: row.baseURL,
             hasAuthHeader: row.authHeaderCiphertext != nil,
             verifiedAt: row.verifiedAt,
+            name: row.name,
         )
     }
 
@@ -139,6 +140,8 @@ struct HermesConfigController {
         row.baseURL = validatedURL.absoluteString
         row.authHeaderCiphertext = ciphertext
         row.authHeaderNonce = nonce
+        let trimmedName = body.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        row.name = (trimmedName?.isEmpty == false) ? trimmedName : nil
         row.verifiedAt = nil
         try await row.save(on: db)
 
@@ -146,6 +149,7 @@ struct HermesConfigController {
             baseUrl: row.baseURL,
             hasAuthHeader: row.authHeaderCiphertext != nil,
             verifiedAt: row.verifiedAt,
+            name: row.name,
         )
     }
 
