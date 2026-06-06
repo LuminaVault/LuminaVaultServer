@@ -128,7 +128,15 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 Int64((DispatchTime.now().uptimeNanoseconds - startedNanos) / 1_000_000)
             }
             do {
-                let url = baseURL
+                // BYO-Hermes: when the per-tenant resolver picked a user
+                // override, stream from that endpoint with its own auth header
+                // instead of the central gateway. The work Task inherits the
+                // `currentResolution` task-local bound by HermesResolutionMiddleware
+                // at the request scope. Mirrors HermesGatewayAdapter:57-64.
+                let resolution = LLMRoutingContext.currentResolution
+                let isOverride = resolution?.isUserOverride == true
+                let dispatchBaseURL = isOverride ? (resolution?.baseURL ?? baseURL) : baseURL
+                let url = dispatchBaseURL
                     .appendingPathComponent("v1")
                     .appendingPathComponent("chat")
                     .appendingPathComponent("completions")
@@ -145,8 +153,9 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     url: url,
                     sessionKey: sessionKey,
                     sessionID: sessionID,
-                    apiKey: apiKey,
+                    apiKey: isOverride ? "" : apiKey,
                     payloadData: payloadData,
+                    authHeaderOverride: isOverride ? resolution?.authHeader : nil,
                 )
 
                 logger.debug("hermes stream request", metadata: [
@@ -268,6 +277,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         sessionID: String?,
         apiKey: String,
         payloadData: Data,
+        authHeaderOverride: String? = nil,
     ) -> HTTPClientRequest {
         var httpReq = HTTPClientRequest(url: url.absoluteString)
         httpReq.method = .POST
@@ -277,7 +287,12 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         if let sessionID, !sessionID.isEmpty {
             httpReq.headers.add(name: "X-Hermes-Session-Id", value: sessionID)
         }
-        if !apiKey.isEmpty {
+        // BYO-Hermes: a resolved override carries its own full Authorization
+        // value (scheme included) and wins; otherwise fall back to the central
+        // gateway's Bearer key. An empty `apiKey` with no override = no header.
+        if let authHeaderOverride, !authHeaderOverride.isEmpty {
+            httpReq.headers.add(name: "Authorization", value: authHeaderOverride)
+        } else if !apiKey.isEmpty {
             httpReq.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
         }
         httpReq.body = .bytes(payloadData)
