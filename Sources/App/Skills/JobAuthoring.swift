@@ -94,7 +94,9 @@ struct JobAuthoring {
     /// lives on `skills_state.run_at`).
     static func skillMarkdown(slug: String, title: String, cron: String?, domain: String?, spec: String) -> String {
         let domainLine = domain.map { "Domain: \($0)." } ?? ""
-        let scheduleLine = cron.map { "\n          schedule: \"\($0)\"" } ?? ""
+        // 2-space indent matches `capability:` after multiline-literal stripping.
+        // Interpolated content is NOT indent-stripped, so it must be literal here.
+        let scheduleLine = cron.map { "\n  schedule: \"\($0)\"" } ?? ""
         return """
         ---
         name: \(slug)

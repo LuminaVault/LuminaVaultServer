@@ -56,7 +56,7 @@ struct UsageSummaryAggregationTests {
             let slug = "usg\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
             let tenantID = try user.requireID()
-            let sql = fluent.db() as! any SQLDatabase
+            let sql = try #require(fluent.db() as? any SQLDatabase)
 
             // Two usage rows this month for this tenant + one for another tenant.
             let other = try await Self.makeUser("oth\(UUID().uuidString.prefix(6).lowercased())", on: fluent.db())

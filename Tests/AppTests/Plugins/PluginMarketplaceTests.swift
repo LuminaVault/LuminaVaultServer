@@ -24,6 +24,6 @@ struct PluginMarketplaceTests {
         #expect(PluginCatalog.catalog(category: .connector, featured: true).map(\.slug) == ["readwise"])
         #expect(PluginCatalog.catalog(category: .memory, premium: false).isEmpty)
         // Unfiltered still returns all static entries.
-        #expect(PluginCatalog.catalog().map(\.slug) == ["byok-embeddings", "raindrop", "readwise", "rss"])
+        #expect(PluginCatalog.catalog().map(\.slug) == ["byok-embeddings", "raindrop", "reading-time", "readwise", "rss"])
     }
 }
