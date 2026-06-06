@@ -75,16 +75,47 @@ enum ProviderError: Error {
             return "Your \(providerName) credits are exhausted."
         case let .transient(_, status, _) where status == 429:
             return "\(providerName) is rate-limiting us."
-        case .transient:
-            return "\(providerName) is having trouble responding."
+        case let .transient(_, status, body):
+            return "\(providerName) is having trouble responding.\(Self.detailSuffix(status: status, body: body))"
         case let .network(_, underlying):
             switch Self.underlyingKind(of: underlying) {
             case .timeout: return "\(providerName) timed out responding."
             case .unreachable, .other: return "Couldn't reach \(providerName)."
             }
-        case .permanent:
-            return "\(providerName) rejected the request."
+        case let .permanent(_, status, body):
+            return "\(providerName) rejected the request.\(Self.detailSuffix(status: status, body: body))"
         }
+    }
+
+    /// Turn a captured upstream error body into a short, user-facing suffix so
+    /// chat shows the real reason ("models/gemini-3-pro-preview is not found")
+    /// instead of a generic "rejected". Pulls `error.message` out of the common
+    /// provider JSON shape (`{"error":{"message":…}}` — Gemini, OpenAI,
+    /// OpenRouter), else truncates the raw preview. Empty → just the status.
+    private static func detailSuffix(status: Int, body: String?) -> String {
+        if let message = extractUpstreamMessage(from: body), !message.isEmpty {
+            return " (\(status)) \(message)"
+        }
+        return " (\(status))"
+    }
+
+    static func extractUpstreamMessage(from body: String?) -> String? {
+        guard let body else { return nil }
+        if
+            let data = body.data(using: .utf8),
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
+            if let err = obj["error"] as? [String: Any], let m = err["message"] as? String { return Self.clip(m) }
+            if let errStr = obj["error"] as? String { return Self.clip(errStr) }
+            if let m = obj["message"] as? String { return Self.clip(m) }
+        }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : Self.clip(trimmed)
+    }
+
+    private static func clip(_ s: String) -> String {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count > 200 ? String(trimmed.prefix(200)) + "…" : trimmed
     }
 
     // MARK: - URLError classification
