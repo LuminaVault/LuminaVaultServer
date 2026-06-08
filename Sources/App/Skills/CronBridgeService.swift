@@ -88,10 +88,10 @@ struct CronBridgeService {
         let lower = text.lowercased()
 
         // "every N minutes" / "every N hours"
-        if let m = firstMatch(#"every\s+(\d{1,3})\s*min"#, in: lower), let n = Int(m[1]), n > 0 {
+        if let m = firstMatch(#"every\s+(\d{1,3})\s*min"#, in: lower), let n = Int(m[0]), n > 0 {
             return ("*/\(n) * * * *", "Every \(n) minute\(n == 1 ? "" : "s")")
         }
-        if let m = firstMatch(#"every\s+(\d{1,3})\s*hour"#, in: lower), let n = Int(m[1]), n > 0 {
+        if let m = firstMatch(#"every\s+(\d{1,3})\s*hour"#, in: lower), let n = Int(m[0]), n > 0 {
             return ("0 */\(n) * * *", "Every \(n) hour\(n == 1 ? "" : "s")")
         }
         if lower.contains("hourly") || lower.range(of: #"every\s+hour"#, options: .regularExpression) != nil {
@@ -137,21 +137,21 @@ struct CronBridgeService {
 
     /// Extract an hour/minute from "9am", "9:30 pm", "at 17:00", "at 8".
     static func parseTimeOfDay(_ lower: String) -> (hour: Int, minute: Int)? {
-        // With meridiem (am/pm) — most explicit.
+        // With meridiem (am/pm) — most explicit. groups: [hour, minute?, am|pm]
         if let m = firstMatch(#"(\d{1,2})(?::(\d{2}))?\s*(am|pm)"#, in: lower),
-           var h = Int(m[1]), (0 ... 23).contains(h)
+           var h = Int(m[0]), (1 ... 12).contains(h)
         {
-            let min = m.count > 2 ? (Int(m[2]) ?? 0) : 0
-            let mer = m.last ?? ""
+            let min = m.count > 1 ? (Int(m[1]) ?? 0) : 0
+            let mer = m.count > 2 ? m[2] : ""
             if mer == "pm", h < 12 { h += 12 }
             if mer == "am", h == 12 { h = 0 }
             return (h % 24, min)
         }
-        // 24h "at HH:MM" or "at HH".
+        // 24h "at HH:MM" or "at HH". groups: [hour, minute?]
         if let m = firstMatch(#"at\s+(\d{1,2})(?::(\d{2}))?"#, in: lower),
-           let h = Int(m[1]), (0 ... 23).contains(h)
+           let h = Int(m[0]), (0 ... 23).contains(h)
         {
-            let min = m.count > 2 ? (Int(m[2]) ?? 0) : 0
+            let min = m.count > 1 ? (Int(m[1]) ?? 0) : 0
             return (h, min)
         }
         return nil
@@ -183,7 +183,7 @@ struct CronBridgeService {
                      "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         let words = text.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty && !stops.contains($0) && Int($0) == nil }
+            .filter { !$0.isEmpty && !stops.contains($0) && $0.rangeOfCharacter(from: .decimalDigits) == nil }
         let picked = Array(words.prefix(6)).joined(separator: " ")
         let title = picked.isEmpty ? "Scheduled job" : picked
         return title.prefix(1).uppercased() + title.dropFirst()
