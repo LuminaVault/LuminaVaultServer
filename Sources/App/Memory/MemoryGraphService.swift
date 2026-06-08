@@ -423,7 +423,12 @@ struct MemoryGraphService {
     // MARK: - Helpers
 
     private static func titleFromContent(_ content: String) -> String {
-        let firstLine = content.split(whereSeparator: \.isNewline).first.map(String.init) ?? content
+        let raw = content.split(whereSeparator: \.isNewline).first.map(String.init) ?? content
+        // Strip leading markdown markers (#, >, -, *, whitespace) so titles read
+        // clean (e.g. "KB Healthcheck Report", not "# KB Healthcheck Report").
+        var firstLine = String(raw.drop(while: { "#>-* \t".contains($0) }))
+            .trimmingCharacters(in: .whitespaces)
+        if firstLine.isEmpty { firstLine = raw.trimmingCharacters(in: .whitespaces) }
         if firstLine.count <= 60 { return firstLine }
         let idx = firstLine.index(firstLine.startIndex, offsetBy: 60)
         return String(firstLine[..<idx]) + "…"
