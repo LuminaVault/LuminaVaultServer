@@ -5265,7 +5265,7 @@ components:
 
     HermesGatewayID:
       type: string
-      enum: [telegram, discord, slack, whatsapp, email, matrix, ntfy]
+      enum: [telegram, discord, slack, whatsapp, email, matrix, ntfy, mattermost]
       description: |
         Identifier for a Hermes messaging gateway the user can configure.
         Outbound-connecting platforms only (no inbound public webhook).

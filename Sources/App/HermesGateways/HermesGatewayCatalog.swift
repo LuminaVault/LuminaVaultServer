@@ -222,6 +222,34 @@ enum HermesGatewayCatalog {
                 ),
             ],
         ),
+        .mattermost: Entry(
+            displayName: "Mattermost",
+            iconSlug: "mattermost",
+            description: "Connect Lumina to a Mattermost workspace via a bot account (outbound WebSocket).",
+            requiredFields: [
+                HermesGatewayField(
+                    key: "url",
+                    label: "Server URL",
+                    placeholder: "https://mm.example.com",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "token",
+                    label: "Bot token",
+                    placeholder: "bot account access token",
+                    kind: .secret,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Allowed user ID(s)",
+                    placeholder: "3uo8dkh1p7g1mfk49ear5fzs5c",
+                    kind: .text,
+                    isRequired: true,
+                ),
+            ],
+        ),
         .whatsapp: Entry(
             displayName: "WhatsApp",
             iconSlug: "whatsapp",
@@ -274,6 +302,10 @@ enum HermesGatewayCatalog {
             if let u = value("allowed_users") { out["NTFY_ALLOWED_USERS"] = u }
             if let t = value("server_url") { out["NTFY_SERVER_URL"] = t }
             if let t = value("token") { out["NTFY_TOKEN"] = t }
+        case .mattermost:
+            if let t = value("url") { out["MATTERMOST_URL"] = t }
+            if let t = value("token") { out["MATTERMOST_TOKEN"] = t }
+            if let u = value("allowed_users") { out["MATTERMOST_ALLOWED_USERS"] = u }
         }
         return out
     }
