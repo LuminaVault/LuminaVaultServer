@@ -35,8 +35,16 @@ hermes cron edit | pause | resume | run | remove <id>
 | **Managed** (LuminaVault per-tenant container) | **`docker exec` the container** — reuse the existing pattern in `Plugins/HermesHubSkillsService.swift` + `Models/HermesTenantContainer.swift` (already execs `hermes skills` into the tenant container). **MVP target.** |
 | **BYO** (user's own/remote Hermes, e.g. the VPS) | No exec. Needs Hermes's **management API** — the dashboard backend (`:9119`, session-token) exposes cron, or a future `api_server` cron extension. **Investigate; Phase 2.** `/v1` (`:8642`) is chat-only. |
 
-Start with **managed/exec** (covers most users, achievable now). BYO cron =
-Phase 2 once the dashboard cron API is mapped.
+**All cases are in scope** (managed container, BYO remote, standalone/system-wide
+— standalone is the BYO transport since there's no container to exec). Build
+order: **managed/exec first** (achievable now, testable on the local
+`hermes-agent`), then the **BYO transport** right after.
+
+**Read source:** `hermes cron list` has no `--json`; the source of truth is
+`$HERMES_HOME/cron/jobs.json` = `{ jobs: [ {id, name, prompt, schedule, deliver,
+skills, script, no_agent, workdir, last_run, status} ], updated_at }`. Managed:
+`cat` it via exec. BYO: the dashboard API (`:9119`) serves the same data — or, if
+it exposes a cron write endpoint, use that for create.
 
 ## Backend
 
