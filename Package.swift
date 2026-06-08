@@ -21,9 +21,7 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
-        // TEMP(her-100): local path pin for cross-repo dev of SoulComposeRequest.
-        // Revert to git tag pin `from: "0.78.0"` at ship time (plan Task 5).
-        .package(path: "../LuminaVaultShared"),
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "0.78.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
