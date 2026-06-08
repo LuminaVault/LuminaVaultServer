@@ -238,6 +238,15 @@ struct APNSNotificationService {
         guard enabled, let pushSender, !bundleID.isEmpty else { return }
 
         let db = fluent.db()
+
+        // HER-260 — honor the tenant's per-category opt-out ("quiet alerts").
+        // High-signal categories (achievement/reminder/cron) are never gated;
+        // chat/nudge/digest respect `apns_category_prefs`.
+        if try await Self.isCategorySuppressed(category, tenantID: userID, on: db) {
+            logger.debug("apns suppressed: tenant \(userID) opted out of \(category.rawValue)")
+            return
+        }
+
         let tokens = try await DeviceToken.query(on: db, tenantID: userID).all()
         guard !tokens.isEmpty else {
             logger.debug("apns skipped: no device tokens for tenant \(userID)")

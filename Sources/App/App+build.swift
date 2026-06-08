@@ -1786,6 +1786,9 @@ func buildRouter(
     // controller is CRUD only.
     let remindersController = RemindersController(
         fluent: services.fluent,
+        // HER-55 — chat→reminder detection reuses the routed LLM transport
+        // + default model, mirroring JobsController's classifier wiring.
+        classifier: ReminderIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
         logger: Logger(label: "lv.reminders"),
     )
     let remindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)

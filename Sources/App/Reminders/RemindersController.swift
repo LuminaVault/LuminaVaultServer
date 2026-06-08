@@ -7,28 +7,55 @@ import LuminaVaultShared
 
 extension ReminderListResponse: @retroactive ResponseEncodable {}
 extension ReminderDTO: @retroactive ResponseEncodable {}
+extension ReminderProposalDTO: @retroactive ResponseEncodable {}
 
 /// HER-Reminders — CRUD for user-scheduled timed messages.
 ///
 /// Endpoints (all tenant-scoped via `jwtAuthenticator`):
 /// - `GET    /v1/reminders` — pending + fired, newest `fireAt` first.
 /// - `POST   /v1/reminders` — create.
+/// - `POST   /v1/reminders/detect` — HER-55 classify a chat turn → proposal.
 /// - `PATCH  /v1/reminders/:id` — edit title/body/fireAt/recurrence.
 /// - `DELETE /v1/reminders/:id` — remove.
 ///
 /// Firing is owned by `ReminderScheduler`, not this controller.
 struct RemindersController {
     let fluent: Fluent
+    /// HER-55 — chat→reminder classifier. Optional so non-chat deployments
+    /// (and tests) can construct the controller without an LLM transport;
+    /// when nil, `/detect` always returns `isReminder: false`.
+    let classifier: ReminderIntentClassifier?
     let logger: Logger
 
     private static let maxLimit = 200
     private static let defaultLimit = 100
 
+    init(fluent: Fluent, classifier: ReminderIntentClassifier? = nil, logger: Logger) {
+        self.fluent = fluent
+        self.classifier = classifier
+        self.logger = logger
+    }
+
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
         router.post("", use: create)
+        router.post("/detect", use: detect)
         router.patch(":id", use: update)
         router.delete(":id", use: delete)
+    }
+
+    struct DetectRequest: Decodable { let text: String }
+
+    /// HER-55 — classify a chat message for reminder intent. Never creates
+    /// anything; the client surfaces the proposal and calls `create` on
+    /// confirm. Fails closed (`isReminder: false`) when the classifier is
+    /// absent so chat is never blocked.
+    @Sendable
+    func detect(_ req: Request, ctx: AppRequestContext) async throws -> ReminderProposalDTO {
+        let tenantID = try ctx.requireTenantID()
+        guard let classifier else { return ReminderProposalDTO(isReminder: false) }
+        let body = try await req.decode(as: DetectRequest.self, context: ctx)
+        return await classifier.classify(text: body.text, tenantID: tenantID)
     }
 
     @Sendable
