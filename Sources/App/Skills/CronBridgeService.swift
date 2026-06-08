@@ -43,25 +43,150 @@ struct CronBridgeService {
     }
 
     /// Natural language → a structured cron spec for confirmation (no write).
-    /// Reuses `JobIntentClassifier` for the schedule/title/body; the delivery
-    /// target is a cheap keyword scan (the classifier doesn't model it).
+    ///
+    /// Primary path is a **deterministic** schedule parser: the managed transport
+    /// routes through the user's full Hermes *agent* (SOUL + memory + cron tools),
+    /// which answers conversationally and ignores a "JSON only" system prompt — so
+    /// `JobIntentClassifier` can't be trusted here. The LLM is a fallback only.
     func preview(tenantID: UUID, text: String) async -> CronCreateSpec? {
-        let proposal = await classifier.classify(text: text, tenantID: tenantID)
-        logger.info("cron preview classify isJob=\(proposal.isJob) cron=\(proposal.cron ?? "nil") title=\(proposal.title ?? "nil")")
-        guard proposal.isJob, let cron = proposal.cron, !cron.isEmpty else { return nil }
         let lower = text.lowercased()
         let deliver = lower.contains("telegram") ? "telegram"
             : lower.contains("discord") ? "discord"
             : lower.contains("slack") ? "slack"
             : lower.contains("signal") ? "signal"
+            : lower.contains("email") || lower.contains("e-mail") ? "email"
             : "origin"
+
+        if let parsed = Self.parseSchedule(text) {
+            return CronCreateSpec(
+                schedule: parsed.cron,
+                prompt: text,
+                name: Self.deriveName(text),
+                deliver: deliver,
+                skills: nil,
+            )
+        }
+
+        // Fallback: ask the LLM (works for BYO/plain models that obey JSON).
+        let proposal = await classifier.classify(text: text, tenantID: tenantID)
+        logger.info("cron preview LLM-fallback isJob=\(proposal.isJob) cron=\(proposal.cron ?? "nil")")
+        guard proposal.isJob, let cron = proposal.cron, !cron.isEmpty else { return nil }
         return CronCreateSpec(
             schedule: cron,
-            prompt: proposal.spec ?? proposal.title,
-            name: proposal.title,
+            prompt: proposal.spec ?? text,
+            name: proposal.title ?? Self.deriveName(text),
             deliver: deliver,
             skills: nil,
         )
+    }
+
+    // MARK: - Deterministic NL → cron
+
+    /// Parse common English schedule phrasings into a 5-field crontab. Returns
+    /// nil if no recurring schedule is recognizable (caller falls back to the LLM).
+    static func parseSchedule(_ text: String) -> (cron: String, human: String)? {
+        let lower = text.lowercased()
+
+        // "every N minutes" / "every N hours"
+        if let m = firstMatch(#"every\s+(\d{1,3})\s*min"#, in: lower), let n = Int(m[1]), n > 0 {
+            return ("*/\(n) * * * *", "Every \(n) minute\(n == 1 ? "" : "s")")
+        }
+        if let m = firstMatch(#"every\s+(\d{1,3})\s*hour"#, in: lower), let n = Int(m[1]), n > 0 {
+            return ("0 */\(n) * * *", "Every \(n) hour\(n == 1 ? "" : "s")")
+        }
+        if lower.contains("hourly") || lower.range(of: #"every\s+hour"#, options: .regularExpression) != nil {
+            return ("0 * * * *", "Every hour")
+        }
+
+        let time = parseTimeOfDay(lower) ?? (hour: 9, minute: 0) // sensible default
+        let hhmm = "\(time.minute) \(time.hour)"
+        let humanTime = formatHuman(hour: time.hour, minute: time.minute)
+
+        // Day-of-week selector
+        let dowNames: [(String, Int, String)] = [
+            ("monday", 1, "Monday"), ("tuesday", 2, "Tuesday"), ("wednesday", 3, "Wednesday"),
+            ("thursday", 4, "Thursday"), ("friday", 5, "Friday"), ("saturday", 6, "Saturday"),
+            ("sunday", 0, "Sunday"),
+        ]
+
+        if lower.contains("weekday") {
+            return ("\(hhmm) * * 1-5", "Every weekday at \(humanTime)")
+        }
+        if lower.contains("weekend") {
+            return ("\(hhmm) * * 0,6", "Every weekend at \(humanTime)")
+        }
+        for (needle, dow, label) in dowNames where lower.contains(needle) {
+            return ("\(hhmm) * * \(dow)", "Every \(label) at \(humanTime)")
+        }
+        if lower.contains("weekly") || lower.contains("each week") || lower.contains("every week") {
+            return ("\(hhmm) * * 1", "Every Monday at \(humanTime)")
+        }
+        if lower.contains("daily") || lower.contains("every day") || lower.contains("each day")
+            || lower.contains("every morning") || lower.contains("every evening")
+            || lower.contains("every night") || lower.contains("each morning")
+        {
+            return ("\(hhmm) * * *", "Every day at \(humanTime)")
+        }
+
+        // A bare time with no frequency → assume daily; otherwise unrecognized.
+        if parseTimeOfDay(lower) != nil {
+            return ("\(hhmm) * * *", "Every day at \(humanTime)")
+        }
+        return nil
+    }
+
+    /// Extract an hour/minute from "9am", "9:30 pm", "at 17:00", "at 8".
+    static func parseTimeOfDay(_ lower: String) -> (hour: Int, minute: Int)? {
+        // With meridiem (am/pm) — most explicit.
+        if let m = firstMatch(#"(\d{1,2})(?::(\d{2}))?\s*(am|pm)"#, in: lower),
+           var h = Int(m[1]), (0 ... 23).contains(h)
+        {
+            let min = m.count > 2 ? (Int(m[2]) ?? 0) : 0
+            let mer = m.last ?? ""
+            if mer == "pm", h < 12 { h += 12 }
+            if mer == "am", h == 12 { h = 0 }
+            return (h % 24, min)
+        }
+        // 24h "at HH:MM" or "at HH".
+        if let m = firstMatch(#"at\s+(\d{1,2})(?::(\d{2}))?"#, in: lower),
+           let h = Int(m[1]), (0 ... 23).contains(h)
+        {
+            let min = m.count > 2 ? (Int(m[2]) ?? 0) : 0
+            return (h, min)
+        }
+        return nil
+    }
+
+    /// Regex helper → capture groups of the first match (group 0 omitted).
+    private static func firstMatch(_ pattern: String, in text: String) -> [String]? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let ns = text as NSString
+        guard let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        var groups: [String] = []
+        for i in 1 ..< m.numberOfRanges {
+            let r = m.range(at: i)
+            groups.append(r.location == NSNotFound ? "" : ns.substring(with: r))
+        }
+        return groups
+    }
+
+    private static func formatHuman(hour: Int, minute: Int) -> String {
+        let mer = hour < 12 ? "AM" : "PM"
+        let h12 = hour % 12 == 0 ? 12 : hour % 12
+        return minute == 0 ? "\(h12):00 \(mer)" : String(format: "%d:%02d %@", h12, minute, mer)
+    }
+
+    /// Short job name from the request text (schedule words trimmed).
+    static func deriveName(_ text: String) -> String {
+        let stops = ["every", "each", "daily", "weekly", "hourly", "weekday", "weekdays",
+                     "weekend", "weekends", "morning", "evening", "night", "at", "am", "pm",
+                     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        let words = text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && !stops.contains($0) && Int($0) == nil }
+        let picked = Array(words.prefix(6)).joined(separator: " ")
+        let title = picked.isEmpty ? "Scheduled job" : picked
+        return title.prefix(1).uppercased() + title.dropFirst()
     }
 
     func createBYO(baseURL: String, token: String, spec: CronCreateSpec) async throws -> [HermesCronJob] {
