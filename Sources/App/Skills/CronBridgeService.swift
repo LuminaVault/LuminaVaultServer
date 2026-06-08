@@ -153,19 +153,33 @@ struct CronBridgeService {
         }
         return jobs.compactMap { j in
             guard let id = j["id"] as? String else { return nil }
+            // schedule: dashboard sends `schedule_display` + an object
+            // `schedule {kind,expr,display}`; jobs.json may send a plain string.
+            let schedule: String?
+            if let sd = j["schedule_display"] as? String { schedule = sd }
+            else if let so = j["schedule"] as? [String: Any] {
+                schedule = (so["display"] as? String) ?? (so["expr"] as? String)
+            } else { schedule = j["schedule"] as? String }
+            // last run: `last_run_at` (+ `last_status`) or legacy `last_run`.
             let lastRun: String?
-            if let s = j["last_run"] as? String { lastRun = s }
+            if let lr = j["last_run_at"] as? String {
+                lastRun = (j["last_status"] as? String).map { "\(lr) (\($0))" } ?? lr
+            } else if let s = j["last_run"] as? String { lastRun = s }
             else if let d = j["last_run"] as? [String: Any] {
                 lastRun = (d["at"] as? String) ?? (d["status"] as? String)
             } else { lastRun = nil }
+            // status: paused flag wins, else state/status, else active.
+            let status: String
+            if j["enabled"] as? Bool == false { status = "paused" }
+            else { status = (j["state"] as? String) ?? (j["status"] as? String) ?? "active" }
             let mode = (j["no_agent"] as? Bool == true) ? "script" : "agent"
             return HermesCronJob(
                 id: id,
                 name: j["name"] as? String,
-                schedule: j["schedule"] as? String,
+                schedule: schedule,
                 deliver: j["deliver"] as? String,
                 lastRun: lastRun,
-                status: (j["status"] as? String) ?? "active",
+                status: status,
                 mode: mode,
             )
         }
