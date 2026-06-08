@@ -147,7 +147,9 @@ struct HermesGatewaysControllerTests {
             let token = try await Self.register(client: client)
             let putBody = ByteBuffer(string: #"{"config":{"foo":"bar"}}"#)
             try await client.execute(
-                uri: "/v1/me/hermes-gateways/matrix",
+                // `signal` is a real Hermes platform we do not expose in the
+                // catalog yet — a stable stand-in for an unsupported gateway id.
+                uri: "/v1/me/hermes-gateways/signal",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
                 body: putBody,

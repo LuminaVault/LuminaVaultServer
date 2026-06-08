@@ -152,6 +152,76 @@ enum HermesGatewayCatalog {
                 ),
             ],
         ),
+        .matrix: Entry(
+            displayName: "Matrix",
+            iconSlug: "matrix",
+            description: "Chat with Lumina over Matrix — your own homeserver or a public one like matrix.org.",
+            requiredFields: [
+                HermesGatewayField(
+                    key: "homeserver",
+                    label: "Homeserver URL",
+                    placeholder: "https://matrix.org",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "access_token",
+                    label: "Access token",
+                    placeholder: "syt_…",
+                    kind: .secret,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Allowed user ID(s)",
+                    placeholder: "@you:matrix.org",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "user_id",
+                    label: "Bot user ID (optional)",
+                    placeholder: "@lumina:matrix.org",
+                    kind: .text,
+                    isRequired: false,
+                ),
+            ],
+        ),
+        .ntfy: Entry(
+            displayName: "ntfy",
+            iconSlug: "ntfy",
+            description: "Push-chat with Lumina via ntfy.sh (or a self-hosted server) — a topic is all you need.",
+            requiredFields: [
+                HermesGatewayField(
+                    key: "topic",
+                    label: "Topic",
+                    placeholder: "lumina-yourname-2026",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "allowed_users",
+                    label: "Allowed topic(s)",
+                    placeholder: "lumina-yourname-2026",
+                    kind: .text,
+                    isRequired: true,
+                ),
+                HermesGatewayField(
+                    key: "server_url",
+                    label: "Server URL (optional)",
+                    placeholder: "https://ntfy.sh",
+                    kind: .text,
+                    isRequired: false,
+                ),
+                HermesGatewayField(
+                    key: "token",
+                    label: "Token (optional)",
+                    placeholder: "tk_…",
+                    kind: .secret,
+                    isRequired: false,
+                ),
+            ],
+        ),
         .whatsapp: Entry(
             displayName: "WhatsApp",
             iconSlug: "whatsapp",
@@ -194,6 +264,16 @@ enum HermesGatewayCatalog {
             if let t = value("imap_port") { out["EMAIL_IMAP_PORT"] = t }
             if let t = value("smtp_port") { out["EMAIL_SMTP_PORT"] = t }
             if let t = value("home_address") { out["EMAIL_HOME_ADDRESS"] = t }
+        case .matrix:
+            if let t = value("homeserver") { out["MATRIX_HOMESERVER"] = t }
+            if let t = value("access_token") { out["MATRIX_ACCESS_TOKEN"] = t }
+            if let u = value("allowed_users") { out["MATRIX_ALLOWED_USERS"] = u }
+            if let t = value("user_id") { out["MATRIX_USER_ID"] = t }
+        case .ntfy:
+            if let t = value("topic") { out["NTFY_TOPIC"] = t }
+            if let u = value("allowed_users") { out["NTFY_ALLOWED_USERS"] = u }
+            if let t = value("server_url") { out["NTFY_SERVER_URL"] = t }
+            if let t = value("token") { out["NTFY_TOKEN"] = t }
         }
         return out
     }
