@@ -1,19 +1,93 @@
+import AsyncHTTPClient
+import FluentKit
 import Foundation
 import Hummingbird
+import HummingbirdFluent
 import Logging
+import NIOCore
 
 /// Bridges LuminaVault to a tenant's **Hermes** cron jobs (the real
 /// `hermes cron` ones — Telegram/Discord digests, scrapers — NOT LuminaVault's
-/// own `CronScheduler`). Managed transport = `docker exec` into the tenant's
-/// container (same seam as `HermesHubSkillsService`). The source of truth is
-/// `$HERMES_HOME/cron/jobs.json`; `hermes cron list` has no JSON mode. BYO/
-/// standalone transport (no container) is added separately.
+/// own `CronScheduler`).
+///
+/// Two transports, picked per tenant:
+/// - **Managed:** `docker exec` into the tenant's container (same seam as
+///   `HermesHubSkillsService`); reads `$HERMES_HOME/cron/jobs.json`.
+/// - **BYO/standalone:** the Hermes dashboard cron API
+///   (`<cron_dashboard_url>/api/cron/jobs`, Bearer dashboard token) for a remote
+///   Hermes with no container.
 struct CronBridgeService {
     let docker: any DockerExec
     let containerManager: HermesContainerManager
+    let fluent: Fluent
+    let secretBox: SecretBox
+    let ssrfGuard: SSRFGuard
+    let httpClient: HTTPClient
     let logger: Logger
     /// HERMES_HOME inside the managed container (see docker-compose).
     private let hermesHome = "/opt/data"
+
+    // MARK: - Dispatch (managed → BYO)
+
+    /// List jobs from whichever source the tenant has: a managed container, else
+    /// a configured BYO dashboard. The response `source` tells the client which.
+    func list(tenantID: UUID) async throws -> HermesCronListResponse {
+        if (try? await containerManager.handle(tenantID: tenantID)) ?? nil != nil {
+            return HermesCronListResponse(source: "managed", jobs: try await listManaged(tenantID: tenantID))
+        }
+        if let byo = try await byoConfig(tenantID: tenantID) {
+            return HermesCronListResponse(source: "byo", jobs: try await listBYO(baseURL: byo.url, token: byo.token))
+        }
+        throw HTTPError(.notFound, message: "no_hermes_cron_source")
+    }
+
+    // MARK: - BYO (dashboard cron API)
+
+    /// Store (seal) the BYO Hermes dashboard cron endpoint + token. Reuses the
+    /// `user_hermes_config` row (empty api_server baseURL is fine — the resolver
+    /// treats it as no-override).
+    func setBYOConfig(tenantID: UUID, url: String, token: String) async throws {
+        let validated = try await ssrfGuard.validate(rawURL: url)
+        let sealed = try secretBox.seal(token, tenantID: tenantID)
+        let db = fluent.db()
+        let row = try await UserHermesConfig.query(on: db, tenantID: tenantID).first() ?? {
+            let r = UserHermesConfig()
+            r.tenantID = tenantID
+            r.baseURL = ""
+            return r
+        }()
+        row.cronDashboardURL = validated.absoluteString
+        row.cronDashboardTokenCiphertext = sealed.ciphertext
+        row.cronDashboardTokenNonce = sealed.nonce
+        try await row.save(on: db)
+    }
+
+    private func byoConfig(tenantID: UUID) async throws -> (url: String, token: String)? {
+        guard let row = try await UserHermesConfig.query(on: fluent.db(), tenantID: tenantID).first(),
+              let url = row.cronDashboardURL, !url.isEmpty,
+              let ct = row.cronDashboardTokenCiphertext, let nonce = row.cronDashboardTokenNonce
+        else { return nil }
+        let token = try secretBox.open(.init(ciphertext: ct, nonce: nonce), tenantID: tenantID)
+        return (url, token)
+    }
+
+    func listBYO(baseURL: String, token: String) async throws -> [HermesCronJob] {
+        // SSRF: the dashboard URL is user-provided — validate (+ re-resolve) it.
+        let validated = try await ssrfGuard.validate(rawURL: baseURL)
+        let endpoint = validated.absoluteString.hasSuffix("/")
+            ? validated.absoluteString + "api/cron/jobs"
+            : validated.absoluteString + "/api/cron/jobs"
+        var req = HTTPClientRequest(url: endpoint)
+        req.headers.add(name: "Authorization", value: "Bearer \(token)")
+        req.headers.add(name: "Accept", value: "application/json")
+        let resp = try await httpClient.execute(req, timeout: .seconds(15))
+        guard (200 ..< 300).contains(Int(resp.status.code)) else {
+            throw HTTPError(.badGateway, message: "byo_cron_http_\(resp.status.code)")
+        }
+        var body = try await resp.body.collect(upTo: 8 * 1024 * 1024)
+        let data = body.readData(length: body.readableBytes) ?? Data()
+        return Self.parse(data)
+    }
 
     // MARK: - Managed (docker exec)
 
@@ -68,10 +142,15 @@ struct CronBridgeService {
     // MARK: - Parse jobs.json (robust to field shape)
 
     static func parse(_ data: Data) -> [HermesCronJob] {
-        guard
-            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let jobs = obj["jobs"] as? [[String: Any]]
-        else { return [] }
+        let raw = try? JSONSerialization.jsonObject(with: data)
+        let jobs: [[String: Any]]
+        if let dict = raw as? [String: Any], let arr = dict["jobs"] as? [[String: Any]] {
+            jobs = arr                       // jobs.json shape
+        } else if let arr = raw as? [[String: Any]] {
+            jobs = arr                       // dashboard /api/cron/jobs shape (bare array)
+        } else {
+            return []
+        }
         return jobs.compactMap { j in
             guard let id = j["id"] as? String else { return nil }
             let lastRun: String?

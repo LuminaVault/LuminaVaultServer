@@ -23,6 +23,11 @@ final class UserHermesConfig: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "auth_header_ciphertext") var authHeaderCiphertext: Data?
     @OptionalField(key: "auth_header_nonce") var authHeaderNonce: Data?
     @OptionalField(key: "verified_at") var verifiedAt: Date?
+    /// BYO cron bridge — the Hermes dashboard cron API base (e.g.
+    /// `http://host:9119`) + sealed bearer token. Absent ⇒ no BYO cron source.
+    @OptionalField(key: "cron_dashboard_url") var cronDashboardURL: String?
+    @OptionalField(key: "cron_dashboard_token_ciphertext") var cronDashboardTokenCiphertext: Data?
+    @OptionalField(key: "cron_dashboard_token_nonce") var cronDashboardTokenNonce: Data?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

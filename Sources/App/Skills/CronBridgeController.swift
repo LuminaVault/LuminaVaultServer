@@ -7,18 +7,34 @@ import Hummingbird
 struct CronBridgeController {
     let service: CronBridgeService
 
+    struct ConfigRequest: Decodable {
+        let dashboardUrl: String
+        let dashboardToken: String
+    }
+
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: list)
         router.post(use: create)
+        router.put("config", use: setConfig)
         router.post(":id/pause", use: pause)
         router.post(":id/resume", use: resume)
         router.delete(":id", use: remove)
     }
 
+    /// Configure the BYO dashboard cron endpoint (URL + token), then return the
+    /// now-listable jobs.
+    @Sendable
+    func setConfig(_ req: Request, ctx: AppRequestContext) async throws -> HermesCronListResponse {
+        let tenantID = try ctx.requireTenantID()
+        let body = try await req.decode(as: ConfigRequest.self, context: ctx)
+        try await service.setBYOConfig(tenantID: tenantID, url: body.dashboardUrl, token: body.dashboardToken)
+        return try await service.list(tenantID: tenantID)
+    }
+
     @Sendable
     func list(_: Request, ctx: AppRequestContext) async throws -> HermesCronListResponse {
         let tenantID = try ctx.requireTenantID()
-        return HermesCronListResponse(source: "managed", jobs: try await service.listManaged(tenantID: tenantID))
+        return try await service.list(tenantID: tenantID)   // managed → BYO
     }
 
     @Sendable

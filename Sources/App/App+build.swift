@@ -675,6 +675,10 @@ func buildRouter(
             cronBridgeService = CronBridgeService(
                 docker: dockerExec,
                 containerManager: containerManager,
+                fluent: services.fluent,
+                secretBox: secretBox,
+                ssrfGuard: ssrfGuard,
+                httpClient: BYOHTTP.httpClient,
                 logger: Logger(label: "lv.cron-bridge"),
             )
             let xaiProcessRegistry = XaiOAuthProcessRegistry()

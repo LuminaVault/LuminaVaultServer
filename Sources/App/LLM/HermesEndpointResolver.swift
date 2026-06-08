@@ -64,7 +64,10 @@ actor HermesEndpointResolver {
         let row = try await UserHermesConfig.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .first()
-        guard let row else {
+        // A row may exist for cron-dashboard config only (empty api_server
+        // baseURL). Treat empty baseURL as "no override" → managed default,
+        // so cron config never breaks chat routing.
+        guard let row, !row.baseURL.trimmingCharacters(in: .whitespaces).isEmpty else {
             return Resolution(
                 baseURL: defaultBaseURL,
                 authHeader: nil,
