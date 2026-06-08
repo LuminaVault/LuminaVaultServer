@@ -17,6 +17,13 @@ struct URLEnrichmentService {
     /// `.captureHook` plugins transform the enriched metadata at `.postEnrich`
     /// before markdown is rendered. Nil disables silently (failure-isolated).
     let captureHooks: CaptureHookDispatcher?
+    /// HER-274 follow-up — when both are wired, the enriched link is embedded
+    /// into the `memories` recall index (idempotent on `source_vault_file_id`)
+    /// so chat grounding can surface saved links in later turns, not just at
+    /// capture time. Nil on the chat pre-enricher instance (which only uses
+    /// the side-effect-free `enrichURL`), set on the capture instance.
+    let embeddings: (any EmbeddingService)?
+    let memories: MemoryRepository?
 
     /// Register the enrichers in order of priority. Jina is NOT in this
     /// list — it runs as a tier-2 post-processor (`applyJinaIfShallow`)
@@ -33,12 +40,16 @@ struct URLEnrichmentService {
         logger: Logger,
         jinaEnricher: JinaEnricher? = nil,
         captureHooks: CaptureHookDispatcher? = nil,
+        embeddings: (any EmbeddingService)? = nil,
+        memories: MemoryRepository? = nil,
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
         self.logger = logger
         self.jinaEnricher = jinaEnricher
         self.captureHooks = captureHooks
+        self.embeddings = embeddings
+        self.memories = memories
     }
 
     /// HER-240 / spec ticket #4 — lightweight enrichment for chat
@@ -159,6 +170,17 @@ struct URLEnrichmentService {
                 }
                 try await row.save(on: db)
                 logger.info("enrichment completed tenant=\(tenantID) file=\(vaultFileID)")
+
+                // HER-274 follow-up — embed the enriched link into the recall
+                // index so `memories.semanticSearch` (chat grounding) surfaces
+                // it in future turns. Mirrors VaultIngestService's idempotent
+                // upsert. Failure-isolated: the capture already succeeded.
+                await indexMemory(
+                    metadata: metadata,
+                    vaultFileID: vaultFileID,
+                    spaceID: row.spaceID,
+                    tenantID: tenantID,
+                )
             }
         } catch {
             logger.error("enrichment failed tenant=\(tenantID) file=\(vaultFileID): \(error)")
@@ -174,6 +196,50 @@ struct URLEnrichmentService {
                 }
                 try? await row.save(on: db)
             }
+        }
+    }
+
+    /// HER-274 follow-up — embed enriched link content into `memories` so it
+    /// joins the semantic recall index (chat grounding). Mirrors
+    /// `VaultIngestService`'s idempotent upsert: update the memory already
+    /// bound to this vault file, else create one. No-op unless both
+    /// `embeddings` and `memories` are wired (chat pre-enricher leaves them
+    /// nil). Never throws — capture + enrichment already committed.
+    private func indexMemory(
+        metadata: EnrichedMetadata,
+        vaultFileID: UUID,
+        spaceID: UUID?,
+        tenantID: UUID,
+    ) async {
+        guard let embeddings, let memories else { return }
+        let text = [metadata.title, metadata.description, metadata.transcript, metadata.body]
+            .compactMap { $0 }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        guard !text.isEmpty else {
+            logger.info("link memory skipped (empty enriched content) tenant=\(tenantID) file=\(vaultFileID)")
+            return
+        }
+        do {
+            let embedding = try await embeddings.embed(text, tenantID: tenantID)
+            if let existing = try await memories.idBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: vaultFileID) {
+                _ = try await memories.updateContent(tenantID: tenantID, id: existing, content: text, embedding: embedding)
+                logger.info("link memory updated tenant=\(tenantID) file=\(vaultFileID) chars=\(text.count)")
+            } else {
+                _ = try await memories.create(
+                    tenantID: tenantID,
+                    content: text,
+                    embedding: embedding,
+                    tags: ["link"],
+                    sourceVaultFileID: vaultFileID,
+                    spaceID: spaceID,
+                    reviewState: "auto",
+                )
+                logger.info("link memory created tenant=\(tenantID) file=\(vaultFileID) chars=\(text.count)")
+            }
+        } catch {
+            logger.warning("link memory indexing failed tenant=\(tenantID) file=\(vaultFileID) error=\(error)")
         }
     }
 

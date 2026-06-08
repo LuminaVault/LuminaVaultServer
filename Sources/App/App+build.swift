@@ -1347,12 +1347,29 @@ func buildRouter(
     // HER-274 — shared by `CaptureController` (Safari share extension)
     // and `ConversationController` (chat auto-save-link post-processor).
     // Same vault file shape and enrichment pipeline either way.
+    //
+    // HER-274 follow-up — this is the embedding-aware enrichment instance.
+    // Unlike `urlEnrichmentService` (the chat pre-enricher copy, which only
+    // calls the side-effect-free `enrichURL`), the capture path persists, so
+    // it gets `embeddings` + `memories` wired: every saved link is embedded
+    // into the recall index and surfaces in future chat grounding. Built here
+    // (not above `llmController`) because `embeddingService` isn't ready yet
+    // at that point. Idempotent on `source_vault_file_id`.
+    let capturingEnrichmentService = URLEnrichmentService(
+        vaultPaths: vaultPaths,
+        fluent: services.fluent,
+        logger: Logger(label: "lv.capture"),
+        jinaEnricher: jinaEnricher,
+        captureHooks: captureHookDispatcher,
+        embeddings: embeddingService,
+        memories: MemoryRepository(fluent: services.fluent),
+    )
     let linkCaptureService = LinkCaptureService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         eventBus: eventBus,
         achievements: achievementsWorker,
-        enrichmentService: urlEnrichmentService,
+        enrichmentService: capturingEnrichmentService,
         logger: Logger(label: "lv.capture"),
     )
     let captureController = CaptureController(service: linkCaptureService)

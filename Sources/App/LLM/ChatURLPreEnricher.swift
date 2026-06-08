@@ -65,9 +65,12 @@ struct ChatURLPreEnricher {
         if let transcript = metadata.transcript, !transcript.isEmpty {
             block += "\n  <transcript>\(escapeXML(transcript))</transcript>"
         }
-        // Note: <body> block will be added once ticket #3 (JinaEnricher /
-        // EnrichedMetadata.body) merges — this branch is based on a main
-        // that predates that field. Follow-up commit after rebase.
+        // HER-240 ticket #3 — full page body from the jina tier-2 enricher
+        // (keyless r.jina.ai). Without this the LLM only saw title/description
+        // for a pasted link and couldn't reason about the article contents.
+        if let body = metadata.body, !body.isEmpty {
+            block += "\n  <body>\(escapeXML(body))</body>"
+        }
         block += "\n</context>"
         return block
     }
