@@ -47,6 +47,7 @@ struct CronBridgeService {
     /// target is a cheap keyword scan (the classifier doesn't model it).
     func preview(tenantID: UUID, text: String) async -> CronCreateSpec? {
         let proposal = await classifier.classify(text: text, tenantID: tenantID)
+        logger.info("cron preview classify isJob=\(proposal.isJob) cron=\(proposal.cron ?? "nil") title=\(proposal.title ?? "nil")")
         guard proposal.isJob, let cron = proposal.cron, !cron.isEmpty else { return nil }
         let lower = text.lowercased()
         let deliver = lower.contains("telegram") ? "telegram"
