@@ -596,6 +596,10 @@ func buildRouter(
     // the tenant's container. Built in the same secret branch (needs the docker
     // exec + container manager); mounted under /v1/plugins (tenant JWT).
     var hubSkillsService: HermesHubSkillsService?
+    // Hermes cron bridge — list/create the tenant's `hermes cron` jobs via
+    // docker exec (managed). Built in the same secret branch; mounted at
+    // /v1/me/hermes/cron.
+    var cronBridgeService: CronBridgeService?
     // HER-134 — LocalHermes text-embedding adapter resolves the running
     // per-tenant container via `HermesContainerManager.handle`. Outside
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
@@ -667,6 +671,11 @@ func buildRouter(
                 containerManager: containerManager,
                 installedSkillsClient: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
                 logger: Logger(label: "lv.plugins.hub-install"),
+            )
+            cronBridgeService = CronBridgeService(
+                docker: dockerExec,
+                containerManager: containerManager,
+                logger: Logger(label: "lv.cron-bridge"),
             )
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
@@ -1698,6 +1707,10 @@ func buildRouter(
         // tenant-JWT group. Only when a per-tenant container manager exists.
         if let hubSkillsService {
             HermesHubSkillsController(service: hubSkillsService).addRoutes(to: pluginsGroup)
+        }
+        if let cronBridgeService {
+            let cronGroup = router.group("/v1/me/hermes/cron").add(middleware: jwtAuthenticator)
+            CronBridgeController(service: cronBridgeService).addRoutes(to: cronGroup)
         }
     }
 
