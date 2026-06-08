@@ -2713,6 +2713,25 @@ paths:
         '204':
           description: Reset.
 
+  /v1/soul/compose:
+    post:
+      tags: [Soul]
+      operationId: composeSoul
+      summary: Compose a SOUL.md from structured agent traits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SoulComposeRequest' }
+      responses:
+        '200':
+          description: Composed SOUL.md.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SoulResponse' }
+        '413':
+          description: Composed document exceeds the maximum allowed size.
+
   # ──────────────────────────── Achievements ────────────────────────────
 
   /v1/achievements:
@@ -6454,6 +6473,21 @@ components:
       required: [markdown]
       properties:
         markdown: { type: string }
+
+    SoulComposeRequest:
+      type: object
+      required: [agent_name, tone, role, autonomy]
+      properties:
+        agent_name: { type: string }
+        tone:
+          type: string
+          enum: [warm, concise_technical, playful, coach]
+        role:
+          type: string
+          enum: [assistant, coworker, coach, second_brain]
+        autonomy:
+          type: string
+          enum: [ask_first, suggest, act]
 
     # ── Achievements ──
 
