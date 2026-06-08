@@ -17,6 +17,7 @@ struct SoulController {
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: get)
         router.put("", use: put)
+        router.post("compose", use: compose)
         router.delete("", use: delete)
     }
 
@@ -37,6 +38,28 @@ struct SoulController {
         let putRequest = try await req.decode(as: SoulPutRequest.self, context: ctx)
         let body = putRequest.markdown
         return try await telemetry.observe("soul.put") {
+            do {
+                try service.write(for: user, body: body)
+            } catch let SOULServiceError.tooLarge(bytes, limit) {
+                throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
+            }
+            if let achievements {
+                let tenantID = try user.requireID()
+                achievements.enqueue(tenantID: tenantID, event: .soulConfigured)
+            }
+            return SoulResponse(markdown: body, updatedAt: service.updatedAt(for: user))
+        }
+    }
+
+    @Sendable
+    func compose(_ req: Request, ctx: AppRequestContext) async throws -> SoulResponse {
+        let user = try ctx.requireIdentity()
+        // Canonical contract (openapi `SoulComposeRequest`): structured fields
+        // are rendered into a deterministic, fully-filled SOUL.md (no template
+        // comments). Persisted via the same path as `put`; 64 KiB cap applies.
+        let composeRequest = try await req.decode(as: SoulComposeRequest.self, context: ctx)
+        let body = SOULComposer.render(composeRequest, username: user.username)
+        return try await telemetry.observe("soul.compose") {
             do {
                 try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
