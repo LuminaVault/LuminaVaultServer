@@ -5246,11 +5246,12 @@ components:
 
     HermesGatewayID:
       type: string
-      enum: [telegram, discord, slack, whatsapp, email]
+      enum: [telegram, discord, slack, whatsapp, email, matrix, ntfy]
       description: |
         Identifier for a Hermes messaging gateway the user can configure.
-        Today this is the MVP four; the broader Hermes list (Matrix,
-        Signal, Email, SMS, …) lands in follow-up tickets.
+        Outbound-connecting platforms only (no inbound public webhook).
+        Webhook-based platforms (Teams, LINE) and file-credential ones
+        (Google Chat) land in follow-up tickets.
 
     HermesGatewayStatus:
       type: string
