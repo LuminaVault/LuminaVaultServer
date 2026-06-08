@@ -74,8 +74,11 @@ struct VaultIngestService {
         let content = input.content
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
-        let basename = (input.path as NSString).lastPathComponent
-        let safeRelative = try VaultController.sanitizePath("\(slug)/\(basename)")
+        // Obsidian filenames carry spaces / em-dashes / emoji / parens, which the
+        // strict vault sanitizer rejects. Slugify each path segment ourselves
+        // (preserving subfolder structure to avoid basename collisions) and keep
+        // the human title for display in metadata.
+        let safeRelative = Self.safePath(slug: slug, rawPath: input.path)
         let data = Data(content.utf8)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 
@@ -92,7 +95,8 @@ struct VaultIngestService {
         )
         try data.write(to: target, options: .atomic)
 
-        let metadata = VaultFileMetadata(title: Self.title(from: content, fallback: basename))
+        let humanName = (input.path as NSString).lastPathComponent
+        let metadata = VaultFileMetadata(title: Self.title(from: content, fallback: humanName))
         let savedID: UUID
         if let existing {
             existing.spaceID = spaceID
@@ -132,5 +136,38 @@ struct VaultIngestService {
             if t.hasPrefix("# ") { return String(t.dropFirst(2)).trimmingCharacters(in: .whitespaces) }
         }
         return (fallback as NSString).deletingPathExtension
+    }
+
+    /// Build a filesystem-safe relative path under the space, preserving subfolder
+    /// structure. Each segment is slugified (spaces/em-dash/emoji/parens → `-`);
+    /// the file always ends `.md`. `..`/`.` segments dropped (traversal-safe; the
+    /// caller also runs it through `resolveInside`).
+    static func safePath(slug: String, rawPath: String) -> String {
+        let parts = rawPath.split(separator: "/", omittingEmptySubsequences: true)
+            .map(String.init).filter { $0 != "." && $0 != ".." }
+        var segs: [String] = []
+        for (i, part) in parts.enumerated() {
+            if i == parts.count - 1 {
+                segs.append(slugifySegment((part as NSString).deletingPathExtension) + ".md")
+            } else {
+                segs.append(slugifySegment(part))
+            }
+        }
+        if segs.isEmpty { segs = ["note.md"] }
+        return ([slug] + segs).joined(separator: "/")
+    }
+
+    private static func slugifySegment(_ s: String) -> String {
+        var out = ""
+        var lastDash = false
+        for ch in s.lowercased() {
+            if ch.isLetter || ch.isNumber || ch == "." || ch == "_" {
+                out.append(ch); lastDash = false
+            } else if !lastDash {
+                out.append("-"); lastDash = true
+            }
+        }
+        out = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return out.isEmpty ? "x" : String(out.prefix(80))
     }
 }

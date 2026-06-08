@@ -30,10 +30,21 @@ struct VaultImportController {
         router.post("vault-bulk", use: bulk)
     }
 
+    /// 96 MB — a vault batch of markdown is far larger than the default decode
+    /// cap, so collect the body explicitly.
+    let maxBodyBytes = 96 * 1024 * 1024
+
     @Sendable
     func bulk(_ req: Request, ctx: AppRequestContext) async throws -> BulkResponse {
         let tenantID = try ctx.requireTenantID()
-        let body = try await req.decode(as: BulkRequest.self, context: ctx)
+        var mutableReq = req
+        let buffer = try await mutableReq.collectBody(upTo: maxBodyBytes)
+        let body: BulkRequest
+        do {
+            body = try JSONDecoder().decode(BulkRequest.self, from: Data(buffer: buffer))
+        } catch {
+            throw HTTPError(.badRequest, message: "invalid_body")
+        }
         guard !body.space.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HTTPError(.badRequest, message: "space_required")
         }
