@@ -213,7 +213,7 @@ struct URLEnrichmentService {
     ) async {
         guard let embeddings, let memories else { return }
         let text = [metadata.title, metadata.description, metadata.transcript, metadata.body]
-            .compactMap { $0 }
+            .compactMap(\.self)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
