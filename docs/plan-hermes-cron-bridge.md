@@ -33,7 +33,7 @@ hermes cron edit | pause | resume | run | remove <id>
 | Hermes location | How LuminaVault reaches `hermes cron` |
 |---|---|
 | **Managed** (LuminaVault per-tenant container) | **`docker exec` the container** — reuse the existing pattern in `Plugins/HermesHubSkillsService.swift` + `Models/HermesTenantContainer.swift` (already execs `hermes skills` into the tenant container). **MVP target.** |
-| **BYO** (user's own/remote Hermes, e.g. the VPS) | No exec. Needs Hermes's **management API** — the dashboard backend (`:9119`, session-token) exposes cron, or a future `api_server` cron extension. **Investigate; Phase 2.** `/v1` (`:8642`) is chat-only. |
+| **BYO** (user's own/remote Hermes, e.g. the VPS) | **CONFIRMED:** the dashboard (`:9119`, externally reachable) serves **`GET /api/cron/jobs` → 200** with the full jobs JSON (and `POST` to create). Auth = `Authorization: Bearer <dashboard __HERMES_SESSION_TOKEN__>` (embedded in the dashboard HTML). `/v1` (`:8642`) is chat-only — not this. ⚠️ Security: the dashboard is the **full admin UI**, broader than `/v1`; exposing it + handing LuminaVault a dashboard token is heavier than the api_server. Implementation: a `BYODashboardCronClient` + a stored dashboard URL+token (separate from the api_server BYO config). |
 
 **All cases are in scope** (managed container, BYO remote, standalone/system-wide
 — standalone is the BYO transport since there's no container to exec). Build
