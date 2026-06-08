@@ -20,12 +20,12 @@ struct VaultIngestService {
     let embeddings: any EmbeddingService
     let logger: Logger
 
-    struct FileInput: Decodable, Sendable {
+    struct FileInput: Decodable {
         let path: String
         let content: String
     }
 
-    struct Result: Sendable {
+    struct Result {
         let spaceID: UUID
         let spaceSlug: String
         var imported: Int = 0

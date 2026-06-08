@@ -31,7 +31,7 @@ enum BYOHTTP {
     /// `URLSession` that never follows redirects. The delegate is stateless, so
     /// a single shared instance is safe. Used by the BYO-Hermes proxy dispatch
     /// (`HermesGatewayAdapter`) and the `/test` probe (`HermesConfigController`).
-    static let session: URLSession = URLSession(
+    static let session: URLSession = .init(
         configuration: .ephemeral,
         delegate: NoRedirectURLSessionDelegate(),
         delegateQueue: nil,
@@ -40,7 +40,7 @@ enum BYOHTTP {
     /// `AsyncHTTPClient` that never follows redirects, for the BYO-Hermes chat
     /// **stream** path. Process-lifetime singleton (never deinited, so no
     /// shutdown warning — same lifecycle model as `HTTPClient.shared`).
-    static let httpClient: HTTPClient = HTTPClient(
+    static let httpClient: HTTPClient = .init(
         eventLoopGroupProvider: .singleton,
         configuration: HTTPClient.Configuration(redirectConfiguration: .disallow),
     )

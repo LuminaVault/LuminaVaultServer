@@ -269,7 +269,7 @@ struct ProvidersController {
 
         // `try?` over a throwing `-> ResolvedCredential?` yields a double
         // optional; flatten with `?? nil`.
-        let resolved = (try? await credentialStore.credential(for: kind, tenantID: tenantID)) ?? nil
+        let resolved = await (try? credentialStore.credential(for: kind, tenantID: tenantID)) ?? nil
         let key = resolved?.apiKey
         let base = resolved?.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
         let url = base.appendingPathComponent("v1").appendingPathComponent("models")
