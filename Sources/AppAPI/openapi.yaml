@@ -3108,6 +3108,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/reminders/detect:
+    post:
+      tags: [Reminders]
+      operationId: remindersDetect
+      summary: Classify a chat message for reminder intent (HER-55).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties: { text: { type: string } }
+      responses:
+        '200':
+          description: Reminder proposal (isReminder=false when not a reminder request).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderProposalDTO' }
+
   /v1/reminders/sync:
     post:
       tags: [Reminders]
@@ -5025,6 +5045,18 @@ components:
         body: { type: string }
         fireAt: { type: string, format: date-time }
         recurrenceCron: { type: string }
+
+    ReminderProposalDTO:
+      type: object
+      required: [isReminder]
+      description: "HER-55 — reminder intent classification result (chat→reminder)."
+      properties:
+        isReminder: { type: boolean }
+        title: { type: string }
+        body: { type: string }
+        fireAt: { type: string, format: date-time }
+        recurrenceCron: { type: string }
+        scheduleHuman: { type: string }
 
     # ── Projects (HER-Projects) ──
 
