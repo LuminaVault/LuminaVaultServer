@@ -23,20 +23,76 @@ struct CronBridgeService {
     let secretBox: SecretBox
     let ssrfGuard: SSRFGuard
     let httpClient: HTTPClient
+    /// NL → cron spec (reuses the chat→job classifier).
+    let classifier: JobIntentClassifier
     let logger: Logger
     /// HERMES_HOME inside the managed container (see docker-compose).
     private let hermesHome = "/opt/data"
+
+    // MARK: - Create (dispatch + NL preview)
+
+    /// Create a job on whichever source the tenant has (managed exec / BYO API).
+    func create(tenantID: UUID, spec: CronCreateSpec) async throws -> HermesCronListResponse {
+        if await (try? containerManager.handle(tenantID: tenantID)) ?? nil != nil {
+            return try await HermesCronListResponse(source: "managed", jobs: createManaged(tenantID: tenantID, spec: spec))
+        }
+        if let byo = try await byoConfig(tenantID: tenantID) {
+            return try await HermesCronListResponse(source: "byo", jobs: createBYO(baseURL: byo.url, token: byo.token, spec: spec))
+        }
+        throw HTTPError(.notFound, message: "no_hermes_cron_source")
+    }
+
+    /// Natural language → a structured cron spec for confirmation (no write).
+    /// Reuses `JobIntentClassifier` for the schedule/title/body; the delivery
+    /// target is a cheap keyword scan (the classifier doesn't model it).
+    func preview(tenantID: UUID, text: String) async -> CronCreateSpec? {
+        let proposal = await classifier.classify(text: text, tenantID: tenantID)
+        guard proposal.isJob, let cron = proposal.cron, !cron.isEmpty else { return nil }
+        let lower = text.lowercased()
+        let deliver = lower.contains("telegram") ? "telegram"
+            : lower.contains("discord") ? "discord"
+            : lower.contains("slack") ? "slack"
+            : lower.contains("signal") ? "signal"
+            : "origin"
+        return CronCreateSpec(
+            schedule: cron,
+            prompt: proposal.spec ?? proposal.title,
+            name: proposal.title,
+            deliver: deliver,
+            skills: nil,
+        )
+    }
+
+    func createBYO(baseURL: String, token: String, spec: CronCreateSpec) async throws -> [HermesCronJob] {
+        let validated = try await ssrfGuard.validate(rawURL: baseURL)
+        let endpoint = validated.absoluteString.hasSuffix("/")
+            ? validated.absoluteString + "api/cron/jobs"
+            : validated.absoluteString + "/api/cron/jobs"
+        var req = HTTPClientRequest(url: endpoint)
+        req.method = .POST
+        req.headers.add(name: "Authorization", value: "Bearer \(token)")
+        req.headers.add(name: "Content-Type", value: "application/json")
+        var bodyObj: [String: Any] = ["schedule": spec.schedule, "deliver": spec.deliver ?? "origin"]
+        if let prompt = spec.prompt, !prompt.isEmpty { bodyObj["prompt"] = prompt }
+        if let name = spec.name, !name.isEmpty { bodyObj["name"] = name }
+        req.body = try .bytes(JSONSerialization.data(withJSONObject: bodyObj))
+        let resp = try await httpClient.execute(req, timeout: .seconds(25))
+        guard (200 ..< 300).contains(Int(resp.status.code)) else {
+            throw HTTPError(.badGateway, message: "byo_cron_create_\(resp.status.code)")
+        }
+        return try await listBYO(baseURL: baseURL, token: token)
+    }
 
     // MARK: - Dispatch (managed → BYO)
 
     /// List jobs from whichever source the tenant has: a managed container, else
     /// a configured BYO dashboard. The response `source` tells the client which.
     func list(tenantID: UUID) async throws -> HermesCronListResponse {
-        if (try? await containerManager.handle(tenantID: tenantID)) ?? nil != nil {
-            return HermesCronListResponse(source: "managed", jobs: try await listManaged(tenantID: tenantID))
+        if await (try? containerManager.handle(tenantID: tenantID)) ?? nil != nil {
+            return try await HermesCronListResponse(source: "managed", jobs: listManaged(tenantID: tenantID))
         }
         if let byo = try await byoConfig(tenantID: tenantID) {
-            return HermesCronListResponse(source: "byo", jobs: try await listBYO(baseURL: byo.url, token: byo.token))
+            return try await HermesCronListResponse(source: "byo", jobs: listBYO(baseURL: byo.url, token: byo.token))
         }
         throw HTTPError(.notFound, message: "no_hermes_cron_source")
     }
@@ -112,7 +168,9 @@ struct CronBridgeService {
         if let prompt = spec.prompt, !prompt.isEmpty { command.append(prompt) }
         if let name = spec.name, !name.isEmpty { command += ["--name", name] }
         if let deliver = spec.deliver, !deliver.isEmpty { command += ["--deliver", deliver] }
-        for skill in spec.skills ?? [] where !skill.isEmpty { command += ["--skill", skill] }
+        for skill in spec.skills ?? [] where !skill.isEmpty {
+            command += ["--skill", skill]
+        }
         let result = try await docker.exec(container: handle.containerName, command: command, stdin: nil)
         guard result.ok else {
             logger.error("hermes cron create failed tenant=\(tenantID) exit=\(result.exitCode): \(Logger.redact(result.stderr))")
@@ -145,9 +203,9 @@ struct CronBridgeService {
         let raw = try? JSONSerialization.jsonObject(with: data)
         let jobs: [[String: Any]]
         if let dict = raw as? [String: Any], let arr = dict["jobs"] as? [[String: Any]] {
-            jobs = arr                       // jobs.json shape
+            jobs = arr // jobs.json shape
         } else if let arr = raw as? [[String: Any]] {
-            jobs = arr                       // dashboard /api/cron/jobs shape (bare array)
+            jobs = arr // dashboard /api/cron/jobs shape (bare array)
         } else {
             return []
         }
@@ -155,23 +213,20 @@ struct CronBridgeService {
             guard let id = j["id"] as? String else { return nil }
             // schedule: dashboard sends `schedule_display` + an object
             // `schedule {kind,expr,display}`; jobs.json may send a plain string.
-            let schedule: String?
-            if let sd = j["schedule_display"] as? String { schedule = sd }
+            let schedule: String? = if let sd = j["schedule_display"] as? String { sd }
             else if let so = j["schedule"] as? [String: Any] {
-                schedule = (so["display"] as? String) ?? (so["expr"] as? String)
-            } else { schedule = j["schedule"] as? String }
+                (so["display"] as? String) ?? (so["expr"] as? String)
+            } else { j["schedule"] as? String }
             // last run: `last_run_at` (+ `last_status`) or legacy `last_run`.
-            let lastRun: String?
-            if let lr = j["last_run_at"] as? String {
-                lastRun = (j["last_status"] as? String).map { "\(lr) (\($0))" } ?? lr
-            } else if let s = j["last_run"] as? String { lastRun = s }
+            let lastRun: String? = if let lr = j["last_run_at"] as? String {
+                (j["last_status"] as? String).map { "\(lr) (\($0))" } ?? lr
+            } else if let s = j["last_run"] as? String { s }
             else if let d = j["last_run"] as? [String: Any] {
-                lastRun = (d["at"] as? String) ?? (d["status"] as? String)
-            } else { lastRun = nil }
+                (d["at"] as? String) ?? (d["status"] as? String)
+            } else { nil }
             // status: paused flag wins, else state/status, else active.
-            let status: String
-            if j["enabled"] as? Bool == false { status = "paused" }
-            else { status = (j["state"] as? String) ?? (j["status"] as? String) ?? "active" }
+            let status: String = if j["enabled"] as? Bool == false { "paused" }
+            else { (j["state"] as? String) ?? (j["status"] as? String) ?? "active" }
             let mode = (j["no_agent"] as? Bool == true) ? "script" : "agent"
             return HermesCronJob(
                 id: id,
@@ -187,7 +242,7 @@ struct CronBridgeService {
 }
 
 /// Structured create spec (filled directly, or by NL → spec via JobIntentClassifier).
-struct CronCreateSpec: Decodable {
+struct CronCreateSpec: Codable, ResponseEncodable {
     let schedule: String
     let prompt: String?
     let name: String?
@@ -208,6 +263,6 @@ struct HermesCronJob: Codable, ResponseEncodable {
 }
 
 struct HermesCronListResponse: Codable, ResponseEncodable {
-    let source: String   // "managed" | "byo"
+    let source: String // "managed" | "byo"
     let jobs: [HermesCronJob]
 }

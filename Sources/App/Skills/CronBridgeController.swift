@@ -12,13 +12,27 @@ struct CronBridgeController {
         let dashboardToken: String
     }
 
+    struct PreviewRequest: Decodable { let text: String }
+
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: list)
         router.post(use: create)
+        router.post("preview", use: preview)
         router.put("config", use: setConfig)
         router.post(":id/pause", use: pause)
         router.post(":id/resume", use: resume)
         router.delete(":id", use: remove)
+    }
+
+    /// Natural language → a cron spec for the user to confirm (no write).
+    @Sendable
+    func preview(_ req: Request, ctx: AppRequestContext) async throws -> CronCreateSpec {
+        let tenantID = try ctx.requireTenantID()
+        let body = try await req.decode(as: PreviewRequest.self, context: ctx)
+        guard let spec = await service.preview(tenantID: tenantID, text: body.text) else {
+            throw HTTPError(.unprocessableContent, message: "not_a_schedulable_job")
+        }
+        return spec
     }
 
     /// Configure the BYO dashboard cron endpoint (URL + token), then return the
@@ -34,7 +48,7 @@ struct CronBridgeController {
     @Sendable
     func list(_: Request, ctx: AppRequestContext) async throws -> HermesCronListResponse {
         let tenantID = try ctx.requireTenantID()
-        return try await service.list(tenantID: tenantID)   // managed → BYO
+        return try await service.list(tenantID: tenantID) // managed → BYO
     }
 
     @Sendable
@@ -44,7 +58,7 @@ struct CronBridgeController {
         guard !spec.schedule.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw HTTPError(.badRequest, message: "schedule_required")
         }
-        return HermesCronListResponse(source: "managed", jobs: try await service.createManaged(tenantID: tenantID, spec: spec))
+        return try await service.create(tenantID: tenantID, spec: spec) // managed → BYO
     }
 
     @Sendable
@@ -67,6 +81,6 @@ struct CronBridgeController {
         guard let id = ctx.parameters.get("id"), !id.isEmpty else {
             throw HTTPError(.badRequest, message: "id_required")
         }
-        return HermesCronListResponse(source: "managed", jobs: try await service.mutateManaged(tenantID: tenantID, action: action, id: id))
+        return try await HermesCronListResponse(source: "managed", jobs: service.mutateManaged(tenantID: tenantID, action: action, id: id))
     }
 }

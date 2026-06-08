@@ -600,6 +600,11 @@ func buildRouter(
     // docker exec (managed). Built in the same secret branch; mounted at
     // /v1/me/hermes/cron.
     var cronBridgeService: CronBridgeService?
+    // Cron bridge deps captured from the secret branch; the service is assembled
+    // after `routedTransport` exists (NL→spec classifier needs it).
+    var cronDocker: (any DockerExec)?
+    var cronContainerManager: HermesContainerManager?
+    var cronSSRF: SSRFGuard?
     // HER-134 — LocalHermes text-embedding adapter resolves the running
     // per-tenant container via `HermesContainerManager.handle`. Outside
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
@@ -672,15 +677,12 @@ func buildRouter(
                 installedSkillsClient: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
                 logger: Logger(label: "lv.plugins.hub-install"),
             )
-            cronBridgeService = CronBridgeService(
-                docker: dockerExec,
-                containerManager: containerManager,
-                fluent: services.fluent,
-                secretBox: secretBox,
-                ssrfGuard: ssrfGuard,
-                httpClient: BYOHTTP.httpClient,
-                logger: Logger(label: "lv.cron-bridge"),
-            )
+            // Cron bridge deps captured here (docker/container/ssrf live in this
+            // branch); the service is built after `routedTransport` (the
+            // NL→spec classifier needs it).
+            cronDocker = dockerExec
+            cronContainerManager = containerManager
+            cronSSRF = ssrfGuard
             let xaiProcessRegistry = XaiOAuthProcessRegistry()
             let xaiService = XaiOAuthService(
                 containerManager: containerManager,
@@ -986,6 +988,21 @@ func buildRouter(
         usageMeter: usageMeterService,
         failoverLogger: providerFailoverLogger,
     )
+
+    // Cron bridge — assembled now that `routedTransport` exists (the NL→spec
+    // classifier needs it). Deps were captured from the secret branch.
+    if let cronDocker, let cronContainerManager, let cronSSRF, let secretBoxRef {
+        cronBridgeService = CronBridgeService(
+            docker: cronDocker,
+            containerManager: cronContainerManager,
+            fluent: services.fluent,
+            secretBox: secretBoxRef,
+            ssrfGuard: cronSSRF,
+            httpClient: BYOHTTP.httpClient,
+            classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
+            logger: Logger(label: "lv.cron-bridge"),
+        )
+    }
 
     // HER-200 — use the routed transport for the user-facing chat
     // endpoint so model-based routing + failover apply to LLM calls.
