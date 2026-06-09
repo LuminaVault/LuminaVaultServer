@@ -335,10 +335,24 @@ The error banner maps to:
 
 ---
 
-## Future work: BYO LuminaVault server
+## BYO LuminaVault server (separate from BYO Hermes)
 
 This guide covers hosting your own **Hermes**. Pointing the iOS app at your own
-**LuminaVault API server** (e.g. `https://facorreiavault.com`) is a separate
-feature that is **not yet wired** — the in-app "BYO endpoint" backend-mode picker
-currently falls back to the managed API and ignores a custom URL. Tracked
-separately.
+**LuminaVault API server** (e.g. `https://vault.example.com`) is a **separate,
+now-shipped** feature — don't confuse the two.
+
+In the app: **Settings → Server Connection → Backend mode**. Two self-host
+modes take a user-entered URL, health-probe it, persist it, and force a clean
+re-login against your server:
+
+- **BYO endpoint** — a publicly reachable LuminaVault server URL.
+- **Tailscale** — a MagicDNS name / tailnet IP of a LuminaVault server on your
+  tailnet. WireGuard encrypts the link, so plain `http://` is fine here.
+
+Note this is the **iOS client → LuminaVault server** hop. It is independent of
+the **server → your Hermes** BYO-Hermes connection documented above, and of the
+server-side `SSRFGuard` (which only constrains the server's outbound BYO-Hermes
+calls, not which server the client talks to).
+
+See [`connectivity-status.md`](connectivity-status.md) for the full
+transport-vs-backend-mode status matrix.
