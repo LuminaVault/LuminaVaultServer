@@ -24,9 +24,14 @@ struct FilesystemHermesGateway: HermesGateway {
 
     func provisionProfile(tenantID: UUID, username: String) async throws -> String {
         let fm = FileManager.default
-        let profilesRoot = URL(fileURLWithPath: rootPath, isDirectory: true)
-            .appendingPathComponent("profiles", isDirectory: true)
-        let dir = profilesRoot.appendingPathComponent(username, isDirectory: true)
+        let paths = HermesDataPathService(hermesDataRoot: rootPath)
+        do {
+            try paths.ensureProfilesDirectoryWritable(logger: logger)
+        } catch let err as HermesDataError {
+            throw HermesGatewayError.ioFailure(err.description)
+        }
+        let profilesRoot = paths.profilesRoot()
+        let dir = paths.profileDirectory(for: username)
         let configURL = dir.appendingPathComponent("profile.json")
 
         if fm.fileExists(atPath: configURL.path) {

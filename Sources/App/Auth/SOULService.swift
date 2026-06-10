@@ -31,11 +31,12 @@ struct SOULService {
         vaultPaths.rawDirectory(for: tenantID).appendingPathComponent(Self.fileName)
     }
 
+    private var hermesPaths: HermesDataPathService {
+        HermesDataPathService(hermesDataRoot: hermesDataRoot)
+    }
+
     func hermesFilePath(for username: String) -> URL {
-        URL(fileURLWithPath: hermesDataRoot)
-            .appendingPathComponent("profiles")
-            .appendingPathComponent(username)
-            .appendingPathComponent(Self.fileName)
+        hermesPaths.profileDirectory(for: username).appendingPathComponent(Self.fileName)
     }
 
     // MARK: - Init at signup
@@ -117,6 +118,7 @@ struct SOULService {
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         try atomicWrite(data: data, to: vaultFilePath(for: tenantID))
 
+        try hermesPaths.ensureProfilesDirectoryWritable(logger: logger)
         let hermesTarget = hermesFilePath(for: username)
         try FileManager.default.createDirectory(
             at: hermesTarget.deletingLastPathComponent(),

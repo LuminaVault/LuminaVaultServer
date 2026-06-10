@@ -24,6 +24,14 @@ fi
 # /opt/data recursively), so this dir inherits hermes ownership.
 mkdir -p "${HERMES_HOME}/mnemosyne" 2>/dev/null || true
 
+# HER-85/100 — Hummingbird mirrors SOUL.md into profiles/<username>/ on
+# PUT /v1/soul. The app container runs as uid 999; Hermes owns the tree.
+# Traverse-only on the data root; shared write on profiles/ (sticky tmpdir
+# semantics so either service can create per-user dirs safely).
+mkdir -p "${HERMES_HOME}/profiles" 2>/dev/null || true
+chmod 711 "${HERMES_HOME}" 2>/dev/null || true
+chmod 1777 "${HERMES_HOME}/profiles" 2>/dev/null || true
+
 # Hand off to the base image's documented entrypoint, which bootstraps the
 # runtime env and launches the `hermes` CLI. CMD (`gateway run`) flows through
 # as "$@". We do NOT call `hermes` directly — it is not on the default PATH

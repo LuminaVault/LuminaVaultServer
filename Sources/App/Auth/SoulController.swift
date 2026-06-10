@@ -42,6 +42,8 @@ struct SoulController {
                 try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
                 throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
+            } catch let err as HermesDataError {
+                throw HTTPError(.serviceUnavailable, message: err.description)
             }
             if let achievements {
                 let tenantID = try user.requireID()
@@ -64,6 +66,8 @@ struct SoulController {
                 try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
                 throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
+            } catch let err as HermesDataError {
+                throw HTTPError(.serviceUnavailable, message: err.description)
             }
             if let achievements {
                 let tenantID = try user.requireID()

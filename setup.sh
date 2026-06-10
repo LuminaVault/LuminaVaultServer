@@ -53,6 +53,11 @@ fi
 # --- 2. Per-tenant data dirs -------------------------------------------------
 log "ensuring data directories"
 mkdir -p data/hermes/profiles data/postgres18 data/luminavault
+# HER-85 — Hummingbird (uid 999 in the app image) mirrors SOUL.md into
+# data/hermes/profiles/<username>/. Hermes may later tighten the root to
+# 700; keep profiles cross-writable so PUT /v1/soul never 500s.
+chmod 711 data/hermes 2>/dev/null || true
+chmod 1777 data/hermes/profiles 2>/dev/null || true
 
 # --- 3. Compose up (postgres + hermes + jaeger) ------------------------------
 log "starting infrastructure (postgres, hermes, jaeger)"

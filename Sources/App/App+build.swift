@@ -353,6 +353,15 @@ func buildRouter(
         dataRoot: services.hermesDataRoot,
         logger: hermesLogger,
     )
+    if services.hermesGatewayKind == "filesystem" {
+        do {
+            try HermesDataPathService(hermesDataRoot: services.hermesDataRoot)
+                .ensureProfilesDirectoryWritable(logger: hermesLogger)
+        } catch {
+            hermesLogger.critical("hermes profiles bootstrap failed: \(error)")
+            throw error
+        }
+    }
     let hermesProfileService = HermesProfileService(
         fluent: services.fluent,
         gateway: hermesGateway,
