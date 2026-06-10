@@ -185,13 +185,10 @@ struct ConversationController {
         )
         let sessionKey = tenantID.uuidString
         let sessionID = conversationID.uuidString
-        // Bind the authenticated user into the routing task-local so BYOK
-        // adapters can resolve this tenant's provider key. The stream's work
-        // Task is created synchronously inside `chatStream`, so it captures the
-        // binding here even though the chunks are consumed later.
-        let chunks = LLMRoutingContext.$currentUser.withValue(user) {
-            streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
-        }
+        // Capture middleware-resolved Hermes routing before the unstructured
+        // stream Task starts — @TaskLocal does not propagate across that hop.
+        let hermesResolution = ctx.hermesResolution
+        let streamService = streamService
         let fluent = fluent
         let logger = log
         let followUpGenerator = followUpGenerator
@@ -229,17 +226,30 @@ struct ConversationController {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
+                    // Bind routing task-locals and create/consume the upstream
+                    // stream in one structured block. Creating the AsyncStream
+                    // outside this Task and then pushing a second @TaskLocal
+                    // here segfaults on Linux (swift_task_localValuePush).
                     try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                        for try await chunk in chunks {
-                            if Task.isCancelled { break }
-                            if !chunk.delta.isEmpty {
-                                if firstTokenMs == nil {
-                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                        try await LLMRoutingContext.$currentUser.withValue(user) {
+                            try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                let chunks = streamService.chatStream(
+                                    sessionKey: sessionKey,
+                                    sessionID: sessionID,
+                                    request: chatRequest,
+                                )
+                                for try await chunk in chunks {
+                                    if Task.isCancelled { break }
+                                    if !chunk.delta.isEmpty {
+                                        if firstTokenMs == nil {
+                                            firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                            logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                        }
+                                        tokenCount += 1
+                                        assistantBuffer.append(chunk.delta)
+                                        continuation.yield(.token(chunk.delta))
+                                    }
                                 }
-                                tokenCount += 1
-                                assistantBuffer.append(chunk.delta)
-                                continuation.yield(.token(chunk.delta))
                             }
                         }
                     }

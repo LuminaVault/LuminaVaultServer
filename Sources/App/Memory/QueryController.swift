@@ -139,7 +139,7 @@ struct QueryController {
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4,
         )
-        let chunks = streamService.chatStream(sessionKey: sessionKey, sessionID: sessionID, request: chatRequest)
+        let hermesResolution = ctx.hermesResolution
         let logger = log
         let followUpGenerator = followUpGenerator
         let hitDTOs = hits.map {
@@ -167,16 +167,25 @@ struct QueryController {
                     var firstTokenMs: Int64?
                     var tokenCount = 0
                     try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                        for try await chunk in chunks {
-                            if Task.isCancelled { break }
-                            if !chunk.delta.isEmpty {
-                                if firstTokenMs == nil {
-                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                    logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                        try await LLMRoutingContext.$currentUser.withValue(user) {
+                            try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                let chunks = streamService.chatStream(
+                                    sessionKey: sessionKey,
+                                    sessionID: sessionID,
+                                    request: chatRequest,
+                                )
+                                for try await chunk in chunks {
+                                    if Task.isCancelled { break }
+                                    if !chunk.delta.isEmpty {
+                                        if firstTokenMs == nil {
+                                            firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                            logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                        }
+                                        tokenCount += 1
+                                        assistantBuffer.append(chunk.delta)
+                                        continuation.yield(.token(chunk.delta))
+                                    }
                                 }
-                                tokenCount += 1
-                                assistantBuffer.append(chunk.delta)
-                                continuation.yield(.token(chunk.delta))
                             }
                         }
                     }
