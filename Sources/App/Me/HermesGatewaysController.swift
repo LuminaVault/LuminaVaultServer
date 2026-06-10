@@ -11,6 +11,7 @@ extension HermesGatewayTestResponse: @retroactive ResponseEncodable {}
 extension HermesGatewayApplyJobStatus: @retroactive ResponseEncodable {}
 extension StartHermesGatewayApplyResponse: @retroactive ResponseEncodable {}
 extension StartWhatsAppPairResponse: @retroactive ResponseEncodable {}
+extension StartPhotonSetupResponse: @retroactive ResponseEncodable {}
 
 /// HER-241 — `/v1/me/hermes-gateways` GET / GET-one / PUT / DELETE /
 /// POST-test.
@@ -433,25 +434,25 @@ struct HermesGatewaysController {
     }
 
     @Sendable
-    func photonSubmitPhone(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
-        let tenantID = try ctx.requireTenantID()
+    func photonSubmitPhone(_ req: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+        _ = try ctx.requireTenantID()
         let sessionID = try ctx.parameters.require("sessionID", as: UUID.self)
         // Body: { "phone": "+15551234567" }
         struct PhoneBody: Codable { let phone: String }
-        let body = try await ctx.request.decode(as: PhoneBody.self, context: ctx)
+        let body = try await req.decode(as: PhoneBody.self, context: ctx)
         let service = try requirePhotonProvisioningService()
         try await service.submitPhone(sessionID: sessionID, phone: body.phone)
         return .ok
     }
 
     @Sendable
-    func photonSetupStream(_: Request, ctx: AppRequestContext) async throws -> Response {
-        let tenantID = try ctx.requireTenantID()
-        let sessionID = try ctx.parameters.require("sessionID", as: UUID.self)
+    func photonSetupStream(_: Request, ctx: AppRequestContext) async throws -> PhotonSetupSSEResponse {
+        _ = try ctx.requireTenantID()
         let service = try requirePhotonProvisioningService()
-        // Optional: verify the session belongs to this tenant (the service already enforces single active)
-        let stream = service.subscribe(sessionID: sessionID)
-        return try PhotonSetupSSEResponse(events: stream).response(from: ctx.request, context: ctx)
+        guard let sessionID = ctx.parameters.get("sessionID", as: UUID.self) else {
+            throw HTTPError(.badRequest, message: "invalid_session_id")
+        }
+        return await PhotonSetupSSEResponse(events: service.subscribe(sessionID: sessionID))
     }
 
     // MARK: - Public Photon inbound webhook (called by sidecar or direct fusor)

@@ -787,12 +787,11 @@ func buildRouter(
 
             // Delivery service for inbound from sidecar -> tenant Hermes injection + reply
             let photonDeliveryService: PhotonDeliveryService? = {
-                guard let cm = containerManager else { return nil }
                 guard let client = photonClient else { return nil }
                 return PhotonDeliveryService(
                     photonClient: client,
                     getHandle: { tenantID in
-                        let h = try await cm.ensureRunning(tenantID: tenantID)
+                        let h = try await containerManager.ensureRunning(tenantID: tenantID)
                         return (port: h.port, apiKey: h.apiServerKey)
                     },
                     logger: Logger(label: "lv.photon.delivery")

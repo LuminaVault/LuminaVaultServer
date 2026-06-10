@@ -58,7 +58,10 @@ actor PhotonDeliveryService {
 
             let (data, resp) = try await session.data(for: req)
             guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                logger.warning("photon delivery: tenant hermes chat failed", metadata: ["tenant": "\(event.tenantId)", "status": "\( (resp as? HTTPURLResponse)?.statusCode ?? 0 )"])
+                logger.warning("photon delivery: tenant hermes chat failed", metadata: [
+                    "tenant": .stringConvertible(event.tenantId),
+                    "status": .stringConvertible((resp as? HTTPURLResponse)?.statusCode ?? 0),
+                ])
                 return
             }
 
@@ -82,13 +85,16 @@ actor PhotonDeliveryService {
             )
 
             logger.info("photon delivery: reply sent", metadata: [
-                "tenant": "\(event.tenantId)",
-                "spaceId": event.spaceId,
-                "len": "\(replyText.count)"
+                "tenant": .stringConvertible(event.tenantId),
+                "spaceId": .stringConvertible(event.spaceId),
+                "len": .stringConvertible(replyText.count),
             ])
 
         } catch {
-            logger.error("photon delivery failed", metadata: ["tenant": "\(event.tenantId)", "error": "\(error)"])
+            logger.error("photon delivery failed", metadata: [
+                "tenant": .stringConvertible(event.tenantId),
+                "error": .stringConvertible(String(describing: error)),
+            ])
         }
     }
 }

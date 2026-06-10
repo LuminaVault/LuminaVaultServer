@@ -5,9 +5,9 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-extension HermesProfileDTO: ResponseEncodable {}
-extension HermesProfilesListResponse: ResponseEncodable {}
-extension HermesProfileActivateResponse: ResponseEncodable {}
+extension HermesProfileDTO: @retroactive ResponseEncodable {}
+extension HermesProfilesListResponse: @retroactive ResponseEncodable {}
+extension HermesProfileActivateResponse: @retroactive ResponseEncodable {}
 
 /// HER-273 — `/v1/profiles` CRUD + activate for user-facing Hermes
 /// personas. Per-tenant: one row per `slug`, exactly one default

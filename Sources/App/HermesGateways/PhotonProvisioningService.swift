@@ -1,6 +1,11 @@
+import FluentKit
 import Foundation
+import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 
 enum PhotonProvisioningError: Error, Equatable {
     case sessionNotFound
@@ -113,8 +118,8 @@ actor PhotonProvisioningService {
         sessions[sessionID]?.poller = poller
 
         logger.info("photon setup started", metadata: [
-            "tenantID": "\(tenantID)",
-            "sessionID": "\(sessionID)"
+            "tenantID": .stringConvertible(tenantID),
+            "sessionID": .stringConvertible(sessionID),
         ])
         return sessionID
     }
@@ -129,14 +134,17 @@ actor PhotonProvisioningService {
         }
 
         let normalized = normalizePhone(phone)
-        guard E164_RE.match(normalized) else {
+        guard E164_RE.firstMatch(in: normalized, range: NSRange(normalized.startIndex..., in: normalized)) != nil else {
             throw PhotonProvisioningError.invalidPhone(phone)
         }
 
         session.phone = normalized
         sessions[sessionID] = session
 
-        logger.info("photon phone submitted", metadata: ["sessionID": "\(sessionID)", "phone": normalized])
+        logger.info("photon phone submitted", metadata: [
+            "sessionID": .stringConvertible(sessionID),
+            "phone": .stringConvertible(normalized),
+        ])
 
         // If we already have a token, kick off provisioning now.
         if session.dashboardToken != nil {
@@ -219,7 +227,7 @@ actor PhotonProvisioningService {
         if case .assignedLine(let line) = event {
             session.lastAssignedLine = line
         }
-        if case .done = event {
+        if case .status(.done) = event {
             session.completed = true
         }
         if case .error = event {
@@ -327,9 +335,9 @@ actor PhotonProvisioningService {
             emit(sessionID: sessionID, event: .status(.done)) // duplicate harmless for clients
 
             logger.info("photon provisioning complete", metadata: [
-                "sessionID": "\(sessionID)",
-                "spectrumProjectId": spectrumID,
-                "assignedLine": assignedLine ?? "none"
+                "sessionID": .stringConvertible(sessionID),
+                "spectrumProjectId": .stringConvertible(spectrumID),
+                "assignedLine": .stringConvertible(assignedLine ?? "none"),
             ])
 
             // Mark completed; keep session briefly for final subscribers then teardown
@@ -343,7 +351,10 @@ actor PhotonProvisioningService {
             await teardown(sessionID: sessionID)
 
         } catch {
-            logger.error("photon provisioning failed", metadata: ["sessionID": "\(sessionID)", "error": "\(error)"])
+            logger.error("photon provisioning failed", metadata: [
+                "sessionID": .stringConvertible(sessionID),
+                "error": .stringConvertible(String(describing: error)),
+            ])
             emit(sessionID: sessionID, event: .error("Provisioning failed: \(error)"))
             await teardown(sessionID: sessionID)
         }
@@ -616,9 +627,13 @@ actor PhotonProvisioningService {
                     tenantId: tenantID,
                     options: nil
                 )
-                logger.info("photon sidecar auto-activated after provisioning", metadata: ["tenantID": "\(tenantID)"])
+                logger.info("photon sidecar auto-activated after provisioning", metadata: [
+                    "tenantID": .stringConvertible(tenantID),
+                ])
             } catch {
-                logger.warning("photon sidecar activate after provisioning failed (will retry on apply)", metadata: ["error": "\(error)"])
+                logger.warning("photon sidecar activate after provisioning failed (will retry on apply)", metadata: [
+                    "error": .stringConvertible(String(describing: error)),
+                ])
             }
         }
     }

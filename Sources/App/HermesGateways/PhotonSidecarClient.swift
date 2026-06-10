@@ -96,7 +96,10 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
 
         let (data, resp) = try await session.data(for: req)
         try validateResponse(resp, data: data, operation: "activate")
-        logger.info("photon sidecar activated project", metadata: ["projectId": "\(projectId)", "tenantId": "\(tenantId)"])
+        logger.info("photon sidecar activated project", metadata: [
+            "projectId": .stringConvertible(projectId),
+            "tenantId": .stringConvertible(tenantId),
+        ])
     }
 
     func deactivate(projectId: String) async throws {
@@ -111,7 +114,9 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
 
         let (data, resp) = try await session.data(for: req)
         try validateResponse(resp, data: data, operation: "deactivate")
-        logger.info("photon sidecar deactivated project", metadata: ["projectId": "\(projectId)"])
+        logger.info("photon sidecar deactivated project", metadata: [
+            "projectId": .stringConvertible(projectId),
+        ])
     }
 
     func send(projectId: String, spaceId: String, text: String?, attachments: [PhotonAttachmentInput]?) async throws -> PhotonSendResult {
@@ -175,7 +180,10 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
         }
         if (200..<300).contains(http.statusCode) { return }
         let body = String(data: data, encoding: .utf8) ?? ""
-        logger.warning("photon sidecar \(operation) failed", metadata: ["status": "\(http.statusCode)", "body": "\(body)"])
+        logger.warning("photon sidecar \(operation) failed", metadata: [
+            "status": .stringConvertible(http.statusCode),
+            "body": .stringConvertible(body),
+        ])
         if http.statusCode == 401 || http.statusCode == 403 {
             throw PhotonSidecarError.unauthorized
         }
