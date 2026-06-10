@@ -257,6 +257,13 @@ enum HermesGatewayCatalog {
             requiredFields: [],
             pairingKind: .whatsappQR,
         ),
+        .photon: Entry(
+            displayName: "iMessage (Photon)",
+            iconSlug: "photon",
+            description: "Free iMessage access via Photon shared lines (the new free path). Device-code login + phone bind; contacts text the assigned number directly.",
+            requiredFields: [],
+            pairingKind: .photonSetup,
+        ),
     ]
 
     /// Maps a gateway's saved field config to the Hermes `.env` env-vars that
@@ -306,6 +313,10 @@ enum HermesGatewayCatalog {
             if let t = value("url") { out["MATTERMOST_URL"] = t }
             if let t = value("token") { out["MATTERMOST_TOKEN"] = t }
             if let u = value("allowed_users") { out["MATTERMOST_ALLOWED_USERS"] = u }
+        case .photon:
+            // Runtime is via the central Node sidecar (spectrum-ts) + public webhook
+            // on the Lumina API. No per-tenant Hermes container env vars.
+            break
         }
         return out
     }
@@ -338,7 +349,10 @@ enum HermesGatewayCatalog {
         // All HermesGatewayID cases must be present in `entries`. Any
         // missing case is a programmer error caught by the unit test;
         // the force-unwrap here keeps the call-site clean.
-        entries[id]!
+        guard let e = entries[id] else {
+            fatalError("Missing catalog entry for \(id) — add it to `entries`")
+        }
+        return e
     }
 
     /// Validate a PUT body against the catalog: every `isRequired`

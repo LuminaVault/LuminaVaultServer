@@ -51,6 +51,16 @@ struct HermesGatewaysController {
     /// link, unlink). `nil` when per-tenant containers are disabled — the
     /// WhatsApp routes then 404.
     let whatsAppPairingService: WhatsAppPairingService?
+    /// Central Photon sidecar client (spectrum-ts runtime bridge + control for
+    /// activate/send). Used for the free iMessage path (device setup flow +
+    /// public webhook inbound). `nil` disables photon-specific routes/status.
+    let photonSidecarClient: PhotonSidecarClienting?
+    /// Drives Photon device-code + phone provisioning (the free iMessage path).
+    /// Emits SSE progress and on success stores the sealed spectrumProjectId +
+    /// secret + assigned line in a UserHermesGateway row.
+    let photonProvisioningService: PhotonProvisioningService?
+    /// Delivery from the public Photon inbound webhook into the tenant Hermes + reply back via sidecar.
+    let photonDeliveryService: PhotonDeliveryService?
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -59,6 +69,14 @@ struct HermesGatewaysController {
         router.post("whatsapp/pair", use: whatsAppStartPair)
         router.get("whatsapp/pair/:sessionID/stream", use: whatsAppPairStream)
         router.delete("whatsapp/session", use: whatsAppUnlink)
+
+        // Photon iMessage provisioning (device code + phone bind + SSE).
+        // Registered literally before the `:id` catch-all so they don't get
+        // misinterpreted as gateway IDs.
+        router.post("photon/setup", use: photonStartSetup)
+        router.post("photon/setup/:sessionID/phone", use: photonSubmitPhone)
+        router.get("photon/setup/:sessionID/stream", use: photonSetupStream)
+
         router.get(":id", use: getOne)
         router.put(":id", use: put)
         router.delete(":id", use: delete)
@@ -395,5 +413,62 @@ struct HermesGatewaysController {
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(config)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    // MARK: - Photon provisioning (device code + phone + SSE)
+
+    private func requirePhotonProvisioningService() throws -> PhotonProvisioningService {
+        guard let photonProvisioningService else {
+            throw HTTPError(.notFound, message: "photon_provisioning_unavailable")
+        }
+        return photonProvisioningService
+    }
+
+    @Sendable
+    func photonStartSetup(_: Request, ctx: AppRequestContext) async throws -> StartPhotonSetupResponse {
+        let tenantID = try ctx.requireTenantID()
+        let service = try requirePhotonProvisioningService()
+        let sessionID = try await service.startSetup(tenantID: tenantID)
+        return StartPhotonSetupResponse(sessionID: sessionID)
+    }
+
+    @Sendable
+    func photonSubmitPhone(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+        let tenantID = try ctx.requireTenantID()
+        let sessionID = try ctx.parameters.require("sessionID", as: UUID.self)
+        // Body: { "phone": "+15551234567" }
+        struct PhoneBody: Codable { let phone: String }
+        let body = try await ctx.request.decode(as: PhoneBody.self, context: ctx)
+        let service = try requirePhotonProvisioningService()
+        try await service.submitPhone(sessionID: sessionID, phone: body.phone)
+        return .ok
+    }
+
+    @Sendable
+    func photonSetupStream(_: Request, ctx: AppRequestContext) async throws -> Response {
+        let tenantID = try ctx.requireTenantID()
+        let sessionID = try ctx.parameters.require("sessionID", as: UUID.self)
+        let service = try requirePhotonProvisioningService()
+        // Optional: verify the session belongs to this tenant (the service already enforces single active)
+        let stream = service.subscribe(sessionID: sessionID)
+        return try PhotonSetupSSEResponse(events: stream).response(from: ctx.request, context: ctx)
+    }
+
+    // MARK: - Public Photon inbound webhook (called by sidecar or direct fusor)
+
+    @Sendable
+    func handlePhotonInbound(_ req: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+        guard let delivery = photonDeliveryService else {
+            logger.warning("photon inbound received but delivery service not available")
+            return .serviceUnavailable
+        }
+        do {
+            let event = try await req.decode(as: PhotonInboundEvent.self, context: ctx)
+            await delivery.deliver(event)
+            return .ok
+        } catch {
+            logger.error("photon inbound decode/delivery error", metadata: ["error": "\(error)"])
+            return .badRequest
+        }
     }
 }

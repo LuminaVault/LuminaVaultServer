@@ -206,6 +206,8 @@ func buildApplication(
         hermesCentralVolumePath: reader.string(forKey: "hermes.central.volumePath", default: "/app/data/hermes"),
         hermesCentralPort: reader.int(forKey: "hermes.central.port", default: 8642),
         hermesCentralTempPort: reader.int(forKey: "hermes.central.tempPort", default: 8643),
+        photonSidecarURL: reader.string(forKey: "photon.sidecarUrl", default: "http://photon-sidecar:8789"),
+        photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: ""),
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -766,12 +768,46 @@ func buildRouter(
                 ),
                 logger: gatewaysLogger,
             )
+            let photonClient: PhotonSidecarClienting? = {
+                guard !services.photonSidecarURL.isEmpty, !services.photonSidecarToken.isEmpty else { return nil }
+                guard let url = URL(string: services.photonSidecarURL) else { return nil }
+                return PhotonSidecarClient(
+                    baseURL: url,
+                    token: services.photonSidecarToken,
+                    logger: Logger(label: "lv.photon.sidecar")
+                )
+            }()
+
+            let photonProvisioningService = PhotonProvisioningService(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                logger: Logger(label: "lv.photon.provisioning"),
+                sidecarClient: photonClient
+            )
+
+            // Delivery service for inbound from sidecar -> tenant Hermes injection + reply
+            let photonDeliveryService: PhotonDeliveryService? = {
+                guard let cm = containerManager else { return nil }
+                guard let client = photonClient else { return nil }
+                return PhotonDeliveryService(
+                    photonClient: client,
+                    getHandle: { tenantID in
+                        let h = try await cm.ensureRunning(tenantID: tenantID)
+                        return (port: h.port, apiKey: h.apiServerKey)
+                    },
+                    logger: Logger(label: "lv.photon.delivery")
+                )
+            }()
+
             hermesGatewaysController = HermesGatewaysController(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 gatewayClient: HermesGatewayClient(logger: gatewaysLogger),
                 applyService: gatewayApplyService,
                 whatsAppPairingService: whatsAppPairingService,
+                photonSidecarClient: photonClient,
+                photonProvisioningService: photonProvisioningService,
+                photonDeliveryService: photonDeliveryService,
                 logger: gatewaysLogger,
             )
 
@@ -2101,6 +2137,12 @@ func buildRouter(
         let hermesGatewaysGroup = byoHermesMiddleware
             .map { hermesGatewaysBase.add(middleware: $0) } ?? hermesGatewaysBase
         hermesGatewaysController.addRoutes(to: hermesGatewaysGroup)
+
+        // Public (sidecar-called) inbound webhook for Photon events.
+        // No JWT — the sidecar is internal/trusted and includes tenantId we passed at activate.
+        // Auth can be strengthened later with project secret in payload if exposing directly to Photon fusor.
+        let photonWebhook = router.group("/v1/gateways/photon")
+        photonWebhook.post("inbound", use: hermesGatewaysController.handlePhotonInbound)
     }
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,

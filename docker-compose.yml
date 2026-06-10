@@ -50,6 +50,39 @@ services:
       postgres:
         condition: service_healthy
 
+  # Photon sidecar (central Node.js bridge for the free iMessage path via spectrum-ts).
+  # Holds Spectrum clients per enabled tenant/project, forwards inbound events to the
+  # main API's public webhook, and accepts control calls (activate/send) from the Swift server.
+  # See docker/photon-sidecar/README.md and the Photon plan.
+  photon-sidecar:
+    build:
+      context: .
+      dockerfile: docker/photon-sidecar/Dockerfile
+    # image: ghcr.io/.../luminavault-photon-sidecar:latest   # for prod/CI builds
+    container_name: luminavault-photon-sidecar
+    restart: unless-stopped
+    ports:
+      - "8789:8789"   # local control surface (optional, useful for dev debugging)
+    environment:
+      # Where the sidecar should POST normalized inbound events (the public webhook surface)
+      LUMINA_API_INTERNAL_URL: http://hummingbird:8080
+      LUMINA_PHOTON_WEBHOOK_PATH: /v1/gateways/photon/inbound
+      # Shared secret for control plane calls from the Swift server (generate a real one for real deploys)
+      LUMINA_SIDECAR_TOKEN: ${LUMINA_SIDECAR_TOKEN:-dev-photon-sidecar-token-change-me}
+      PHOTON_SIDECAR_PORT: 8789
+      # PHOTON_SIDECAR_BIND: 0.0.0.0
+    networks:
+      - default
+    # depends_on:
+    #   hummingbird:
+    #     condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8789/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   hummingbird:
     build:
       context: .
