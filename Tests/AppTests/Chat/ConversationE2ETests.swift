@@ -13,7 +13,7 @@ import Testing
 /// these tests cover CRUD + validation + auth + the wire shape of the
 /// stream response on error paths. Requires `docker compose up -d
 /// postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct ConversationE2ETests {
     // MARK: - Helpers
 

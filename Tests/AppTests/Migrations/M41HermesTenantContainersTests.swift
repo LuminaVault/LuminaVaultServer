@@ -10,7 +10,7 @@ import Testing
 ///   - `tenant_id UNIQUE` + FK to `users` is in place
 ///   - `port UNIQUE` index exists (so two tenants can't take the same port)
 ///   - the partial idle-eviction index exists
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct M41HermesTenantContainersTests {
     private struct PgIndexRow: Codable { let indexname: String }
     private struct PgColumnRow: Codable { let column_name: String }

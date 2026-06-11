@@ -9,7 +9,7 @@ import Testing
 /// HER-240a — `XaiOAuthService` orchestration. Uses a real
 /// `HermesContainerManager` with a stub DockerExec plus a stub backend so
 /// we can drive the state machine end-to-end without touching docker.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct XaiOAuthServiceTests {
     private static let masterKeyBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 

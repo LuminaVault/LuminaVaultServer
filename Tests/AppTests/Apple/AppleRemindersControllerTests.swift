@@ -18,7 +18,7 @@ import Testing
 /// (`.iso8601`). Snake-casing would silently nil-decode server-side.
 ///
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct AppleRemindersControllerTests {
     // MARK: - Helpers
 

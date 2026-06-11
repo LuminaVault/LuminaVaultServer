@@ -17,14 +17,19 @@ actor SkillCatalog {
     private let vaultPaths: VaultPathService
     private let parser: SkillManifestParser
     private let logger: Logger
+    private let scanBuiltin: Bool
+    private var builtinManifests: [SkillManifest]?
+    private var builtinScanAttempted = false
 
     init(
         vaultPaths: VaultPathService,
         parser: SkillManifestParser = SkillManifestParser(),
+        scanBuiltin: Bool = true,
         logger: Logger
     ) {
         self.vaultPaths = vaultPaths
         self.parser = parser
+        self.scanBuiltin = scanBuiltin
         self.logger = logger
     }
 
@@ -39,9 +44,18 @@ actor SkillCatalog {
     /// schedule, picked up by `CronScheduler` like any other skill.
     func manifests(for tenantID: UUID) async throws -> [SkillManifest] {
         var byName: [String: SkillManifest] = [:]
-        // Built-ins first (so vault can override by name).
-        if let resourceRoot = Bundle.module.resourceURL?.appendingPathComponent("Skills", isDirectory: true) {
-            for manifest in scan(directory: resourceRoot, source: .builtin) {
+        // Built-ins first (so vault can override by name). Cached per process
+        // because CronScheduler re-queries on every tick.
+        if scanBuiltin {
+            if !builtinScanAttempted {
+                builtinScanAttempted = true
+                if let resourceRoot = Bundle.module.resourceURL?.appendingPathComponent("Skills", isDirectory: true) {
+                    builtinManifests = scan(directory: resourceRoot, source: .builtin)
+                } else {
+                    builtinManifests = []
+                }
+            }
+            for manifest in builtinManifests ?? [] {
                 byName[manifest.name] = manifest
             }
         }

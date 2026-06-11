@@ -9,7 +9,7 @@ import Testing
 /// HER-37 Slice D — Postgres-backed persistence + worker behaviour
 /// tests. Follows the existing `withTestFluent` + `registerMigrations`
 /// pattern so M46 is exercised against a real local Postgres.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct InsightTests {
     // MARK: - Persistence
 

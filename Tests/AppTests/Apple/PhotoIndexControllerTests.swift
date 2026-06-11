@@ -17,7 +17,7 @@ import Testing
 /// Encoding contract (CRITICAL): the server request decoder does NOT apply
 /// `convertFromSnakeCase`, so request bodies are encoded camelCase + ISO-8601 by
 /// re-using the shared DTO types with a plain `JSONEncoder` (`.iso8601`).
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct PhotoIndexControllerTests {
     // MARK: - Pure unit tests (no DB)
 

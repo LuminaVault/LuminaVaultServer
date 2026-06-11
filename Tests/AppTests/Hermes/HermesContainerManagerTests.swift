@@ -9,7 +9,7 @@ import Testing
 /// HER-240a — `HermesContainerManager` happy-path + edge cases. Requires
 /// `docker compose up -d postgres` because the manager persists a row per
 /// tenant. Docker is stubbed via `StubDockerExec`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct HermesContainerManagerTests {
     private static let masterKeyBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 

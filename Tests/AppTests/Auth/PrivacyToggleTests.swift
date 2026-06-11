@@ -7,7 +7,7 @@ import Testing
 
 /// HER-176 E2E tests for `PUT /v1/me/privacy` and the privacy field in
 /// `GET /v1/me`. Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct PrivacyToggleTests {
     private static func decodeAuth(_ buf: ByteBuffer) throws -> AuthResponse {
         try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: buf))

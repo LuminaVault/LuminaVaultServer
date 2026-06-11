@@ -68,13 +68,13 @@ enum TestPostgres {
         ProcessInfo.processInfo.environment["POSTGRES_DATABASE"] ?? "hermes_db"
     }
 
-    static func configuration() -> SQLPostgresConfiguration {
+    static func configuration(database override: String? = nil) -> SQLPostgresConfiguration {
         .init(
             hostname: host,
             port: port,
             username: username,
             password: password,
-            database: database,
+            database: override ?? TestDatabaseIsolation.resolvedDatabase,
             tls: .disable
         )
     }

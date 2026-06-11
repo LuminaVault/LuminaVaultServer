@@ -20,7 +20,7 @@ import Testing
 ///
 /// Encoding contract (CRITICAL): camelCase keys + ISO-8601 dates — the server
 /// decoder does not snake-case. Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct AppleCalendarControllerTests {
     // MARK: - Helpers
 

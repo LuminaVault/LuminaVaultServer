@@ -11,7 +11,7 @@ import Testing
 /// failure/rollback paths. Docker is stubbed via `StubDockerExec`; the
 /// central health probe is a controllable flag. Requires
 /// `docker compose up -d postgres` (the service persists job rows).
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct HermesUpdateServiceTests {
     /// Controllable health probe backing.
     private actor HealthFlag {

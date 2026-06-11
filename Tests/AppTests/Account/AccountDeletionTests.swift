@@ -19,7 +19,7 @@ import Testing
 ///   * fresh-JWT gate
 ///   * cascade verification across every FK-owned child table
 ///   * tenant isolation (token for user A cannot wipe user B)
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct AccountDeletionTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

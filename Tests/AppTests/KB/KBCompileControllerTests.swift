@@ -26,7 +26,7 @@ import Testing
 /// Full happy-path coverage (Hermes loop runs, memories upserted, flag
 /// flips, achievement fires) needs a test-mode injection hook into
 /// `KBCompileService`'s transport. Tracked separately.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct KBCompileControllerTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

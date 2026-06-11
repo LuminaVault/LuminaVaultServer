@@ -17,7 +17,7 @@ import Testing
 ///
 /// When HER-240b lands a wired backend, this file gains a `start →
 /// complete → premium` happy path.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct XaiOAuthControllerTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

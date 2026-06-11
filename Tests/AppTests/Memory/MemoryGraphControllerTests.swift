@@ -11,7 +11,7 @@ import Testing
 /// public router via `app.test(.router)` so auth + middleware + query-param
 /// clamping are exercised end-to-end. Service-level derivation logic is
 /// covered by `MemoryGraphServiceTests`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct MemoryGraphControllerTests {
     private static let dim = 1536
 

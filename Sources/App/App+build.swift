@@ -86,7 +86,8 @@ func buildApplication(
                 // boots (the parallel test suite shares one database) so they
                 // don't race the first migration insert into a duplicate-key
                 // on `_fluent_migrations`. No-op in prod. See `MigrationGate`.
-                try await MigrationGate.shared.migrateOnce {
+                let database = reader.string(forKey: "postgres.database", default: "luminavault")
+                try await MigrationGate.shared.migrateOnce(database: database) {
                     try await fluent.migrate()
                 }
             }
@@ -535,7 +536,12 @@ func buildRouter(
     // event bus, cron) is constructed further down. SkillCatalog itself
     // has no dependencies on those, so hoisting it is safe.
     let skillsLogger = Logger(label: "lv.skills")
-    let skillCatalog = SkillCatalog(vaultPaths: vaultPaths, logger: skillsLogger)
+    let scanBuiltinSkills = reader.string(forKey: "skills.builtinScan.enabled", default: "true").lowercased() != "false"
+    let skillCatalog = SkillCatalog(
+        vaultPaths: vaultPaths,
+        scanBuiltin: scanBuiltinSkills,
+        logger: skillsLogger
+    )
     // HER-171 — EventBus is shared across every publisher (vault, health,
     // memory, achievements) and the SkillRunner / MeTodayCache subscribers.
     // Constructed earlier (above AchievementsService); reused here.

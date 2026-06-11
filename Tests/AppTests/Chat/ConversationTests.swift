@@ -10,7 +10,7 @@ import Testing
 /// `withTestFluent` + `registerMigrations` pattern so they exercise the
 /// full migration stack (including M44/M45) against a real local
 /// Postgres.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct ConversationTests {
     // MARK: - Unit: prompt construction (no DB)
 

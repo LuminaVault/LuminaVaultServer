@@ -17,7 +17,7 @@ import Testing
 ///   * Stay strictly tenant-scoped — another tenant's pending rows are
 ///     invisible.
 ///   * Exclude rows that already have a non-nil `processed_at`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct KBCompilePendingTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

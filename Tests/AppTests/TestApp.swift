@@ -28,13 +28,12 @@ let noDBTestReader = ConfigReader(providers: [
 /// `cfg(...)` helper lives in `TestPostgres.swift` — it wraps non-literal
 /// values into `ConfigValue` since Swift's `ExpressibleByLiteral` only fires
 /// for literal expressions, not computed properties.
-let dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] = [
+private let dbTestConfigValuesBase: [AbsoluteConfigKey: ConfigValue] = [
     "http.host": "127.0.0.1",
     "http.port": 0,
     "log.level": "warning",
     "postgres.host": cfg(TestPostgres.host),
     "postgres.port": cfg(TestPostgres.port),
-    "postgres.database": cfg(TestPostgres.database),
     "postgres.user": cfg(TestPostgres.username),
     "postgres.password": cfg(TestPostgres.password),
     "fluent.autoMigrate": "true",
@@ -70,11 +69,24 @@ let dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] = [
     // to satisfy the guard.
     "hermes.apiKey": "test-hermes-bearer-do-not-use",
     "lv.environment": "test",
+    // HER-310: skip bundled skill scan during tests — hundreds of legacy
+    // SKILL.md files log parse warnings on every `buildApplication` boot.
+    "skills.builtinScan.enabled": "false",
 ]
 
-let dbTestReader = ConfigReader(providers: [
-    InMemoryProvider(values: dbTestConfigValues),
-])
+/// DB-backed reader; resolves `postgres.database` from the active suite's
+/// isolated database when `IntegrationDatabaseTrait` has run.
+var dbTestReader: ConfigReader {
+    var values = dbTestConfigValuesBase
+    values["postgres.database"] = cfg(TestDatabaseIsolation.resolvedDatabase)
+    return ConfigReader(providers: [InMemoryProvider(values: values)])
+}
+
+private var dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] {
+    var values = dbTestConfigValuesBase
+    values["postgres.database"] = cfg(TestDatabaseIsolation.resolvedDatabase)
+    return values
+}
 
 /// DB-backed reader with the deterministic stub chat provider enabled.
 /// `llm.provider=stub` swaps the real `HermesGatewayAdapter` for

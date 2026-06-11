@@ -9,7 +9,7 @@ import Testing
 /// New behaviour: link the uploaded `vault_files` row to a Space the
 /// caller owns; reject malformed UUIDs and cross-tenant ids with 400;
 /// preserve the existing link on re-upload when omitted.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct VaultUploadSpaceTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

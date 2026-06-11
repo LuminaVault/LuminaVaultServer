@@ -12,7 +12,7 @@ import Testing
 /// Verifies the /options endpoints don't leak user existence. Both
 /// registered and unregistered usernames must receive a 200 with a
 /// well-formed challenge — only /finish reveals whether the user exists.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct WebAuthnAntiEnumerationTests {
     private static let webAuthnReader = ConfigReader(providers: [
         InMemoryProvider(values: [

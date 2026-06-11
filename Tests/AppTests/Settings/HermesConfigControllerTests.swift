@@ -13,7 +13,7 @@ import Testing
 /// Does NOT cover `POST /v1/settings/hermes/test` — that endpoint
 /// dials the configured upstream and would need a `URLSession`
 /// fixture. Probe behaviour is exercised in a follow-up commit.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct HermesConfigControllerTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

@@ -12,7 +12,7 @@ import Testing
 /// HER-35 — verifies the new `category` column threads through the Spaces
 /// CRUD surface and that the seeded defaults (`SpaceDefaults.entries`) land
 /// with their slug as the category bucket label.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct SpacesCategoryTests {
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
         ByteBuffer(string: """

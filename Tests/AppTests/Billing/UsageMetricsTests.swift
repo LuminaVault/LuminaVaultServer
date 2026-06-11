@@ -7,7 +7,7 @@ import LuminaVaultShared
 import SQLKit
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct UsageMetricsTests {
     private static let password = "CorrectHorseBatteryStaple1!"
 

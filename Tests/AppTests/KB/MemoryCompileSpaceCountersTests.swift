@@ -10,7 +10,7 @@ import Testing
 /// land correctly after `MemoryCompileService.refreshSpaceCounters`. We bypass
 /// the agent loop by calling the helper directly — the goal is to assert
 /// the SQL, not the LLM pipeline.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct MemoryCompileSpaceCountersTests {
     @Test
     func `refreshSpaceCounters writes note_count and last_compiled_at per space`() async throws {

@@ -21,14 +21,17 @@ import Foundation
 /// so the gate is an inert pass-through.
 actor MigrationGate {
     static let shared = MigrationGate()
-    private var task: Task<Void, Error>?
+    private var tasks: [String: Task<Void, Error>] = [:]
 
-    /// Runs `body` exactly once per process. The first caller starts the work;
-    /// concurrent and later callers await the same `Task` and observe its
-    /// result (including a thrown error).
-    func migrateOnce(_ body: @escaping @Sendable () async throws -> Void) async throws {
-        let work = task ?? Task { try await body() }
-        task = work
+    /// Runs `body` exactly once per `database` key. The first caller for a
+    /// given database starts the work; concurrent and later callers await the
+    /// same `Task` and observe its result (including a thrown error).
+    func migrateOnce(
+        database: String,
+        _ body: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let work = tasks[database] ?? Task { try await body() }
+        tasks[database] = work
         try await work.value
     }
 }

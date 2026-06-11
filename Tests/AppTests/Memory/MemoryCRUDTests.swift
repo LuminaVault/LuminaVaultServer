@@ -12,7 +12,7 @@ import Testing
 /// End-to-end tests for HER-89 memory CRUD endpoints
 /// (`GET /v1/memory`, `GET /v1/memory/:id`, `DELETE /v1/memory/:id`,
 /// `PATCH /v1/memory/:id`). Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .tags(.integration), .integrationDatabase)
 struct MemoryCRUDTests {
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
         ByteBuffer(string: """
