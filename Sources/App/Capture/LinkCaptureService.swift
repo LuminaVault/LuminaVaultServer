@@ -45,7 +45,7 @@ struct LinkCaptureService {
         tenantID: UUID,
         url urlString: String,
         note: String?,
-        spaceID: UUID? = nil,
+        spaceID: UUID? = nil
     ) async throws -> CapturedLink {
         guard let url = URL(string: urlString) else {
             throw CaptureError.invalidURL
@@ -106,7 +106,7 @@ struct LinkCaptureService {
         let fm = FileManager.default
         try fm.createDirectory(
             at: target.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try data.write(to: target, options: .atomic)
 
@@ -118,7 +118,7 @@ struct LinkCaptureService {
             contentType: "text/markdown",
             sizeBytes: sizeBytes,
             sha256: sha256,
-            metadata: VaultFileMetadata(enrichmentStatus: "pending"),
+            metadata: VaultFileMetadata(enrichmentStatus: "pending")
         )
         try await row.save(on: db)
         let fileID = try row.requireID()
@@ -136,7 +136,7 @@ struct LinkCaptureService {
                 payload: [
                     SkillEvent.PayloadKey.vaultFileID: fileID.uuidString,
                     SkillEvent.PayloadKey.vaultPath: relativePath,
-                ],
+                ]
             )
             eventBus.publish(event)
         }

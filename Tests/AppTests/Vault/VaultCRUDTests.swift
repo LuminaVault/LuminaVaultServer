@@ -41,7 +41,7 @@ struct VaultCRUDTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -52,7 +52,7 @@ struct VaultCRUDTests {
         client: some TestClientProtocol,
         token: String,
         path: String,
-        body: String = "# hello",
+        body: String = "# hello"
     ) async throws -> String {
         let resp = try await client.execute(
             uri: "/v1/vault/files?path=\(path)",
@@ -61,7 +61,7 @@ struct VaultCRUDTests {
                 .authorization: "Bearer \(token)",
                 .contentType: "text/markdown",
             ],
-            body: ByteBuffer(string: body),
+            body: ByteBuffer(string: body)
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try testJSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
@@ -80,7 +80,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -102,7 +102,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files?limit=2",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -126,19 +126,19 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(mallory)"],
+                headers: [.authorization: "Bearer \(mallory)"]
             ) { #expect($0.status == .notFound) }
 
             // Alice can delete her own. Idempotent: second call returns 404.
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(alice)"],
+                headers: [.authorization: "Bearer \(alice)"]
             ) { #expect($0.status == .noContent) }
             try await client.execute(
                 uri: "/v1/vault/files/alice-secret.md",
                 method: .delete,
-                headers: [.authorization: "Bearer \(alice)"],
+                headers: [.authorization: "Bearer \(alice)"]
             ) { #expect($0.status == .notFound) }
         }
     }
@@ -155,7 +155,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeFile(response.body)
@@ -166,7 +166,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 let list = try Self.decodeList(response.body)
                 #expect(list.files.contains(where: { $0.path == "new.md" }))
@@ -187,7 +187,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { #expect($0.status == .conflict) }
         }
     }
@@ -203,7 +203,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { #expect($0.status == .badRequest) }
         }
     }
@@ -219,7 +219,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { #expect($0.status == .badRequest) }
         }
     }
@@ -235,7 +235,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files",
                 method: .get,
-                headers: [.authorization: "Bearer \(mallory)"],
+                headers: [.authorization: "Bearer \(mallory)"]
             ) { response in
                 let list = try Self.decodeList(response.body)
                 #expect(!list.files.contains(where: { $0.path == "alice-only.md" }))
@@ -251,7 +251,7 @@ struct VaultCRUDTests {
             try await client.execute(
                 uri: "/v1/vault/files?space=does-not-exist",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { #expect($0.status == .notFound) }
         }
     }
@@ -266,7 +266,7 @@ struct VaultCRUDTests {
                 uri: "/v1/vault/files/move",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: #"{"path":"a.md","newPath":"b.md"}"#),
+                body: ByteBuffer(string: #"{"path":"a.md","newPath":"b.md"}"#)
             ) { #expect($0.status == .unauthorized) }
         }
     }
@@ -292,7 +292,7 @@ struct VaultCRUDTests {
                     .authorization: "Bearer \(token)",
                     .contentType: "image/heic",
                 ],
-                body: ByteBuffer(data: Self.heicStubBytes),
+                body: ByteBuffer(data: Self.heicStubBytes)
             ) { response in
                 #expect(response.status == .ok || response.status == .created)
             }
@@ -311,7 +311,7 @@ struct VaultCRUDTests {
                     .authorization: "Bearer \(token)",
                     .contentType: "image/heif",
                 ],
-                body: ByteBuffer(data: Self.heicStubBytes),
+                body: ByteBuffer(data: Self.heicStubBytes)
             ) { response in
                 #expect(response.status == .ok || response.status == .created)
             }
@@ -330,7 +330,7 @@ struct VaultCRUDTests {
                     .authorization: "Bearer \(token)",
                     .contentType: "image/jpeg",
                 ],
-                body: ByteBuffer(data: Self.heicStubBytes),
+                body: ByteBuffer(data: Self.heicStubBytes)
             ) { response in
                 #expect(response.status == .badRequest)
             }

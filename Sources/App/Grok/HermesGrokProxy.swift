@@ -39,12 +39,12 @@ struct HermesGrokProxy {
         let body = ChatCompletionsRequest(
             model: model,
             messages: request.messages.map { .init(role: $0.role, content: $0.content) },
-            maxTokens: request.maxTokens,
+            maxTokens: request.maxTokens
         )
         let response: ChatCompletionsResponse = try await post(
             handle: handle,
             path: "/v1/chat/completions",
-            body: body,
+            body: body
         )
         guard let first = response.choices.first?.message.content else {
             throw Error.missingAnswer
@@ -54,7 +54,7 @@ struct HermesGrokProxy {
             model: response.model ?? model,
             usage: response.usage.map {
                 GrokUsage(promptTokens: $0.promptTokens, completionTokens: $0.completionTokens)
-            },
+            }
         )
     }
 
@@ -71,20 +71,20 @@ struct HermesGrokProxy {
                 fromDate: request.fromDate,
                 toDate: request.toDate,
                 enableImageUnderstanding: request.enableImageUnderstanding,
-                enableVideoUnderstanding: request.enableVideoUnderstanding,
-            ))],
+                enableVideoUnderstanding: request.enableVideoUnderstanding
+            ))]
         )
         let response: ResponsesAPIResponse = try await post(
             handle: handle,
             path: "/v1/responses",
-            body: body,
+            body: body
         )
         return GrokXSearchResponse(
             answer: response.output ?? "",
             citations: (response.citations ?? []).map {
                 GrokXSearchCitation(url: $0.url, title: $0.title, publishedAt: $0.publishedAt)
             },
-            model: response.model ?? "grok-4.20-reasoning",
+            model: response.model ?? "grok-4.20-reasoning"
         )
     }
 
@@ -97,12 +97,12 @@ struct HermesGrokProxy {
         }
         let body = VisionRequest(
             model: "grok-4.3",
-            messages: [.init(role: "user", content: contentParts)],
+            messages: [.init(role: "user", content: contentParts)]
         )
         let response: ChatCompletionsResponse = try await post(
             handle: handle,
             path: "/v1/chat/completions",
-            body: body,
+            body: body
         )
         guard let answer = response.choices.first?.message.content else {
             throw Error.missingAnswer
@@ -115,7 +115,7 @@ struct HermesGrokProxy {
     private func post<Body: Decodable>(
         handle: HermesContainerHandle,
         path: String,
-        body: some Encodable,
+        body: some Encodable
     ) async throws -> Body {
         var req = HTTPClientRequest(url: handle.baseURL + path)
         req.method = .POST

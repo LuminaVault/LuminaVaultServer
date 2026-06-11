@@ -73,7 +73,7 @@ struct AchievementCatalog {
                     SubAchievement(key: "lightbringer.kindled-mind", label: "Kindled Mind", event: .memoryUpserted, target: 10),
                     SubAchievement(key: "lightbringer.illuminator", label: "Illuminator", event: .memoryUpserted, target: 50),
                     SubAchievement(key: "lightbringer.lightbearer", label: "Lightbearer", event: .memoryUpserted, target: 200),
-                ],
+                ]
             ),
             AchievementArchetype(
                 key: .shadowlord,
@@ -83,7 +83,7 @@ struct AchievementCatalog {
                     SubAchievement(key: "shadowlord.deep-listener", label: "Deep Listener", event: .chatCompleted, target: 5),
                     SubAchievement(key: "shadowlord.night-walker", label: "Night Walker", event: .chatCompleted, target: 25),
                     SubAchievement(key: "shadowlord.umbral-sovereign", label: "Umbral Sovereign", event: .chatCompleted, target: 100),
-                ],
+                ]
             ),
             AchievementArchetype(
                 key: .reignmaker,
@@ -93,7 +93,7 @@ struct AchievementCatalog {
                     SubAchievement(key: "reignmaker.tactician", label: "Tactician", event: .queryRan, target: 10),
                     SubAchievement(key: "reignmaker.strategist", label: "Strategist", event: .kbCompiled, target: 5),
                     SubAchievement(key: "reignmaker.regent", label: "Regent", event: .queryRan, target: 100),
-                ],
+                ]
             ),
             AchievementArchetype(
                 key: .soulseeker,
@@ -103,9 +103,9 @@ struct AchievementCatalog {
                     SubAchievement(key: "soulseeker.collector", label: "Collector", event: .vaultUploaded, target: 10),
                     SubAchievement(key: "soulseeker.cartographer", label: "Cartographer", event: .spaceCreated, target: 3),
                     SubAchievement(key: "soulseeker.soulkeeper", label: "Soulkeeper", event: .vaultUploaded, target: 100),
-                ],
+                ]
             ),
-        ],
+        ]
     )
 
     /// All sub-achievements whose counter increments on `event`. The result

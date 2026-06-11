@@ -11,12 +11,12 @@ import Logging
 /// aborts the test binary with signal 5.
 func withTestFluent<Result>(
     label: String,
-    _ body: (Fluent) async throws -> Result,
+    _ body: (Fluent) async throws -> Result
 ) async throws -> Result {
     let fluent = Fluent(logger: Logger(label: label))
     fluent.databases.use(
         .postgres(configuration: TestPostgres.configuration()),
-        as: .psql,
+        as: .psql
     )
     do {
         let result = try await body(fluent)

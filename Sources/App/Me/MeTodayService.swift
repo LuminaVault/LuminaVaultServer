@@ -42,7 +42,7 @@ struct MeTodayService {
             // nil now so iOS treats it as "not on trial" without
             // crashing — adopt the field once billing surfaces it.
             trialDaysRemaining: nil,
-            generatedAt: now,
+            generatedAt: now
         )
     }
 
@@ -56,7 +56,7 @@ struct MeTodayService {
             // Memory has no `title` column; derive a short preview from
             // `content`. Widget shows a single line so 80 chars is plenty.
             title: Self.titlePreview(from: row.content),
-            savedAt: createdAt,
+            savedAt: createdAt
         )
     }
 
@@ -70,7 +70,7 @@ struct MeTodayService {
             return MeTodayUnlockedAchievementDTO(
                 id: row.achievementKey,
                 title: label,
-                unlockedAt: unlockedAt,
+                unlockedAt: unlockedAt
             )
         }
     }

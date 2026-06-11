@@ -13,27 +13,24 @@ enum SOULComposer {
         let name = req.agentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Hermes" : req.agentName
 
-        let voice: String
-        switch req.tone {
-        case .warm: voice = "Warm, encouraging, and plain-spoken. Lead with empathy, stay direct."
-        case .conciseTechnical: voice = "A concise technical expert. No fluff — facts, code, and clear next steps."
-        case .playful: voice = "Playful and light, with occasional wit. Never at the expense of clarity."
-        case .coach: voice = "A direct coach. Challenge assumptions and push toward action."
+        let voice = switch req.tone {
+        case .warm: "Warm, encouraging, and plain-spoken. Lead with empathy, stay direct."
+        case .conciseTechnical: "A concise technical expert. No fluff — facts, code, and clear next steps."
+        case .playful: "Playful and light, with occasional wit. Never at the expense of clarity."
+        case .coach: "A direct coach. Challenge assumptions and push toward action."
         }
 
-        let identity: String
-        switch req.role {
-        case .assistant: identity = "your assistant — you ask, I do, and I keep things moving."
-        case .coworker: identity = "your coworker — a peer who happens to know your whole context."
-        case .coach: identity = "your coach — I track your goals and hold you to them."
-        case .secondBrain: identity = "your second brain — I remember everything so you don't have to."
+        let identity = switch req.role {
+        case .assistant: "your assistant — you ask, I do, and I keep things moving."
+        case .coworker: "your coworker — a peer who happens to know your whole context."
+        case .coach: "your coach — I track your goals and hold you to them."
+        case .secondBrain: "your second brain — I remember everything so you don't have to."
         }
 
-        let operations: String
-        switch req.autonomy {
-        case .askFirst: operations = "Confirm before any non-trivial action. When in doubt, ask."
-        case .suggest: operations = "Propose actions and wait for a clear go-ahead before acting."
-        case .act: operations = "Act on clear intent, then report what was done. Don't stall on confirmations."
+        let operations = switch req.autonomy {
+        case .askFirst: "Confirm before any non-trivial action. When in doubt, ask."
+        case .suggest: "Propose actions and wait for a clear go-ahead before acting."
+        case .act: "Act on clear intent, then report what was done. Don't stall on confirmations."
         }
 
         return """

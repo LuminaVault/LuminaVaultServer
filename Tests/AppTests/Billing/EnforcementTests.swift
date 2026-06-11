@@ -55,7 +55,7 @@ struct EnforcementTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: user.email, username: user.username),
+            body: registerBody(email: user.email, username: user.username)
         ) { response in
             #expect(response.status == .ok)
             return try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: response.body))
@@ -82,7 +82,7 @@ struct EnforcementTests {
                 uri: "/v1/health",
                 method: .post,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: Self.healthBody(),
+                body: Self.healthBody()
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -100,7 +100,7 @@ struct EnforcementTests {
                 uri: "/v1/health",
                 method: .post,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: Self.healthBody(),
+                body: Self.healthBody()
             ) { response in
                 #expect(response.status.code == 402)
                 let paywall = try testJSONDecoder().decode(PaywallResponse.self, from: Data(buffer: response.body))
@@ -128,7 +128,7 @@ struct EnforcementTests {
                 uri: "/v1/health",
                 method: .post,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: Self.healthBody(),
+                body: Self.healthBody()
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -145,7 +145,7 @@ struct EnforcementTests {
             try await client.execute(
                 uri: "/v1/vault/export",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -163,7 +163,7 @@ struct EnforcementTests {
                 uri: "/v1/admin/users/\(auth.userId.uuidString)/tier-override",
                 method: .put,
                 headers: [.init("x-admin-token")!: token, .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"tierOverride":"ultimate"}"#),
+                body: ByteBuffer(string: #"{"tierOverride":"ultimate"}"#)
             ) { response in
                 #expect(response.status == .ok)
                 let summary = try testJSONDecoder().decode(UserBillingSummary.self, from: Data(buffer: response.body))
@@ -184,7 +184,7 @@ struct EnforcementTests {
                 uri: "/v1/admin/users/\(auth.userId.uuidString)/tier-override",
                 method: .put,
                 headers: [.init("x-admin-token")!: token, .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"tierOverride":"godmode"}"#),
+                body: ByteBuffer(string: #"{"tierOverride":"godmode"}"#)
             ) { response in
                 #expect(response.status == .badRequest)
             }

@@ -21,7 +21,7 @@ struct StubTranscribeAdapter: TranscribeProviderAdapter {
         language: String = "en",
         confidence: Double = 0.95,
         durationSeconds: Double = 30,
-        segments: [TranscribeSegment]? = nil,
+        segments: [TranscribeSegment]? = nil
     ) {
         self.text = text
         self.language = language
@@ -36,7 +36,7 @@ struct StubTranscribeAdapter: TranscribeProviderAdapter {
             language: language,
             confidence: confidence,
             durationSeconds: durationSeconds,
-            segments: segments ?? [TranscribeSegment(start: 0, end: durationSeconds, text: text)],
+            segments: segments ?? [TranscribeSegment(start: 0, end: durationSeconds, text: text)]
         )
     }
 }

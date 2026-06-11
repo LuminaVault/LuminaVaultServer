@@ -23,7 +23,7 @@ struct LLMPreferencesController {
         repository: UserLLMPreferenceRepository,
         defaultPrimaryProvider: ProviderID = .openRouter,
         defaultPrimaryModel: String = "qwen/qwen-2.5-72b-instruct",
-        logger: Logger,
+        logger: Logger
     ) {
         self.repository = repository
         self.defaultPrimaryProvider = defaultPrimaryProvider
@@ -44,7 +44,7 @@ struct LLMPreferencesController {
             mode: .managed,
             primaryProvider: defaultPrimaryProvider,
             primaryModel: defaultPrimaryModel,
-            fallbackChain: [],
+            fallbackChain: []
         )
     }
 
@@ -75,11 +75,11 @@ struct LLMPreferencesController {
                 fallbackChain: body.fallbackChain.map {
                     UserLLMPreferenceRepository.Snapshot.Step(
                         provider: Self.toKind($0.provider),
-                        model: $0.model,
+                        model: $0.model
                     )
                 },
                 allowedProviders: body.allowedProviders.map(Self.toKind),
-                blockedProviders: body.blockedProviders.map(Self.toKind),
+                blockedProviders: body.blockedProviders.map(Self.toKind)
             )
         } catch {
             logger.error("llm preference upsert failed: \(error)")
@@ -138,7 +138,7 @@ struct LLMPreferencesController {
             primaryModel: snapshot.primaryModel,
             fallbackChain: chain,
             allowedProviders: snapshot.allowedProviders.compactMap { $0.toShared() },
-            blockedProviders: snapshot.blockedProviders.compactMap { $0.toShared() },
+            blockedProviders: snapshot.blockedProviders.compactMap { $0.toShared() }
         )
     }
 }

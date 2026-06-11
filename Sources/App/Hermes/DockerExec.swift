@@ -96,7 +96,7 @@ struct ProcessDockerExec: DockerExec {
     func isRunning(container: String) async throws -> Bool {
         let result = try await runProcess(
             args: ["inspect", "--format={{.State.Running}}", container],
-            stdin: nil,
+            stdin: nil
         )
         guard result.ok else { return false }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
@@ -106,7 +106,7 @@ struct ProcessDockerExec: DockerExec {
         try await ProcessStreamingHandle.spawn(
             binaryPath: binaryPath,
             args: ["exec", "-i", container] + command,
-            logger: logger,
+            logger: logger
         )
     }
 
@@ -118,13 +118,13 @@ struct ProcessDockerExec: DockerExec {
         if inspect.ok { return }
         let create = try await runProcess(
             args: ["network", "create", "--driver=bridge", name],
-            stdin: nil,
+            stdin: nil
         )
         guard create.ok else {
             throw DockerExecError.nonZeroExit(
                 args: ["network", "create", name],
                 stderr: create.stderr,
-                exitCode: create.exitCode,
+                exitCode: create.exitCode
             )
         }
     }
@@ -149,7 +149,7 @@ struct ProcessDockerExec: DockerExec {
                 continuation.resume(returning: DockerResult(
                     stdout: String(decoding: outData, as: UTF8.self),
                     stderr: String(decoding: errData, as: UTF8.self),
-                    exitCode: proc.terminationStatus,
+                    exitCode: proc.terminationStatus
                 ))
             }
 
@@ -183,7 +183,7 @@ final class ProcessStreamingHandle: StreamingExecHandle, @unchecked Sendable {
         continuation: AsyncStream<String>.Continuation,
         process: Process,
         exitFuture: Task<Int32, Error>,
-        stderrCollector: StderrCollector,
+        stderrCollector: StderrCollector
     ) {
         self.lines = lines
         self.continuation = continuation
@@ -206,7 +206,7 @@ final class ProcessStreamingHandle: StreamingExecHandle, @unchecked Sendable {
     static func spawn(
         binaryPath: String,
         args: [String],
-        logger: Logger,
+        logger: Logger
     ) async throws -> ProcessStreamingHandle {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
@@ -263,7 +263,7 @@ final class ProcessStreamingHandle: StreamingExecHandle, @unchecked Sendable {
             continuation: continuation,
             process: process,
             exitFuture: exitFuture,
-            stderrCollector: stderr,
+            stderrCollector: stderr
         )
     }
 }

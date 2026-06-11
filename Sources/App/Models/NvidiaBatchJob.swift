@@ -43,7 +43,7 @@ final class NvidiaBatchJob: Model, @unchecked Sendable {
         skillRef: String,
         state: NvidiaBatchJobState = .queued,
         stepsJSON: String = "[]",
-        errorMessage: String? = nil,
+        errorMessage: String? = nil
     ) {
         self.id = id
         self.tenantID = tenantID

@@ -41,7 +41,7 @@ struct PluginController {
         let featured = Self.boolQuery(req, "featured")
         let premium = Self.boolQuery(req, "premium")
         return await PluginCatalogListResponse(
-            items: service.listCatalog(tenantID: tenantID, category: category, featured: featured, premium: premium),
+            items: service.listCatalog(tenantID: tenantID, category: category, featured: featured, premium: premium)
         )
     }
 
@@ -53,7 +53,7 @@ struct PluginController {
         _ = try ctx.requireTenantID()
         let items = await service.hermesInstalledSkills(
             baseURL: ctx.hermesResolution?.baseURL,
-            authHeader: ctx.hermesResolution?.authHeader,
+            authHeader: ctx.hermesResolution?.authHeader
         )
         return PluginCatalogListResponse(items: items)
     }
@@ -94,7 +94,7 @@ struct PluginController {
         let id = try Self.installID(ctx)
         let body = try await req.decode(as: UpdatePluginInstallRequest.self, context: ctx)
         return try await service.update(
-            tenantID: tenantID, installID: id, config: body.config, status: body.status,
+            tenantID: tenantID, installID: id, config: body.config, status: body.status
         )
     }
 

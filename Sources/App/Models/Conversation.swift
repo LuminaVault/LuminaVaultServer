@@ -21,7 +21,7 @@ final class Conversation: Model, TenantModel, @unchecked Sendable {
         id: UUID? = nil,
         tenantID: UUID,
         title: String,
-        spaceID: UUID? = nil,
+        spaceID: UUID? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -38,7 +38,7 @@ final class Conversation: Model, TenantModel, @unchecked Sendable {
             title: title,
             spaceId: spaceID,
             createdAt: createdAt ?? Date(),
-            updatedAt: updatedAt ?? createdAt ?? Date(),
+            updatedAt: updatedAt ?? createdAt ?? Date()
         )
     }
 }

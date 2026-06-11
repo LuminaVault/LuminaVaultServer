@@ -11,14 +11,14 @@ struct M70_AddNousConnectedAt: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            "ALTER TABLE hermes_tenant_containers ADD COLUMN IF NOT EXISTS nous_connected_at TIMESTAMPTZ",
+            "ALTER TABLE hermes_tenant_containers ADD COLUMN IF NOT EXISTS nous_connected_at TIMESTAMPTZ"
         ).run()
     }
 
     func revert(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            "ALTER TABLE hermes_tenant_containers DROP COLUMN IF EXISTS nous_connected_at",
+            "ALTER TABLE hermes_tenant_containers DROP COLUMN IF EXISTS nous_connected_at"
         ).run()
     }
 }

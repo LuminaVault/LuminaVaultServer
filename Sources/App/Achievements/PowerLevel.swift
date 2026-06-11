@@ -23,7 +23,7 @@ enum PowerLevel {
         badgesEarned: Int,
         graphConnections: Int = 0,
         activeSpaces: Int = 0,
-        streakDays: Int = 0,
+        streakDays: Int = 0
     ) -> Int {
         (memoriesTotal * 1) + (sessionsCount * 3) + (jobsCount * 2) + (badgesEarned * 10)
             + (graphConnections * 1) + (activeSpaces * 5) + (streakDays * 3)

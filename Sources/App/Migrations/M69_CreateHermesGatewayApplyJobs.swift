@@ -23,11 +23,11 @@ struct M69_CreateHermesGatewayApplyJobs: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS hermes_gateway_apply_jobs_tenant_created_idx ON hermes_gateway_apply_jobs(tenant_id, created_at DESC)"#,
+            #"CREATE INDEX IF NOT EXISTS hermes_gateway_apply_jobs_tenant_created_idx ON hermes_gateway_apply_jobs(tenant_id, created_at DESC)"#
         ).run()
         // Backs the single-flight guard: at most one running job per tenant.
         try await sql.raw(
-            #"CREATE UNIQUE INDEX IF NOT EXISTS hermes_gateway_apply_jobs_one_running_idx ON hermes_gateway_apply_jobs(tenant_id) WHERE state = 'running'"#,
+            #"CREATE UNIQUE INDEX IF NOT EXISTS hermes_gateway_apply_jobs_one_running_idx ON hermes_gateway_apply_jobs(tenant_id) WHERE state = 'running'"#
         ).run()
     }
 

@@ -36,7 +36,7 @@ protocol HermesGatewayClienting: Sendable {
     /// CLI-only — see plan `.planning/HER-241` for the swap-in point.
     func health(
         baseURL: URL,
-        authHeader: String?,
+        authHeader: String?
     ) async -> HermesGatewayReachability
 }
 
@@ -64,7 +64,7 @@ struct HermesGatewayClient: HermesGatewayClienting {
     init(
         session: URLSession = .shared,
         logger: Logger,
-        probeTimeout: TimeInterval = 5,
+        probeTimeout: TimeInterval = 5
     ) {
         self.session = session
         self.logger = logger

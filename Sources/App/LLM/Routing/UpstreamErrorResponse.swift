@@ -59,7 +59,7 @@ struct UpstreamErrorResponse: Error, HTTPResponseError {
         return Response(
             status: status,
             headers: headers,
-            body: .init(byteBuffer: ByteBuffer(data: bodyData)),
+            body: .init(byteBuffer: ByteBuffer(data: bodyData))
         )
     }
 }

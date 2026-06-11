@@ -23,7 +23,7 @@ final class Project: Model, TenantModel, @unchecked Sendable {
         tenantID: UUID,
         name: String,
         description: String? = nil,
-        archived: Bool = false,
+        archived: Bool = false
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -39,7 +39,7 @@ final class Project: Model, TenantModel, @unchecked Sendable {
             description: description,
             archived: archived,
             todoCount: todoCount,
-            createdAt: createdAt ?? Date(),
+            createdAt: createdAt ?? Date()
         )
     }
 }

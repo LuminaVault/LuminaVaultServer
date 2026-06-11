@@ -17,7 +17,7 @@ struct AchievementsFlowTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/achievements",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -30,7 +30,7 @@ struct AchievementsFlowTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/achievements/recent",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }

@@ -67,7 +67,7 @@ struct DefaultHermesLLMService: HermesLLMService {
                 model: request.model ?? defaultModel,
                 messages: request.messages,
                 temperature: request.temperature,
-                stream: false,
+                stream: false
             )
             urlReq.httpBody = try JSONEncoder().encode(payload)
 
@@ -107,7 +107,7 @@ struct DefaultHermesLLMService: HermesLLMService {
                 errors: toolErrors,
                 model: raw.model,
                 profile: sessionKey,
-                logger: logger,
+                logger: logger
             )
             let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
             successCounter.increment()

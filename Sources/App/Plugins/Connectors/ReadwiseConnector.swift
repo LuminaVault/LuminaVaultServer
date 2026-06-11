@@ -20,7 +20,7 @@ struct ReadwiseConnector: PluginConnector {
         http: ConnectorHTTPClient,
         baseURL: URL = URL(string: "https://readwise.io")!,
         maxPages: Int = 10,
-        logger: Logger,
+        logger: Logger
     ) {
         self.http = http
         self.baseURL = baseURL

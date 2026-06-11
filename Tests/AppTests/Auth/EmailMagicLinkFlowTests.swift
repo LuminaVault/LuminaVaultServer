@@ -62,7 +62,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email),
+                body: Self.startBody(email: email)
             ) { response in
                 #expect(response.status == .ok)
                 let start = try Self.decodeStart(response.body)
@@ -73,7 +73,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
             ) { response -> AuthResponse in
                 #expect(response.status == .ok)
                 return try Self.decodeAuth(response.body)
@@ -104,14 +104,14 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email),
+                body: Self.startBody(email: email)
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: "000000"),
+                body: Self.verifyJSON(email: email, code: "000000")
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -130,7 +130,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: Self.randomEmail(), code: Self.fixedOTP),
+                body: Self.verifyJSON(email: Self.randomEmail(), code: Self.fixedOTP)
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -145,7 +145,7 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: "no-at-sign"),
+                body: Self.startBody(email: "no-at-sign")
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -165,28 +165,28 @@ struct EmailMagicLinkFlowTests {
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email),
+                body: Self.startBody(email: email)
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(email: email),
+                body: Self.startBody(email: email)
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/email/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyJSON(email: email, code: Self.fixedOTP),
+                body: Self.verifyJSON(email: email, code: Self.fixedOTP)
             ) { #expect($0.status == .unauthorized) }
         }
     }

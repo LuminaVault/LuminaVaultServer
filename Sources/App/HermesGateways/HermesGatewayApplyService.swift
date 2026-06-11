@@ -50,7 +50,7 @@ actor HermesGatewayApplyService {
         healthProbe: @escaping HealthProbe,
         healthTimeoutSeconds: Int = 60,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
         self.containerManager = containerManager
@@ -74,7 +74,7 @@ actor HermesGatewayApplyService {
             id: jobID,
             tenantID: tenantID,
             state: .running,
-            steps: initialSteps,
+            steps: initialSteps
         )
         try await row.create(on: fluent.db())
 
@@ -141,7 +141,7 @@ actor HermesGatewayApplyService {
     private func registerSubscriber(
         jobID: UUID,
         subID: UUID,
-        continuation: AsyncThrowingStream<HermesGatewayApplyEvent, Error>.Continuation,
+        continuation: AsyncThrowingStream<HermesGatewayApplyEvent, Error>.Continuation
     ) {
         subscribers[jobID, default: [:]][subID] = continuation
     }
@@ -203,7 +203,7 @@ actor HermesGatewayApplyService {
                 await finalize(
                     jobID,
                     state: .failed,
-                    errorMessage: "Your assistant restarted but didn't respond in time. Double-check your tokens and try again.",
+                    errorMessage: "Your assistant restarted but didn't respond in time. Double-check your tokens and try again."
                 )
                 return
             }
@@ -257,7 +257,7 @@ actor HermesGatewayApplyService {
         _ jobID: UUID,
         _ id: HermesGatewayApplyStepID,
         _ state: HermesGatewayApplyStepState,
-        detail: String? = nil,
+        detail: String? = nil
     ) async throws {
         guard let row = try await loadRowAny(jobID: jobID) else { return }
         var steps = row.steps
@@ -269,7 +269,7 @@ actor HermesGatewayApplyService {
                 state: state,
                 detail: detail ?? prior.detail,
                 startedAt: state == .running ? ts : prior.startedAt,
-                finishedAt: (state == .succeeded || state == .failed || state == .skipped) ? ts : prior.finishedAt,
+                finishedAt: (state == .succeeded || state == .failed || state == .skipped) ? ts : prior.finishedAt
             )
         }
         row.stepsJSON = HermesGatewayApplyJob.encodeSteps(steps)

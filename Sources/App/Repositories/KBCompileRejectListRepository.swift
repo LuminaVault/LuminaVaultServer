@@ -16,7 +16,7 @@ struct KBCompileRejectListRepository {
     func record(
         tenantID: UUID,
         contentHash: String,
-        vaultFileID: UUID?,
+        vaultFileID: UUID?
     ) async throws {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for reject-list insert")

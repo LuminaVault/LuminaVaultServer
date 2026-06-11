@@ -34,8 +34,8 @@ private func makeContext(description: String?, body: String? = nil) -> CaptureHo
             url: "https://example.com/article",
             transcript: nil,
             body: body,
-            readingTimeMinutes: nil,
-        ),
+            readingTimeMinutes: nil
+        )
     )
 }
 
@@ -43,7 +43,7 @@ private func makeDispatcher(hooks: [any CaptureHook]) -> CaptureHookDispatcher {
     CaptureHookDispatcher(
         fluent: nil,
         registry: CaptureHookRegistry(hooks: hooks),
-        logger: Logger(label: "test.capture.hooks"),
+        logger: Logger(label: "test.capture.hooks")
     )
 }
 
@@ -58,7 +58,7 @@ struct CaptureHookDispatcherTests {
         let result = await dispatcher.dispatch(
             point: .postEnrich,
             installedSlugs: ["reading-time"],
-            context: ctx,
+            context: ctx
         )
 
         #expect(result.metadata.readingTimeMinutes == 2)
@@ -72,7 +72,7 @@ struct CaptureHookDispatcherTests {
         let result = await dispatcher.dispatch(
             point: .postEnrich,
             installedSlugs: [],
-            context: ctx,
+            context: ctx
         )
 
         #expect(result.metadata.readingTimeMinutes == nil)
@@ -88,7 +88,7 @@ struct CaptureHookDispatcherTests {
         let result = await dispatcher.dispatch(
             point: .postEnrich,
             installedSlugs: ["readwise"],
-            context: ctx,
+            context: ctx
         )
 
         #expect(result.metadata.readingTimeMinutes == nil)
@@ -105,7 +105,7 @@ struct CaptureHookDispatcherTests {
         let result = await dispatcher.dispatch(
             point: .postEnrich,
             installedSlugs: ["reading-time"],
-            context: ctx,
+            context: ctx
         )
 
         // Context returned intact; no crash, no propagation.
@@ -128,7 +128,7 @@ struct CaptureHookDispatcherTests {
         let result = await dispatcher.dispatch(
             point: .postEnrich,
             installedSlugs: ["reading-time"],
-            context: ctx,
+            context: ctx
         )
 
         #expect(result.metadata.readingTimeMinutes == nil)

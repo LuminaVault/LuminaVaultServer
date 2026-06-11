@@ -44,7 +44,7 @@ enum ModelOriginRegistry {
     /// fallback path is selected from the surviving (non-CN) models.
     static func filter<C: Collection>(
         _ models: C,
-        privacyNoCNOrigin: Bool,
+        privacyNoCNOrigin: Bool
     ) -> [C.Element] where C.Element: ModelIdentifying {
         guard privacyNoCNOrigin else { return Array(models) }
         return models.filter { !isCNOrigin($0.modelID) }

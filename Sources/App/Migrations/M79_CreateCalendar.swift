@@ -70,7 +70,7 @@ struct M79_CreateCalendar: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS calendar_events_tenant_starts_idx ON calendar_events(tenant_id, starts_at)"#,
+            #"CREATE INDEX IF NOT EXISTS calendar_events_tenant_starts_idx ON calendar_events(tenant_id, starts_at)"#
         ).run()
     }
 

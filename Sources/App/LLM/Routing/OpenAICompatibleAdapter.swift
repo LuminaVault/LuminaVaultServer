@@ -34,7 +34,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         baseURL: URL,
         session: URLSession = .shared,
         logger: Logger,
-        userCredentials: UserCredentialStore? = nil,
+        userCredentials: UserCredentialStore? = nil
     ) {
         self.kind = kind
         self.apiKey = apiKey

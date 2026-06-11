@@ -13,7 +13,7 @@ struct AdminTokenMiddleware<Context: RequestContext>: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         guard !expectedToken.isEmpty else {
             throw HTTPError(.notFound, message: "admin disabled")

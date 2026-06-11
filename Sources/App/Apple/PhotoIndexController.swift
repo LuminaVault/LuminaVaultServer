@@ -112,7 +112,7 @@ struct PhotoIndexController {
         tenantID: UUID,
         queryEmbedding: [Float],
         limit: Int,
-        sql: any SQLDatabase,
+        sql: any SQLDatabase
     ) async throws -> [PhotoSearchHit] {
         let vec = MemoryRepository.formatVector(queryEmbedding)
         let rows = try await sql.raw("""
@@ -131,7 +131,7 @@ struct PhotoIndexController {
                 ocrText: $0.ocr_text,
                 sceneTags: $0.scene_tags ?? [],
                 // Cosine distance ∈ [0,2]; expose a 0–1 similarity score.
-                score: max(0, 1 - ($0.distance / 2)),
+                score: max(0, 1 - ($0.distance / 2))
             )
         }
     }

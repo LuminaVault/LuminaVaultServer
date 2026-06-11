@@ -31,7 +31,7 @@ struct LapseArchiverJob {
         fluent: Fluent,
         vaultPaths: VaultPathService,
         coldStoragePath: String,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.vaultPaths = vaultPaths

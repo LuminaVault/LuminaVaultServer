@@ -16,7 +16,7 @@ final class EmbeddingFallbackService: EmbeddingService {
         primary: any EmbeddingService,
         primaryKind: EmbeddingProviderKind,
         fallbacks: [(EmbeddingProviderKind, any EmbeddingService)],
-        logger: Logger = Logger(label: "lv.embedding.fallback"),
+        logger: Logger = Logger(label: "lv.embedding.fallback")
     ) {
         self.primary = primary
         self.primaryKind = primaryKind

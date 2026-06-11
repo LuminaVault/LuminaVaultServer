@@ -52,7 +52,7 @@ struct WebAuthnAntiEnumerationTests {
                 uri: "/v1/auth/webauthn/register/options",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: "{\"username\":\"\(unknown)\"}"),
+                body: ByteBuffer(string: "{\"username\":\"\(unknown)\"}")
             ) { response in
                 #expect(response.status == .ok)
                 // Body should contain a challenge — proves we issued real-looking options
@@ -71,7 +71,7 @@ struct WebAuthnAntiEnumerationTests {
                 uri: "/v1/auth/webauthn/authenticate/options",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: "{\"username\":\"\(unknown)\"}"),
+                body: ByteBuffer(string: "{\"username\":\"\(unknown)\"}")
             ) { response in
                 #expect(response.status == .ok)
                 let raw = String(buffer: response.body)
@@ -93,15 +93,15 @@ struct WebAuthnAntiEnumerationTests {
                 body: Self.registerBody(
                     email: "wax-\(UUID().uuidString.prefix(6).lowercased())@test.luminavault",
                     username: username,
-                    password: "CorrectHorseBatteryStaple1!",
-                ),
+                    password: "CorrectHorseBatteryStaple1!"
+                )
             ) { _ in }
 
             try await client.execute(
                 uri: "/v1/auth/webauthn/register/options",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: "{\"username\":\"\(username)\"}"),
+                body: ByteBuffer(string: "{\"username\":\"\(username)\"}")
             ) { response in
                 #expect(response.status == .ok)
             }

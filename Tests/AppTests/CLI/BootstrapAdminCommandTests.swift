@@ -23,7 +23,7 @@ struct BootstrapAdminCommandTests {
     private static func reader(
         email: String,
         password: String,
-        username: String,
+        username: String
     ) -> ConfigReader {
         ConfigReader(providers: [
             InMemoryProvider(values: [
@@ -80,7 +80,7 @@ struct BootstrapAdminCommandTests {
         let password = "bootstrap-pass-\(slug)"
 
         try await runBootstrapAdminCommand(
-            reader: Self.reader(email: email, password: password, username: username),
+            reader: Self.reader(email: email, password: password, username: username)
         )
 
         let row = try await Self.fetchUser(email: email)

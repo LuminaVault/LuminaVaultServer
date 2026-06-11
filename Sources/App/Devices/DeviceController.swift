@@ -33,7 +33,7 @@ struct DeviceController {
             return try DeviceRegistrationResponse(
                 id: existing.requireID(),
                 token: existing.token,
-                platform: existing.platform,
+                platform: existing.platform
             )
         }
 
@@ -42,7 +42,7 @@ struct DeviceController {
         return try DeviceRegistrationResponse(
             id: row.requireID(),
             token: row.token,
-            platform: row.platform,
+            platform: row.platform
         )
     }
 

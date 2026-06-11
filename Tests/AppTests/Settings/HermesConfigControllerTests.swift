@@ -33,7 +33,7 @@ struct HermesConfigControllerTests {
     private static func decodeGet(_ buffer: ByteBuffer) throws -> HermesConfigController.GetResponse {
         try testJSONDecoder().decode(
             HermesConfigController.GetResponse.self,
-            from: Data(buffer: buffer),
+            from: Data(buffer: buffer)
         )
     }
 
@@ -44,7 +44,7 @@ struct HermesConfigControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuth($0.body).accessToken }
     }
 
@@ -56,7 +56,7 @@ struct HermesConfigControllerTests {
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -74,7 +74,7 @@ struct HermesConfigControllerTests {
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { response in
                 #expect(response.status == .ok)
                 let resp = try Self.decodeGet(response.body)
@@ -86,7 +86,7 @@ struct HermesConfigControllerTests {
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let resp = try Self.decodeGet(response.body)
@@ -107,13 +107,13 @@ struct HermesConfigControllerTests {
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { $0.status }
 
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 let body = String(buffer: response.body)
                 #expect(!body.contains("SECRET-TOKEN-XYZ"))
@@ -132,7 +132,7 @@ struct HermesConfigControllerTests {
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { response in
                 #expect(response.status == .ok)
                 let resp = try Self.decodeGet(response.body)
@@ -150,7 +150,7 @@ struct HermesConfigControllerTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: true,
-            resolver: SSRFGuardTests.StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]]),
+            resolver: SSRFGuardTests.StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]])
         )
         await #expect(throws: SSRFGuard.Rejection.self) {
             _ = try await guardian.validate(rawURL: "https://127.0.0.1")
@@ -168,13 +168,13 @@ struct HermesConfigControllerTests {
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { $0.status }
 
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .noContent)
             }
@@ -182,7 +182,7 @@ struct HermesConfigControllerTests {
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -203,13 +203,13 @@ struct HermesConfigControllerTests {
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body1,
+                body: body1
             ) { $0.status }
             try await client.execute(
                 uri: "/v1/settings/hermes",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body2,
+                body: body2
             ) { response in
                 #expect(response.status == .ok)
                 let resp = try Self.decodeGet(response.body)

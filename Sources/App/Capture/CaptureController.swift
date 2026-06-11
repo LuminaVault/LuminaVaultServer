@@ -54,7 +54,7 @@ struct CaptureController {
                 tenantID: tenantID,
                 url: body.url,
                 note: body.notes,
-                spaceID: body.spaceId,
+                spaceID: body.spaceId
             )
         } catch LinkCaptureService.CaptureError.invalidURL {
             throw HTTPError(.badRequest, message: "Invalid URL")

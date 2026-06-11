@@ -35,7 +35,7 @@ struct VaultInitService {
         soulService: SOULService,
         spacesService: SpacesService,
         vectorIndexService: TenantVectorIndexService? = nil,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.vaultPaths = vaultPaths
@@ -79,7 +79,7 @@ struct VaultInitService {
         return VaultStatusResponse(
             initialized: true,
             createdAt: user.updatedAt,
-            defaultSpaceSlugs: SpaceDefaults.entries.map(\.slug),
+            defaultSpaceSlugs: SpaceDefaults.entries.map(\.slug)
         )
     }
 
@@ -87,7 +87,7 @@ struct VaultInitService {
         VaultStatusResponse(
             initialized: user.vaultInitialized,
             createdAt: user.vaultInitialized ? user.updatedAt : nil,
-            defaultSpaceSlugs: user.vaultInitialized ? SpaceDefaults.entries.map(\.slug) : [],
+            defaultSpaceSlugs: user.vaultInitialized ? SpaceDefaults.entries.map(\.slug) : []
         )
     }
 }

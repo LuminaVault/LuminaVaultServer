@@ -55,7 +55,7 @@ struct ConversationE2ETests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username),
+            body: registerBody(email: email, username: username)
         ) { resp in
             #expect(resp.status == .ok)
             return try decodeAuth(resp.body).accessToken
@@ -73,7 +73,7 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"title":"Sleep patterns"}"#),
+                body: ByteBuffer(string: #"{"title":"Sleep patterns"}"#)
             ) { resp in
                 #expect(resp.status == .ok)
                 let convo = try Self.decodeConversation(resp.body)
@@ -91,7 +91,7 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"title":"   "}"#),
+                body: ByteBuffer(string: #"{"title":"   "}"#)
             ) { resp in
                 #expect(resp.status == .ok)
                 let convo = try Self.decodeConversation(resp.body)
@@ -110,13 +110,13 @@ struct ConversationE2ETests {
                     uri: "/v1/conversations",
                     method: .post,
                     headers: Self.auth(token),
-                    body: ByteBuffer(string: #"{"title":"\#(title)"}"#),
+                    body: ByteBuffer(string: #"{"title":"\#(title)"}"#)
                 ) { resp in #expect(resp.status == .ok) }
             }
             try await client.execute(
                 uri: "/v1/conversations",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in
                 #expect(resp.status == .ok)
                 let list = try Self.decodeConversationList(resp.body)
@@ -136,12 +136,12 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"title":"detail"}"#),
+                body: ByteBuffer(string: #"{"title":"detail"}"#)
             ) { try Self.decodeConversation($0.body) }
             try await client.execute(
                 uri: "/v1/conversations/\(created.id)",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in
                 #expect(resp.status == .ok)
                 let detail = try Self.decodeConversationDetail(resp.body)
@@ -160,17 +160,17 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"title":"trash"}"#),
+                body: ByteBuffer(string: #"{"title":"trash"}"#)
             ) { try Self.decodeConversation($0.body) }
             try await client.execute(
                 uri: "/v1/conversations/\(created.id)",
                 method: .delete,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in #expect(resp.status == .noContent) }
             try await client.execute(
                 uri: "/v1/conversations/\(created.id)",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in #expect(resp.status == .notFound) }
         }
     }
@@ -185,12 +185,12 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(tokenA),
-                body: ByteBuffer(string: #"{"title":"private"}"#),
+                body: ByteBuffer(string: #"{"title":"private"}"#)
             ) { try Self.decodeConversation($0.body) }
             try await client.execute(
                 uri: "/v1/conversations/\(aConvo.id)",
                 method: .get,
-                headers: Self.auth(tokenB),
+                headers: Self.auth(tokenB)
             ) { resp in #expect(resp.status == .notFound) }
         }
     }
@@ -216,13 +216,13 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"title":"x"}"#),
+                body: ByteBuffer(string: #"{"title":"x"}"#)
             ) { try Self.decodeConversation($0.body) }
             try await client.execute(
                 uri: "/v1/conversations/\(convo.id)/messages/stream",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"content":"   "}"#),
+                body: ByteBuffer(string: #"{"content":"   "}"#)
             ) { resp in #expect(resp.status == .badRequest) }
         }
     }
@@ -237,7 +237,7 @@ struct ConversationE2ETests {
                 uri: "/v1/conversations/\(bogus)/messages/stream",
                 method: .post,
                 headers: Self.auth(token),
-                body: ByteBuffer(string: #"{"content":"hi"}"#),
+                body: ByteBuffer(string: #"{"content":"hi"}"#)
             ) { resp in #expect(resp.status == .notFound) }
         }
     }

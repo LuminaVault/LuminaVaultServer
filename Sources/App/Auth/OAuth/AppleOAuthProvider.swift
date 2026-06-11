@@ -91,7 +91,7 @@ struct AppleOAuthProvider: OAuthProvider {
         return OAuthIdentityInfo(
             providerUserID: payload.sub.value,
             email: email,
-            emailVerified: verified,
+            emailVerified: verified
         )
     }
 }

@@ -48,7 +48,7 @@ struct SkillsController {
             .filter(\.$tenantID == tenantID)
             .all()
         let stateByKey: [String: SkillsState] = Dictionary(
-            uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) },
+            uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
         )
         let dailyCounts = try await dailyRunCounts(tenantID: tenantID, names: nil)
         let userTier = user.tier.isEmpty ? "trial" : user.tier
@@ -60,7 +60,7 @@ struct SkillsController {
                 manifest: manifest,
                 state: state,
                 dailyRunCount: dailyCounts[manifest.name] ?? 0,
-                userTier: userTier,
+                userTier: userTier
             )
         }
         return SkillListResponse(skills: skills)
@@ -97,7 +97,7 @@ struct SkillsController {
         let state = existing ?? SkillsState(
             tenantID: tenantID,
             source: manifest.source.rawValue,
-            name: manifest.name,
+            name: manifest.name
         )
         if let enabled = body.enabled { state.enabled = enabled }
         if let override = body.scheduleOverride {
@@ -114,7 +114,7 @@ struct SkillsController {
             manifest: manifest,
             state: state,
             dailyRunCount: counts[manifest.name] ?? 0,
-            userTier: userTier,
+            userTier: userTier
         )
     }
 
@@ -167,7 +167,7 @@ struct SkillsController {
                 mtokIn: row.mtok_in,
                 mtokOut: row.mtok_out,
                 markdown: row.markdown,
-                blocks: blocks,
+                blocks: blocks
             )
         }
 
@@ -181,7 +181,7 @@ struct SkillsController {
         GROUP BY day
         """).all(decoding: BucketRow.self)
         let bucketByDay: [Date: Int] = Dictionary(
-            uniqueKeysWithValues: buckets.map { ($0.day, $0.count) },
+            uniqueKeysWithValues: buckets.map { ($0.day, $0.count) }
         )
         var sparkline: [SkillSparklinePoint] = []
         sparkline.reserveCapacity(Self.sparklineDays)
@@ -216,7 +216,7 @@ struct SkillsController {
                 status: .success,
                 markdown: Self.kbCompileMarkdown(response),
                 startedAt: startedAt,
-                endedAt: endedAt,
+                endedAt: endedAt
             )
         case let .help(markdown):
             let now = Date()
@@ -226,14 +226,14 @@ struct SkillsController {
                 status: .success,
                 markdown: markdown,
                 startedAt: now,
-                endedAt: now,
+                endedAt: now
             )
         case let .skill(name):
             return try await runSkill(
                 name: name,
                 user: user,
                 input: invocation.input,
-                arguments: invocation.arguments,
+                arguments: invocation.arguments
             )
         }
     }
@@ -251,7 +251,7 @@ struct SkillsController {
             name: String(name),
             user: user,
             input: body.input,
-            arguments: body.arguments ?? [:],
+            arguments: body.arguments ?? [:]
         )
     }
 
@@ -259,7 +259,7 @@ struct SkillsController {
         name: String,
         user: User,
         input: String?,
-        arguments: [String: String],
+        arguments: [String: String]
     ) async throws -> SkillRunResponse {
         let tenantID = try user.requireID()
         guard let manifest = try await catalog.manifest(named: name, for: tenantID) else {
@@ -278,7 +278,7 @@ struct SkillsController {
             profileUsername: user.username,
             trigger: .manual,
             input: input,
-            arguments: arguments,
+            arguments: arguments
         )
         return Self.response(from: result, skillName: manifest.name)
     }
@@ -287,7 +287,7 @@ struct SkillsController {
         HTTPError(
             .tooManyRequests,
             headers: [.retryAfter: String(Int(error.retryAfter.rounded(.up)))],
-            message: "daily run cap exceeded for this skill",
+            message: "daily run cap exceeded for this skill"
         )
     }
 
@@ -297,7 +297,7 @@ struct SkillsController {
         manifest: SkillManifest,
         state: SkillsState?,
         dailyRunCount: Int,
-        userTier: String,
+        userTier: String
     ) -> LuminaVaultShared.SkillDTO {
         LuminaVaultShared.SkillDTO(
             id: "\(manifest.source.rawValue):\(manifest.name)",
@@ -315,7 +315,7 @@ struct SkillsController {
             dailyRunCount: dailyRunCount,
             dailyRunCap: manifest.dailyRunCap?.value(for: userTier) ?? 0,
             apnsCategory: state?.apnsCategory.flatMap { LuminaVaultShared.APNSCategory(rawValue: $0) },
-            bodyExcerpt: String(manifest.body.prefix(200)),
+            bodyExcerpt: String(manifest.body.prefix(200))
         )
     }
 
@@ -329,7 +329,7 @@ struct SkillsController {
             mtokIn: result.mtokIn,
             mtokOut: result.mtokOut,
             startedAt: result.startedAt,
-            endedAt: result.endedAt,
+            endedAt: result.endedAt
         )
     }
 

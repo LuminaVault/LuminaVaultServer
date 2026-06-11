@@ -28,7 +28,7 @@ struct ConversationTests {
                 tenantID: UUID(),
                 content: "skipped run Tuesday",
                 createdAt: nil,
-                distance: 0.15,
+                distance: 0.15
             ),
         ]
         let messages = ConversationController.buildPrompt(history: history, hits: hits)
@@ -64,7 +64,7 @@ struct ConversationTests {
             let fetched = try #require(
                 await Conversation.query(on: fluent.db(), tenantID: tenantID)
                     .filter(\.$id == id)
-                    .first(),
+                    .first()
             )
             #expect(fetched.title == "Sleep patterns")
             #expect(fetched.tenantID == tenantID)
@@ -88,7 +88,7 @@ struct ConversationTests {
                 conversationID: convID,
                 role: .assistant,
                 content: "Based on [1] you ran 5k.",
-                sourceMemoryIDs: [memID],
+                sourceMemoryIDs: [memID]
             )
             try await msg.save(on: fluent.db())
 
@@ -174,7 +174,7 @@ struct ConversationTests {
             id: id,
             email: "conv-\(UUID().uuidString.prefix(8).lowercased())@test.luminavault",
             username: "conv-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "stub",
+            passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
         return id

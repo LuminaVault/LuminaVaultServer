@@ -28,7 +28,7 @@ actor ProviderFailoverLogger {
     /// must not break the user's chat.
     nonisolated func record(
         notice: ProviderFailoverNotice,
-        tenantID: UUID?,
+        tenantID: UUID?
     ) {
         Task { [self] in
             await persist(notice: notice, tenantID: tenantID)

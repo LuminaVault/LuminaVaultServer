@@ -16,7 +16,7 @@ struct RaindropConnector: PluginConnector {
         http: ConnectorHTTPClient,
         baseURL: URL = URL(string: "https://api.raindrop.io")!,
         maxPages: Int = 20,
-        logger: Logger,
+        logger: Logger
     ) {
         self.http = http
         self.baseURL = baseURL

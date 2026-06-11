@@ -30,7 +30,7 @@ struct SessionToken: JWTPayload {
         expiration: Date,
         issuedAt: Date? = nil,
         jti: String = UUID().uuidString,
-        hpid: String? = nil,
+        hpid: String? = nil
     ) {
         subject = .init(value: userID.uuidString)
         self.expiration = .init(value: expiration)

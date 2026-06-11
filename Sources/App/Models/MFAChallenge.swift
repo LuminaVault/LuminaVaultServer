@@ -26,7 +26,7 @@ final class MFAChallenge: Model, TenantModel, @unchecked Sendable {
         channel: String,
         destination: String,
         codeHash: String,
-        expiresAt: Date,
+        expiresAt: Date
     ) {
         self.id = id
         self.tenantID = tenantID

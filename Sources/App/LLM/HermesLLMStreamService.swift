@@ -64,7 +64,7 @@ protocol HermesLLMStreamService: Sendable {
     func chatStream(
         sessionKey: String,
         sessionID: String?,
-        request: ChatRequest,
+        request: ChatRequest
     ) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
 
@@ -94,7 +94,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         logger: Logger,
         apiKey: String = "",
         requestTimeout: TimeAmount = .seconds(120),
-        streamIdleTimeout: TimeAmount = .seconds(60),
+        streamIdleTimeout: TimeAmount = .seconds(60)
     ) {
         self.baseURL = baseURL
         self.httpClient = httpClient
@@ -108,7 +108,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
     func chatStream(
         sessionKey: String,
         sessionID: String?,
-        request: ChatRequest,
+        request: ChatRequest
     ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let baseURL = baseURL
         let httpClient = httpClient
@@ -145,7 +145,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     model: model,
                     messages: request.messages,
                     temperature: request.temperature,
-                    stream: true,
+                    stream: true
                 )
                 let payloadData = try JSONEncoder().encode(payload)
 
@@ -155,7 +155,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     sessionID: sessionID,
                     apiKey: isOverride ? "" : apiKey,
                     payloadData: payloadData,
-                    authHeaderOverride: isOverride ? resolution?.authHeader : nil,
+                    authHeaderOverride: isOverride ? resolution?.authHeader : nil
                 )
 
                 logger.debug("hermes stream request", metadata: [
@@ -219,7 +219,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                                     record,
                                     decoder: decoder,
                                     yield: { continuation.yield($0) },
-                                    logger: logger,
+                                    logger: logger
                                 ) {
                                     finished = true
                                     break
@@ -234,7 +234,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                                 buffer,
                                 decoder: decoder,
                                 yield: { continuation.yield($0) },
-                                logger: logger,
+                                logger: logger
                             )
                         }
                         logger.debug("hermes stream reader done", metadata: [
@@ -286,7 +286,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         sessionID: String?,
         apiKey: String,
         payloadData: Data,
-        authHeaderOverride: String? = nil,
+        authHeaderOverride: String? = nil
     ) -> HTTPClientRequest {
         var httpReq = HTTPClientRequest(url: url.absoluteString)
         httpReq.method = .POST
@@ -315,7 +315,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
         _ record: String,
         decoder: JSONDecoder,
         yield: (ChatStreamChunk) -> Void,
-        logger: Logger,
+        logger: Logger
     ) throws -> Bool {
         // Hermes frames a record as an optional `event:` line followed by
         // `data:`. We forward `chat.completion.chunk` deltas; the custom
@@ -346,7 +346,7 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 ])
                 throw HermesStreamUpstreamError(
                     message: upstreamError.error.message,
-                    code: upstreamError.error.code,
+                    code: upstreamError.error.code
                 )
             }
             do {

@@ -34,7 +34,7 @@ struct LLMPreferencesControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuth($0.body) }
         return resp.accessToken
     }
@@ -47,7 +47,7 @@ struct LLMPreferencesControllerTests {
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let prefs = try Self.decodePrefs(response.body)
@@ -74,7 +74,7 @@ struct LLMPreferencesControllerTests {
                 uri: "/v1/me/preferences/llm",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response -> LLMPreferencesGetResponse in
                 #expect(response.status == .ok)
                 return try Self.decodePrefs(response.body)
@@ -86,7 +86,7 @@ struct LLMPreferencesControllerTests {
             let get = try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodePrefs($0.body) }
             #expect(get.mode == .managed)
             #expect(get.primaryModel == "qwen/qwen-2.5-72b-instruct")
@@ -105,7 +105,7 @@ struct LLMPreferencesControllerTests {
                 uri: "/v1/me/preferences/llm",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { try Self.decodePrefs($0.body) }
             #expect(put.mode == .byok)
             #expect(put.primaryProvider == .anthropic)
@@ -129,7 +129,7 @@ struct LLMPreferencesControllerTests {
                 uri: "/v1/me/preferences/llm",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { try Self.decodePrefs($0.body) }
             #expect(put.mode == .managed)
         }

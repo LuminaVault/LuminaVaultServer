@@ -23,13 +23,13 @@ struct M65_CreateUsageEvents: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS usage_events_tenant_occurred_idx ON usage_events(tenant_id, occurred_at DESC)"#,
+            #"CREATE INDEX IF NOT EXISTS usage_events_tenant_occurred_idx ON usage_events(tenant_id, occurred_at DESC)"#
         ).run()
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS usage_events_tenant_metric_occurred_idx ON usage_events(tenant_id, metric, occurred_at DESC)"#,
+            #"CREATE INDEX IF NOT EXISTS usage_events_tenant_metric_occurred_idx ON usage_events(tenant_id, metric, occurred_at DESC)"#
         ).run()
         try await sql.raw(
-            #"CREATE UNIQUE INDEX IF NOT EXISTS usage_events_idempotency_idx ON usage_events(tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL"#,
+            #"CREATE UNIQUE INDEX IF NOT EXISTS usage_events_idempotency_idx ON usage_events(tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL"#
         ).run()
     }
 

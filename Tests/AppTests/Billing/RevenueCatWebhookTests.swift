@@ -47,7 +47,7 @@ struct RevenueCatWebhookTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: ByteBuffer(string: #"{"email":"\#(user.email)","username":"\#(user.username)","password":"\#(password)"}"#),
+            body: ByteBuffer(string: #"{"email":"\#(user.email)","username":"\#(user.username)","password":"\#(password)"}"#)
         ) { response in
             #expect(response.status == .ok)
             return try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: response.body))
@@ -93,7 +93,7 @@ struct RevenueCatWebhookTests {
         appUserId: String,
         productId: String? = nil,
         expirationAtMs: Int64? = nil,
-        isRefund: Bool? = nil,
+        isRefund: Bool? = nil
     ) -> String {
         var parts: [String] = [
             "\"id\":\"\(eventID)\"",
@@ -121,7 +121,7 @@ struct RevenueCatWebhookTests {
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: headers,
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -141,14 +141,14 @@ struct RevenueCatWebhookTests {
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
                 productId: "luminavault_pro_monthly",
-                expirationAtMs: futureMs,
+                expirationAtMs: futureMs
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -171,14 +171,14 @@ struct RevenueCatWebhookTests {
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
                 productId: "luminavault_ultimate_annual",
-                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 365).timeIntervalSince1970 * 1000),
+                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 365).timeIntervalSince1970 * 1000)
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -198,14 +198,14 @@ struct RevenueCatWebhookTests {
             let body = Self.payload(
                 eventID: "evt-exp-\(UUID().uuidString)",
                 type: "EXPIRATION",
-                appUserId: auth.userId.uuidString,
+                appUserId: auth.userId.uuidString
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -228,14 +228,14 @@ struct RevenueCatWebhookTests {
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
                 productId: "luminavault_pro_monthly",
-                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000),
+                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -244,7 +244,7 @@ struct RevenueCatWebhookTests {
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -263,14 +263,14 @@ struct RevenueCatWebhookTests {
                 eventID: "evt-unknown-\(UUID().uuidString)",
                 type: "RENEWAL",
                 appUserId: unknown,
-                expirationAtMs: Int64(Date().addingTimeInterval(86400).timeIntervalSince1970 * 1000),
+                expirationAtMs: Int64(Date().addingTimeInterval(86400).timeIntervalSince1970 * 1000)
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.signedHeaders(body: body),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -288,14 +288,14 @@ struct RevenueCatWebhookTests {
                 eventID: "evt-bearer-\(UUID().uuidString)",
                 type: "RENEWAL",
                 appUserId: auth.userId.uuidString,
-                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000),
+                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
             )
 
             try await client.execute(
                 uri: "/v1/billing/revenuecat-webhook",
                 method: .post,
                 headers: Self.bearerHeaders(),
-                body: ByteBuffer(string: body),
+                body: ByteBuffer(string: body)
             ) { response in
                 #expect(response.status == .ok)
             }

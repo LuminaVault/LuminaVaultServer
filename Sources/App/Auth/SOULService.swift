@@ -122,7 +122,7 @@ struct SOULService {
         let hermesTarget = hermesFilePath(for: username)
         try FileManager.default.createDirectory(
             at: hermesTarget.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try atomicWrite(data: data, to: hermesTarget)
     }
@@ -133,7 +133,7 @@ struct SOULService {
         let hermesTarget = hermesFilePath(for: username)
         try FileManager.default.createDirectory(
             at: hermesTarget.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try atomicWrite(data: data, to: hermesTarget)
     }

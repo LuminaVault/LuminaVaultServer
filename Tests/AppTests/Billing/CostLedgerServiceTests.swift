@@ -14,7 +14,7 @@ struct CostLedgerServiceTests {
         // $0.50 / Mtok in, $1.50 / Mtok out (in micro-USD per Mtok).
         let rate = ProviderCostRate(
             inputPerMtokUsdMicros: 500_000,
-            outputPerMtokUsdMicros: 1_500_000,
+            outputPerMtokUsdMicros: 1_500_000
         )
         // 1M in + 1M out = 0.50 + 1.50 = $2.00 = 2_000_000 micros.
         #expect(rate.usdMicros(tokensIn: 1_000_000, tokensOut: 1_000_000) == 2_000_000)

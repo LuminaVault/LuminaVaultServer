@@ -40,7 +40,7 @@ struct HermesGatewayApplySSEResponse: ResponseGenerator {
 
     private static func encodeEventLine(
         _ event: HermesGatewayApplyEvent,
-        encoder: JSONEncoder,
+        encoder: JSONEncoder
     ) throws -> ByteBuffer {
         let json = try encoder.encode(event)
         var buf = ByteBuffer()

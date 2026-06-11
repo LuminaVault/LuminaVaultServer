@@ -29,9 +29,9 @@ struct HermesEndpointResolverTests {
                 "127.0.0.1": ["127.0.0.1"],
                 "user.hermes.test": ["93.184.216.34"],
                 "evil.test": ["10.0.0.1"],
-            ],
+            ]
         ),
-        _ body: (HermesEndpointResolver, Fluent, SecretBox) async throws -> Result,
+        _ body: (HermesEndpointResolver, Fluent, SecretBox) async throws -> Result
     ) async throws -> Result {
         let app = try await buildApplication(reader: dbTestReader)
         // Driving the resolver against the *real* services container would
@@ -49,23 +49,23 @@ struct HermesEndpointResolverTests {
                 username: TestPostgres.username,
                 password: TestPostgres.password,
                 database: TestPostgres.database,
-                tls: .disable,
+                tls: .disable
             )),
-            as: .psql,
+            as: .psql
         )
         do {
             let secretBox = try SecretBox(masterKeyBase64: testMasterKeyBase64)
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: allowPrivate,
                 requireHTTPS: false,
-                resolver: ssrfResolver,
+                resolver: ssrfResolver
             )
             let resolver = HermesEndpointResolver(
                 fluent: fluent,
                 secretBox: secretBox,
                 ssrfGuard: ssrfGuard,
                 defaultBaseURL: defaultURL,
-                logger: logger,
+                logger: logger
             )
             let result = try await body(resolver, fluent, secretBox)
             try await fluent.shutdown()

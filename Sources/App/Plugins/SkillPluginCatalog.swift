@@ -37,7 +37,7 @@ enum SkillPluginCatalog {
             version: "1.0.0",
             publisher: "LuminaVault",
             verified: true,
-            configFields: [],
+            configFields: []
         )
     }
 
@@ -56,7 +56,7 @@ enum SkillPluginCatalog {
             version: "1.0.0",
             publisher: "Hermes",
             verified: true,
-            configFields: [],
+            configFields: []
         )
     }
 

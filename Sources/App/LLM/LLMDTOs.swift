@@ -65,13 +65,13 @@ extension ChatMessage {
             OutboundToolCall(
                 id: c.id,
                 type: c.type,
-                function: OutboundToolCallFn(name: c.function.name, arguments: c.function.arguments),
+                function: OutboundToolCallFn(name: c.function.name, arguments: c.function.arguments)
             )
         }
         return OutboundMessage(
             role: role,
             content: content.isEmpty ? nil : content,
-            tool_calls: tc,
+            tool_calls: tc
         )
     }
 }
@@ -83,8 +83,8 @@ extension ChatTool {
             function: OutboundToolFunction(
                 name: function.name,
                 description: function.description,
-                parameters: function.parameters,
-            ),
+                parameters: function.parameters
+            )
         )
     }
 }

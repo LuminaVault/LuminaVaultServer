@@ -58,23 +58,23 @@ enum HermesTenantConfigTemplate {
         apiKey: String,
         defaultModel: String,
         gateways: [HermesGatewaySeed] = [],
-        mnemosyneEnabled: Bool = true,
+        mnemosyneEnabled: Bool = true
     ) throws {
         do {
             try FileManager.default.createDirectory(
                 atPath: volumePath,
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
         } catch {
             throw SeedError.ioFailure(path: volumePath, underlying: String(describing: error))
         }
         try writeIfDrifted(
             path: "\(volumePath)/config.yaml",
-            content: configYAML(defaultModel: defaultModel, mnemosyneEnabled: mnemosyneEnabled),
+            content: configYAML(defaultModel: defaultModel, mnemosyneEnabled: mnemosyneEnabled)
         )
         try writeIfDrifted(
             path: "\(volumePath)/.env",
-            content: envFile(apiKey: apiKey, gateways: gateways),
+            content: envFile(apiKey: apiKey, gateways: gateways)
         )
     }
 

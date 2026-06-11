@@ -32,7 +32,7 @@ final class Space: Model, TenantModel, @unchecked Sendable {
         icon: String? = nil,
         category: String? = nil,
         noteCount: Int = 0,
-        lastCompiledAt: Date? = nil,
+        lastCompiledAt: Date? = nil
     ) {
         self.id = id
         self.tenantID = tenantID

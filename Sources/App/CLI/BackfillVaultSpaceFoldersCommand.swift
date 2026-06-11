@@ -29,13 +29,13 @@ func runBackfillVaultSpaceFoldersCommand(reader: ConfigReader) async throws {
             username: reader.string(forKey: "postgres.user", default: "luminavault"),
             password: reader.string(forKey: "postgres.password", default: "luminavault"),
             database: reader.string(forKey: "postgres.database", default: "luminavault"),
-            tls: .disable,
+            tls: .disable
         )),
-        as: .psql,
+        as: .psql
     )
 
     let vaultPaths = VaultPathService(
-        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
+        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault")
     )
 
     var moved = 0

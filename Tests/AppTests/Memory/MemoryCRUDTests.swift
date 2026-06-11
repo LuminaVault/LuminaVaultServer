@@ -47,7 +47,7 @@ struct MemoryCRUDTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -58,7 +58,7 @@ struct MemoryCRUDTests {
             uri: "/v1/memory/upsert",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeUpsert($0.body).memoryId }
     }
 
@@ -73,7 +73,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -95,7 +95,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory?limit=2&offset=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -114,7 +114,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory?space=stocks",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .notImplemented)
             }
@@ -133,7 +133,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeOne(response.body)
@@ -154,7 +154,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let dto = try Self.decodeOne(response.body)
@@ -163,7 +163,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory?tag=ai",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -182,7 +182,7 @@ struct MemoryCRUDTests {
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: "{}"),
+                body: ByteBuffer(string: "{}")
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -198,14 +198,14 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .noContent)
             }
             try await client.execute(
                 uri: "/v1/memory/\(id.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -224,7 +224,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(aliceMem.uuidString)",
                 method: .delete,
-                headers: [.authorization: "Bearer \(mallory)"],
+                headers: [.authorization: "Bearer \(mallory)"]
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -232,7 +232,7 @@ struct MemoryCRUDTests {
             try await client.execute(
                 uri: "/v1/memory/\(aliceMem.uuidString)",
                 method: .get,
-                headers: [.authorization: "Bearer \(alice)"],
+                headers: [.authorization: "Bearer \(alice)"]
             ) { response in
                 #expect(response.status == .ok)
             }

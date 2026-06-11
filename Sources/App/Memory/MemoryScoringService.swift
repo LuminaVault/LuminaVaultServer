@@ -27,7 +27,7 @@ struct MemoryScoringConfig {
         accessWeight: 2.0,
         queryWeight: 3.0,
         recencyWeight: 1.0,
-        halflifeDays: 30,
+        halflifeDays: 30
     )
 }
 
@@ -37,7 +37,7 @@ enum MemoryScoring {
         queryHitCount: Int64,
         createdAt: Date?,
         now: Date,
-        config: MemoryScoringConfig = .default,
+        config: MemoryScoringConfig = .default
     ) -> Double {
         let access = config.accessWeight * log1p(Double(accessCount))
         let queries = config.queryWeight * log1p(Double(queryHitCount))

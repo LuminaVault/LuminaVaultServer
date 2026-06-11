@@ -66,7 +66,7 @@ actor UserLLMPreferenceRepository {
         primaryModel: String,
         fallbackChain: [Snapshot.Step],
         allowedProviders: [ProviderKind],
-        blockedProviders: [ProviderKind],
+        blockedProviders: [ProviderKind]
     ) async throws -> Snapshot {
         let existing = try await UserLLMPreference.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
@@ -104,7 +104,7 @@ actor UserLLMPreferenceRepository {
                 return Snapshot.Step(provider: provider, model: step.model)
             },
             allowedProviders: (row.allowedProviders?.providers ?? []).compactMap { ProviderKind(rawValue: $0) },
-            blockedProviders: (row.blockedProviders?.providers ?? []).compactMap { ProviderKind(rawValue: $0) },
+            blockedProviders: (row.blockedProviders?.providers ?? []).compactMap { ProviderKind(rawValue: $0) }
         )
     }
 }

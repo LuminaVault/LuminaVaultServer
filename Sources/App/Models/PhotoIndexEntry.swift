@@ -36,7 +36,7 @@ final class PhotoIndexEntry: Model, @unchecked Sendable {
         takenAt: Date? = nil,
         isScreenshot: Bool = false,
         ocrText: String? = nil,
-        sceneTags: [String]? = nil,
+        sceneTags: [String]? = nil
     ) {
         self.id = id
         self.tenantID = tenantID

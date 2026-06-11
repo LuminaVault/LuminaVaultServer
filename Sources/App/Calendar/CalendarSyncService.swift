@@ -29,7 +29,7 @@ struct CalendarSyncService {
         tokenStore: CalendarTokenStore,
         client: GoogleCalendarClient,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
         self.tokenStore = tokenStore
@@ -75,7 +75,7 @@ struct CalendarSyncService {
                     syncToken: syncToken,
                     timeMin: syncToken == nil ? windowStart : nil,
                     timeMax: syncToken == nil ? windowEnd : nil,
-                    pageToken: pageToken,
+                    pageToken: pageToken
                 )
             } catch GoogleCalendarClient.Error.syncTokenExpired {
                 // Stale token: drop it and restart as a full window sync.
@@ -113,7 +113,7 @@ struct CalendarSyncService {
         endsAt: Date,
         location: String?,
         notes: String?,
-        attendees: [String],
+        attendees: [String]
     ) async throws -> CalendarEvent {
         let accessToken = try await tokenStore.validAccessToken(tenantID: tenantID)
         let remote = try await client.insertEvent(
@@ -123,7 +123,7 @@ struct CalendarSyncService {
             endsAt: endsAt,
             location: location,
             notes: notes,
-            attendees: attendees,
+            attendees: attendees
         )
         let db = fluent.db()
         try await upsert(remote, tenantID: tenantID, on: db)
@@ -150,7 +150,7 @@ struct CalendarSyncService {
             title: remote.title,
             startsAt: remote.startsAt,
             endsAt: remote.endsAt,
-            remoteUpdatedAt: remote.updatedAt,
+            remoteUpdatedAt: remote.updatedAt
         )
         event.title = remote.title
         event.notes = remote.notes

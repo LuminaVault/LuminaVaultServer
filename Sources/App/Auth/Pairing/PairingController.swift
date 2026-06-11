@@ -80,7 +80,7 @@ struct PairingController {
             accessToken: auth.accessToken,
             refreshToken: auth.refreshToken,
             expiresIn: auth.expiresIn,
-            vaultInitialized: auth.vaultInitialized,
+            vaultInitialized: auth.vaultInitialized
         )
     }
 
@@ -112,7 +112,7 @@ struct PairingController {
             accessToken: auth.accessToken,
             refreshToken: auth.refreshToken,
             expiresIn: auth.expiresIn,
-            vaultInitialized: auth.vaultInitialized,
+            vaultInitialized: auth.vaultInitialized
         )
         try await storage.set(key: key(pairingID), value: record, expires: ttl)
         return Response(status: .noContent)
@@ -148,7 +148,7 @@ struct PairingPollResponse: ResponseEncodable, Codable {
         accessToken: String? = nil,
         refreshToken: String? = nil,
         expiresIn: Int? = nil,
-        vaultInitialized: Bool? = nil,
+        vaultInitialized: Bool? = nil
     ) {
         self.approved = approved
         self.userId = userId

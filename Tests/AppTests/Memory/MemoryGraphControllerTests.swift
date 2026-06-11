@@ -46,8 +46,8 @@ struct MemoryGraphControllerTests {
             body: registerBody(
                 email: "graph-\(suffix)@test.luminavault",
                 username: "graph\(suffix)",
-                password: "CorrectHorseBatteryStaple1!",
-            ),
+                password: "CorrectHorseBatteryStaple1!"
+            )
         ) { try decodeAuth($0.body) }
         return (resp.accessToken, resp.userId)
     }
@@ -65,7 +65,7 @@ struct MemoryGraphControllerTests {
             try await client.execute(
                 uri: "/v1/memory/graph",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeGraph(response.body)
@@ -84,7 +84,7 @@ struct MemoryGraphControllerTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/memory/graph",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -101,7 +101,7 @@ struct MemoryGraphControllerTests {
             try await client.execute(
                 uri: "/v1/memory/graph?limit=9999&similarityThreshold=2.0&maxEdgesPerNode=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeGraph(response.body)

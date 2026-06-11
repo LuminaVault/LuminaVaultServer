@@ -62,7 +62,7 @@ struct QueryStreamTests {
             id: #require(UUID(uuidString: "11111111-2222-3333-4444-555555555555")),
             content: "slept 9h on Tuesday",
             distance: 0.21,
-            createdAt: nil,
+            createdAt: nil
         )
         let body = ResponseBody { writer in
             let stream = AsyncThrowingStream<QueryStreamEvent, Error> { c in
@@ -103,14 +103,14 @@ struct QueryStreamTests {
                 tenantID: UUID(),
                 content: "ran 5k Monday",
                 createdAt: nil,
-                distance: 0.1,
+                distance: 0.1
             ),
             MemorySearchResult(
                 id: UUID(),
                 tenantID: UUID(),
                 content: "skipped run Tuesday",
                 createdAt: nil,
-                distance: 0.2,
+                distance: 0.2
             ),
         ]
         let messages = QueryController.buildPrompt(query: "what runs did I do?", hits: hits)

@@ -41,7 +41,7 @@ struct GoogleOAuthProviderTests {
     }
 
     private static func makeFixture(
-        audience: String = Self.testAudience,
+        audience: String = Self.testAudience
     ) async throws -> Fixture {
         let normalizedModulus = Self.testModulus
             .replacingOccurrences(of: "\n", with: "")
@@ -53,13 +53,13 @@ struct GoogleOAuthProviderTests {
         let privateKey = try Insecure.RSA.PrivateKey(
             modulus: normalizedModulus,
             exponent: Self.testPublicExponent,
-            privateExponent: normalizedPrivateExponent,
+            privateExponent: normalizedPrivateExponent
         )
         let signer = JWTKeyCollection()
         await signer.add(
             rsa: privateKey,
             digestAlgorithm: .sha256,
-            kid: JWKIdentifier(string: Self.testKID),
+            kid: JWKIdentifier(string: Self.testKID)
         )
 
         let jwks = #"""
@@ -75,7 +75,7 @@ struct GoogleOAuthProviderTests {
         let provider = GoogleOAuthProvider(
             audience: audience,
             jwksURL: Self.jwksURL,
-            session: session,
+            session: session
         )
         return Fixture(signer: signer, provider: provider)
     }
@@ -107,7 +107,7 @@ struct GoogleOAuthProviderTests {
         iss: String = "https://accounts.google.com",
         email: String? = "ok@example.com",
         emailVerified: Bool? = true,
-        exp: Date = Date().addingTimeInterval(60 * 5),
+        exp: Date = Date().addingTimeInterval(60 * 5)
     ) async throws -> String {
         let claims = TestIDClaims(
             sub: SubjectClaim(value: sub),
@@ -115,7 +115,7 @@ struct GoogleOAuthProviderTests {
             iss: IssuerClaim(value: iss),
             exp: ExpirationClaim(value: exp),
             email: email,
-            emailVerified: emailVerified,
+            emailVerified: emailVerified
         )
         return try await signer.sign(claims, kid: JWKIdentifier(string: Self.testKID))
     }
@@ -137,7 +137,7 @@ struct GoogleOAuthProviderTests {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
-            aud: "other-client.apps.googleusercontent.com",
+            aud: "other-client.apps.googleusercontent.com"
         )
         await #expect(throws: OAuthError.invalidToken) {
             _ = try await fix.provider.verify(idToken: token)
@@ -149,7 +149,7 @@ struct GoogleOAuthProviderTests {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
-            iss: "https://impostor.example.com",
+            iss: "https://impostor.example.com"
         )
         await #expect(throws: OAuthError.invalidToken) {
             _ = try await fix.provider.verify(idToken: token)
@@ -197,7 +197,7 @@ struct GoogleOAuthProviderTests {
         let fix = try await Self.makeFixture()
         let token = try await Self.signToken(
             on: fix.signer,
-            exp: Date().addingTimeInterval(-60),
+            exp: Date().addingTimeInterval(-60)
         )
         await #expect(throws: (any Error).self) {
             _ = try await fix.provider.verify(idToken: token)
@@ -250,7 +250,7 @@ final class StubJWKSURLProtocol: URLProtocol, @unchecked Sendable {
             url: url,
             statusCode: 200,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"],
+            headerFields: ["Content-Type": "application/json"]
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))

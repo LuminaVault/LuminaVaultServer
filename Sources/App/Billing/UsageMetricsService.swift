@@ -41,7 +41,7 @@ struct UsageMetricsService {
             ttsCharacters: meterTotals.ttsCharacters,
             compileRuns: eventTotals.compileRuns,
             compileFiles: eventTotals.compileFiles,
-            daily: daily,
+            daily: daily
         )
     }
 
@@ -52,7 +52,7 @@ struct UsageMetricsService {
             amount: 1,
             source: "memory_compile",
             idempotencyKey: "memory_compile_run:\(runID.uuidString)",
-            metadata: #"{"run_id":"\#(runID.uuidString)"}"#,
+            metadata: #"{"run_id":"\#(runID.uuidString)"}"#
         )
         await recordEvent(
             tenantID: tenantID,
@@ -60,7 +60,7 @@ struct UsageMetricsService {
             amount: max(0, files),
             source: "memory_compile",
             idempotencyKey: "memory_compile_file:\(runID.uuidString)",
-            metadata: #"{"run_id":"\#(runID.uuidString)"}"#,
+            metadata: #"{"run_id":"\#(runID.uuidString)"}"#
         )
     }
 
@@ -70,7 +70,7 @@ struct UsageMetricsService {
         amount: Int,
         source: String,
         idempotencyKey: String,
-        metadata: String,
+        metadata: String
     ) async {
         guard let sql = fluent.db() as? any SQLDatabase else {
             logger.warning("usage_events requires SQL driver, skipping record")
@@ -134,7 +134,7 @@ struct UsageMetricsService {
         return MeterTotals(
             tokensIn: row?.tokensIn ?? 0,
             tokensOut: row?.tokensOut ?? 0,
-            ttsCharacters: row?.ttsCharacters ?? 0,
+            ttsCharacters: row?.ttsCharacters ?? 0
         )
     }
 
@@ -162,7 +162,7 @@ struct UsageMetricsService {
         """).first(decoding: Row.self)
         return EventTotals(
             compileRuns: row?.compileRuns ?? 0,
-            compileFiles: row?.compileFiles ?? 0,
+            compileFiles: row?.compileFiles ?? 0
         )
     }
 
@@ -230,7 +230,7 @@ struct UsageMetricsService {
                 tokensOut: $0.tokensOut,
                 ttsCharacters: $0.ttsCharacters,
                 compileRuns: $0.compileRuns,
-                compileFiles: $0.compileFiles,
+                compileFiles: $0.compileFiles
             )
         }
     }

@@ -25,7 +25,7 @@ struct CohereImageEmbedAdapter: VisionEmbedProviderAdapter {
         baseURL: URL = URL(string: "https://api.cohere.com")!,
         model: String = "embed-image-v3.0",
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
@@ -44,7 +44,7 @@ struct CohereImageEmbedAdapter: VisionEmbedProviderAdapter {
             model: model,
             inputType: "image",
             embeddingTypes: ["float"],
-            images: [dataURI],
+            images: [dataURI]
         )
         let encodedPayload: Data
         do {
@@ -96,7 +96,7 @@ struct CohereImageEmbedAdapter: VisionEmbedProviderAdapter {
             embedding: first,
             model: model,
             sourceWidth: nil,
-            sourceHeight: nil,
+            sourceHeight: nil
         )
     }
 }

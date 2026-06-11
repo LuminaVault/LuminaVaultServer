@@ -25,7 +25,7 @@ struct PremiumGuardMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let user = try context.requireIdentity()
         let effective = user.tierOverride != "none" ? user.tierOverride : user.tier
@@ -43,7 +43,7 @@ struct PremiumGuardMiddleware: RouterMiddleware {
         return Response(
             status: .init(code: 402, reasonPhrase: "Payment Required"),
             headers: headers,
-            body: .init(byteBuffer: ByteBuffer(string: body)),
+            body: .init(byteBuffer: ByteBuffer(string: body))
         )
     }
 }

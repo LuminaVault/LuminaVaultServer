@@ -58,7 +58,7 @@ struct AnalyticsController {
             sessionsCount: sessionsCount,
             estimatedCostCents: estimatedCostCents,
             periodStart: periodStart,
-            periodEnd: now,
+            periodEnd: now
         )
     }
 

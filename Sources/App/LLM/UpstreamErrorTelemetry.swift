@@ -15,7 +15,7 @@ enum UpstreamErrorTelemetry {
     static func record(
         reasonCode: String,
         provider: String,
-        factory: MetricsFactory = MetricsSystem.factory,
+        factory: MetricsFactory = MetricsSystem.factory
     ) {
         Counter(
             label: "luminavault.llm.chat.upstream_error",
@@ -23,7 +23,7 @@ enum UpstreamErrorTelemetry {
                 ("code", reasonCode),
                 ("provider", provider),
             ],
-            factory: factory,
+            factory: factory
         ).increment()
     }
 }

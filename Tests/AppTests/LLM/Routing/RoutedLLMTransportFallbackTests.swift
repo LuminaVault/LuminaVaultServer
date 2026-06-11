@@ -55,18 +55,18 @@ struct RoutedLLMTransportFallbackTests {
     func `credit exhaustion fires failover notice and falls over`() async throws {
         let primary = StubAdapter(
             kind: .xai,
-            outcomes: [.providerError(.creditExhausted(provider: .xai, status: 403, body: "insufficient_quota"))],
+            outcomes: [.providerError(.creditExhausted(provider: .xai, status: 403, body: "insufficient_quota"))]
         )
         let fallback = StubAdapter(kind: .openRouter, outcomes: [.success(Data("FALLBACK".utf8))])
         let registry = ProviderRegistry(adapters: [primary, fallback], logger: Logger(label: "test"))
         let decision = RouteDecision(
             primary: ModelRoute(provider: .xai, modelID: "grok-4"),
-            fallbacks: [ModelRoute(provider: .openRouter, modelID: "qwen-2.5-72b")],
+            fallbacks: [ModelRoute(provider: .openRouter, modelID: "qwen-2.5-72b")]
         )
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: decision),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let collector = NoticeCollector()
         let sink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
@@ -77,7 +77,7 @@ struct RoutedLLMTransportFallbackTests {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         #expect(String(data: result, encoding: .utf8) == "FALLBACK")
@@ -103,12 +103,12 @@ struct RoutedLLMTransportFallbackTests {
         let registry = ProviderRegistry(adapters: [primary], logger: Logger(label: "test"))
         let decision = RouteDecision(
             primary: ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"),
-            fallbacks: [],
+            fallbacks: []
         )
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: decision),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let collector = NoticeCollector()
         let sink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
@@ -118,7 +118,7 @@ struct RoutedLLMTransportFallbackTests {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"claude-sonnet-4.6\",\"messages\":[]}".utf8),
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         try await Task.sleep(for: .milliseconds(50))
@@ -132,11 +132,11 @@ struct RoutedLLMTransportFallbackTests {
         // emit a notice describing the SUCCESSFUL transition only.
         let primary = StubAdapter(
             kind: .xai,
-            outcomes: [.providerError(.creditExhausted(provider: .xai, status: 402, body: nil))],
+            outcomes: [.providerError(.creditExhausted(provider: .xai, status: 402, body: nil))]
         )
         let secondary = StubAdapter(
             kind: .anthropic,
-            outcomes: [.providerError(.transient(provider: .anthropic, status: 429, body: nil))],
+            outcomes: [.providerError(.transient(provider: .anthropic, status: 429, body: nil))]
         )
         let tertiary = StubAdapter(kind: .openRouter, outcomes: [.success(Data("LAST".utf8))])
         let registry = ProviderRegistry(adapters: [primary, secondary, tertiary], logger: Logger(label: "test"))
@@ -145,12 +145,12 @@ struct RoutedLLMTransportFallbackTests {
             fallbacks: [
                 ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4.6"),
                 ModelRoute(provider: .openRouter, modelID: "qwen-2.5-72b"),
-            ],
+            ]
         )
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: decision),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let collector = NoticeCollector()
         let sink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
@@ -160,7 +160,7 @@ struct RoutedLLMTransportFallbackTests {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         try await Task.sleep(for: .milliseconds(50))

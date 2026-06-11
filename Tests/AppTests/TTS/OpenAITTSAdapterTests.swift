@@ -70,7 +70,7 @@ struct OpenAITTSAdapterTests {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: ["Content-Type": "audio/mpeg"],
+                headerFields: ["Content-Type": "audio/mpeg"]
             )!
             return (response, Data([0xFF, 0xFB, 0x90, 0x44])) // MP3 sync word + header
         }
@@ -80,7 +80,7 @@ struct OpenAITTSAdapterTests {
             apiKey: "sk-test",
             defaultModel: "tts-1",
             session: Self.stubSession(),
-            logger: Self.logger,
+            logger: Self.logger
         )
         let result = try await adapter.synthesize(text: "Hello", voice: "lumina", modelID: nil)
 
@@ -108,7 +108,7 @@ struct OpenAITTSAdapterTests {
             apiKey: "sk-test",
             defaultModel: "tts-1",
             session: Self.stubSession(),
-            logger: Self.logger,
+            logger: Self.logger
         )
         _ = try await adapter.synthesize(text: "Speak this", voice: "lumina", modelID: nil)
     }

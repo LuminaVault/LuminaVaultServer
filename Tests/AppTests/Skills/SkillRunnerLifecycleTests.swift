@@ -60,7 +60,7 @@ struct SkillRunnerLifecycleTests {
             let user = User(
                 email: "\(username)@test.luminavault",
                 username: username,
-                passwordHash: "x",
+                passwordHash: "x"
             )
             try await user.save(on: fluent.db())
 
@@ -73,7 +73,7 @@ struct SkillRunnerLifecycleTests {
                 privateKeyPath: "",
                 environment: "development",
                 fluent: fluent,
-                logger: Logger(label: "test.skill-lifecycle.apns"),
+                logger: Logger(label: "test.skill-lifecycle.apns")
             )
             let bus = EventBus(logger: Logger(label: "test.skill-lifecycle.bus"))
             let runner = SkillRunner(
@@ -87,7 +87,7 @@ struct SkillRunnerLifecycleTests {
                 vaultPaths: vaultPaths,
                 capGuard: SkillRunCapGuard(fluent: fluent, logger: Logger(label: "test.skill-lifecycle.cap")),
                 eventBus: bus,
-                logger: Logger(label: "test.skill-lifecycle.runner"),
+                logger: Logger(label: "test.skill-lifecycle.runner")
             )
 
             let result = try await body(Harness(
@@ -95,7 +95,7 @@ struct SkillRunnerLifecycleTests {
                 tenantID: user.requireID(),
                 root: tmpRoot,
                 bus: bus,
-                runner: runner,
+                runner: runner
             ))
             try? await fluent.shutdown()
             try? FileManager.default.removeItem(at: tmpRoot)
@@ -111,7 +111,7 @@ struct SkillRunnerLifecycleTests {
     private static func waitUntil(
         _ condition: @Sendable () -> Bool,
         timeoutNanos: UInt64 = 2_000_000_000,
-        message: String = "condition timed out",
+        message: String = "condition timed out"
     ) async {
         let start = DispatchTime.now().uptimeNanoseconds
         while !condition() {
@@ -132,15 +132,15 @@ struct SkillRunnerLifecycleTests {
 
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 1 },
-                message: "vaultFileCreated subscriber not registered",
+                message: "vaultFileCreated subscriber not registered"
             )
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .memoryUpserted) == 1 },
-                message: "memoryUpserted subscriber not registered",
+                message: "memoryUpserted subscriber not registered"
             )
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .healthEventSynced) == 1 },
-                message: "healthEventSynced subscriber not registered",
+                message: "healthEventSynced subscriber not registered"
             )
         }
     }
@@ -151,7 +151,7 @@ struct SkillRunnerLifecycleTests {
             await h.runner.startEventSubscriptions()
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 1 },
-                message: "subscribe never landed",
+                message: "subscribe never landed"
             )
 
             await h.runner.stopEventSubscriptions()
@@ -163,17 +163,17 @@ struct SkillRunnerLifecycleTests {
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 0 },
                 timeoutNanos: 3_000_000_000,
-                message: "vaultFileCreated subscriber not drained after stop",
+                message: "vaultFileCreated subscriber not drained after stop"
             )
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .memoryUpserted) == 0 },
                 timeoutNanos: 3_000_000_000,
-                message: "memoryUpserted subscriber not drained after stop",
+                message: "memoryUpserted subscriber not drained after stop"
             )
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .healthEventSynced) == 0 },
                 timeoutNanos: 3_000_000_000,
-                message: "healthEventSynced subscriber not drained after stop",
+                message: "healthEventSynced subscriber not drained after stop"
             )
         }
     }
@@ -184,7 +184,7 @@ struct SkillRunnerLifecycleTests {
             await h.runner.startEventSubscriptions()
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 1 },
-                message: "first start never landed",
+                message: "first start never landed"
             )
 
             // Hot-reload path: calling start a second time must cancel prior
@@ -194,7 +194,7 @@ struct SkillRunnerLifecycleTests {
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 1 },
                 timeoutNanos: 3_000_000_000,
-                message: "second start double-subscribed",
+                message: "second start double-subscribed"
             )
         }
     }
@@ -205,7 +205,7 @@ struct SkillRunnerLifecycleTests {
             await h.runner.startEventSubscriptions()
             await Self.waitUntil(
                 { h.bus.subscriberCount(for: .vaultFileCreated) == 1 },
-                message: "subscribe never landed",
+                message: "subscribe never landed"
             )
 
             // The detached event loop currently just logs receipt. We can't
@@ -216,7 +216,7 @@ struct SkillRunnerLifecycleTests {
                 h.bus.publish(SkillEvent(
                     type: .vaultFileCreated,
                     tenantID: h.tenantID,
-                    payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(UUID()).md"],
+                    payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(UUID()).md"]
                 ))
             }
             // Give the detached loop a moment to drain before tearing down.

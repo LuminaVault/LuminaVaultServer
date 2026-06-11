@@ -28,7 +28,7 @@ final class LocalHermesEmbeddingService: EmbeddingService {
         resolveHandle: @escaping HandleResolver,
         model: String = LocalHermesEmbeddingService.defaultModel,
         session: URLSession = .shared,
-        logger: Logger = Logger(label: "lv.embedding.hermesLocal"),
+        logger: Logger = Logger(label: "lv.embedding.hermesLocal")
     ) {
         self.resolveHandle = resolveHandle
         self.model = model

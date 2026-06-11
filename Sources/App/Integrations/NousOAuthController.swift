@@ -30,7 +30,7 @@ struct NousOAuthController {
         return NousStatusResponse(
             connected: s.connected,
             nousConnectedAt: s.nousConnectedAt,
-            plan: s.plan,
+            plan: s.plan
         )
     }
 
@@ -42,7 +42,7 @@ struct NousOAuthController {
             return NousStartResponse(
                 sessionID: result.sessionID,
                 verifyURL: result.verifyURL,
-                userCode: result.userCode,
+                userCode: result.userCode
             )
         } catch NousOAuthError.verifyURLMissingFromStdout {
             throw HTTPError(.badGateway, message: "nous oauth backend did not return a verification URL")
@@ -62,7 +62,7 @@ struct NousOAuthController {
             return NousStatusResponse(
                 connected: s.connected,
                 nousConnectedAt: s.nousConnectedAt,
-                plan: s.plan,
+                plan: s.plan
             )
         } catch NousOAuthError.sessionNotFound {
             throw HTTPError(.notFound, message: "session not found or expired")
@@ -79,7 +79,7 @@ struct NousOAuthController {
         return NousStatusResponse(
             connected: s.connected,
             nousConnectedAt: s.nousConnectedAt,
-            plan: s.plan,
+            plan: s.plan
         )
     }
 }

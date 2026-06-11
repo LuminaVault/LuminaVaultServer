@@ -74,7 +74,7 @@ actor MemoryCompileService {
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
         maxToolIterations: Int = 12,
-        progress: any MemoryCompileProgressPublisher = NoopMemoryCompileProgressPublisher(),
+        progress: any MemoryCompileProgressPublisher = NoopMemoryCompileProgressPublisher()
     ) {
         self.vaultPaths = vaultPaths
         self.transport = transport
@@ -93,7 +93,7 @@ actor MemoryCompileService {
         sessionKey: String,
         rows: [VaultFile],
         hint: String?,
-        runId: UUID,
+        runId: UUID
     ) async throws -> InternalMemoryCompileResult {
         guard !rows.isEmpty else { throw MemoryCompileError.noFiles }
 
@@ -145,7 +145,7 @@ actor MemoryCompileService {
                 path: safeRelative,
                 size: payload.count,
                 contentType: row.contentType,
-                sha256: row.sha256,
+                sha256: row.sha256
             ))
             rowIDs.append(rowID)
 
@@ -186,7 +186,7 @@ actor MemoryCompileService {
         // before the first model round-trip lands.
         await progress.publish(
             .preparing(.init(runId: runId)),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
 
         let summary = try await runCompileLoop(
@@ -195,7 +195,7 @@ actor MemoryCompileService {
             blocks: compiledTextBlocks,
             hint: hint,
             runId: runId,
-            rejectedHashes: rejectedHashes,
+            rejectedHashes: rejectedHashes
         )
         let completedAt = Date()
         // Stamp both the compiled rows and any skipped orphans so the pending
@@ -204,7 +204,7 @@ actor MemoryCompileService {
         try await refreshSpaceCounters(
             tenantID: tenantID,
             spaceIDs: Set(rows.compactMap(\.spaceID)),
-            at: completedAt,
+            at: completedAt
         )
         // HER-105 Hybrid — regenerate the human-browsable wiki/ export. Pure
         // side-effect: pgvector memories are the source of truth, so a wiki
@@ -213,7 +213,7 @@ actor MemoryCompileService {
         return InternalMemoryCompileResult(
             writtenFiles: writtenFiles,
             memories: summary.memories,
-            summary: summary.text,
+            summary: summary.text
         )
     }
 
@@ -316,7 +316,7 @@ actor MemoryCompileService {
         blocks: [(path: String, content: String, contentType: String)],
         hint: String?,
         runId: UUID,
-        rejectedHashes: Set<String>,
+        rejectedHashes: Set<String>
     ) async throws -> CompileSummary {
         // One-shot structured extraction. The previous multi-turn tool-calling
         // loop depended on the model deciding to call `memory_upsert`; routed to
@@ -362,7 +362,7 @@ actor MemoryCompileService {
             ],
             responseFormat: ["type": "json_object"],
             temperature: 0.2,
-            stream: false,
+            stream: false
         )
         let payload = try JSONEncoder().encode(body)
         let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
@@ -385,7 +385,7 @@ actor MemoryCompileService {
                 tenantID: tenantID,
                 content: trimmed,
                 embedding: embedding,
-                reviewState: "pending",
+                reviewState: "pending"
             )
             let id = try saved.requireID()
             collectedMemories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
@@ -394,7 +394,7 @@ actor MemoryCompileService {
                 content: saved.content,
                 tags: saved.tags ?? [],
                 createdAt: saved.createdAt,
-                reviewState: saved.reviewState,
+                reviewState: saved.reviewState
             )
             await progress.publish(.memorySaved(.init(runId: runId, memory: dto)), tenantID: tenantID)
         }
@@ -469,7 +469,7 @@ actor MemoryCompileService {
         toolCall: ToolCall,
         memories: inout [InternalKBCompileMemoryRef],
         runId: UUID,
-        rejectedHashes: Set<String>,
+        rejectedHashes: Set<String>
     ) async throws -> String {
         guard toolCall.function.name == "memory_upsert" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -496,7 +496,7 @@ actor MemoryCompileService {
                 tenantID: tenantID,
                 content: args.content,
                 embedding: embedding,
-                reviewState: "pending",
+                reviewState: "pending"
             )
             let id = try saved.requireID()
             memories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
@@ -510,11 +510,11 @@ actor MemoryCompileService {
                 content: saved.content,
                 tags: saved.tags ?? [],
                 createdAt: saved.createdAt,
-                reviewState: saved.reviewState,
+                reviewState: saved.reviewState
             )
             await progress.publish(
                 .memorySaved(.init(runId: runId, memory: dto)),
-                tenantID: tenantID,
+                tenantID: tenantID
             )
 
             return Self.encodeJSON(["status": "ok", "id": id.uuidString])
@@ -555,11 +555,11 @@ actor MemoryCompileService {
                 properties: [
                     "content": PropertySchema(
                         type: "string",
-                        description: "The memory text to persist verbatim. Should be self-contained.",
+                        description: "The memory text to persist verbatim. Should be self-contained."
                     ),
                 ],
-                required: ["content"],
-            ),
+                required: ["content"]
+            )
         ))
     }
 
@@ -592,7 +592,7 @@ actor MemoryCompileService {
     func refreshSpaceCounters(
         tenantID: UUID,
         spaceIDs: Set<UUID>,
-        at date: Date,
+        at date: Date
     ) async throws {
         guard let sql = memories.fluent.db() as? any SQLDatabase, !spaceIDs.isEmpty else { return }
         let literal = "ARRAY[" + spaceIDs.map { "'\($0.uuidString)'" }.joined(separator: ",") + "]::uuid[]"

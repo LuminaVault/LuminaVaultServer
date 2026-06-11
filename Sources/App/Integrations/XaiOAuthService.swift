@@ -44,7 +44,7 @@ actor XaiOAuthService {
         backend: any XaiOAuthBackend,
         fluent: Fluent,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.containerManager = containerManager
         self.sessionStore = sessionStore
@@ -60,7 +60,7 @@ actor XaiOAuthService {
         return Status(
             connected: handle?.xaiConnectedAt != nil,
             tier: user?.tier ?? "free",
-            xaiConnectedAt: handle?.xaiConnectedAt,
+            xaiConnectedAt: handle?.xaiConnectedAt
         )
     }
 
@@ -72,7 +72,7 @@ actor XaiOAuthService {
             sessionID: sessionID,
             tenantID: tenantID,
             authorizeURL: authorizeURL,
-            startedAt: now(),
+            startedAt: now()
         ))
         logger.info("xai oauth start", metadata: [
             "tenantID": "\(tenantID)",
@@ -89,7 +89,7 @@ actor XaiOAuthService {
         let ok = try await backend.submitCallback(
             handle: handle,
             sessionID: sessionID,
-            callbackURL: callbackURL,
+            callbackURL: callbackURL
         )
         guard ok else {
             throw XaiOAuthError.backendFailed(reason: "backend reported non-zero exit")

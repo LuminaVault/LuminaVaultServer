@@ -113,7 +113,7 @@ actor PhotonProvisioningService {
         // Launch poller that waits for user approval (device token)
         let poller = Task { [weak self] in
             guard let self else { return }
-            await self.runDeviceTokenPoller(sessionID: sessionID, code: code)
+            await runDeviceTokenPoller(sessionID: sessionID, code: code)
         }
         sessions[sessionID]?.poller = poller
 
@@ -134,7 +134,7 @@ actor PhotonProvisioningService {
         }
 
         let normalized = normalizePhone(phone)
-        guard E164_RE.firstMatch(in: normalized, range: NSRange(normalized.startIndex..., in: normalized)) != nil else {
+        guard Self.E164_RE.firstMatch(in: normalized, range: NSRange(normalized.startIndex..., in: normalized)) != nil else {
             throw PhotonProvisioningError.invalidPhone(phone)
         }
 
@@ -221,10 +221,10 @@ actor PhotonProvisioningService {
             cont.yield(event)
         }
         // Update local status from events where useful
-        if case .status(let s) = event {
+        if case let .status(s) = event {
             session.status = s
         }
-        if case .assignedLine(let line) = event {
+        if case let .assignedLine(line) = event {
             session.lastAssignedLine = line
         }
         if case .status(.done) = event {
@@ -287,7 +287,7 @@ actor PhotonProvisioningService {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.performProvisioning(sessionID: sessionID, dashboardToken: token, phone: phone)
+            await performProvisioning(sessionID: sessionID, dashboardToken: token, phone: phone)
         }
         session.provisioningTask = task
         sessions[sessionID] = session
@@ -393,7 +393,7 @@ actor PhotonProvisioningService {
         let body: [String: Any] = [
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             "device_code": code.deviceCode,
-            "client_id": clientID
+            "client_id": clientID,
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -439,7 +439,8 @@ actor PhotonProvisioningService {
         // list and find
         let projects = try await listProjects(token: token)
         if let existing = projects.first(where: { ($0["name"] as? String)?.lowercased() == name.lowercased() }),
-           let id = existing["id"] as? String {
+           let id = existing["id"] as? String
+        {
             return id
         }
 
@@ -454,7 +455,7 @@ actor PhotonProvisioningService {
             "location": "United States",
             "spectrum": true,
             "template": false,
-            "observability": false
+            "observability": false,
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -513,7 +514,7 @@ actor PhotonProvisioningService {
         throw NSError(domain: "photon", code: 0, userInfo: [NSLocalizedDescriptionKey: "no projectSecret"])
     }
 
-    // Spectrum user ops (Basic auth with project:secret)
+    /// Spectrum user ops (Basic auth with project:secret)
     private func registerUserIfAbsent(projectID: String, projectSecret: String, phone: String) async throws -> ([String: Any], Bool) {
         if let existing = try await findUserByPhone(projectID: projectID, projectSecret: projectSecret, phone: phone) {
             return (existing, false)
@@ -590,7 +591,7 @@ actor PhotonProvisioningService {
             "project_secret": projectSecret,
             "dashboard_project_id": dashboardProjectID,
             "bound_phone": boundPhone,
-            "assigned_line": assignedLine ?? ""
+            "assigned_line": assignedLine ?? "",
         ]
 
         let sealed = try secretBox.seal(encodeConfig(config), tenantID: tenantID)
@@ -599,8 +600,8 @@ actor PhotonProvisioningService {
         if let existing = try await UserHermesGateway.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .filter(\.$gatewayID == HermesGatewayID.photon.rawValue)
-            .first() {
-
+            .first()
+        {
             existing.configCiphertext = sealed.ciphertext
             existing.configNonce = sealed.nonce
             existing.status = HermesGatewayStatus.configured.rawValue
@@ -649,7 +650,7 @@ actor PhotonProvisioningService {
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             let text = String(data: data, encoding: .utf8) ?? ""
             throw NSError(domain: "photon", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "Photon \(action) failed: HTTP \(http.statusCode): \(text.prefix(300))"
+                NSLocalizedDescriptionKey: "Photon \(action) failed: HTTP \(http.statusCode): \(text.prefix(300))",
             ])
         }
     }
@@ -686,10 +687,9 @@ actor PhotonProvisioningService {
     }
 
     private func normalizePhone(_ p: String) -> String {
-        return p.replacingOccurrences(of: "[^\\d+]", with: "", options: .regularExpression)
+        p.replacingOccurrences(of: "[^\\d+]", with: "", options: .regularExpression)
     }
 
-    private var E164_RE: NSRegularExpression {
-        try! NSRegularExpression(pattern: "^\\+[1-9]\\d{6,14}$")
-    }
+    // swiftlint:disable:next force_try
+    private static let E164_RE = try! NSRegularExpression(pattern: "^\\+[1-9]\\d{6,14}$")
 }

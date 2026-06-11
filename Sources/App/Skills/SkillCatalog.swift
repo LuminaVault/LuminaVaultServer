@@ -21,7 +21,7 @@ actor SkillCatalog {
     init(
         vaultPaths: VaultPathService,
         parser: SkillManifestParser = SkillManifestParser(),
-        logger: Logger,
+        logger: Logger
     ) {
         self.vaultPaths = vaultPaths
         self.parser = parser
@@ -59,7 +59,7 @@ actor SkillCatalog {
         let fm = FileManager.default
         guard let dirs = try? fm.contentsOfDirectory(
             at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: [.isDirectoryKey]
         ) else {
             return []
         }

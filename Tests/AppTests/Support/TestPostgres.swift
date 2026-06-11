@@ -75,7 +75,7 @@ enum TestPostgres {
             username: username,
             password: password,
             database: database,
-            tls: .disable,
+            tls: .disable
         )
     }
 }

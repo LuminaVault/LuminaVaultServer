@@ -47,7 +47,7 @@ struct JobsController {
             cron: body.cron,
             domain: body.domain,
             spec: body.spec,
-            spaceID: body.spaceId,
+            spaceID: body.spaceId
         )
         return SkillDTO(
             id: slug,
@@ -61,7 +61,7 @@ struct JobsController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(body.spec.prefix(160)),
+            bodyExcerpt: String(body.spec.prefix(160))
         )
     }
 }

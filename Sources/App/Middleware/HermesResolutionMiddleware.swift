@@ -32,7 +32,7 @@ struct HermesResolutionMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let tenantID: UUID
         do {
@@ -53,11 +53,11 @@ struct HermesResolutionMiddleware: RouterMiddleware {
                 metadata: [
                     "tenant": .string(tenantID.uuidString),
                     "error": .string(String(describing: err)),
-                ],
+                ]
             )
             throw HTTPError(
                 .badGateway,
-                message: "hermes_unreachable",
+                message: "hermes_unreachable"
             )
         }
 

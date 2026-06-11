@@ -62,7 +62,7 @@ struct URLSessionHermesChatTransportTests {
             baseURL: URL(string: "https://hermes.test")!,
             session: stubSession(),
             logger: Logger(label: "lv.test.memory.transport"),
-            apiKey: apiKey,
+            apiKey: apiKey
         )
     }
 
@@ -73,7 +73,7 @@ struct URLSessionHermesChatTransportTests {
             url: url,
             statusCode: 200,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"],
+            headerFields: ["Content-Type": "application/json"]
         )!
     }
 
@@ -135,7 +135,7 @@ struct URLSessionHermesChatTransportTests {
                 url: request.url!,
                 statusCode: 401,
                 httpVersion: "HTTP/1.1",
-                headerFields: nil,
+                headerFields: nil
             )!
             return (resp, Data("unauthorized".utf8))
         }

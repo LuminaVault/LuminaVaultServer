@@ -34,7 +34,7 @@ struct JobsTests {
     @Test
     func `authored SKILL.md parses as a valid scheduled vault skill`() throws {
         let md = JobAuthoring.skillMarkdown(
-            slug: "job-x", title: "Stock Watch", cron: "0 8 * * *", domain: "stocks", spec: "Report prices",
+            slug: "job-x", title: "Stock Watch", cron: "0 8 * * *", domain: "stocks", spec: "Report prices"
         )
         let manifest = try SkillManifestParser().parse(source: .vault, contents: md)
         #expect(manifest.name == "job-x")
@@ -44,7 +44,7 @@ struct JobsTests {
     @Test
     func `one-shot SKILL.md omits the schedule (run_at lives on skills_state)`() throws {
         let md = JobAuthoring.skillMarkdown(
-            slug: "job-y", title: "One Off", cron: nil, domain: nil, spec: "Do it once",
+            slug: "job-y", title: "One Off", cron: nil, domain: nil, spec: "Do it once"
         )
         #expect(!md.contains("schedule:"))
         let manifest = try SkillManifestParser().parse(source: .vault, contents: md)

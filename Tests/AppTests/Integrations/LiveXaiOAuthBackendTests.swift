@@ -15,7 +15,7 @@ struct LiveXaiOAuthBackendTests {
             port: 9000,
             apiServerKey: "stub-key",
             xaiConnectedAt: nil,
-            nousConnectedAt: nil,
+            nousConnectedAt: nil
         )
     }
 
@@ -28,7 +28,7 @@ struct LiveXaiOAuthBackendTests {
             registry: registry,
             logger: Logger(label: "test.her240c"),
             startTimeoutSeconds: 5,
-            completeTimeoutSeconds: 5,
+            completeTimeoutSeconds: 5
         )
         return (backend, registry)
     }
@@ -46,7 +46,7 @@ struct LiveXaiOAuthBackendTests {
 
         let url = try await backend.requestAuthorizeURL(
             handle: Self.makeHandle(),
-            sessionID: "sess-1",
+            sessionID: "sess-1"
         )
         #expect(url == "https://accounts.x.ai/oauth/authorize?client_id=hermes&state=abc")
         #expect(await registry.count() == 1)
@@ -63,7 +63,7 @@ struct LiveXaiOAuthBackendTests {
         let (backend, _) = Self.makeBackend(docker: docker)
         let url = try await backend.requestAuthorizeURL(
             handle: Self.makeHandle(),
-            sessionID: "sess-2",
+            sessionID: "sess-2"
         )
         #expect(url.hasPrefix("https://accounts.x.ai/"))
     }
@@ -78,7 +78,7 @@ struct LiveXaiOAuthBackendTests {
         await #expect(throws: XaiOAuthError.authorizeURLMissingFromStdout) {
             _ = try await backend.requestAuthorizeURL(
                 handle: Self.makeHandle(),
-                sessionID: "sess-3",
+                sessionID: "sess-3"
             )
         }
     }
@@ -93,7 +93,7 @@ struct LiveXaiOAuthBackendTests {
         let (backend, _) = Self.makeBackend(docker: docker)
         _ = try await backend.requestAuthorizeURL(
             handle: Self.makeHandle(),
-            sessionID: "sess-4",
+            sessionID: "sess-4"
         )
 
         // Trigger the streaming handle to "complete" once submit runs.
@@ -105,7 +105,7 @@ struct LiveXaiOAuthBackendTests {
         let ok = try await backend.submitCallback(
             handle: Self.makeHandle(),
             sessionID: "sess-4",
-            callbackURL: "http://127.0.0.1:56121/callback?code=abc&state=xyz",
+            callbackURL: "http://127.0.0.1:56121/callback?code=abc&state=xyz"
         )
         #expect(ok)
 
@@ -128,7 +128,7 @@ struct LiveXaiOAuthBackendTests {
             _ = try await backend.submitCallback(
                 handle: Self.makeHandle(),
                 sessionID: "missing",
-                callbackURL: "http://127.0.0.1:56121/callback?code=x",
+                callbackURL: "http://127.0.0.1:56121/callback?code=x"
             )
         }
     }
@@ -141,7 +141,7 @@ struct LiveXaiOAuthBackendTests {
         let (backend, registry) = Self.makeBackend(docker: docker)
         _ = try await backend.requestAuthorizeURL(
             handle: Self.makeHandle(),
-            sessionID: "sess-5",
+            sessionID: "sess-5"
         )
         #expect(await registry.count() == 1)
         await backend.cancel(sessionID: "sess-5")
@@ -167,7 +167,7 @@ struct LiveXaiOAuthBackendTests {
     func `forwardURL preserves query string from captured URL`() {
         let result = LiveXaiOAuthBackend.forwardURL(
             loopback: "http://127.0.0.1:56121/callback",
-            captured: "http://example.com/redirect?code=ABC&state=XYZ",
+            captured: "http://example.com/redirect?code=ABC&state=XYZ"
         )
         #expect(result == "http://127.0.0.1:56121/callback?code=ABC&state=XYZ")
     }
@@ -176,7 +176,7 @@ struct LiveXaiOAuthBackendTests {
     func `forwardURL returns base when captured has no query`() {
         let result = LiveXaiOAuthBackend.forwardURL(
             loopback: "http://127.0.0.1:56121/callback",
-            captured: "http://example.com/redirect",
+            captured: "http://example.com/redirect"
         )
         #expect(result == "http://127.0.0.1:56121/callback")
     }

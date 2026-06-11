@@ -48,7 +48,7 @@ struct MemoryRepository {
     func semanticSearch(
         queryEmbedding: [Float],
         limit: Int,
-        context: AppRequestContext,
+        context: AppRequestContext
     ) async throws -> [MemorySearchResult] {
         let tenantID = try context.requireTenantID()
         guard let sql = fluent.db() as? any SQLDatabase else {
@@ -70,7 +70,7 @@ struct MemoryRepository {
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance,
+                distance: $0.distance
             )
         }
     }
@@ -88,7 +88,7 @@ struct MemoryRepository {
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
         spaceID: UUID? = nil,
-        reviewState: String = "auto",
+        reviewState: String = "auto"
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
@@ -148,7 +148,7 @@ struct MemoryRepository {
     func semanticSearch(
         tenantID: UUID,
         queryEmbedding: [Float],
-        limit: Int,
+        limit: Int
     ) async throws -> [MemorySearchResult] {
         // HER-234 — wrap the SQL hop in `RouteTelemetry.observe` when wired
         // (request counter + duration timer + tracing span). Falls through
@@ -165,7 +165,7 @@ struct MemoryRepository {
     private func semanticSearchRaw(
         tenantID: UUID,
         queryEmbedding: [Float],
-        limit: Int,
+        limit: Int
     ) async throws -> [MemorySearchResult] {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector query")
@@ -195,7 +195,7 @@ struct MemoryRepository {
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance,
+                distance: $0.distance
             )
         }
     }
@@ -227,7 +227,7 @@ struct MemoryRepository {
         tag: String?,
         reviewStates: [String]? = nil,
         limit: Int,
-        offset: Int,
+        offset: Int
     ) async throws -> [Memory] {
         let q = Memory.query(on: fluent.db(), tenantID: tenantID)
             .sort(\.$createdAt, .descending)
@@ -400,7 +400,7 @@ struct MemoryRepository {
             memoryCreatedAt: row.memory_created_at,
             sourceVaultFileID: row.source_vault_file_id,
             sourcePath: row.source_path,
-            sourceCreatedAt: row.source_created_at,
+            sourceCreatedAt: row.source_created_at
         )
     }
 }

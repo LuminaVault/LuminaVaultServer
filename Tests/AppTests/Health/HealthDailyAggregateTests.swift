@@ -38,7 +38,7 @@ struct HealthDailyAggregateTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -51,7 +51,7 @@ struct HealthDailyAggregateTests {
     private static func seedEvents(
         client: some TestClientProtocol,
         token: String,
-        events: [LuminaVaultShared.HealthEventInput],
+        events: [LuminaVaultShared.HealthEventInput]
     ) async throws -> HealthIngestResponse {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -60,7 +60,7 @@ struct HealthDailyAggregateTests {
             uri: "/v1/health",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: bodyData),
+            body: ByteBuffer(data: bodyData)
         ) { try decodeIngestResponse($0.body) }
     }
 
@@ -68,7 +68,7 @@ struct HealthDailyAggregateTests {
         client: some TestClientProtocol,
         token: String,
         type: String,
-        days: Int? = nil,
+        days: Int? = nil
     ) async throws -> HealthDailyResponse {
         var uri = "/v1/health/daily?type=\(type)"
         if let days {
@@ -77,7 +77,7 @@ struct HealthDailyAggregateTests {
         return try await client.execute(
             uri: uri,
             method: .get,
-            headers: [.authorization: "Bearer \(token)"],
+            headers: [.authorization: "Bearer \(token)"]
         ) { try decodeDailyResponse($0.body) }
     }
 
@@ -174,14 +174,14 @@ struct HealthDailyAggregateTests {
             try await client.execute(
                 uri: "/v1/health/daily?type=steps&days=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .badRequest)
             }
             try await client.execute(
                 uri: "/v1/health/daily?type=steps&days=91",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -196,7 +196,7 @@ struct HealthDailyAggregateTests {
             try await client.execute(
                 uri: "/v1/health/daily",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .badRequest)
             }

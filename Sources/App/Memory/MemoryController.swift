@@ -56,7 +56,7 @@ extension MemoryDTO {
             lng: memory.lng,
             accuracyM: memory.accuracyM,
             placeName: memory.placeName,
-            reviewState: memory.reviewState,
+            reviewState: memory.reviewState
         )
     }
 }
@@ -132,7 +132,7 @@ struct MemoryController {
         // malformed id → 400).
         let spaceID = try await resolveOptionalSpaceID(
             req.uri.queryParameters["space_id"].map(String.init),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
 
         // Deterministic save: embed + persist directly. The capture path must
@@ -147,7 +147,7 @@ struct MemoryController {
             tenantID: tenantID,
             content: content,
             embedding: embedding,
-            spaceID: spaceID,
+            spaceID: spaceID
         )
 
         // HER-207 — geo passthrough. All four fields are independently
@@ -170,7 +170,7 @@ struct MemoryController {
             eventBus.publish(SkillEvent(
                 type: .memoryUpserted,
                 tenantID: tenantID,
-                payload: [SkillEvent.PayloadKey.memoryID: memoryID.uuidString],
+                payload: [SkillEvent.PayloadKey.memoryID: memoryID.uuidString]
             ))
         }
         if let achievements {
@@ -180,7 +180,7 @@ struct MemoryController {
         return MemoryUpsertResponse(
             memoryId: memoryID,
             content: memory.content,
-            summary: "Saved to your vault.",
+            summary: "Saved to your vault."
         )
     }
 
@@ -214,7 +214,7 @@ struct MemoryController {
             tenantID: tenantID,
             sessionKey: tenantID.uuidString,
             query: body.query,
-            limit: body.limit ?? 5,
+            limit: body.limit ?? 5
         )
         let hits = answer.hits.map {
             MemorySearchHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -235,7 +235,7 @@ struct MemoryController {
 
         let limit = Self.clamp(
             req.uri.queryParameters["limit"].flatMap { Int($0) } ?? Self.defaultLimit,
-            min: 1, max: Self.maxLimit,
+            min: 1, max: Self.maxLimit
         )
         let offset = max(0, req.uri.queryParameters["offset"].flatMap { Int($0) } ?? 0)
         let tag = req.uri.queryParameters["tag"].map { String($0) }
@@ -262,12 +262,12 @@ struct MemoryController {
             tag: tag,
             reviewStates: reviewStates,
             limit: limit,
-            offset: offset,
+            offset: offset
         )
         return MemoryListResponse(
             memories: rows.map(MemoryDTO.fromMemory),
             limit: limit,
-            offset: offset,
+            offset: offset
         )
     }
 
@@ -307,7 +307,7 @@ struct MemoryController {
             }
             let embedding = try await embeddings.embed(content, tenantID: tenantID)
             let updated = try await repository.updateContent(
-                tenantID: tenantID, id: id, content: content, embedding: embedding,
+                tenantID: tenantID, id: id, content: content, embedding: embedding
             )
             guard updated else { throw HTTPError(.notFound, message: "memory not found") }
         }
@@ -329,13 +329,13 @@ struct MemoryController {
             guard legal else {
                 throw HTTPError(
                     .unprocessableContent,
-                    message: "reviewState transition \(current.reviewState) → \(target) not allowed",
+                    message: "reviewState transition \(current.reviewState) → \(target) not allowed"
                 )
             }
             try await repository.updateReviewState(
                 tenantID: tenantID,
                 id: id,
-                reviewState: target,
+                reviewState: target
             )
             if target == MemoryReviewState.rejected {
                 // Append `(tenant_id, content_hash)` so the next kb-compile
@@ -343,7 +343,7 @@ struct MemoryController {
                 try await rejectListRepository.record(
                     tenantID: tenantID,
                     contentHash: MemoryCompileService.contentHash(current.content),
-                    vaultFileID: current.sourceVaultFileID,
+                    vaultFileID: current.sourceVaultFileID
                 )
             }
         }
@@ -363,7 +363,7 @@ struct MemoryController {
         let id = try Self.parseID(ctx)
         guard let row = try await repository.findLineage(
             tenantID: user.requireID(),
-            memoryID: id,
+            memoryID: id
         ) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
@@ -373,7 +373,7 @@ struct MemoryController {
             source = MemoryLineageSourceDTO(
                 vaultFileId: sid,
                 path: path,
-                createdAt: row.sourceCreatedAt,
+                createdAt: row.sourceCreatedAt
             )
             let dateLabel = Self.formatTraceDate(row.sourceCreatedAt)
             trace = "Hermes learned this from your \(dateLabel) note at \(path)."
@@ -394,17 +394,17 @@ struct MemoryController {
 
         let limit = Self.clamp(
             req.uri.queryParameters["limit"].flatMap { Int($0) } ?? MemoryGraphService.defaultLimit,
-            min: 1, max: MemoryGraphService.maxLimit,
+            min: 1, max: MemoryGraphService.maxLimit
         )
         let similarity = Self.clampDouble(
             req.uri.queryParameters["similarityThreshold"].flatMap { Double($0) }
                 ?? MemoryGraphService.defaultSimilarity,
-            min: 0.0, max: 1.0,
+            min: 0.0, max: 1.0
         )
         let maxEdges = Self.clamp(
             req.uri.queryParameters["maxEdgesPerNode"].flatMap { Int($0) }
                 ?? MemoryGraphService.defaultMaxEdgesPerNode,
-            min: 1, max: MemoryGraphService.maxMaxEdgesPerNode,
+            min: 1, max: MemoryGraphService.maxMaxEdgesPerNode
         )
         // `includeWikiPages` defaults true; `kinds` is a CSV of edge kinds
         // (wikilink,tag,space,semantic,temporal). Absent / empty → all kinds.
@@ -418,7 +418,7 @@ struct MemoryController {
             similarity: similarity,
             maxEdgesPerNode: maxEdges,
             includeWikiPages: includeWikiPages,
-            kinds: kinds,
+            kinds: kinds
         )
     }
 

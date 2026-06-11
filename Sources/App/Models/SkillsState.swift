@@ -40,7 +40,7 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         lastRunAt: Date? = nil,
         lastStatus: String? = nil,
         lastError: String? = nil,
-        apnsCategory: String? = nil,
+        apnsCategory: String? = nil
     ) {
         id = tenantID
         self.tenantID = tenantID

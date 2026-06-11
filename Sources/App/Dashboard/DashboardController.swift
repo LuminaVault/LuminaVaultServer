@@ -61,7 +61,7 @@ struct DashboardController {
             projectsCount: projectsCount,
             insightsCount: insightsCount,
             activeProfileName: activeProfile?.label,
-            activeProfileSlug: activeProfile?.slug,
+            activeProfileSlug: activeProfile?.slug
         )
     }
 
@@ -103,7 +103,7 @@ struct DashboardController {
         return DashboardStatsResponse(
             memoriesToday: memoriesToday,
             memoriesTotal: memoriesTotal,
-            lastCompileAt: latestCompiledSpace?.lastCompiledAt,
+            lastCompileAt: latestCompiledSpace?.lastCompiledAt
         )
     }
 
@@ -155,7 +155,7 @@ struct DashboardController {
             badgesEarned: badgesEarned,
             graphConnections: graphConnections,
             activeSpaces: activeSpaces,
-            streakDays: streakDays,
+            streakDays: streakDays
         )
         let level = PowerLevel.level(forXP: xp)
 
@@ -165,7 +165,7 @@ struct DashboardController {
             sessionsCount: sessionsCount,
             badgesEarned: badgesEarned,
             powerLevel: level,
-            powerXP: xp,
+            powerXP: xp
         )
     }
 

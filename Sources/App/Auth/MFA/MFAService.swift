@@ -29,7 +29,7 @@ struct DefaultMFAService: MFAService {
             channel: "email",
             destination: user.email,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(challengeLifetime),
+            expiresAt: Date().addingTimeInterval(challengeLifetime)
         )
         row.lastSentAt = Date()
         try await row.save(on: fluent.db())

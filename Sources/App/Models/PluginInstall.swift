@@ -30,7 +30,7 @@ final class PluginInstall: Model, TenantModel, @unchecked Sendable {
         pluginSlug: String,
         status: String = PluginInstallState.enabled,
         configCiphertext: Data,
-        configNonce: Data,
+        configNonce: Data
     ) {
         self.id = id
         self.tenantID = tenantID

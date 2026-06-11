@@ -42,7 +42,7 @@ struct MemoryCompileHappyPathTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
     }
 
@@ -61,7 +61,7 @@ struct MemoryCompileHappyPathTests {
         relativePath: String,
         content: String,
         fluent: Fluent,
-        rootPath: String,
+        rootPath: String
     ) async throws -> UUID {
         let raw = URL(fileURLWithPath: rootPath)
             .appendingPathComponent("tenants")
@@ -70,7 +70,7 @@ struct MemoryCompileHappyPathTests {
             .appendingPathComponent(relativePath)
         try FileManager.default.createDirectory(
             at: raw.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         let data = Data(content.utf8)
         try data.write(to: raw, options: .atomic)
@@ -80,7 +80,7 @@ struct MemoryCompileHappyPathTests {
             path: relativePath,
             contentType: "text/markdown",
             sizeBytes: Int64(data.count),
-            sha256: String(repeating: "b", count: 64),
+            sha256: String(repeating: "b", count: 64)
         )
         try await row.save(on: fluent.db())
         return try row.requireID()
@@ -90,7 +90,7 @@ struct MemoryCompileHappyPathTests {
     func `happy-path compile flips processedAt + onboarding flag, idempotent on second tap`() async throws {
         let app = try await buildApplication(
             reader: dbTestReader,
-            kbCompileTransportOverride: StubHermesChatTransport(),
+            kbCompileTransportOverride: StubHermesChatTransport()
         )
 
         try await app.test(.router) { client in
@@ -104,7 +104,7 @@ struct MemoryCompileHappyPathTests {
                     relativePath: "notes/hello.md",
                     content: "# Hello\n\nThis is a kb-compile test note.",
                     fluent: fluent,
-                    rootPath: "/tmp/luminavault-test",
+                    rootPath: "/tmp/luminavault-test"
                 )
             }
 
@@ -116,7 +116,7 @@ struct MemoryCompileHappyPathTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -146,7 +146,7 @@ struct MemoryCompileHappyPathTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)

@@ -32,7 +32,7 @@ final class HermesGatewayApplyJob: Model, @unchecked Sendable {
         tenantID: UUID,
         state: HermesGatewayApplyJobState,
         steps: [HermesGatewayApplyStep],
-        errorMessage: String? = nil,
+        errorMessage: String? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -69,7 +69,7 @@ final class HermesGatewayApplyJob: Model, @unchecked Sendable {
             steps: steps,
             errorMessage: errorMessage,
             startedAt: createdAt ?? Date(),
-            updatedAt: updatedAt ?? Date(),
+            updatedAt: updatedAt ?? Date()
         )
     }
 }

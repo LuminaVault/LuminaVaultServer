@@ -13,7 +13,7 @@ import Testing
 @Suite(.serialized)
 struct ProjectModelTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {

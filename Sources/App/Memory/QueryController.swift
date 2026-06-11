@@ -32,7 +32,7 @@ struct QueryController {
         streamService: (any HermesLLMStreamService)? = nil,
         followUpGenerator: FollowUpGenerator? = nil,
         defaultModel: String = "",
-        logger: Logger = Logger(label: "lv.query"),
+        logger: Logger = Logger(label: "lv.query")
     ) {
         self.service = service
         self.achievements = achievements
@@ -61,7 +61,7 @@ struct QueryController {
             tenantID: tenantID,
             sessionKey: tenantID.uuidString,
             query: body.query,
-            limit: body.limit ?? 5,
+            limit: body.limit ?? 5
         )
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .queryRan)
@@ -77,7 +77,7 @@ struct QueryController {
             let ups = await followUpGenerator.generate(
                 sessionKey: tenantID.uuidString,
                 summary: answer.summary,
-                sources: hits,
+                sources: hits
             )
             followUps = ups.isEmpty ? nil : ups
         } else {
@@ -125,7 +125,7 @@ struct QueryController {
             try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
-                limit: limit,
+                limit: limit
             )
         }
         log.info("query grounding", metadata: ["hits": .stringConvertible(hits.count)])
@@ -137,7 +137,7 @@ struct QueryController {
         let chatRequest = ChatRequest(
             messages: Self.buildPrompt(query: userQuery, hits: hits),
             model: defaultModel.isEmpty ? nil : defaultModel,
-            temperature: 0.4,
+            temperature: 0.4
         )
         let hermesResolution = ctx.hermesResolution
         let logger = log
@@ -172,7 +172,7 @@ struct QueryController {
                                 let chunks = streamService.chatStream(
                                     sessionKey: sessionKey,
                                     sessionID: sessionID,
-                                    request: chatRequest,
+                                    request: chatRequest
                                 )
                                 for try await chunk in chunks {
                                     if Task.isCancelled { break }
@@ -197,7 +197,7 @@ struct QueryController {
                     ])
                     if let emptyEvent = ChatStreamCompletionPolicy.emptyCompletionEvent(
                         assistantBuffer: assistantBuffer,
-                        tokenCount: tokenCount,
+                        tokenCount: tokenCount
                     ) {
                         logger.warning("query stream completed without assistant content")
                         continuation.yield(emptyEvent)
@@ -221,7 +221,7 @@ struct QueryController {
                         sessionKey: sessionKey,
                         sessionID: sessionID,
                         summary: assistantBuffer,
-                        sources: hitDTOs,
+                        sources: hitDTOs
                     )
                 } else {
                     []

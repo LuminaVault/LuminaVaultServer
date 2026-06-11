@@ -28,7 +28,7 @@ struct RequestLogMiddleware<Context: RequestContext>: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let start = ContinuousClock.now
         // `path` only (never `uri`) — query strings can carry tokens/PII.

@@ -37,7 +37,7 @@ actor CalendarTokenStore {
         secretBox: SecretBox,
         oauth: GoogleCalendarOAuthClient,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
         self.secretBox = secretBox
@@ -52,7 +52,7 @@ actor CalendarTokenStore {
         tenantID: UUID,
         provider: String = "google",
         tokens: GoogleCalendarOAuthClient.TokenResponse,
-        accountEmail: String?,
+        accountEmail: String?
     ) async throws {
         guard let refreshToken = tokens.refreshToken else {
             // No refresh token means we'd lose offline access on first

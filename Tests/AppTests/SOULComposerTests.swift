@@ -1,12 +1,13 @@
-import XCTest
-import LuminaVaultShared
 @testable import App
+import LuminaVaultShared
+import XCTest
 
 final class SOULComposerTests: XCTestCase {
     private func render(_ tone: SoulTone = .warm,
                         _ role: SoulRole = .secondBrain,
                         _ autonomy: SoulAutonomy = .suggest,
-                        name: String = "Athena") -> String {
+                        name: String = "Athena") -> String
+    {
         let req = SoulComposeRequest(agentName: name, tone: tone, role: role, autonomy: autonomy)
         return SOULComposer.render(req, username: "fernando")
     }
@@ -55,7 +56,8 @@ final class SOULComposerTests: XCTestCase {
         let pinned = Date(timeIntervalSince1970: 0)
         let out = SOULComposer.render(
             SoulComposeRequest(agentName: "X", tone: .warm, role: .secondBrain, autonomy: .suggest),
-            username: "u", now: pinned)
+            username: "u", now: pinned
+        )
         XCTAssertTrue(out.contains("created_at: 1970-01-01T00:00:00Z"))
     }
 }

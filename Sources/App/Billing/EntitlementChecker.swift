@@ -53,7 +53,7 @@ enum EntitlementChecker {
     static func entitled(
         tier: UserTier,
         override: TierOverride,
-        for capability: Capability,
+        for capability: Capability
     ) -> Bool {
         let effective = effectiveTier(tier: tier, override: override)
         return matchEntitlement(effective: effective, for: capability)
@@ -127,7 +127,7 @@ extension User {
         EntitlementChecker.entitled(
             tier: tierEnum,
             override: tierOverrideEnum,
-            for: capability,
+            for: capability
         )
     }
 }

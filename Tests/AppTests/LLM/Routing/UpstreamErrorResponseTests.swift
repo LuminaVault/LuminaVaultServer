@@ -33,7 +33,7 @@ struct UpstreamErrorResponseTests {
         let err = UpstreamErrorResponse(
             reasonCode: "upstream_timeout",
             userMessage: "Hermes timed out.",
-            retryAfterMs: 2000,
+            retryAfterMs: 2000
         )
         let json = try JSONSerialization.jsonObject(with: err.bodyData) as? [String: Any]
         let outer = try #require(json?["error"] as? [String: Any])

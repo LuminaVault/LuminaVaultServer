@@ -31,9 +31,9 @@ func runBackfillHermesProfilesCommand(reader: ConfigReader) async throws {
             username: reader.string(forKey: "postgres.user", default: "luminavault"),
             password: reader.string(forKey: "postgres.password", default: "luminavault"),
             database: reader.string(forKey: "postgres.database", default: "luminavault"),
-            tls: .disable,
+            tls: .disable
         )),
-        as: .psql,
+        as: .psql
     )
 
     defer {
@@ -41,23 +41,23 @@ func runBackfillHermesProfilesCommand(reader: ConfigReader) async throws {
     }
 
     let vaultPaths = VaultPathService(
-        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
+        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault")
     )
     let hermesDataRoot = reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes")
     let gateway = makeHermesGateway(
         kind: reader.string(forKey: "hermes.gatewayKind", default: "filesystem"),
         dataRoot: hermesDataRoot,
-        logger: logger,
+        logger: logger
     )
     let service = HermesProfileService(
         fluent: fluent,
         gateway: gateway,
-        vaultPaths: vaultPaths,
+        vaultPaths: vaultPaths
     )
     let hermesGatewayURL = reader.string(forKey: "hermes.gatewayURL", default: "")
     let gatewayProbe = HermesGatewayProbe(
         session: .shared,
-        logger: Logger(label: "lv.hermes.probe"),
+        logger: Logger(label: "lv.hermes.probe")
     )
     let reconciler = HermesProfileReconciler(
         fluent: fluent,
@@ -66,13 +66,13 @@ func runBackfillHermesProfilesCommand(reader: ConfigReader) async throws {
         hermesDataRoot: hermesDataRoot,
         hermesGatewayURL: hermesGatewayURL,
         gatewayProbe: gatewayProbe,
-        logger: logger,
+        logger: logger
     )
 
     logger.info("backfill-hermes-profiles starting")
     let summary = try await reconciler.reconcile()
     logger.info(
-        "backfill-hermes-profiles done scanned=\(summary.usersScanned) created=\(summary.profilesCreated) recovered=\(summary.profilesRecovered) ok=\(summary.profilesAlreadyOK) failures=\(summary.failures.count)",
+        "backfill-hermes-profiles done scanned=\(summary.usersScanned) created=\(summary.profilesCreated) recovered=\(summary.profilesRecovered) ok=\(summary.profilesAlreadyOK) failures=\(summary.failures.count)"
     )
 
     let encoder = JSONEncoder()

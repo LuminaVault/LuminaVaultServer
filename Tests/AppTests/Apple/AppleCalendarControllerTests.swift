@@ -46,7 +46,7 @@ struct AppleCalendarControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -61,14 +61,14 @@ struct AppleCalendarControllerTests {
         client: some TestClientProtocol,
         token: String,
         domain: AppleDataDomain,
-        allowed: Bool,
+        allowed: Bool
     ) async throws {
         let body = try wireEncoder.encode(AppleConsentUpdateRequest(domain: domain, allowed: allowed))
         try await client.execute(
             uri: "/v1/apple/consent",
             method: .put,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: body),
+            body: ByteBuffer(data: body)
         ) { #expect($0.status == .ok) }
     }
 
@@ -77,14 +77,14 @@ struct AppleCalendarControllerTests {
         client: some TestClientProtocol,
         token: String,
         events: [AppleCalendarEventInput],
-        expectStatus: HTTPResponse.Status = .ok,
+        expectStatus: HTTPResponse.Status = .ok
     ) async throws -> AppleSyncResponse? {
         let body = try wireEncoder.encode(AppleCalendarSyncRequest(events: events))
         return try await client.execute(
             uri: "/v1/calendar/sync",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: body),
+            body: ByteBuffer(data: body)
         ) { response in
             #expect(response.status == expectStatus)
             guard response.status == .ok else { return nil }
@@ -96,7 +96,7 @@ struct AppleCalendarControllerTests {
         _ externalID: String,
         title: String = "Standup",
         status: String? = nil,
-        remoteUpdatedAt: Date? = nil,
+        remoteUpdatedAt: Date? = nil
     ) -> AppleCalendarEventInput {
         let start = Date()
         return AppleCalendarEventInput(
@@ -106,7 +106,7 @@ struct AppleCalendarControllerTests {
             startsAt: start,
             endsAt: start.addingTimeInterval(1800),
             status: status,
-            remoteUpdatedAt: remoteUpdatedAt,
+            remoteUpdatedAt: remoteUpdatedAt
         )
     }
 
@@ -121,7 +121,7 @@ struct AppleCalendarControllerTests {
                 client: client,
                 token: token,
                 events: [Self.event("e-1")],
-                expectStatus: .forbidden,
+                expectStatus: .forbidden
             )
         }
     }

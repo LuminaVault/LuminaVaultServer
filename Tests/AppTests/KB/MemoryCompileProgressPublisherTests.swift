@@ -11,13 +11,13 @@ struct MemoryCompileProgressPublisherTests {
         let tenantID = try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
         let publisher = WebSocketMemoryCompileProgressPublisher(
             connectionManager: manager,
-            logger: Logger(label: "test.lv.kb-compile.publisher"),
+            logger: Logger(label: "test.lv.kb-compile.publisher")
         )
 
         // No connections registered → broadcast is a no-op success.
         await publisher.publish(
             .started(.init(runId: tenantID, totalFiles: 7)),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
 
         // Smoke: assert that connection list is empty (broadcast didn't error).

@@ -77,7 +77,7 @@ func loadJWTKeys(into collection: JWTKeyCollection, secrets: [JWTKeyEntry]) asyn
         await collection.add(
             hmac: HMACKey(stringLiteral: entry.secret),
             digestAlgorithm: .sha256,
-            kid: entry.kid,
+            kid: entry.kid
         )
     }
 }

@@ -53,7 +53,7 @@ struct AuthController {
             try await service.login(
                 email: body.email,
                 password: body.password,
-                requireMFA: requireMFA,
+                requireMFA: requireMFA
             )
         }
     }
@@ -117,7 +117,7 @@ struct AuthController {
             try await service.resetPassword(
                 email: body.email,
                 code: body.code,
-                newPassword: body.newPassword,
+                newPassword: body.newPassword
             )
         }
     }

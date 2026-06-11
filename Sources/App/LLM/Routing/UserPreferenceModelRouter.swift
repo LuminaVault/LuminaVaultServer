@@ -22,7 +22,7 @@ struct UserPreferenceModelRouter: ModelRouter {
     func pick(
         forModel model: String?,
         capability: LLMCapabilityLevel,
-        user: User?,
+        user: User?
     ) async -> RouteDecision {
         let tableDecision = await fallback.pick(forModel: model, capability: capability, user: user)
         guard

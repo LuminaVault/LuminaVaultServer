@@ -45,7 +45,7 @@ struct ConversationController {
         linkCapture: LinkCaptureService? = nil,
         urlExtractor: URLExtractionService = URLExtractionService(),
         defaultModel: String,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -75,7 +75,7 @@ struct ConversationController {
         let conversation = try Conversation(
             tenantID: user.requireID(),
             title: (body.title?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "New conversation",
-            spaceID: body.spaceId,
+            spaceID: body.spaceId
         )
         try await conversation.save(on: fluent.db())
         return try conversation.toDTO()
@@ -103,7 +103,7 @@ struct ConversationController {
             .all()
         return try ConversationDetailResponse(
             conversation: conversation.toDTO(),
-            messages: messages.map { try $0.toDTO() },
+            messages: messages.map { try $0.toDTO() }
         )
     }
 
@@ -148,7 +148,7 @@ struct ConversationController {
         let userMessage = try ConversationMessage(
             conversationID: conversation.requireID(),
             role: .user,
-            content: content,
+            content: content
         )
         try await userMessage.save(on: fluent.db())
 
@@ -168,7 +168,7 @@ struct ConversationController {
             try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
-                limit: 5,
+                limit: 5
             )
         }
         log.info("chat grounding", metadata: ["hits": .stringConvertible(hits.count)])
@@ -181,7 +181,7 @@ struct ConversationController {
         let chatRequest = ChatRequest(
             messages: Self.buildPrompt(history: history, hits: hits, schedule: schedule),
             model: defaultModel.isEmpty ? nil : defaultModel,
-            temperature: 0.4,
+            temperature: 0.4
         )
         let sessionKey = tenantID.uuidString
         let sessionID = conversationID.uuidString
@@ -236,7 +236,7 @@ struct ConversationController {
                                 let chunks = streamService.chatStream(
                                     sessionKey: sessionKey,
                                     sessionID: sessionID,
-                                    request: chatRequest,
+                                    request: chatRequest
                                 )
                                 for try await chunk in chunks {
                                     if Task.isCancelled { break }
@@ -261,7 +261,7 @@ struct ConversationController {
                     ])
                     if let emptyEvent = ChatStreamCompletionPolicy.emptyCompletionEvent(
                         assistantBuffer: assistantBuffer,
-                        tokenCount: tokenCount,
+                        tokenCount: tokenCount
                     ) {
                         logger.warning("conversation stream completed without assistant content")
                         continuation.yield(emptyEvent)
@@ -290,7 +290,7 @@ struct ConversationController {
                         conversationID: conversationID,
                         role: .assistant,
                         content: assistantBuffer,
-                        sourceMemoryIDs: sourceIDs,
+                        sourceMemoryIDs: sourceIDs
                     )
                     try await assistantMessage.save(on: fluent.db())
                     conversation.updatedAt = Date()
@@ -313,13 +313,13 @@ struct ConversationController {
                             let captured = try await linkCapture.captureLink(
                                 tenantID: tenantID,
                                 url: rawURL,
-                                note: "Auto-saved from chat \(conversationIDValue.uuidString)",
+                                note: "Auto-saved from chat \(conversationIDValue.uuidString)"
                             )
                             continuation.yield(.linkSaved(LinkSavedDTO(
                                 url: rawURL,
                                 vaultPath: captured.relativePath,
                                 capturedAt: Date(),
-                                fromUserMessage: fromUser,
+                                fromUserMessage: fromUser
                             )))
                         } catch {
                             logger.warning("auto-save-link skip url=\(rawURL) error=\(error)")
@@ -343,7 +343,7 @@ struct ConversationController {
                         sessionKey: sessionKey,
                         sessionID: sessionID,
                         summary: assistantBuffer,
-                        sources: hitDTOs,
+                        sources: hitDTOs
                     )
                 } else {
                     []
@@ -388,7 +388,7 @@ struct ConversationController {
     static func buildPrompt(
         history: [ConversationMessage],
         hits: [MemorySearchResult],
-        schedule: String? = nil,
+        schedule: String? = nil
     ) -> [ChatMessage] {
         let context: String = if hits.isEmpty {
             "(no relevant memories were found)"

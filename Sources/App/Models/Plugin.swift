@@ -39,7 +39,7 @@ final class Plugin: Model, @unchecked Sendable {
         iconSlug: String,
         version: String,
         publisher: String,
-        verified: Bool,
+        verified: Bool
     ) {
         self.id = id
         self.slug = slug

@@ -60,7 +60,7 @@ actor UsageMeterService {
         freeMtokDaily: Double,
         perSkillMtokDaily: Double,
         degradeModel: String,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.logger = logger

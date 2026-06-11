@@ -14,7 +14,7 @@ import Testing
 @Suite(.serialized)
 struct ReminderSchedulerTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -31,7 +31,7 @@ struct ReminderSchedulerTests {
         let fluent = Fluent(logger: Logger(label: "test.reminders"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -65,7 +65,7 @@ struct ReminderSchedulerTests {
             bundleID: "com.luminavault.test",
             fluent: fluent,
             pushSender: recorder,
-            logger: Logger(label: "test.reminders"),
+            logger: Logger(label: "test.reminders")
         )
     }
 
@@ -81,7 +81,7 @@ struct ReminderSchedulerTests {
                 tenantID: userID,
                 title: "Drink water",
                 body: "Stay hydrated",
-                fireAt: Date().addingTimeInterval(-120),
+                fireAt: Date().addingTimeInterval(-120)
             )
             try await reminder.save(on: fluent.db())
 
@@ -113,7 +113,7 @@ struct ReminderSchedulerTests {
                 title: "Daily standup",
                 body: "9am",
                 fireAt: Date().addingTimeInterval(-120),
-                recurrenceCron: "* * * * *", // every minute → next match is imminent
+                recurrenceCron: "* * * * *" // every minute → next match is imminent
             )
             try await reminder.save(on: fluent.db())
 

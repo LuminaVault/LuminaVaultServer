@@ -51,7 +51,7 @@ struct M62_CreatePlugins: AsyncMigration {
                 iconSlug: dto.iconSlug,
                 version: dto.version,
                 publisher: dto.publisher,
-                verified: dto.verified,
+                verified: dto.verified
             ).create(on: database)
         }
     }

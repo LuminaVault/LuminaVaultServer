@@ -49,7 +49,7 @@ actor HermesEndpointResolver {
         secretBox: SecretBox,
         ssrfGuard: SSRFGuard,
         defaultBaseURL: URL,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.secretBox = secretBox
@@ -71,7 +71,7 @@ actor HermesEndpointResolver {
             return Resolution(
                 baseURL: defaultBaseURL,
                 authHeader: nil,
-                isUserOverride: false,
+                isUserOverride: false
             )
         }
 
@@ -84,7 +84,7 @@ actor HermesEndpointResolver {
                 metadata: [
                     "tenant": .string(tenantID.uuidString),
                     "rejection": .string(String(describing: rejection)),
-                ],
+                ]
             )
             throw ResolutionError.ssrfRejected(String(describing: rejection))
         }
@@ -94,12 +94,12 @@ actor HermesEndpointResolver {
             do {
                 authHeader = try secretBox.open(
                     SecretBox.Sealed(ciphertext: ct, nonce: nonce),
-                    tenantID: tenantID,
+                    tenantID: tenantID
                 )
             } catch {
                 logger.error(
                     "auth header decrypt failed",
-                    metadata: ["tenant": .string(tenantID.uuidString)],
+                    metadata: ["tenant": .string(tenantID.uuidString)]
                 )
                 throw ResolutionError.decryptFailed
             }
@@ -113,7 +113,7 @@ actor HermesEndpointResolver {
         return Resolution(
             baseURL: validated,
             authHeader: authHeader,
-            isUserOverride: true,
+            isUserOverride: true
         )
     }
 }

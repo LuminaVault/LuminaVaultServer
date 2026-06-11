@@ -8,7 +8,7 @@ import Testing
 struct CronExpressionTests {
     private static func date(
         _ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int,
-        in tz: TimeZone,
+        in tz: TimeZone
     ) -> Date {
         var components = DateComponents()
         components.year = year

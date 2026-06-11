@@ -43,7 +43,7 @@ struct VaultExportService {
     func streamExport(
         user: User,
         since: Date?,
-        writer: inout some ResponseBodyWriter,
+        writer: inout some ResponseBodyWriter
     ) async throws {
         let tenantID = try user.requireID()
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
@@ -74,7 +74,7 @@ struct VaultExportService {
             mtime: soulMtime,
             offset: &offset,
             entries: &entries,
-            writer: &writer,
+            writer: &writer
         )
 
         // --- memories.json (synthesized snapshot) ---
@@ -85,7 +85,7 @@ struct VaultExportService {
             mtime: exportedAt,
             offset: &offset,
             entries: &entries,
-            writer: &writer,
+            writer: &writer
         )
 
         // --- raw/* files from disk ---
@@ -100,7 +100,7 @@ struct VaultExportService {
                     size: file.size,
                     offset: &offset,
                     entries: &entries,
-                    writer: &writer,
+                    writer: &writer
                 )
             }
         }
@@ -122,7 +122,7 @@ struct VaultExportService {
         let eocd = Self.encodeEOCD(
             entryCount: UInt16(entries.count),
             cdSize: UInt32(cdSize),
-            cdOffset: UInt32(cdStart),
+            cdOffset: UInt32(cdStart)
         )
         try await writer.write(ByteBuffer(bytes: eocd))
 
@@ -147,7 +147,7 @@ struct VaultExportService {
                 id: row.id,
                 content: row.content,
                 tags: row.tags,
-                createdAt: row.createdAt,
+                createdAt: row.createdAt
             )
         }
         let encoder = JSONEncoder()
@@ -206,7 +206,7 @@ struct VaultExportService {
             at: rawRoot,
             includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles],
-            errorHandler: nil,
+            errorHandler: nil
         ) else {
             return []
         }
@@ -245,7 +245,7 @@ struct VaultExportService {
         size: Int64,
         offset: inout UInt64,
         entries: inout [CentralEntry],
-        writer: inout some ResponseBodyWriter,
+        writer: inout some ResponseBodyWriter
     ) async throws {
         guard size <= Self.maxEntryBytes else {
             throw HTTPError(.contentTooLarge, message: "vault entry exceeds 4 GiB zip32 limit: \(name)")
@@ -258,7 +258,7 @@ struct VaultExportService {
         let lfh = Self.encodeLocalFileHeader(
             nameBytes: nameBytes,
             dosTime: dosTime,
-            dosDate: dosDate,
+            dosDate: dosDate
         )
         offset += UInt64(lfh.count)
         try await writer.write(ByteBuffer(bytes: lfh))
@@ -296,7 +296,7 @@ struct VaultExportService {
             offset: UInt32(clamping: entryOffset),
             dosTime: dosTime,
             dosDate: dosDate,
-            useDataDescriptor: true,
+            useDataDescriptor: true
         ))
     }
 
@@ -307,7 +307,7 @@ struct VaultExportService {
         mtime: Date,
         offset: inout UInt64,
         entries: inout [CentralEntry],
-        writer: inout some ResponseBodyWriter,
+        writer: inout some ResponseBodyWriter
     ) async throws {
         guard Int64(data.count) <= maxEntryBytes else {
             throw HTTPError(.contentTooLarge, message: "synthesized entry exceeds zip32 limit: \(name)")
@@ -323,7 +323,7 @@ struct VaultExportService {
             dosTime: dosTime,
             dosDate: dosDate,
             crc: crc,
-            size: UInt32(data.count),
+            size: UInt32(data.count)
         )
         offset += UInt64(lfh.count)
         try await writer.write(ByteBuffer(bytes: lfh))
@@ -338,7 +338,7 @@ struct VaultExportService {
             offset: UInt32(clamping: entryOffset),
             dosTime: dosTime,
             dosDate: dosDate,
-            useDataDescriptor: false,
+            useDataDescriptor: false
         ))
     }
 
@@ -384,7 +384,7 @@ struct VaultExportService {
         dosTime: UInt16,
         dosDate: UInt16,
         crc: UInt32 = 0,
-        size: UInt32 = 0,
+        size: UInt32 = 0
     ) -> [UInt8] {
         // When crc/size are zero we set the data-descriptor flag so consumers
         // know to look past the body for them.
@@ -419,7 +419,7 @@ struct VaultExportService {
     private static func encodeEOCD(
         entryCount: UInt16,
         cdSize: UInt32,
-        cdOffset: UInt32,
+        cdOffset: UInt32
     ) -> [UInt8] {
         var out: [UInt8] = []
         out.reserveCapacity(22)

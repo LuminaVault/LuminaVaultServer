@@ -43,27 +43,27 @@ struct BeliefEvolutionTests {
         FixtureMemory(
             id: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
             createdAt: "2026-01-12T09:00:00Z",
-            body: "Remote work is non-negotiable for me. The flexibility is the single biggest reason I took this role over the on-site offer.",
+            body: "Remote work is non-negotiable for me. The flexibility is the single biggest reason I took this role over the on-site offer."
         ),
         FixtureMemory(
             id: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
             createdAt: "2026-01-30T18:20:00Z",
-            body: "Two weeks in and remote is paying off — I finished the entire migration without a single context-switch interruption.",
+            body: "Two weeks in and remote is paying off — I finished the entire migration without a single context-switch interruption."
         ),
         FixtureMemory(
             id: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
             createdAt: "2026-02-28T11:45:00Z",
-            body: "After the offsite I realised how much faster decisions happen in person. Maybe full-remote isn't strictly better, it's a tradeoff.",
+            body: "After the offsite I realised how much faster decisions happen in person. Maybe full-remote isn't strictly better, it's a tradeoff."
         ),
         FixtureMemory(
             id: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
             createdAt: "2026-03-22T14:10:00Z",
-            body: "Pairing in person twice a week genuinely fixed the design-review bottleneck. I'd take hybrid over full remote now if I'm honest.",
+            body: "Pairing in person twice a week genuinely fixed the design-review bottleneck. I'd take hybrid over full remote now if I'm honest."
         ),
         FixtureMemory(
             id: UUID(uuidString: "55555555-5555-4555-8555-555555555555")!,
             createdAt: "2026-04-15T08:30:00Z",
-            body: "Settling on the truth: I want hybrid, leaning 3/2. Full remote was a phase, not a value.",
+            body: "Settling on the truth: I want hybrid, leaning 3/2. Full remote was a phase, not a value."
         ),
     ]
 
@@ -72,7 +72,7 @@ struct BeliefEvolutionTests {
         let url = Bundle.module.url(
             forResource: "SKILL",
             withExtension: "md",
-            subdirectory: "Skills/\(Self.skillName)",
+            subdirectory: "Skills/\(Self.skillName)"
         )
         try #require(url != nil, "missing SKILL.md for \(Self.skillName)")
         let contents = try String(contentsOf: #require(url), encoding: .utf8)
@@ -87,7 +87,7 @@ struct BeliefEvolutionTests {
         let url = try #require(Bundle.module.url(
             forResource: "SKILL",
             withExtension: "md",
-            subdirectory: "Skills/\(Self.skillName)",
+            subdirectory: "Skills/\(Self.skillName)"
         ))
         let body = try String(contentsOf: url, encoding: .utf8)
 

@@ -26,7 +26,7 @@ final class AchievementProgress: Model, TenantModel, @unchecked Sendable {
         tenantID: UUID,
         achievementKey: String,
         progressCount: Int64 = 0,
-        unlockedAt: Date? = nil,
+        unlockedAt: Date? = nil
     ) {
         self.tenantID = tenantID
         self.achievementKey = achievementKey

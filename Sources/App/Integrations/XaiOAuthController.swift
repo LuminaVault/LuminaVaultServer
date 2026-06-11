@@ -22,7 +22,7 @@ struct XaiOAuthController {
         return XaiStatusResponse(
             connected: s.connected,
             tier: s.tier,
-            xaiConnectedAt: s.xaiConnectedAt,
+            xaiConnectedAt: s.xaiConnectedAt
         )
     }
 
@@ -32,7 +32,7 @@ struct XaiOAuthController {
         let result = try await service.start(tenantID: tenantID)
         return XaiStartResponse(
             sessionID: result.sessionID,
-            authorizeURL: result.authorizeURL,
+            authorizeURL: result.authorizeURL
         )
     }
 
@@ -50,7 +50,7 @@ struct XaiOAuthController {
             return XaiStatusResponse(
                 connected: s.connected,
                 tier: s.tier,
-                xaiConnectedAt: s.xaiConnectedAt,
+                xaiConnectedAt: s.xaiConnectedAt
             )
         } catch XaiOAuthError.sessionNotFound {
             throw HTTPError(.notFound, message: "session not found or expired")
@@ -69,7 +69,7 @@ struct XaiOAuthController {
         return XaiStatusResponse(
             connected: s.connected,
             tier: s.tier,
-            xaiConnectedAt: s.xaiConnectedAt,
+            xaiConnectedAt: s.xaiConnectedAt
         )
     }
 }

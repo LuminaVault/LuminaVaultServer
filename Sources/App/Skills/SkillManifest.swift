@@ -218,7 +218,7 @@ struct SkillManifestParser {
             onEvent: raw.metadata?.onEvent ?? [],
             outputs: outputs,
             dailyRunCap: dailyRunCap,
-            body: body,
+            body: body
         )
     }
 
@@ -315,8 +315,8 @@ private enum StringOrArray: Decodable {
             StringOrArray.self,
             DecodingError.Context(
                 codingPath: decoder.codingPath,
-                debugDescription: "expected string or array of strings",
-            ),
+                debugDescription: "expected string or array of strings"
+            )
         )
     }
 }

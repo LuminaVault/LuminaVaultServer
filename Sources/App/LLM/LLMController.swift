@@ -22,7 +22,7 @@ struct LLMController {
         notificationService: APNSNotificationService,
         achievements: AchievementsWorker? = nil,
         usageMeter: UsageMeterService? = nil,
-        urlPreEnricher: ChatURLPreEnricher? = nil,
+        urlPreEnricher: ChatURLPreEnricher? = nil
     ) {
         self.service = service
         self.telemetry = telemetry
@@ -46,14 +46,14 @@ struct LLMController {
         userID: UUID,
         username: String,
         response: ChatResponse,
-        logger: Logger = Logger(label: "lv.llm"),
+        logger: Logger = Logger(label: "lv.llm")
     ) -> Task<Void, Never> {
         Task {
             do {
                 try await pushService.notifyLLMReply(
                     userID: userID,
                     username: username,
-                    response: response,
+                    response: response
                 )
             } catch is CancellationError {
                 // Client disconnected before push completed; ignore.
@@ -83,7 +83,7 @@ struct LLMController {
                 temperature: body.temperature,
                 stream: body.stream,
                 tools: body.tools,
-                tool_choice: body.tool_choice,
+                tool_choice: body.tool_choice
             )
         }
 
@@ -101,7 +101,7 @@ struct LLMController {
                     temperature: body.temperature,
                     stream: body.stream,
                     tools: body.tools,
-                    tool_choice: body.tool_choice,
+                    tool_choice: body.tool_choice
                 )
                 isDegraded = true
             case let .deny(retryAfter):
@@ -117,7 +117,7 @@ struct LLMController {
             let response = try await service.chat(
                 sessionKey: userID.uuidString,
                 sessionID: finalBody.sessionID,
-                request: finalBody,
+                request: finalBody
             )
             // Push delivery is best-effort: never block the chat response.
             // Capture only what the detached task needs to be Sendable.
@@ -131,7 +131,7 @@ struct LLMController {
                 pushService: pushService,
                 userID: userID,
                 username: username,
-                response: response,
+                response: response
             )
             if let achievements {
                 achievements.enqueue(tenantID: userID, event: .chatCompleted)

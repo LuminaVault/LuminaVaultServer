@@ -36,7 +36,7 @@ actor CronScheduler: Service {
         push: APNSNotificationService? = nil,
         logger: Logger,
         tickInterval: Duration = .seconds(60),
-        maxConcurrent: Int = 4,
+        maxConcurrent: Int = 4
     ) {
         self.catalog = catalog
         self.runner = runner
@@ -149,7 +149,7 @@ actor CronScheduler: Service {
                 tenantID: pair.tenantID,
                 tier: pair.tier,
                 profileUsername: pair.username,
-                trigger: .cron,
+                trigger: .cron
             )
         } catch {
             status = "error"
@@ -169,7 +169,7 @@ actor CronScheduler: Service {
                 try await push.notifyCron(
                     userID: pair.tenantID,
                     skillName: pair.skillName,
-                    body: "Your \(pair.skillName) job just ran.",
+                    body: "Your \(pair.skillName) job just ran."
                 )
             } catch {
                 logger.warning("skills.cron \(label) push failed: \(error)")
@@ -226,7 +226,7 @@ actor CronScheduler: Service {
                 .filter(\.$enabled == true)
                 .all()
             let stateByKey: [String: SkillsState] = Dictionary(
-                uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) },
+                uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
             )
             for manifest in manifests {
                 let key = "\(manifest.source.rawValue):\(manifest.name)"
@@ -251,7 +251,7 @@ actor CronScheduler: Service {
                     runAt: runAt,
                     lastRunAt: state?.lastRunAt,
                     apnsCategory: state?.apnsCategory,
-                    manifest: manifest,
+                    manifest: manifest
                 ))
             }
         }
@@ -262,7 +262,7 @@ actor CronScheduler: Service {
         pair: DuePair,
         at now: Date,
         status: String,
-        error: String?,
+        error: String?
     ) async throws {
         guard !fluent.databases.ids().isEmpty else { return }
         let row: SkillsState
@@ -274,7 +274,7 @@ actor CronScheduler: Service {
                 .first() ?? SkillsState(
                     tenantID: pair.tenantID,
                     source: pair.source,
-                    name: pair.skillName,
+                    name: pair.skillName
                 )
         } catch {
             return

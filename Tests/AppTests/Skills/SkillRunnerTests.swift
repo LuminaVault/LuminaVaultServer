@@ -10,7 +10,7 @@ import Testing
 @Suite(.serialized)
 struct SkillRunnerTests {
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let fluent = Fluent(logger: Logger(label: "test.skill-runner"))
         fluent.databases.use(.postgres(configuration: TestPostgres.configuration()), as: .psql)
@@ -52,7 +52,7 @@ struct SkillRunnerTests {
             let user = User(
                 email: "\(username)@test.luminavault",
                 username: username,
-                passwordHash: "x",
+                passwordHash: "x"
             )
             try await user.save(on: fluent.db())
 
@@ -60,7 +60,7 @@ struct SkillRunnerTests {
                 fluent: fluent,
                 tenantID: user.requireID(),
                 username: username,
-                root: tmpRoot,
+                root: tmpRoot
             ))
             try? await fluent.shutdown()
             try? FileManager.default.removeItem(at: tmpRoot)
@@ -83,14 +83,14 @@ struct SkillRunnerTests {
             let manifest = Self.manifest(
                 name: "deny-memory",
                 allowedTools: ["session_search"],
-                outputs: [],
+                outputs: []
             )
 
             let result = try await runner.run(
                 skill: manifest,
                 tenantID: h.tenantID,
                 profileUsername: h.username,
-                trigger: .manual,
+                trigger: .manual
             )
 
             #expect(result.status == "ok")
@@ -117,7 +117,7 @@ struct SkillRunnerTests {
                 path: "inbox/source.md",
                 contentType: "text/markdown",
                 sizeBytes: 5,
-                sha256: "old",
+                sha256: "old"
             )
             try await source.save(on: h.fluent.db())
             let sourceID = try source.requireID()
@@ -142,7 +142,7 @@ struct SkillRunnerTests {
                     .init(kind: .apnsNudge, path: nil, category: nil),
                     .init(kind: .memoryEmit, path: nil, category: nil),
                     .init(kind: .vaultRewrite, path: nil, category: nil),
-                ],
+                ]
             )
 
             let result = try await runner.run(
@@ -151,8 +151,8 @@ struct SkillRunnerTests {
                 profileUsername: h.username,
                 trigger: .event(
                     name: "vault_file_created",
-                    payload: [SkillEvent.PayloadKey.sourceVaultFileID: sourceID.uuidString],
-                ),
+                    payload: [SkillEvent.PayloadKey.sourceVaultFileID: sourceID.uuidString]
+                )
             )
 
             #expect(result.status == "ok")
@@ -186,7 +186,7 @@ struct SkillRunnerTests {
                 metadata: .init(data: Data(), headers: [
                     "x-mtok-in": "12",
                     "x-mtok-out": "34",
-                ]),
+                ])
             )
             let runner = Self.makeRunner(h, transport: transport)
             let manifest = Self.manifest(name: "usage", allowedTools: [], outputs: [])
@@ -195,7 +195,7 @@ struct SkillRunnerTests {
                 skill: manifest,
                 tenantID: h.tenantID,
                 profileUsername: h.username,
-                trigger: .manual,
+                trigger: .manual
             )
 
             #expect(result.mtokIn == 12)
@@ -239,7 +239,7 @@ struct SkillRunnerTests {
     private static func makeRunner(
         _ h: Harness,
         transport: any HermesChatTransport,
-        push: (any APNSPushSender)? = nil,
+        push: (any APNSPushSender)? = nil
     ) -> SkillRunner {
         let vaultPaths = VaultPathService(rootPath: h.root.appendingPathComponent("vault").path)
         let apns = push.map {
@@ -247,7 +247,7 @@ struct SkillRunnerTests {
                 bundleID: "com.luminavault.test",
                 fluent: h.fluent,
                 pushSender: $0,
-                logger: Logger(label: "test.skill-runner.apns"),
+                logger: Logger(label: "test.skill-runner.apns")
             )
         } ?? APNSNotificationService(
             enabled: false,
@@ -257,7 +257,7 @@ struct SkillRunnerTests {
             privateKeyPath: "",
             environment: "development",
             fluent: h.fluent,
-            logger: Logger(label: "test.skill-runner.apns"),
+            logger: Logger(label: "test.skill-runner.apns")
         )
         return SkillRunner(
             catalog: SkillCatalog(vaultPaths: vaultPaths, logger: Logger(label: "test.skill-catalog")),
@@ -270,14 +270,14 @@ struct SkillRunnerTests {
             vaultPaths: vaultPaths,
             capGuard: SkillRunCapGuard(fluent: h.fluent, logger: Logger(label: "test.skill-cap")),
             eventBus: EventBus(logger: Logger(label: "test.skill-events")),
-            logger: Logger(label: "test.skill-runner"),
+            logger: Logger(label: "test.skill-runner")
         )
     }
 
     private static func manifest(
         name: String,
         allowedTools: [String],
-        outputs: [SkillManifest.Output],
+        outputs: [SkillManifest.Output]
     ) -> SkillManifest {
         SkillManifest(
             source: .builtin,
@@ -289,7 +289,7 @@ struct SkillRunnerTests {
             onEvent: [],
             outputs: outputs,
             dailyRunCap: nil,
-            body: "Run the test skill.",
+            body: "Run the test skill."
         )
     }
 
@@ -327,7 +327,7 @@ private actor SkillScriptedTransport: HermesChatTransport {
     nonisolated func chatCompletionsWithMetadata(
         payload: Data,
         sessionKey: String,
-        sessionID: String?,
+        sessionID: String?
     ) async throws -> HermesChatTransportMetadata {
         try await record(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
     }

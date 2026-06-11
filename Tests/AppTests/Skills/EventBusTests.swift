@@ -15,12 +15,12 @@ struct EventBusTests {
 
     private static func sampleEvent(
         _ type: SkillEventType = .vaultFileCreated,
-        tenant: UUID = UUID(),
+        tenant: UUID = UUID()
     ) -> SkillEvent {
         SkillEvent(
             type: type,
             tenantID: tenant,
-            payload: [SkillEvent.PayloadKey.vaultPath: "notes/x.md"],
+            payload: [SkillEvent.PayloadKey.vaultPath: "notes/x.md"]
         )
     }
 
@@ -80,7 +80,7 @@ struct EventBusTests {
             bus.publish(SkillEvent(
                 type: .vaultFileCreated,
                 tenantID: tenant,
-                payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(i).md"],
+                payload: [SkillEvent.PayloadKey.vaultPath: "notes/\(i).md"]
             ))
         }
 
@@ -170,7 +170,7 @@ struct EventBusTests {
         _ bus: EventBus,
         type: SkillEventType,
         expected: Int,
-        timeoutNanos: UInt64 = 2_000_000_000,
+        timeoutNanos: UInt64 = 2_000_000_000
     ) async throws {
         let start = DispatchTime.now().uptimeNanoseconds
         while true {

@@ -17,13 +17,13 @@ struct SkillRunCapGuardTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let logger = Logger(label: "test.skill-cap-guard")
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         // HER-310 — Everything throwable AFTER `Fluent` is constructed
         // must run inside the do/catch so `fluent.shutdown()` is
@@ -45,7 +45,7 @@ struct SkillRunCapGuardTests {
     }
 
     private static func makeManifest(
-        cap: SkillManifest.DailyRunCap?,
+        cap: SkillManifest.DailyRunCap?
     ) -> SkillManifest {
         SkillManifest(
             source: .builtin,
@@ -57,7 +57,7 @@ struct SkillRunCapGuardTests {
             onEvent: [],
             outputs: [],
             dailyRunCap: cap,
-            body: "",
+            body: ""
         )
     }
 
@@ -69,7 +69,7 @@ struct SkillRunCapGuardTests {
             let decision = try await guardrail.checkAndIncrement(
                 tenantID: h.user.requireID(),
                 tier: "ultimate",
-                manifest: manifest,
+                manifest: manifest
             )
             #expect(decision == .allow)
         }
@@ -84,12 +84,12 @@ struct SkillRunCapGuardTests {
 
             for _ in 0 ..< 3 {
                 let decision = try await guardrail.checkAndIncrement(
-                    tenantID: tenantID, tier: "pro", manifest: manifest,
+                    tenantID: tenantID, tier: "pro", manifest: manifest
                 )
                 #expect(decision == .allow)
             }
             let fourth = try await guardrail.checkAndIncrement(
-                tenantID: tenantID, tier: "pro", manifest: manifest,
+                tenantID: tenantID, tier: "pro", manifest: manifest
             )
             switch fourth {
             case let .deny(retryAfter):
@@ -110,7 +110,7 @@ struct SkillRunCapGuardTests {
 
             for _ in 0 ..< 3 {
                 _ = try await guardrail.checkAndIncrement(
-                    tenantID: tenantID, tier: "pro", manifest: manifest,
+                    tenantID: tenantID, tier: "pro", manifest: manifest
                 )
             }
             // Simulate LLM failure on the 3rd run.
@@ -118,7 +118,7 @@ struct SkillRunCapGuardTests {
 
             // After refund, one slot is available again.
             let nextDecision = try await guardrail.checkAndIncrement(
-                tenantID: tenantID, tier: "pro", manifest: manifest,
+                tenantID: tenantID, tier: "pro", manifest: manifest
             )
             #expect(nextDecision == .allow)
         }
@@ -133,7 +133,7 @@ struct SkillRunCapGuardTests {
 
             // Burn the only slot.
             _ = try await guardrail.checkAndIncrement(
-                tenantID: tenantID, tier: "pro", manifest: manifest,
+                tenantID: tenantID, tier: "pro", manifest: manifest
             )
 
             // Backdate the reset stamp to yesterday — simulating a
@@ -152,7 +152,7 @@ struct SkillRunCapGuardTests {
 
             // Next call should reset and allow.
             let decision = try await guardrail.checkAndIncrement(
-                tenantID: tenantID, tier: "pro", manifest: manifest,
+                tenantID: tenantID, tier: "pro", manifest: manifest
             )
             #expect(decision == .allow)
         }

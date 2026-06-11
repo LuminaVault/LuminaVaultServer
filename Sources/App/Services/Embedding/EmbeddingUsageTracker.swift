@@ -25,7 +25,7 @@ actor EmbeddingUsageTracker: EmbeddingService {
         inner: any EmbeddingService,
         usage: EmbeddingUsageRepository,
         monthlyCap: Int64,
-        logger: Logger = Logger(label: "lv.embedding.usage"),
+        logger: Logger = Logger(label: "lv.embedding.usage")
     ) {
         self.inner = inner
         self.usage = usage

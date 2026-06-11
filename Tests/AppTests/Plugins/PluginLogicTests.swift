@@ -36,7 +36,7 @@ struct PluginCatalogTests {
         #expect(PluginCatalog.validate(slug: "readwise", config: ["access_token": "  "]) == .missing("access_token"))
         #expect(
             PluginCatalog.validate(slug: "readwise", config: ["access_token": "t", "bogus": "x"])
-                == .unknownField("bogus"),
+                == .unknownField("bogus")
         )
     }
 }

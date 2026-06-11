@@ -47,7 +47,7 @@ struct TenantAwareEmbeddingServiceTests {
     func `uses per-tenant service when resolver returns one`() async throws {
         let svc = TenantAwareEmbeddingService(
             global: TaggedEmbedding(tag: 0),
-            resolver: StubResolver(perTenant: TaggedEmbedding(tag: 1)),
+            resolver: StubResolver(perTenant: TaggedEmbedding(tag: 1))
         )
         #expect(try await svc.embed("x", tenantID: UUID()) == [1])
     }
@@ -56,7 +56,7 @@ struct TenantAwareEmbeddingServiceTests {
     func `falls through to global when resolver returns nil`() async throws {
         let svc = TenantAwareEmbeddingService(
             global: TaggedEmbedding(tag: 0),
-            resolver: StubResolver(perTenant: nil),
+            resolver: StubResolver(perTenant: nil)
         )
         #expect(try await svc.embed("x", tenantID: UUID()) == [0])
     }

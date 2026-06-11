@@ -15,7 +15,7 @@ struct CardExtraTests {
             prompt: "Report AAPL",
             spaceID: spaceID,
             jobSlug: "job-report-aapl",
-            promotedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            promotedAt: Date(timeIntervalSince1970: 1_700_000_000)
         ))
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(CardExtra.self, from: data)

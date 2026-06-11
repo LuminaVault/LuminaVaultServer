@@ -26,7 +26,7 @@ actor CalendarSyncWorker: Service {
         syncService: CalendarSyncService,
         logger: Logger,
         tickInterval: Duration = .seconds(900),
-        maxConcurrent: Int = 4,
+        maxConcurrent: Int = 4
     ) {
         self.fluent = fluent
         self.syncService = syncService

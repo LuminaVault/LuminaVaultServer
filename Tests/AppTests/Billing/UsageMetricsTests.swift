@@ -33,7 +33,7 @@ struct UsageMetricsTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: ByteBuffer(string: #"{"email":"\#(user.email)","username":"\#(user.username)","password":"\#(password)"}"#),
+            body: ByteBuffer(string: #"{"email":"\#(user.email)","username":"\#(user.username)","password":"\#(password)"}"#)
         ) { response in
             #expect(response.status == .ok)
             return try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: response.body))
@@ -45,13 +45,13 @@ struct UsageMetricsTests {
         client: some TestClientProtocol,
         token: String,
         path: String,
-        body: String,
+        body: String
     ) async throws -> VaultUploadResponse {
         try await client.execute(
             uri: "/v1/vault/files?path=\(path)",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "text/markdown"],
-            body: ByteBuffer(string: body),
+            body: ByteBuffer(string: body)
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try testJSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
@@ -105,14 +105,14 @@ struct UsageMetricsTests {
                 client: client,
                 token: auth.accessToken,
                 path: "usage.md",
-                body: "usage metrics body",
+                body: "usage metrics body"
             )
             try await Self.addUsageMeterRows(tenantID: auth.userId)
 
             try await client.execute(
                 uri: "/v1/auth/me/usage",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let usage = try testJSONDecoder().decode(UsageResponse.self, from: Data(buffer: response.body))
@@ -138,7 +138,7 @@ struct UsageMetricsTests {
             try await client.execute(
                 uri: "/v1/auth/me/usage",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let usage = try testJSONDecoder().decode(UsageResponse.self, from: Data(buffer: response.body))

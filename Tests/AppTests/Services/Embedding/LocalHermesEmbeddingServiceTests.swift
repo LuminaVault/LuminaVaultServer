@@ -51,7 +51,7 @@ struct LocalHermesEmbeddingServiceTests {
             port: 8642,
             apiServerKey: "test-key",
             xaiConnectedAt: nil,
-            nousConnectedAt: nil,
+            nousConnectedAt: nil
         )
     }
 
@@ -59,7 +59,7 @@ struct LocalHermesEmbeddingServiceTests {
     func `nil resolver → permanent endpointMissing`() async {
         let svc = LocalHermesEmbeddingService(
             resolveHandle: { _ in nil },
-            session: makeSession(),
+            session: makeSession()
         )
         do {
             _ = try await svc.embed("x", tenantID: UUID())
@@ -82,7 +82,7 @@ struct LocalHermesEmbeddingServiceTests {
         let h = handle()
         let svc = LocalHermesEmbeddingService(
             resolveHandle: { _ in h },
-            session: makeSession(),
+            session: makeSession()
         )
         do {
             _ = try await svc.embed("x", tenantID: UUID())
@@ -107,7 +107,7 @@ struct LocalHermesEmbeddingServiceTests {
         let h = handle()
         let svc = LocalHermesEmbeddingService(
             resolveHandle: { _ in h },
-            session: makeSession(),
+            session: makeSession()
         )
         let v = try await svc.embed("x", tenantID: UUID())
         #expect(v.count == 1536)

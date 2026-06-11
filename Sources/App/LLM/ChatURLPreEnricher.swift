@@ -44,7 +44,7 @@ struct ChatURLPreEnricher {
             out.append(ChatMessage(
                 role: message.role,
                 content: rewritten,
-                tool_calls: message.tool_calls,
+                tool_calls: message.tool_calls
             ))
         }
         return out

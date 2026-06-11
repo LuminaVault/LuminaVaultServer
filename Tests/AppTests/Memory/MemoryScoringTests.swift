@@ -14,7 +14,7 @@ struct MemoryScoringTests {
             accessCount: 0,
             queryHitCount: 0,
             createdAt: now,
-            now: now,
+            now: now
         )
         #expect(abs(score - 1.0) < 1e-9)
     }
@@ -28,7 +28,7 @@ struct MemoryScoringTests {
             queryHitCount: 0,
             createdAt: halflifeAgo,
             now: now,
-            config: .default,
+            config: .default
         )
         // exp(-30/30) = e^-1 ≈ 0.3678794
         let expected = exp(-1.0)
@@ -47,7 +47,7 @@ struct MemoryScoringTests {
             accessCount: 50,
             queryHitCount: 20,
             createdAt: veryOld,
-            now: now,
+            now: now
         )
         #expect(score > 15)
     }
@@ -59,7 +59,7 @@ struct MemoryScoringTests {
             accessCount: 0,
             queryHitCount: 0,
             createdAt: nil,
-            now: Date(),
+            now: Date()
         )
         #expect(abs(score - 1.0) < 1e-9)
     }
@@ -73,7 +73,7 @@ struct MemoryScoringTests {
             accessCount: 0,
             queryHitCount: 0,
             createdAt: future,
-            now: now,
+            now: now
         )
         #expect(score <= 1.0 + 1e-9, "skewed timestamps must not amplify the recency term")
     }

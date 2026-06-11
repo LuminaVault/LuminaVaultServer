@@ -69,7 +69,7 @@ struct VisionEmbedController {
             image: buffer,
             mime: mime,
             tenantID: tenantID,
-            indexAsMemory: indexAsMemory,
+            indexAsMemory: indexAsMemory
         )
     }
 

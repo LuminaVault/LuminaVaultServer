@@ -74,7 +74,7 @@ struct HermesGatewayAdapterTests {
         HermesGatewayAdapter(
             baseURL: URL(string: "https://managed.hermes.test")!,
             session: session,
-            logger: Logger(label: "lv.test.adapter"),
+            logger: Logger(label: "lv.test.adapter")
         )
     }
 
@@ -85,7 +85,7 @@ struct HermesGatewayAdapterTests {
             url: url,
             statusCode: 200,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"],
+            headerFields: ["Content-Type": "application/json"]
         )!
     }
 
@@ -131,7 +131,7 @@ struct HermesGatewayAdapterTests {
             baseURL: baseURL,
             session: Self.stubSession(),
             logger: Logger(label: "lv.test.adapter.her254"),
-            defaultAuthHeader: "Bearer her254-key",
+            defaultAuthHeader: "Bearer her254-key"
         )
         _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "elise", sessionID: nil)
 
@@ -153,12 +153,12 @@ struct HermesGatewayAdapterTests {
             baseURL: baseURL,
             session: Self.stubSession(),
             logger: Logger(label: "lv.test.adapter.her254-mask"),
-            defaultAuthHeader: "Bearer central-key",
+            defaultAuthHeader: "Bearer central-key"
         )
         let override = try HermesEndpointResolver.Resolution(
             baseURL: #require(URL(string: "https://my-vps.example.com")),
             authHeader: "Bearer user-token",
-            isUserOverride: true,
+            isUserOverride: true
         )
         try await LLMRoutingContext.$currentResolution.withValue(override) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "fred", sessionID: nil)
@@ -183,7 +183,7 @@ struct HermesGatewayAdapterTests {
         let override = try HermesEndpointResolver.Resolution(
             baseURL: #require(URL(string: "https://my-vps.example.com:8642")),
             authHeader: "Bearer my-secret-token",
-            isUserOverride: true,
+            isUserOverride: true
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {
@@ -215,7 +215,7 @@ struct HermesGatewayAdapterTests {
         let nonOverride = try HermesEndpointResolver.Resolution(
             baseURL: #require(URL(string: "https://should-not-be-used.example.com")),
             authHeader: nil,
-            isUserOverride: false,
+            isUserOverride: false
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(nonOverride) {
@@ -243,7 +243,7 @@ struct HermesGatewayAdapterTests {
         let override = try HermesEndpointResolver.Resolution(
             baseURL: #require(URL(string: "https://my-vps.example.com")),
             authHeader: nil,
-            isUserOverride: true,
+            isUserOverride: true
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {
@@ -270,7 +270,7 @@ struct HermesGatewayAdapterTests {
         let override = try HermesEndpointResolver.Resolution(
             baseURL: #require(URL(string: "https://my-vps.example.com")),
             authHeader: "",
-            isUserOverride: true,
+            isUserOverride: true
         )
 
         try await LLMRoutingContext.$currentResolution.withValue(override) {

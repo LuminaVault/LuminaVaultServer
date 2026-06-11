@@ -15,7 +15,7 @@ struct EntitlementMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         guard enforcementEnabled else {
             return try await next(request, context)
@@ -33,7 +33,7 @@ struct EntitlementMiddleware: RouterMiddleware {
         return Response(
             status: .init(code: 402, reasonPhrase: "Payment Required"),
             headers: [.contentType: "application/json; charset=utf-8"],
-            body: .init(byteBuffer: ByteBuffer(bytes: body)),
+            body: .init(byteBuffer: ByteBuffer(bytes: body))
         )
     }
 

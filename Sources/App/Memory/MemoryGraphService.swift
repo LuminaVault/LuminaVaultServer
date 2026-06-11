@@ -73,7 +73,7 @@ struct MemoryGraphService {
         similarity: Double,
         maxEdgesPerNode: Int,
         includeWikiPages: Bool = true,
-        kinds: Set<MemoryEdgeKindDTO> = MemoryGraphService.allEdgeKinds,
+        kinds: Set<MemoryEdgeKindDTO> = MemoryGraphService.allEdgeKinds
     ) async throws -> MemoryGraphResponse {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for graph query")
@@ -105,7 +105,7 @@ struct MemoryGraphService {
                 tenantID: tenantID,
                 ids: memoryIDs,
                 similarity: similarity,
-                maxEdgesPerNode: maxEdgesPerNode,
+                maxEdgesPerNode: maxEdgesPerNode
             )
             : []
         let tagEdges = try await tagEdgesTask
@@ -136,7 +136,7 @@ struct MemoryGraphService {
                     MemoryGraphNodeDTO(
                         id: id, title: name, tags: [],
                         createdAt: Date(timeIntervalSince1970: 0),
-                        score: Self.spaceHubScore, kind: .space, spaceID: id,
+                        score: Self.spaceHubScore, kind: .space, spaceID: id
                     )
                 }
                 spaceEdges = Self.spaceStarEdges(nodeMeta: nodeMeta, hubIDs: hubIDs, weight: Self.spaceWeight)
@@ -146,7 +146,7 @@ struct MemoryGraphService {
         let merged = Self.mergeAndCap(
             groupsInPrecedence: [wikilinkEdges, tagEdges, spaceEdges, semanticEdges, temporalEdges],
             maxEdgesPerNode: maxEdgesPerNode,
-            uncapped: hubIDs,
+            uncapped: hubIDs
         )
 
         let memoryNodes = memRows.map { row in
@@ -157,7 +157,7 @@ struct MemoryGraphService {
                 createdAt: row.created_at ?? Date(timeIntervalSince1970: 0),
                 score: row.score,
                 kind: .memory,
-                spaceID: row.space_id,
+                spaceID: row.space_id
             )
         }
         let wikiNodes = wikiRows.map { row in
@@ -168,7 +168,7 @@ struct MemoryGraphService {
                 createdAt: row.created_at ?? Date(timeIntervalSince1970: 0),
                 score: Self.wikiNodeScore,
                 kind: .wikiPage,
-                spaceID: row.space_id,
+                spaceID: row.space_id
             )
         }
         return MemoryGraphResponse(nodes: memoryNodes + wikiNodes + spaceNodes, edges: merged, generatedAt: Date())
@@ -228,7 +228,7 @@ struct MemoryGraphService {
             let (from, to) = ordered(n.id, space)
             return MemoryGraphEdgeDTO(
                 from: from, to: to, kind: .space,
-                tag: nil, similarity: nil, weight: weight,
+                tag: nil, similarity: nil, weight: weight
             )
         }
     }
@@ -241,7 +241,7 @@ struct MemoryGraphService {
     private func computeTagEdges(
         sql: any SQLDatabase,
         tenantID: UUID,
-        ids: [UUID],
+        ids: [UUID]
     ) async throws -> [MemoryGraphEdgeDTO] {
         let idArray = Self.formatUUIDArray(ids)
         let rows = try await sql.raw("""
@@ -264,7 +264,7 @@ struct MemoryGraphService {
                 kind: .tag,
                 tag: $0.tag,
                 similarity: nil,
-                weight: Self.tagWeight,
+                weight: Self.tagWeight
             )
         }
     }
@@ -280,7 +280,7 @@ struct MemoryGraphService {
         tenantID: UUID,
         ids: [UUID],
         similarity: Double,
-        maxEdgesPerNode: Int,
+        maxEdgesPerNode: Int
     ) async throws -> [MemoryGraphEdgeDTO] {
         let idArray = Self.formatUUIDArray(ids)
         let rows = try await sql.raw("""
@@ -316,7 +316,7 @@ struct MemoryGraphService {
                 kind: .semantic,
                 tag: nil,
                 similarity: $0.similarity,
-                weight: $0.similarity,
+                weight: $0.similarity
             )
         }
     }
@@ -332,7 +332,7 @@ struct MemoryGraphService {
             let (from, to) = Self.ordered(row.id, source)
             return MemoryGraphEdgeDTO(
                 from: from, to: to, kind: .wikilink,
-                tag: nil, similarity: nil, weight: Self.wikilinkWeight,
+                tag: nil, similarity: nil, weight: Self.wikilinkWeight
             )
         }
     }
@@ -347,7 +347,7 @@ struct MemoryGraphService {
         grouping nodes: [NodeMeta],
         by key: (NodeMeta) -> AnyGroupKey?,
         kind: MemoryEdgeKindDTO,
-        weight: Double,
+        weight: Double
     ) -> [MemoryGraphEdgeDTO] {
         var buckets: [AnyGroupKey: [NodeMeta]] = [:]
         for node in nodes {
@@ -366,7 +366,7 @@ struct MemoryGraphService {
                 let (from, to) = ordered(sorted[i].id, sorted[i + 1].id)
                 edges.append(MemoryGraphEdgeDTO(
                     from: from, to: to, kind: kind,
-                    tag: nil, similarity: nil, weight: weight,
+                    tag: nil, similarity: nil, weight: weight
                 ))
             }
         }
@@ -388,7 +388,7 @@ struct MemoryGraphService {
     static func mergeAndCap(
         groupsInPrecedence groups: [[MemoryGraphEdgeDTO]],
         maxEdgesPerNode: Int,
-        uncapped: Set<UUID> = [],
+        uncapped: Set<UUID> = []
     ) -> [MemoryGraphEdgeDTO] {
         var byPair: [PairKey: (rank: Int, edge: MemoryGraphEdgeDTO)] = [:]
         for (rank, group) in groups.enumerated() {

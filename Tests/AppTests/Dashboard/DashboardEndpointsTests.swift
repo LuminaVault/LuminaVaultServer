@@ -42,7 +42,7 @@ struct DashboardEndpointsTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuth($0.body).accessToken }
     }
 
@@ -54,7 +54,7 @@ struct DashboardEndpointsTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/dashboard/stats",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -69,12 +69,12 @@ struct DashboardEndpointsTests {
             try await client.execute(
                 uri: "/v1/dashboard/stats",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let stats = try testJSONDecoder().decode(
                     DashboardStatsResponse.self,
-                    from: Data(buffer: response.body),
+                    from: Data(buffer: response.body)
                 )
                 #expect(stats.memoriesToday == 0)
                 #expect(stats.memoriesTotal == 0)
@@ -91,7 +91,7 @@ struct DashboardEndpointsTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/dashboard/profile",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -106,12 +106,12 @@ struct DashboardEndpointsTests {
             try await client.execute(
                 uri: "/v1/dashboard/profile",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let profile = try testJSONDecoder().decode(
                     DashboardProfileResponse.self,
-                    from: Data(buffer: response.body),
+                    from: Data(buffer: response.body)
                 )
                 #expect(profile.skillsCount == 0)
                 #expect(profile.jobsCount == 0)
@@ -131,7 +131,7 @@ struct DashboardEndpointsTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/tasks",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -146,12 +146,12 @@ struct DashboardEndpointsTests {
             try await client.execute(
                 uri: "/v1/tasks?state=running&limit=10",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try testJSONDecoder().decode(
                     TaskListResponse.self,
-                    from: Data(buffer: response.body),
+                    from: Data(buffer: response.body)
                 )
                 #expect(body.tasks.isEmpty)
                 #expect(body.nextCursor == nil)
@@ -167,7 +167,7 @@ struct DashboardEndpointsTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/insights",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -182,12 +182,12 @@ struct DashboardEndpointsTests {
             try await client.execute(
                 uri: "/v1/insights?section=this_week&limit=20",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try testJSONDecoder().decode(
                     InsightListResponse.self,
-                    from: Data(buffer: response.body),
+                    from: Data(buffer: response.body)
                 )
                 #expect(body.insights.isEmpty)
                 #expect(body.nextCursor == nil)

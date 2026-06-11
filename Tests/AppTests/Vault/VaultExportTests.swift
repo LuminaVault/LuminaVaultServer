@@ -33,7 +33,7 @@ struct VaultExportTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -43,7 +43,7 @@ struct VaultExportTests {
         client: some TestClientProtocol,
         token: String,
         path: String,
-        body: String = "# hello",
+        body: String = "# hello"
     ) async throws -> String {
         let resp = try await client.execute(
             uri: "/v1/vault/files?path=\(path)",
@@ -52,7 +52,7 @@ struct VaultExportTests {
                 .authorization: "Bearer \(token)",
                 .contentType: "text/markdown",
             ],
-            body: ByteBuffer(string: body),
+            body: ByteBuffer(string: body)
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try testJSONDecoder().decode(VaultUploadResponse.self, from: Data(buffer: response.body))
@@ -71,7 +71,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 #expect(response.headers[.contentType] == "application/zip")
@@ -95,7 +95,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let bytes = Array(Data(buffer: response.body))
@@ -121,7 +121,7 @@ struct VaultExportTests {
             try await client.execute(
                 uri: "/v1/vault/export?since=\(encoded)",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let bytes = Array(Data(buffer: response.body))

@@ -9,7 +9,7 @@ import Testing
 @Suite(.serialized)
 struct HermesProfileReconcilerTests {
     private static func withReconciler<T: Sendable>(
-        _ body: @Sendable (HermesProfileReconciler, Fluent, URL) async throws -> T,
+        _ body: @Sendable (HermesProfileReconciler, Fluent, URL) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -20,16 +20,16 @@ struct HermesProfileReconcilerTests {
         let hermesDataRoot = tmpRoot.appendingPathComponent("hermes").path
         try FileManager.default.createDirectory(
             at: tmpRoot.appendingPathComponent("hermes").appendingPathComponent("profiles"),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         let service = HermesProfileService(
             fluent: fluent,
             gateway: FilesystemHermesGateway(rootPath: hermesDataRoot, logger: logger),
-            vaultPaths: vaultPaths,
+            vaultPaths: vaultPaths
         )
         let gatewayProbe = HermesGatewayProbe(
             session: .shared,
-            logger: logger,
+            logger: logger
         )
         let reconciler = HermesProfileReconciler(
             fluent: fluent,
@@ -38,7 +38,7 @@ struct HermesProfileReconcilerTests {
             hermesDataRoot: hermesDataRoot,
             hermesGatewayURL: "",
             gatewayProbe: gatewayProbe,
-            logger: logger,
+            logger: logger
         )
         do {
             let result = try await body(reconciler, fluent, tmpRoot)
@@ -56,7 +56,7 @@ struct HermesProfileReconcilerTests {
         let fluent = Fluent(logger: Logger(label: "test.recon"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -91,7 +91,7 @@ struct HermesProfileReconcilerTests {
         let user = User(
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)",
+            passwordHash: "stub-\(slug)"
         )
         try await user.save(on: db)
         return user
@@ -137,7 +137,7 @@ struct HermesProfileReconcilerTests {
             let profile = try HermesProfile(
                 tenantID: user.requireID(),
                 hermesProfileID: activeSlug,
-                status: "ready",
+                status: "ready"
             )
             try await profile.save(on: fluent.db())
 

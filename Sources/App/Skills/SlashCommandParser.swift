@@ -34,33 +34,33 @@ enum SlashCommandParser {
             return SlashCommandInvocation(
                 kind: .skill(name: "pattern-detector"),
                 input: normalizedInput,
-                arguments: topicArguments(normalizedInput),
+                arguments: topicArguments(normalizedInput)
             )
         case "contradict", "contradiction-detector":
             return SlashCommandInvocation(
                 kind: .skill(name: "contradiction-detector"),
                 input: normalizedInput,
-                arguments: topicArguments(normalizedInput),
+                arguments: topicArguments(normalizedInput)
             )
         case "beliefs", "belief-evolution":
             guard let normalizedInput else {
                 return SlashCommandInvocation(
                     kind: .help(markdown: "Usage: `/beliefs <topic>`"),
                     input: nil,
-                    arguments: [:],
+                    arguments: [:]
                 )
             }
             return SlashCommandInvocation(
                 kind: .skill(name: "belief-evolution"),
                 input: normalizedInput,
-                arguments: topicArguments(normalizedInput),
+                arguments: topicArguments(normalizedInput)
             )
         default:
             let skillName = String(command)
             return SlashCommandInvocation(
                 kind: .skill(name: skillName),
                 input: normalizedInput,
-                arguments: normalizedInput.map { ["input": $0] } ?? [:],
+                arguments: normalizedInput.map { ["input": $0] } ?? [:]
             )
         }
     }

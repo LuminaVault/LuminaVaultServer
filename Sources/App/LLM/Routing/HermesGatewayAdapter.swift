@@ -88,7 +88,7 @@ struct HermesGatewayAdapter: ProviderAdapter {
         sessionKey: String,
         sessionID: String?,
         baseURL: URL,
-        authHeader: String?,
+        authHeader: String?
     ) async throws -> HermesChatTransportMetadata {
         let url = baseURL
             .appendingPathComponent("v1")

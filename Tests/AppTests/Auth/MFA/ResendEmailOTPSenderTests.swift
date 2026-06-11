@@ -25,7 +25,7 @@ struct ResendEmailOTPSenderTests {
             await captured.set(req)
             let resp = HTTPURLResponse(
                 url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"],
+                headerFields: ["Content-Type": "application/json"]
             )!
             return (resp, Data(#"{"id":"em_abc"}"#.utf8))
         }
@@ -36,7 +36,7 @@ struct ResendEmailOTPSenderTests {
             fromAddress: "LuminaVault <auth@lumina.app>",
             replyTo: "support@lumina.app",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.resend"),
+            logger: Logger(label: "test.resend")
         )
         try await sender.send(code: "424242", to: "user@example.com", purpose: "login")
 
@@ -68,7 +68,7 @@ struct ResendEmailOTPSenderTests {
         ResendStubURLProtocol.handler = { req in
             await captured.set(req)
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil,
+                url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil
             )!
             return (resp, Data(#"{"id":"em_abc"}"#.utf8))
         }
@@ -79,7 +79,7 @@ struct ResendEmailOTPSenderTests {
             fromAddress: "auth@lumina.app",
             replyTo: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.resend"),
+            logger: Logger(label: "test.resend")
         )
         try await sender.send(code: "111111", to: "user@example.com", purpose: "verify")
 
@@ -96,7 +96,7 @@ struct ResendEmailOTPSenderTests {
             fromAddress: "auth@lumina.app",
             replyTo: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.resend"),
+            logger: Logger(label: "test.resend")
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "user@example.com", purpose: "login")
@@ -110,7 +110,7 @@ struct ResendEmailOTPSenderTests {
             fromAddress: "",
             replyTo: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.resend"),
+            logger: Logger(label: "test.resend")
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "user@example.com", purpose: "login")
@@ -121,7 +121,7 @@ struct ResendEmailOTPSenderTests {
     func `throws on non 2xx response`() async throws {
         ResendStubURLProtocol.handler = { req in
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 422, httpVersion: "HTTP/1.1", headerFields: nil,
+                url: req.url!, statusCode: 422, httpVersion: "HTTP/1.1", headerFields: nil
             )!
             return (resp, Data(#"{"name":"validation_error","message":"unverified sender"}"#.utf8))
         }
@@ -132,7 +132,7 @@ struct ResendEmailOTPSenderTests {
             fromAddress: "auth@lumina.app",
             replyTo: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.resend"),
+            logger: Logger(label: "test.resend")
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "user@example.com", purpose: "login")

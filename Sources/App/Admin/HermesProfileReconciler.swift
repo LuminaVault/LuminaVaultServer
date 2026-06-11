@@ -89,7 +89,7 @@ struct HermesProfileReconciler {
             profilesCreated: created,
             profilesRecovered: recovered,
             profilesAlreadyOK: alreadyOK,
-            failures: failures,
+            failures: failures
         )
     }
 
@@ -103,7 +103,7 @@ struct HermesProfileReconciler {
 
         let entries = try fm.contentsOfDirectory(atPath: profilesDir.path)
         let activeIDs = try await Set(
-            HermesProfile.query(on: fluent.db()).all(\.$hermesProfileID),
+            HermesProfile.query(on: fluent.db()).all(\.$hermesProfileID)
         )
 
         var orphans: [String] = []
@@ -118,7 +118,7 @@ struct HermesProfileReconciler {
             }
             let from = profilesDir.appendingPathComponent(entry)
             let stamped = profilesDir.appendingPathComponent(
-                "_deleted_\(Int(Date().timeIntervalSince1970))_\(entry)",
+                "_deleted_\(Int(Date().timeIntervalSince1970))_\(entry)"
             )
             do {
                 try fm.moveItem(at: from, to: stamped)
@@ -132,7 +132,7 @@ struct HermesProfileReconciler {
         return HermesProfileReapSummary(
             dirsScanned: entries.count,
             orphansSoftDeleted: orphans,
-            activeKept: kept,
+            activeKept: kept
         )
     }
 
@@ -175,7 +175,7 @@ struct HermesProfileReconciler {
             usersWithoutProfile: withoutProfile,
             orphanFilesystemDirs: orphans,
             gatewayReachable: probe.reachable,
-            gatewayLatencyMs: probe.latencyMs,
+            gatewayLatencyMs: probe.latencyMs
         )
     }
 }

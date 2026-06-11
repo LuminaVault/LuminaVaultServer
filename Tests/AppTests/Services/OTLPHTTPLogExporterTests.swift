@@ -38,11 +38,11 @@ struct OTLPHTTPLogExporterTests {
                                 body: .string("hello world"),
                                 attributes: [OTLPAttribute(key: "request_id", value: .string("abc-123"))],
                                 traceId: "",
-                                spanId: "",
+                                spanId: ""
                             ),
-                        ],
+                        ]
                     ),
-                ],
+                ]
             ),
         ])
 

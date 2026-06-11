@@ -15,7 +15,7 @@ struct RevenueCatClient {
         baseURL: URL = URL(string: "https://api.revenuecat.com/v1")!,
         apiKey: String,
         session: URLSession = .shared,
-        logger: Logger = Logger(label: "lv.billing.revenuecat-client"),
+        logger: Logger = Logger(label: "lv.billing.revenuecat-client")
     ) {
         self.baseURL = baseURL
         self.apiKey = apiKey

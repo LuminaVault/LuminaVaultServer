@@ -24,7 +24,7 @@ struct RoutedHermesLLMService: HermesLLMService {
     init(
         transport: any HermesChatTransport,
         defaultModel: String,
-        logger: Logger,
+        logger: Logger
     ) {
         self.transport = transport
         self.defaultModel = defaultModel
@@ -40,7 +40,7 @@ struct RoutedHermesLLMService: HermesLLMService {
             temperature: request.temperature,
             stream: false,
             tools: request.tools?.map { $0.toOutbound() },
-            tool_choice: request.tool_choice,
+            tool_choice: request.tool_choice
         )
 
         let data: Data
@@ -57,7 +57,7 @@ struct RoutedHermesLLMService: HermesLLMService {
                 let response = try await transport.chatCompletions(
                     payload: data,
                     sessionKey: sessionKey,
-                    sessionID: sessionID,
+                    sessionID: sessionID
                 )
                 let decoded = try JSONDecoder().decode(HermesUpstreamResponse.self, from: response)
                 guard let assistant = decoded.choices.first?.message else {
@@ -75,19 +75,19 @@ struct RoutedHermesLLMService: HermesLLMService {
                     errors: toolErrors,
                     model: decoded.model,
                     profile: sessionKey,
-                    logger: logger,
+                    logger: logger
                 )
                 let sanitized = HermesToolErrorClassifier.sanitize(message: assistant)
                 successCounter.increment()
                 durationTimer.recordNanoseconds(
-                    Int64(DispatchTime.now().uptimeNanoseconds - started),
+                    Int64(DispatchTime.now().uptimeNanoseconds - started)
                 )
                 logger.info("llm reply ready model=\(decoded.model) sessionKey=\(sessionKey)")
                 return ChatResponse(
                     id: decoded.id,
                     model: decoded.model,
                     message: sanitized,
-                    raw: decoded,
+                    raw: decoded
                 )
             } catch let httpErr as HTTPError {
                 failureCounter.increment()

@@ -64,7 +64,7 @@ struct GoogleCalendarClient {
         syncToken: String?,
         timeMin: Date?,
         timeMax: Date?,
-        pageToken: String?,
+        pageToken: String?
     ) async throws -> ListResult {
         let encodedCal = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
         var comps = URLComponents(string: "\(Self.base)/calendars/\(encodedCal)/events")!
@@ -103,7 +103,7 @@ struct GoogleCalendarClient {
         return ListResult(
             events: events,
             nextSyncToken: json["nextSyncToken"] as? String,
-            nextPageToken: json["nextPageToken"] as? String,
+            nextPageToken: json["nextPageToken"] as? String
         )
     }
 
@@ -117,7 +117,7 @@ struct GoogleCalendarClient {
         endsAt: Date,
         location: String?,
         notes: String?,
-        attendees: [String],
+        attendees: [String]
     ) async throws -> RemoteEvent {
         let encodedCal = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? calendarID
         let url = URL(string: "\(Self.base)/calendars/\(encodedCal)/events")!
@@ -171,7 +171,7 @@ struct GoogleCalendarClient {
             CalendarAttendees.Attendee(
                 email: $0["email"] as? String,
                 displayName: $0["displayName"] as? String,
-                responseStatus: $0["responseStatus"] as? String,
+                responseStatus: $0["responseStatus"] as? String
             )
         } ?? []
         let updated = (raw["updated"] as? String).flatMap(rfc3339Date) ?? Date()
@@ -190,7 +190,7 @@ struct GoogleCalendarClient {
             recurrence: (raw["recurrence"] as? [String]) ?? [],
             htmlLink: raw["htmlLink"] as? String,
             etag: raw["etag"] as? String,
-            updatedAt: updated,
+            updatedAt: updated
         )
     }
 

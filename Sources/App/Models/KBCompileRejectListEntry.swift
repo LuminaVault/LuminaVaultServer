@@ -20,7 +20,7 @@ final class KBCompileRejectListEntry: Model, TenantModel, @unchecked Sendable {
         tenantID: UUID,
         contentHash: String,
         vaultFileID: UUID? = nil,
-        rejectedAt: Date = Date(),
+        rejectedAt: Date = Date()
     ) {
         self.id = id
         self.tenantID = tenantID

@@ -15,7 +15,7 @@ func makeEmailOTPSender(
     apiKey: String,
     fromAddress: String,
     replyTo: String,
-    logger: Logger,
+    logger: Logger
 ) -> any EmailOTPSender {
     switch kind.lowercased() {
     case "resend":
@@ -23,7 +23,7 @@ func makeEmailOTPSender(
             apiKey: apiKey,
             fromAddress: fromAddress,
             replyTo: replyTo,
-            logger: logger,
+            logger: logger
         )
     case "", "logging":
         return LoggingEmailOTPSender(logger: logger)

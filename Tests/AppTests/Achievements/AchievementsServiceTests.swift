@@ -13,7 +13,7 @@ import Testing
 @Suite(.serialized)
 struct AchievementsServiceTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -31,7 +31,7 @@ struct AchievementsServiceTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -80,7 +80,7 @@ struct AchievementsServiceTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-hash-\(slug)",
+            passwordHash: "stub-hash-\(slug)"
         )
     }
 
@@ -89,7 +89,7 @@ struct AchievementsServiceTests {
             fluent: fluent,
             catalog: .current,
             pushService: nil,
-            logger: Logger(label: "test.achievements.service"),
+            logger: Logger(label: "test.achievements.service")
         )
     }
 

@@ -14,7 +14,7 @@ struct ModelRouterTests {
         return ProviderRegistry(
             configs: configs,
             adapters: enabled.contains(.hermesGateway) ? [StubAdapter(kind: .hermesGateway)] : [],
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
     }
 
@@ -32,7 +32,7 @@ struct ModelRouterTests {
             username: "x",
             passwordHash: "h",
             tier: tier.rawValue,
-            tierOverride: override.rawValue,
+            tierOverride: override.rawValue
         )
         u.privacyNoCNOrigin = privacyNoCN
         return u
@@ -93,7 +93,7 @@ struct ModelRouterTests {
         let decision = await router.pick(
             forModel: nil,
             capability: .high,
-            user: Self.user(tier: .trial, privacyNoCN: true),
+            user: Self.user(tier: .trial, privacyNoCN: true)
         )
 
         // deepseek-v3.2 + kimi-k2 are CN-origin; only hermes survives.
@@ -109,7 +109,7 @@ struct ModelRouterTests {
         let decision = await router.pick(
             forModel: nil,
             capability: .high,
-            user: Self.user(tier: .pro, privacyNoCN: true),
+            user: Self.user(tier: .pro, privacyNoCN: true)
         )
 
         #expect(decision.primary.provider == .anthropic)
@@ -148,7 +148,7 @@ struct ModelRouterTests {
         let decision = await router.pick(
             forModel: nil,
             capability: .high,
-            user: Self.user(tier: .lapsed, override: .ultimate),
+            user: Self.user(tier: .lapsed, override: .ultimate)
         )
 
         #expect(decision.primary.provider == .anthropic)

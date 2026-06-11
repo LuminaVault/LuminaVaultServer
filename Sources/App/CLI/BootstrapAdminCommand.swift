@@ -47,9 +47,9 @@ func runBootstrapAdminCommand(reader: ConfigReader) async throws {
             username: reader.string(forKey: "postgres.user", default: "luminavault"),
             password: reader.string(forKey: "postgres.password", default: "luminavault"),
             database: reader.string(forKey: "postgres.database", default: "luminavault"),
-            tls: .disable,
+            tls: .disable
         )),
-        as: .psql,
+        as: .psql
     )
 
     let summary: BootstrapAdminSummary
@@ -60,7 +60,7 @@ func runBootstrapAdminCommand(reader: ConfigReader) async throws {
             password: password,
             reader: reader,
             fluent: fluent,
-            logger: logger,
+            logger: logger
         )
     } catch {
         try? await fluent.shutdown()
@@ -109,7 +109,7 @@ private func provisionAdmin(
     password: String,
     reader: ConfigReader,
     fluent: Fluent,
-    logger: Logger,
+    logger: Logger
 ) async throws -> BootstrapAdminSummary {
     let repo = DatabaseAuthRepository(fluent: fluent)
     if let existing = try await repo.findUser(byEmail: email) {
@@ -122,7 +122,7 @@ private func provisionAdmin(
             username: mutated.username,
             created: false,
             isAdmin: mutated.isAdmin,
-            isVerified: mutated.isVerified,
+            isVerified: mutated.isVerified
         )
     }
 
@@ -141,7 +141,7 @@ private func provisionAdmin(
         username: promoted.username,
         created: true,
         isAdmin: promoted.isAdmin,
-        isVerified: promoted.isVerified,
+        isVerified: promoted.isVerified
     )
 }
 
@@ -164,7 +164,7 @@ private func promote(_ user: User, on db: any Database) async throws -> User {
 private func makeAuthService(
     reader: ConfigReader,
     fluent: Fluent,
-    logger: Logger,
+    logger: Logger
 ) async throws -> any AuthService {
     let secret = reader.string(forKey: "jwt.hmac.secret", default: "")
     guard !secret.isEmpty else { throw BootstrapAdminError.jwtSecretMissing }
@@ -173,28 +173,28 @@ private func makeAuthService(
     await jwtKeys.add(hmac: HMACKey(stringLiteral: secret), digestAlgorithm: .sha256, kid: kid)
 
     let vaultPaths = VaultPathService(
-        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"),
+        rootPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault")
     )
     let hermesDataRoot = reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes")
     let gateway = makeHermesGateway(
         kind: reader.string(forKey: "hermes.gatewayKind", default: "filesystem"),
         dataRoot: hermesDataRoot,
-        logger: logger,
+        logger: logger
     )
     let hermesProfileService = HermesProfileService(
         fluent: fluent,
         gateway: gateway,
-        vaultPaths: vaultPaths,
+        vaultPaths: vaultPaths
     )
     let soulService = SOULService(
         vaultPaths: vaultPaths,
         hermesDataRoot: hermesDataRoot,
-        logger: logger,
+        logger: logger
     )
     let mfaService = DefaultMFAService(
         fluent: fluent,
         sender: LoggingEmailOTPSender(logger: logger),
-        generator: DefaultOTPCodeGenerator(),
+        generator: DefaultOTPCodeGenerator()
     )
     return DefaultAuthService(
         repo: DatabaseAuthRepository(fluent: fluent),
@@ -209,6 +209,6 @@ private func makeAuthService(
         verificationCodeGenerator: DefaultOTPCodeGenerator(),
         hermesProfileService: hermesProfileService,
         soulService: soulService,
-        logger: logger,
+        logger: logger
     )
 }

@@ -29,7 +29,7 @@ struct PrivacyToggleTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuth($0.body) }
         return resp.accessToken
     }
@@ -42,7 +42,7 @@ struct PrivacyToggleTests {
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let me = try Self.decodeMe(response.body)
@@ -65,7 +65,7 @@ struct PrivacyToggleTests {
                     .contentType: "application/json",
                     .authorization: "Bearer \(token)",
                 ],
-                body: ByteBuffer(string: #"{"privacyNoCNOrigin":true}"#),
+                body: ByteBuffer(string: #"{"privacyNoCNOrigin":true}"#)
             ) { response in
                 #expect(response.status == .ok)
                 let me = try Self.decodeMe(response.body)
@@ -76,7 +76,7 @@ struct PrivacyToggleTests {
             try await client.execute(
                 uri: "/v1/auth/me",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 let me = try Self.decodeMe(response.body)
                 #expect(me.privacyNoCNOrigin == true)
@@ -90,7 +90,7 @@ struct PrivacyToggleTests {
                     .contentType: "application/json",
                     .authorization: "Bearer \(token)",
                 ],
-                body: ByteBuffer(string: #"{"privacyNoCNOrigin":false}"#),
+                body: ByteBuffer(string: #"{"privacyNoCNOrigin":false}"#)
             ) { response in
                 let me = try Self.decodeMe(response.body)
                 #expect(me.privacyNoCNOrigin == false)
@@ -106,7 +106,7 @@ struct PrivacyToggleTests {
                 uri: "/v1/auth/me/privacy",
                 method: .put,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: #"{"privacyNoCNOrigin":true}"#),
+                body: ByteBuffer(string: #"{"privacyNoCNOrigin":true}"#)
             ) { response in
                 #expect(response.status == .unauthorized)
             }

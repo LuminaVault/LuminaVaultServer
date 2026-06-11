@@ -61,7 +61,7 @@ struct RoutedLLMTransportTests {
     private static func decision(primary: ProviderKind, fallbacks: [ProviderKind] = []) -> RouteDecision {
         RouteDecision(
             primary: route(primary),
-            fallbacks: fallbacks.map { route($0) },
+            fallbacks: fallbacks.map { route($0) }
         )
     }
 
@@ -78,7 +78,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .hermesGateway)),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "OK")
@@ -94,7 +94,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "FALLBACK")
@@ -112,7 +112,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         let primaryCalls = await primary.calls.count
@@ -129,7 +129,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         await #expect(throws: (any Error).self) {
             _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
@@ -146,7 +146,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         await #expect(throws: (any Error).self) {
             _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
@@ -164,7 +164,7 @@ struct RoutedLLMTransportTests {
         let transport = RoutedLLMTransport(
             registry: registry,
             router: FixedRouter(decision: Self.decision(primary: .together, fallbacks: [.groq])),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         let result = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
         #expect(String(data: result, encoding: .utf8) == "OK")
@@ -180,9 +180,9 @@ struct RoutedLLMTransportTests {
             registry: registry,
             router: FixedRouter(decision: RouteDecision(
                 primary: ModelRoute(provider: .hermesGateway, modelID: "hermes-3-large"),
-                fallbacks: [],
+                fallbacks: []
             )),
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
         _ = try await transport.chatCompletions(payload: Self.payload(model: "ignored"), sessionKey: "alice", sessionID: nil)
 

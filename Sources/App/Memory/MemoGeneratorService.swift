@@ -141,7 +141,7 @@ actor MemoGeneratorService {
         defaultModel: String,
         logger: Logger,
         maxToolIterations: Int = 6,
-        maxMemoBytes: Int = 32 * 1024,
+        maxMemoBytes: Int = 32 * 1024
     ) {
         self.transport = transport
         self.memories = memories
@@ -160,7 +160,7 @@ actor MemoGeneratorService {
         sessionID: String? = nil,
         topic: String,
         hint: String?,
-        save: Bool,
+        save: Bool
     ) async throws -> MemoGenerationResult {
         guard !topic.isEmpty, topic.count <= 256 else {
             throw HTTPError(.badRequest, message: "topic empty or too long")
@@ -171,7 +171,7 @@ actor MemoGeneratorService {
             sessionKey: sessionKey,
             sessionID: sessionID,
             topic: topic,
-            hint: hint,
+            hint: hint
         )
 
         let bodyBytes = outcome.summary.utf8.count
@@ -182,7 +182,7 @@ actor MemoGeneratorService {
         let memoMarkdown = renderMarkdown(
             topic: topic,
             sourceIDs: outcome.consultedMemoryIDs,
-            body: outcome.summary,
+            body: outcome.summary
         )
 
         var savedPath: String? = nil
@@ -190,7 +190,7 @@ actor MemoGeneratorService {
             savedPath = try await persist(
                 tenantID: tenantID,
                 topic: topic,
-                memo: memoMarkdown,
+                memo: memoMarkdown
             )
         }
 
@@ -198,7 +198,7 @@ actor MemoGeneratorService {
             memo: memoMarkdown,
             path: savedPath,
             sourceMemoryIDs: outcome.consultedMemoryIDs,
-            summary: outcome.summary,
+            summary: outcome.summary
         )
     }
 
@@ -214,7 +214,7 @@ actor MemoGeneratorService {
         sessionKey: String,
         sessionID: String?,
         topic: String,
-        hint: String?,
+        hint: String?
     ) async throws -> LoopOutcome {
         let systemPrompt = """
         You are Hermes writing a synthesis memo for the user. Your job:
@@ -250,7 +250,7 @@ actor MemoGeneratorService {
                 tools: tools,
                 toolChoice: "auto",
                 temperature: 0.3,
-                stream: false,
+                stream: false
             )
             let payload = try JSONEncoder().encode(body)
             let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
@@ -267,13 +267,13 @@ actor MemoGeneratorService {
                         tenantID: tenantID,
                         toolCall: call,
                         seen: &seen,
-                        outcome: &outcome,
+                        outcome: &outcome
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name,
+                        name: call.function.name
                     ))
                 }
                 continue
@@ -290,7 +290,7 @@ actor MemoGeneratorService {
         tenantID: UUID,
         toolCall: ToolCall,
         seen: inout Set<UUID>,
-        outcome: inout LoopOutcome,
+        outcome: inout LoopOutcome
     ) async throws -> String {
         guard toolCall.function.name == "session_search" else {
             return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
@@ -304,7 +304,7 @@ actor MemoGeneratorService {
             let hits = try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
-                limit: max(1, min(args.limit ?? 5, 20)),
+                limit: max(1, min(args.limit ?? 5, 20))
             )
             for hit in hits where !seen.contains(hit.id) {
                 seen.insert(hit.id)
@@ -372,7 +372,7 @@ actor MemoGeneratorService {
             contentType: "text/markdown",
             sizeBytes: Int64(data.count),
             sha256: digest,
-            processedAt: nil,
+            processedAt: nil
         )
         try await row.save(on: fluent.db())
 
@@ -391,8 +391,8 @@ actor MemoGeneratorService {
                     "query": PropertySchema(type: "string", description: "Natural-language search query."),
                     "limit": PropertySchema(type: "integer", description: "Maximum memories (1-20, default 5)."),
                 ],
-                required: ["query"],
-            ),
+                required: ["query"]
+            )
         ))
     }
 

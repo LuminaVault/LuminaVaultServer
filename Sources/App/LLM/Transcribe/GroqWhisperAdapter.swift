@@ -25,7 +25,7 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
         baseURL: URL = URL(string: "https://api.groq.com")!,
         model: String = "whisper-large-v3",
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
@@ -51,7 +51,7 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
             audio: Data(buffer: audio),
             filename: Self.filename(for: mime),
             mime: mime,
-            model: model,
+            model: model
         )
 
         let data: Data
@@ -88,7 +88,7 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
             language: decoded.language ?? "unknown",
             confidence: Self.aggregateConfidence(decoded.segments),
             durationSeconds: decoded.duration ?? 0,
-            segments: decoded.segments?.map { TranscribeSegment(start: $0.start, end: $0.end, text: $0.text) },
+            segments: decoded.segments?.map { TranscribeSegment(start: $0.start, end: $0.end, text: $0.text) }
         )
     }
 
@@ -102,7 +102,7 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
         audio: Data,
         filename: String,
         mime: String,
-        model: String,
+        model: String
     ) -> Data {
         var body = Data()
         let crlf = "\r\n"

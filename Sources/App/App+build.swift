@@ -28,7 +28,7 @@ import Tracing
 ///     Production callers leave this `nil`.
 func buildApplication(
     reader: ConfigReader,
-    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil
 ) async throws -> some ApplicationProtocol {
     let logger = {
         var logger = Logger(label: "LuminaVaultServer")
@@ -43,7 +43,7 @@ func buildApplication(
     let otelServices = otelEnabled
         ? try await bootstrapOTelOnce(
             serviceName: reader.string(forKey: "otel.serviceName", default: "luminavault"),
-            logLevel: logger.logLevel,
+            logLevel: logger.logLevel
         )
         : nil
     if !otelEnabled {
@@ -68,15 +68,15 @@ func buildApplication(
                     username: reader.string(forKey: "postgres.user", default: "luminavault"),
                     password: reader.string(forKey: "postgres.password", default: "luminavault"),
                     database: reader.string(forKey: "postgres.database", default: "luminavault"),
-                    tls: .disable,
+                    tls: .disable
                 ),
                 // HER perf audit: driver default is 1 connection per event loop,
                 // which serializes concurrent slow queries on a loop. Make it
                 // configurable; total pool ≈ this × eventLoopCount (≈ cores).
                 // Keep pool × replicas under Postgres max_connections.
-                maxConnectionsPerEventLoop: reader.int(forKey: "postgres.maxConnectionsPerEventLoop", default: 4),
+                maxConnectionsPerEventLoop: reader.int(forKey: "postgres.maxConnectionsPerEventLoop", default: 4)
             ),
-            as: .psql,
+            as: .psql
         )
         do {
             await registerMigrations(on: fluent)
@@ -118,7 +118,7 @@ func buildApplication(
         guard !secret.isEmpty else {
             fatalError(
                 "jwt.hmac.secret must be set (env JWT_HMAC_SECRET) "
-                    + "— or use JWT_HMAC_SECRETS=kid:secret,... for rotation support",
+                    + "— or use JWT_HMAC_SECRETS=kid:secret,... for rotation support"
             )
         }
         kid = JWKIdentifier(string: reader.string(forKey: "jwt.kid", default: "lv-default"))
@@ -167,7 +167,7 @@ func buildApplication(
             forKey: "billing.coldStoragePath",
             default: URL(fileURLWithPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"))
                 .appendingPathComponent("cold-storage")
-                .path,
+                .path
         ),
         xClientID: reader.string(forKey: "oauth.x.clientId", default: ""),
         rateLimitStorageKind: reader.string(forKey: "rateLimit.storageKind", default: "memory"),
@@ -207,7 +207,7 @@ func buildApplication(
         hermesCentralPort: reader.int(forKey: "hermes.central.port", default: 8642),
         hermesCentralTempPort: reader.int(forKey: "hermes.central.tempPort", default: 8643),
         photonSidecarURL: reader.string(forKey: "photon.sidecarUrl", default: "http://photon-sidecar:8789"),
-        photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: ""),
+        photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: "")
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -215,18 +215,18 @@ func buildApplication(
         reader: reader,
         services: services,
         managedServices: &appServices,
-        kbCompileTransportOverride: kbCompileTransportOverride,
+        kbCompileTransportOverride: kbCompileTransportOverride
     )
     if fluentEnabled {
         let lapseArchiver = LapseArchiverJob(
             fluent: fluent,
             vaultPaths: VaultPathService(rootPath: services.vaultRootPath),
             coldStoragePath: services.billingColdStoragePath,
-            logger: Logger(label: "lv.billing.lapse-archiver"),
+            logger: Logger(label: "lv.billing.lapse-archiver")
         )
         appServices.append(LapseArchiverService(
             job: lapseArchiver,
-            logger: Logger(label: "lv.billing.lapse-archiver"),
+            logger: Logger(label: "lv.billing.lapse-archiver")
         ))
     }
     if let otelServices {
@@ -241,7 +241,7 @@ func buildApplication(
         server: .http1WebSocketUpgrade(webSocketRouter: router),
         configuration: ApplicationConfiguration(reader: reader.scoped(to: "http")),
         services: appServices,
-        logger: logger,
+        logger: logger
     )
 }
 
@@ -260,7 +260,7 @@ func buildRouter(
     reader: ConfigReader,
     services: ServiceContainer,
     managedServices: inout [any Service],
-    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
     // HER-310 — gate DB-ticking background services (cron, reconciler, the
@@ -290,14 +290,14 @@ func buildRouter(
         router.add(middleware: CORSMiddleware(allowOrigin: .all))
     } else {
         router.add(middleware: AllowedOriginsMiddleware<AppRequestContext>(
-            allowed: Set(services.corsAllowedOrigins),
+            allowed: Set(services.corsAllowedOrigins)
         ))
         router.add(middleware: CORSMiddleware(
             allowOrigin: .originBased,
             allowHeaders: [.contentType, .authorization],
             allowMethods: [.get, .post, .put, .delete, .options, .patch],
             allowCredentials: true,
-            maxAge: .seconds(600),
+            maxAge: .seconds(600)
         ))
     }
     router.get("/health") { _, _ -> String in "ok" }
@@ -313,7 +313,7 @@ func buildRouter(
         return Response(
             status: .ok,
             headers: headers,
-            body: .init(byteBuffer: ByteBuffer(string: json)),
+            body: .init(byteBuffer: ByteBuffer(string: json))
         )
     }
     // HER-227 — root greeting served as a plain Hummingbird route. The
@@ -334,13 +334,13 @@ func buildRouter(
             apiKey: services.emailResendAPIKey,
             fromAddress: services.emailFromAddress,
             replyTo: services.emailReplyTo,
-            logger: Logger(label: label),
+            logger: Logger(label: label)
         )
     }
     let mfaService = DefaultMFAService(
         fluent: services.fluent,
         sender: makeEmailSender("lv.mfa"),
-        generator: DefaultOTPCodeGenerator(),
+        generator: DefaultOTPCodeGenerator()
     )
     let resetSender = makeEmailSender("lv.reset")
     let resetGen = DefaultOTPCodeGenerator()
@@ -351,7 +351,7 @@ func buildRouter(
     let hermesGateway: any HermesGateway = makeHermesGateway(
         kind: services.hermesGatewayKind,
         dataRoot: services.hermesDataRoot,
-        logger: hermesLogger,
+        logger: hermesLogger
     )
     if services.hermesGatewayKind == "filesystem" {
         do {
@@ -365,7 +365,7 @@ func buildRouter(
     let hermesProfileService = HermesProfileService(
         fluent: services.fluent,
         gateway: hermesGateway,
-        vaultPaths: vaultPaths,
+        vaultPaths: vaultPaths
     )
     let authTelemetry = RouteTelemetry(labelPrefix: "auth", logger: Logger(label: "lv.auth"))
     let llmTelemetry = RouteTelemetry(labelPrefix: "llm", logger: Logger(label: "lv.llm"))
@@ -378,7 +378,7 @@ func buildRouter(
         privateKeyPath: services.apnsPrivateKeyPath,
         environment: services.apnsEnvironment,
         fluent: services.fluent,
-        logger: Logger(label: "lv.apns"),
+        logger: Logger(label: "lv.apns")
     )
     // HER-206 — EventBus constructed early so AchievementsService can
     // publish .achievementUnlocked into the same instance MeTodayCache
@@ -394,7 +394,7 @@ func buildRouter(
         fluent: services.fluent,
         pushService: pushService,
         eventBus: eventBus,
-        logger: Logger(label: "lv.achievements"),
+        logger: Logger(label: "lv.achievements")
     )
     // HER-310 — controller hot-paths enqueue achievement events here instead of
     // `Task.detached { await achievements.recordAndPush(...) }`. The worker owns
@@ -403,14 +403,14 @@ func buildRouter(
     // → no `.db()` call races a torn-down database (the signal-5 crash).
     let achievementsWorker = AchievementsWorker(
         service: achievementsService,
-        logger: Logger(label: "lv.achievements.worker"),
+        logger: Logger(label: "lv.achievements.worker")
     )
     if fluentEnabled { managedServices.append(achievementsWorker) }
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
         hermesDataRoot: services.hermesDataRoot,
-        logger: Logger(label: "lv.soul"),
+        logger: Logger(label: "lv.soul")
     )
     let authService = DefaultAuthService(
         repo: authRepo,
@@ -425,7 +425,7 @@ func buildRouter(
         verificationCodeGenerator: verifyGen,
         hermesProfileService: hermesProfileService,
         soulService: soulService,
-        logger: Logger(label: "lv.auth"),
+        logger: Logger(label: "lv.auth")
     )
     let webAuthnService = WebAuthnService(
         enabled: services.webAuthnEnabled,
@@ -435,7 +435,7 @@ func buildRouter(
         fluent: services.fluent,
         repo: authRepo,
         authService: authService,
-        logger: Logger(label: "lv.webauthn"),
+        logger: Logger(label: "lv.webauthn")
     )
 
     var oauthProviders: [String: any OAuthProvider] = [:]
@@ -449,14 +449,14 @@ func buildRouter(
     // is fine for single-process; Redis seam reserved for multi-replica.
     let rateLimitStorage = makeRateLimitStorage(
         kind: services.rateLimitStorageKind,
-        logger: Logger(label: "lv.ratelimit"),
+        logger: Logger(label: "lv.ratelimit")
     )
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
         rateLimitStorage: rateLimitStorage,
         telemetry: authTelemetry,
-        webAuthnService: webAuthnService,
+        webAuthnService: webAuthnService
     ).addRoutes(to: router)
 
     // Passwordless / multi-provider auth: phone OTP, email magic-link, X OAuth.
@@ -468,7 +468,7 @@ func buildRouter(
         accountSID: services.twilioAccountSID,
         authToken: services.twilioAuthToken,
         fromNumber: services.twilioFromNumber,
-        logger: Logger(label: "lv.sms"),
+        logger: Logger(label: "lv.sms")
     )
     let multiProviderGroup = router.group("/v1/auth")
     // PhoneAuthController owns its own group wiring (per-route rate-limit
@@ -482,7 +482,7 @@ func buildRouter(
         generator: phoneOTPGenerator,
         challengeStore: preAuthStore,
         rateLimitStorage: rateLimitStorage,
-        logger: Logger(label: "lv.auth.phone"),
+        logger: Logger(label: "lv.auth.phone")
     ).addRoutes(to: router)
     let magicLinkOTPGenerator: any OTPCodeGenerator = services.magicLinkFixedOTP.isEmpty
         ? DefaultOTPCodeGenerator()
@@ -493,12 +493,12 @@ func buildRouter(
         generator: magicLinkOTPGenerator,
         challengeStore: preAuthStore,
         rateLimitStorage: rateLimitStorage,
-        logger: Logger(label: "lv.auth.magic"),
+        logger: Logger(label: "lv.auth.magic")
     ).addRoutes(to: router)
     XOAuthController(
         authService: authService,
         xClient: DefaultXAPIClient(logger: Logger(label: "lv.auth.x")),
-        logger: Logger(label: "lv.auth.x"),
+        logger: Logger(label: "lv.auth.x")
     ).addRoutes(to: multiProviderGroup)
 
     // Protected (JWT-required) routes
@@ -509,7 +509,7 @@ func buildRouter(
     let hermesProfileMiddleware = HermesProfileMiddleware(
         fluent: services.fluent,
         profiles: hermesProfileService,
-        logger: Logger(label: "lv.hermes-profile"),
+        logger: Logger(label: "lv.hermes-profile")
     )
     let meGroup = router.group("/v1/auth")
         .add(middleware: jwtAuthenticator)
@@ -527,7 +527,7 @@ func buildRouter(
     RevenueCatWebhookController(
         fluent: services.fluent,
         webhookSecret: services.revenuecatWebhookSecret,
-        logger: Logger(label: "lv.billing.revenuecat-webhook"),
+        logger: Logger(label: "lv.billing.revenuecat-webhook")
     ).addRoutes(to: billingGroup)
 
     // HER-172 — SkillCatalog needs to be in scope for the ContextRouter
@@ -556,11 +556,11 @@ func buildRouter(
         if lvEnvironment != "dev" {
             fatalError(
                 "HERMES_API_KEY required when LV_ENVIRONMENT=\(lvEnvironment). "
-                    + "Run `make hermes-bootstrap` and restart the stack.",
+                    + "Run `make hermes-bootstrap` and restart the stack."
             )
         }
         Logger(label: "lv.hermes").warning(
-            "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack.",
+            "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack."
         )
     }
 
@@ -627,30 +627,30 @@ func buildRouter(
             secretBoxRef = secretBox
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: byoHermesAllowPrivate,
-                requireHTTPS: byoHermesRequireHttps,
+                requireHTTPS: byoHermesRequireHttps
             )
             byoHermesController = HermesConfigController(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 ssrfGuard: ssrfGuard,
                 probeSession: BYOHTTP.session,
-                logger: byoHermesLogger,
+                logger: byoHermesLogger
             )
             let resolver = HermesEndpointResolver(
                 fluent: services.fluent,
                 secretBox: secretBox,
                 ssrfGuard: ssrfGuard,
                 defaultBaseURL: hermesURL,
-                logger: byoHermesLogger,
+                logger: byoHermesLogger
             )
             byoHermesMiddleware = HermesResolutionMiddleware(
                 resolver: resolver,
-                logger: byoHermesLogger,
+                logger: byoHermesLogger
             )
             let xaiLogger = Logger(label: "lv.xai-oauth")
             let dockerExec = ProcessDockerExec(
                 binaryPath: services.dockerBinaryPath,
-                logger: Logger(label: "lv.docker"),
+                logger: Logger(label: "lv.docker")
             )
             let containerManager = HermesContainerManager(
                 docker: dockerExec,
@@ -668,9 +668,9 @@ func buildRouter(
                     // (env `MNEMOSYNE_ENABLED`); `User.mnemosyneEnabled` wins
                     // when a row is loaded. On by default — Mnemosyne is the
                     // managed default memory layer.
-                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true",
+                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true"
                 ),
-                logger: Logger(label: "lv.hermes-tenant"),
+                logger: Logger(label: "lv.hermes-tenant")
             )
             // HER-134 — wire LocalHermes text embedding to the live
             // container manager. `handle` is read-only; if the tenant has
@@ -686,7 +686,7 @@ func buildRouter(
                 docker: dockerExec,
                 containerManager: containerManager,
                 installedSkillsClient: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
-                logger: Logger(label: "lv.plugins.hub-install"),
+                logger: Logger(label: "lv.plugins.hub-install")
             )
             // Cron bridge deps captured here (docker/container/ssrf live in this
             // branch); the service is built after `routedTransport` (the
@@ -701,14 +701,14 @@ func buildRouter(
                 backend: LiveXaiOAuthBackend(
                     docker: dockerExec,
                     registry: xaiProcessRegistry,
-                    logger: xaiLogger,
+                    logger: xaiLogger
                 ),
                 fluent: services.fluent,
-                logger: xaiLogger,
+                logger: xaiLogger
             )
             xaiOAuthController = XaiOAuthController(
                 service: xaiService,
-                logger: xaiLogger,
+                logger: xaiLogger
             )
             // Nous Subscription Integration — Nous Portal OAuth device-code
             // service. Shares the container manager + docker exec with xai.
@@ -720,14 +720,14 @@ func buildRouter(
                 backend: LiveNousOAuthBackend(
                     docker: dockerExec,
                     registry: nousProcessRegistry,
-                    logger: nousLogger,
+                    logger: nousLogger
                 ),
                 fluent: services.fluent,
-                logger: nousLogger,
+                logger: nousLogger
             )
             nousOAuthController = NousOAuthController(
                 service: nousService,
-                logger: nousLogger,
+                logger: nousLogger
             )
             // HER-240c — Grok runtime proxy shares the container manager.
             // Use the AsyncHTTPClient-managed shared client so the process
@@ -738,9 +738,9 @@ func buildRouter(
                 containerManager: containerManager,
                 proxy: HermesGrokProxy(
                     httpClient: grokHTTPClient,
-                    logger: Logger(label: "lv.grok-proxy"),
+                    logger: Logger(label: "lv.grok-proxy")
                 ),
-                logger: Logger(label: "lv.grok"),
+                logger: Logger(label: "lv.grok")
             )
             // HER-241 — Hermes messaging gateway controller. Probes the
             // user's Hermes `/v1/health` for reachability on /test; cannot
@@ -764,7 +764,7 @@ func buildRouter(
                 fluent: services.fluent,
                 containerManager: containerManager,
                 healthProbe: gatewayHealthProbe,
-                logger: gatewaysLogger,
+                logger: gatewaysLogger
             )
             // WhatsApp QR pairing: runs `hermes whatsapp` in the tenant
             // container and streams the QR to the app. Shares the docker exec
@@ -773,9 +773,9 @@ func buildRouter(
                 containerManager: containerManager,
                 backend: LiveWhatsAppPairingBackend(
                     docker: dockerExec,
-                    logger: gatewaysLogger,
+                    logger: gatewaysLogger
                 ),
-                logger: gatewaysLogger,
+                logger: gatewaysLogger
             )
             let photonClient: PhotonSidecarClienting? = {
                 guard !services.photonSidecarURL.isEmpty, !services.photonSidecarToken.isEmpty else { return nil }
@@ -816,7 +816,7 @@ func buildRouter(
                 photonSidecarClient: photonClient,
                 photonProvisioningService: photonProvisioningService,
                 photonDeliveryService: photonDeliveryService,
-                logger: gatewaysLogger,
+                logger: gatewaysLogger
             )
 
             // HER-330 — central Hermes self-update. Reuses the same docker
@@ -844,27 +844,27 @@ func buildRouter(
                     port: services.hermesCentralPort,
                     tempPort: services.hermesCentralTempPort,
                     apiServerKey: services.hermesAPIKey,
-                    mnemosyneDataDir: "/opt/data/mnemosyne",
+                    mnemosyneDataDir: "/opt/data/mnemosyne"
                 ),
                 healthProbe: healthProbe,
-                logger: updateLogger,
+                logger: updateLogger
             )
             let updateService = HermesUpdateService(
                 fluent: services.fluent,
                 central: centralManager,
                 containerManager: containerManager,
-                logger: updateLogger,
+                logger: updateLogger
             )
             hermesUpdateController = HermesUpdateController(
                 service: updateService,
-                logger: updateLogger,
+                logger: updateLogger
             )
         } catch {
             fatalError("LV_SECRET_MASTER_KEY malformed (must be 32 bytes base64): \(error)")
         }
     } else {
         byoHermesLogger.warning(
-            "BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes",
+            "BYO Hermes disabled — set LV_SECRET_MASTER_KEY to enable /v1/settings/hermes"
         )
     }
 
@@ -884,16 +884,16 @@ func buildRouter(
         UserCredentialStore(
             fluent: services.fluent,
             secretBox: secretBox,
-            logger: routingLogger,
+            logger: routingLogger
         )
     }
     let userLLMPreferenceRepo = UserLLMPreferenceRepository(
         fluent: services.fluent,
-        logger: routingLogger,
+        logger: routingLogger
     )
     let providerFailoverLogger = ProviderFailoverLogger(
         fluent: services.fluent,
-        logger: routingLogger,
+        logger: routingLogger
     )
 
     // HER-300 — test-only stub chat provider, selected exclusively via
@@ -907,7 +907,7 @@ func buildRouter(
     let gatewayAdapter: any ProviderAdapter = if llmProviderName == "stub" {
         StubChatAdapter(
             replyContent: reader.string(forKey: ConfigKey("llm.stub.replyContent"), default: "Hello from the LuminaVault default brain."),
-            replyModel: reader.string(forKey: ConfigKey("llm.stub.replyModel"), default: "stub-default-brain"),
+            replyModel: reader.string(forKey: ConfigKey("llm.stub.replyModel"), default: "stub-default-brain")
         )
     } else {
         HermesGatewayAdapter(
@@ -916,7 +916,7 @@ func buildRouter(
             baseURL: hermesURL,
             session: BYOHTTP.session,
             logger: routingLogger,
-            defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)",
+            defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)"
         )
     }
     var providerAdapters: [any ProviderAdapter] = [gatewayAdapter]
@@ -925,7 +925,7 @@ func buildRouter(
         providerAdapters.append(GeminiContentsAdapter(
             apiKey: services.geminiAPIKey,
             session: .shared,
-            logger: routingLogger,
+            logger: routingLogger
         ))
     }
     // HER-164 — OpenAI-compatible adapter covers Together, Groq,
@@ -947,7 +947,7 @@ func buildRouter(
             apiKey: apiKey,
             baseURL: baseURL,
             session: .shared,
-            logger: routingLogger,
+            logger: routingLogger
         ))
     }
     // HER-252 — register adapters for the per-user-credential providers
@@ -968,7 +968,7 @@ func buildRouter(
             baseURL: baseURL,
             session: .shared,
             logger: routingLogger,
-            userCredentials: userCredentialStore,
+            userCredentials: userCredentialStore
         ))
     }
     let anthropicEnvKey = reader.string(forKey: ConfigKey("llm.provider.anthropic.apiKey"), isSecret: true, default: "")
@@ -979,7 +979,7 @@ func buildRouter(
         baseURL: anthropicRawBaseURL.isEmpty ? URL(string: "https://api.anthropic.com")! : (URL(string: anthropicRawBaseURL) ?? URL(string: "https://api.anthropic.com")!),
         session: .shared,
         logger: routingLogger,
-        userCredentials: userCredentialStore,
+        userCredentials: userCredentialStore
     ))
     let ollamaRawBaseURL = reader.string(forKey: ConfigKey("llm.provider.ollama.baseURL"), default: "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -987,7 +987,7 @@ func buildRouter(
         defaultBaseURL: ollamaRawBaseURL.isEmpty ? URL(string: "http://localhost:11434")! : (URL(string: ollamaRawBaseURL) ?? URL(string: "http://localhost:11434")!),
         session: .shared,
         logger: routingLogger,
-        userCredentials: userCredentialStore,
+        userCredentials: userCredentialStore
     ))
     // HER-161 — env-loaded provider registry. Reads
     // `llm.provider.<key>.apiKey` / `.baseURL` for anthropic, openai,
@@ -997,7 +997,7 @@ func buildRouter(
     let providerRegistry = ProviderRegistry.from(
         reader: reader,
         adapters: providerAdapters,
-        logger: routingLogger,
+        logger: routingLogger
     )
     managedServices.append(providerRegistry)
     // HER-161 — capability-tier table router. Picks `(provider, model)`
@@ -1006,7 +1006,7 @@ func buildRouter(
     // Hermes gateway when no upstream is enabled.
     let tableModelRouter = TableModelRouter(
         registry: providerRegistry,
-        hermesDefaultModel: services.hermesDefaultModel,
+        hermesDefaultModel: services.hermesDefaultModel
     )
     // HER-252 — wrap the static table with a user-preference-aware router
     // so a user's primary (provider, model) + fallback chain take
@@ -1015,14 +1015,14 @@ func buildRouter(
     let modelRouter: any ModelRouter = UserPreferenceModelRouter(
         preferences: userLLMPreferenceRepo,
         fallback: tableModelRouter,
-        logger: routingLogger,
+        logger: routingLogger
     )
     let usageMeterService = UsageMeterService(
         fluent: services.fluent,
         freeMtokDaily: services.usageFreeMtokDaily,
         perSkillMtokDaily: services.usagePerSkillMtokDaily,
         degradeModel: services.usageDegradeModel,
-        logger: Logger(label: "lv.usage-meter"),
+        logger: Logger(label: "lv.usage-meter")
     )
 
     let routedTransport = RoutedLLMTransport(
@@ -1030,7 +1030,7 @@ func buildRouter(
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
-        failoverLogger: providerFailoverLogger,
+        failoverLogger: providerFailoverLogger
     )
 
     // Cron bridge — assembled now that `routedTransport` exists (the NL→spec
@@ -1044,7 +1044,7 @@ func buildRouter(
             ssrfGuard: cronSSRF,
             httpClient: BYOHTTP.httpClient,
             classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
-            logger: Logger(label: "lv.cron-bridge"),
+            logger: Logger(label: "lv.cron-bridge")
         )
     }
 
@@ -1053,7 +1053,7 @@ func buildRouter(
     let llmService = RoutedHermesLLMService(
         transport: routedTransport,
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.llm"),
+        logger: Logger(label: "lv.llm")
     )
     // HER-240 / spec ticket #4 — pre-enrich chat messages with <context>
     // blocks for any URLs the user pasted. Reuses URLEnrichmentService's
@@ -1069,7 +1069,7 @@ func buildRouter(
     let jinaEnricher: JinaEnricher? = JinaEnricher(
         session: URLSession(configuration: .ephemeral),
         apiKey: services.jinaAPIKey.isEmpty ? nil : services.jinaAPIKey,
-        logger: Logger(label: "lv.capture.jina"),
+        logger: Logger(label: "lv.capture.jina")
     )
     // HER-54 (Slice 1) — capture-hook engine. First-party hooks only; resolved
     // by `binding` exactly like connectors. The dispatcher is failure-isolated
@@ -1079,18 +1079,18 @@ func buildRouter(
         registry: CaptureHookRegistry(hooks: [
             ReadingTimeHook(),
         ]),
-        logger: Logger(label: "lv.capture.hooks"),
+        logger: Logger(label: "lv.capture.hooks")
     )
     let urlEnrichmentService = URLEnrichmentService(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         logger: Logger(label: "lv.capture"),
         jinaEnricher: jinaEnricher,
-        captureHooks: captureHookDispatcher,
+        captureHooks: captureHookDispatcher
     )
     let chatURLPreEnricher = ChatURLPreEnricher(
         urlEnrichmentService: urlEnrichmentService,
-        logger: Logger(label: "lv.llm.chat-url-preenricher"),
+        logger: Logger(label: "lv.llm.chat-url-preenricher")
     )
     let llmController = LLMController(
         service: llmService,
@@ -1098,7 +1098,7 @@ func buildRouter(
         notificationService: pushService,
         achievements: achievementsWorker,
         usageMeter: usageMeterService,
-        urlPreEnricher: chatURLPreEnricher,
+        urlPreEnricher: chatURLPreEnricher
     )
     // HER-172 ContextRouter — feature-gated by `users.context_routing`.
     // Constructed unconditionally; the middleware short-circuits when the
@@ -1109,7 +1109,7 @@ func buildRouter(
             transport: routedTransport,
             model: services.hermesDefaultModel,
             sessionKey: tenantID.uuidString,
-            logger: Logger(label: "lv.context-router"),
+            logger: Logger(label: "lv.context-router")
         )
     }
     let contextRouterMiddleware = ContextRouterMiddleware(
@@ -1119,10 +1119,10 @@ func buildRouter(
             EntitlementChecker.entitled(
                 tier: UserTier(rawValue: user.tier) ?? .trial,
                 override: TierOverride(rawValue: user.tierOverride) ?? .none,
-                for: .privacyContextRouter,
+                for: .privacyContextRouter
             )
         },
-        logger: Logger(label: "lv.context-router"),
+        logger: Logger(label: "lv.context-router")
     )
 
     // HER-223 — BYO Hermes resolution middleware threads the per-tenant
@@ -1158,7 +1158,7 @@ func buildRouter(
             baseURL: groqBase,
             model: groqModel,
             session: .shared,
-            logger: transcribeLogger,
+            logger: transcribeLogger
         ))
     }
     // Test-only stub adapter — selected exclusively via
@@ -1172,23 +1172,23 @@ func buildRouter(
             text: reader.string(forKey: "transcribe.stub.text", default: "stub transcript"),
             language: reader.string(forKey: "transcribe.stub.language", default: "en"),
             confidence: reader.double(forKey: "transcribe.stub.confidence", default: 0.95),
-            durationSeconds: reader.double(forKey: "transcribe.stub.durationSeconds", default: 30),
+            durationSeconds: reader.double(forKey: "transcribe.stub.durationSeconds", default: 30)
         ))
     }
     let transcribeRegistry = TranscribeProviderRegistry.from(
         reader: reader,
         adapters: transcribeAdapters,
-        logger: transcribeLogger,
+        logger: transcribeLogger
     )
     managedServices.append(transcribeRegistry)
     let transcribeService = TranscribeService(
         registry: transcribeRegistry,
         usageMeter: usageMeterService,
-        logger: transcribeLogger,
+        logger: transcribeLogger
     )
     let transcribeController = TranscribeController(
         service: transcribeService,
-        logger: transcribeLogger,
+        logger: transcribeLogger
     )
     let transcribeGroup = router.group("/v1/transcribe")
         .add(middleware: jwtAuthenticator)
@@ -1214,7 +1214,7 @@ func buildRouter(
             baseURL: cohereBase,
             model: cohereModel,
             session: .shared,
-            logger: visionEmbedLogger,
+            logger: visionEmbedLogger
         ))
     }
     // Test-only stub — selected exclusively via `vision.embed.provider=stub`.
@@ -1227,13 +1227,13 @@ func buildRouter(
             fill: Float(reader.double(forKey: "vision.embed.stub.fill", default: 0.1)),
             model: reader.string(forKey: "vision.embed.stub.model", default: "stub-clip"),
             sourceWidth: reader.int(forKey: "vision.embed.stub.sourceWidth", default: 768),
-            sourceHeight: reader.int(forKey: "vision.embed.stub.sourceHeight", default: 768),
+            sourceHeight: reader.int(forKey: "vision.embed.stub.sourceHeight", default: 768)
         ))
     }
     let visionEmbedRegistry = VisionEmbedProviderRegistry.from(
         reader: reader,
         adapters: visionEmbedAdapters,
-        logger: visionEmbedLogger,
+        logger: visionEmbedLogger
     )
     managedServices.append(visionEmbedRegistry)
     let visionEmbedService = VisionEmbedService(
@@ -1242,11 +1242,11 @@ func buildRouter(
         usageMeter: usageMeterService,
         logger: visionEmbedLogger,
         // Pinned to the `memories.embedding` column width (1536, M07).
-        targetDim: 1536,
+        targetDim: 1536
     )
     let visionEmbedController = VisionEmbedController(
         service: visionEmbedService,
-        logger: visionEmbedLogger,
+        logger: visionEmbedLogger
     )
     let visionEmbedGroup = router.group("/v1/vision")
         .add(middleware: jwtAuthenticator)
@@ -1268,12 +1268,12 @@ func buildRouter(
         achievements: achievementsService,
         spaces: SpacesService(fluent: services.fluent, vaultPaths: vaultPaths, logger: Logger(label: "lv.spaces.metoday")),
         catalog: .current,
-        logger: meTodayLogger,
+        logger: meTodayLogger
     )
     let meTodayController = MeTodayController(
         service: meTodayService,
         cache: meTodayCache,
-        logger: meTodayLogger,
+        logger: meTodayLogger
     )
     // No EntitlementMiddleware — read of own data, mirrors HER-202
     // `/v1/health` precedent. JWT + per-user rate-limit only.
@@ -1305,18 +1305,18 @@ func buildRouter(
             apiKey: openaiAPIKey,
             baseURL: openaiBaseURL,
             defaultModel: services.ttsDefaultModel,
-            logger: Logger(label: "lv.tts.openai"),
+            logger: Logger(label: "lv.tts.openai")
         )
         let routedTTSTransport = RoutedTTSTransport(
             adapter: ttsAdapter,
             defaultModel: services.ttsDefaultModel,
             logger: Logger(label: "lv.tts"),
-            usageMeter: usageMeterService,
+            usageMeter: usageMeterService
         )
         let ttsController = TTSController(
             transport: routedTTSTransport,
             telemetry: RouteTelemetry(labelPrefix: "tts", logger: Logger(label: "lv.tts")),
-            logger: Logger(label: "lv.tts"),
+            logger: Logger(label: "lv.tts")
         )
         let ttsGroup = router.group("/v1/tts")
             .add(middleware: jwtAuthenticator)
@@ -1341,7 +1341,7 @@ func buildRouter(
         reader: reader,
         fluent: services.fluent,
         hermesHandleResolver: localHermesHandleResolver,
-        logger: Logger(label: "lv.embedding.registry"),
+        logger: Logger(label: "lv.embedding.registry")
     )
     // HER-43 Slice 4 — when a master secret is set, wrap the global embedding
     // service so a tenant who installed the "byok-embeddings" memory plugin is
@@ -1368,7 +1368,7 @@ func buildRouter(
             fluent: services.fluent,
             secretBox: secretBox,
             logger: Logger(label: "lv.embedding.byok"),
-            makeKeyedService: makeKeyed,
+            makeKeyedService: makeKeyed
         )
         embeddingService = TenantAwareEmbeddingService(global: embeddingRegistry.active, resolver: resolver)
     } else {
@@ -1382,7 +1382,7 @@ func buildRouter(
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         eventBus: eventBus,
-        logger: Logger(label: "lv.memory"),
+        logger: Logger(label: "lv.memory")
     )
     let memoryController = MemoryController(
         service: memoryService,
@@ -1391,7 +1391,7 @@ func buildRouter(
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
-        eventBus: eventBus,
+        eventBus: eventBus
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
     // HermesMemoryService); attach the resolution middleware so user-
@@ -1436,7 +1436,7 @@ func buildRouter(
         jinaEnricher: jinaEnricher,
         captureHooks: captureHookDispatcher,
         embeddings: embeddingService,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: MemoryRepository(fluent: services.fluent)
     )
     let linkCaptureService = LinkCaptureService(
         vaultPaths: vaultPaths,
@@ -1444,7 +1444,7 @@ func buildRouter(
         eventBus: eventBus,
         achievements: achievementsWorker,
         enrichmentService: capturingEnrichmentService,
-        logger: Logger(label: "lv.capture"),
+        logger: Logger(label: "lv.capture")
     )
     let captureController = CaptureController(service: linkCaptureService)
     // HER-274 — global kill-switch for the chat auto-save-link
@@ -1474,7 +1474,7 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.query.stream"),
         apiKey: services.hermesAPIKey,
-        streamIdleTimeout: .seconds(hermesStreamIdleSeconds),
+        streamIdleTimeout: .seconds(hermesStreamIdleSeconds)
     )
     // HER-37 Slice C — single FollowUpGenerator instance shared by the
     // Query + Conversation controllers. Reuses the routed transport so
@@ -1482,7 +1482,7 @@ func buildRouter(
     let followUpGenerator = FollowUpGenerator(
         transport: routedTransport,
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.followups"),
+        logger: Logger(label: "lv.followups")
     )
     let queryController = QueryController(
         service: memoryService,
@@ -1491,7 +1491,7 @@ func buildRouter(
         embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
-        defaultModel: services.hermesDefaultModel,
+        defaultModel: services.hermesDefaultModel
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
@@ -1512,7 +1512,7 @@ func buildRouter(
             fallback: queryStreamService,
             transport: routedTransport,
             preferences: userLLMPreferenceRepo,
-            logger: Logger(label: "lv.chat.stream.routed"),
+            logger: Logger(label: "lv.chat.stream.routed")
         )
     }()
 
@@ -1527,7 +1527,7 @@ func buildRouter(
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.conversations"),
+        logger: Logger(label: "lv.conversations")
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -1546,7 +1546,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.memo"),
+        logger: Logger(label: "lv.memo")
     )
     let memoController = MemoController(service: memoGenerator, fluent: services.fluent)
     // HER-223 — memo generator runs an agent loop with multiple Hermes calls.
@@ -1561,7 +1561,7 @@ func buildRouter(
     let spacesService = SpacesService(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
-        logger: Logger(label: "lv.spaces"),
+        logger: Logger(label: "lv.spaces")
     )
 
     // HER-234 — per-tenant partial HNSW index lifecycle. Pairs with M39's
@@ -1570,7 +1570,7 @@ func buildRouter(
     // in a follow-up.
     let tenantVectorIndexService = TenantVectorIndexService(
         fluent: services.fluent,
-        logger: Logger(label: "lv.vector.index"),
+        logger: Logger(label: "lv.vector.index")
     )
 
     // HER-35: VaultInitService owns the `POST /v1/vault/create` handshake.
@@ -1583,7 +1583,7 @@ func buildRouter(
         soulService: soulService,
         spacesService: spacesService,
         vectorIndexService: tenantVectorIndexService,
-        logger: Logger(label: "lv.vault.init"),
+        logger: Logger(label: "lv.vault.init")
     )
 
     // Vault file upload (markdown + images) + init handshake — protected.
@@ -1595,7 +1595,7 @@ func buildRouter(
         achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: embeddingService,
+        embeddings: embeddingService
     )
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
@@ -1623,7 +1623,7 @@ func buildRouter(
     // to /v1/memory-compile (registered below) until iOS clients migrate.
     let memoryCompileProgressPublisher = WebSocketMemoryCompileProgressPublisher(
         connectionManager: ConnectionManager.shared,
-        logger: Logger(label: "lv.memory-compile.progress"),
+        logger: Logger(label: "lv.memory-compile.progress")
     )
     let memoryCompileService = MemoryCompileService(
         vaultPaths: vaultPaths,
@@ -1632,7 +1632,7 @@ func buildRouter(
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memory-compile"),
-        progress: memoryCompileProgressPublisher,
+        progress: memoryCompileProgressPublisher
     )
     let memoryCompileController = MemoryCompileController(
         service: memoryCompileService,
@@ -1640,7 +1640,7 @@ func buildRouter(
         achievements: achievementsWorker,
         progress: memoryCompileProgressPublisher,
         usageMetrics: UsageMetricsService(fluent: services.fluent),
-        logger: Logger(label: "lv.memory-compile.controller"),
+        logger: Logger(label: "lv.memory-compile.controller")
     )
     // HER-293 — `GET /v1/memory-compile/pending` is a cheap COUNT(*) probe
     // behind the iOS "Sync & Learn" disabled-state UX (HER-108). Registered
@@ -1670,14 +1670,14 @@ func buildRouter(
         kbCompileAliasLogger.warning("legacy POST /v1/kb-compile hit — caller should migrate to /v1/memory-compile")
         return Response(
             status: .permanentRedirect,
-            headers: [.location: "/v1/memory-compile"],
+            headers: [.location: "/v1/memory-compile"]
         )
     }
     router.get("/v1/kb-compile/pending") { _, _ -> Response in
         kbCompileAliasLogger.warning("legacy GET /v1/kb-compile/pending hit — caller should migrate to /v1/memory-compile/pending")
         return Response(
             status: .permanentRedirect,
-            headers: [.location: "/v1/memory-compile/pending"],
+            headers: [.location: "/v1/memory-compile/pending"]
         )
     }
 
@@ -1697,15 +1697,15 @@ func buildRouter(
             vaultPaths: vaultPaths,
             memoryCompile: memoryCompileService,
             urlEnrich: urlEnrichmentService,
-            logger: Logger(label: "lv.import"),
+            logger: Logger(label: "lv.import")
         ),
         categorizer: ImportCategorizationService(
             fluent: services.fluent,
             transport: routedTransport,
             vaultPaths: vaultPaths,
             defaultModel: services.hermesDefaultModel,
-            logger: Logger(label: "lv.import.categorize"),
-        ),
+            logger: Logger(label: "lv.import.categorize")
+        )
     )
     let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
     importController.addRoutes(to: importGroup)
@@ -1720,8 +1720,8 @@ func buildRouter(
             spaces: spacesService,
             memories: MemoryRepository(fluent: services.fluent),
             embeddings: embeddingService,
-            logger: Logger(label: "lv.import.vault"),
-        ),
+            logger: Logger(label: "lv.import.vault")
+        )
     )
     vaultImportController.addRoutes(to: importGroup)
 
@@ -1740,25 +1740,25 @@ func buildRouter(
                 vaultPaths: vaultPaths,
                 memoryCompile: memoryCompileService,
                 urlEnrich: urlEnrichmentService,
-                logger: Logger(label: "lv.plugins.import"),
+                logger: Logger(label: "lv.plugins.import")
             ),
             connectors: ConnectorRegistry(connectors: [
                 ReadwiseConnector(
                     http: URLSessionConnectorHTTPClient(),
-                    logger: Logger(label: "lv.plugins.readwise"),
+                    logger: Logger(label: "lv.plugins.readwise")
                 ),
                 RaindropConnector(
                     http: URLSessionConnectorHTTPClient(),
-                    logger: Logger(label: "lv.plugins.raindrop"),
+                    logger: Logger(label: "lv.plugins.raindrop")
                 ),
                 RSSConnector(
                     http: URLSessionConnectorHTTPClient(),
-                    logger: Logger(label: "lv.plugins.rss"),
+                    logger: Logger(label: "lv.plugins.rss")
                 ),
             ]),
             skillCatalog: skillCatalog,
             hermesSkills: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
-            logger: Logger(label: "lv.plugins"),
+            logger: Logger(label: "lv.plugins")
         )
         // `byoHermesMiddleware` is added when available so `GET /hermes-skills`
         // can read the tenant's resolved Hermes base URL + auth from
@@ -1791,7 +1791,7 @@ func buildRouter(
     // hot-paths above; this group is GET-only.
     let achievementsController = AchievementsController(
         service: achievementsService,
-        logger: Logger(label: "lv.achievements"),
+        logger: Logger(label: "lv.achievements")
     )
     let achievementsGroup = router.group("/v1/achievements")
         .add(middleware: jwtAuthenticator)
@@ -1803,7 +1803,7 @@ func buildRouter(
     // until HER-246 / HER-248 land their data layers.
     let dashboardController = DashboardController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.dashboard"),
+        logger: Logger(label: "lv.dashboard")
     )
     let dashboardGroup = router.group("/v1/dashboard").add(middleware: jwtAuthenticator)
     dashboardController.addRoutes(to: dashboardGroup)
@@ -1811,7 +1811,7 @@ func buildRouter(
     // HER-Insights — per-tenant usage analytics (the Home "Insights" card).
     let analyticsController = AnalyticsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.analytics"),
+        logger: Logger(label: "lv.analytics")
     )
     let analyticsGroup = router.group("/v1/analytics").add(middleware: jwtAuthenticator)
     analyticsController.addRoutes(to: analyticsGroup)
@@ -1825,7 +1825,7 @@ func buildRouter(
     // synthesis + `patterns` rows on its hourly tick.
     let insightsController = InsightsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.insights"),
+        logger: Logger(label: "lv.insights")
     )
     let insightsGroup = router.group("/v1/insights").add(middleware: jwtAuthenticator)
     insightsController.addRoutes(to: insightsGroup)
@@ -1837,7 +1837,7 @@ func buildRouter(
     // by `HermesProfileMiddleware` on the chat/memory groups.
     let profilesController = ProfilesController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.profiles"),
+        logger: Logger(label: "lv.profiles")
     )
     let profilesGroup = router.group("/v1/profiles").add(middleware: jwtAuthenticator)
     profilesController.addRoutes(to: profilesGroup)
@@ -1850,7 +1850,7 @@ func buildRouter(
         // HER-55 — chat→reminder detection reuses the routed LLM transport
         // + default model, mirroring JobsController's classifier wiring.
         classifier: ReminderIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
-        logger: Logger(label: "lv.reminders"),
+        logger: Logger(label: "lv.reminders")
     )
     let remindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
     remindersController.addRoutes(to: remindersGroup)
@@ -1869,19 +1869,19 @@ func buildRouter(
             clientID: services.googleCalendarClientID,
             clientSecret: services.googleCalendarClientSecret,
             redirectURI: services.googleCalendarRedirectURI,
-            logger: calendarLogger,
+            logger: calendarLogger
         )
         let calendarTokenStore = CalendarTokenStore(
             fluent: services.fluent,
             secretBox: secretBox,
             oauth: calendarOAuthClient,
-            logger: calendarLogger,
+            logger: calendarLogger
         )
         let calendarSyncService = CalendarSyncService(
             fluent: services.fluent,
             tokenStore: calendarTokenStore,
             client: GoogleCalendarClient(logger: calendarLogger),
-            logger: calendarLogger,
+            logger: calendarLogger
         )
         let calendarOAuthService = GoogleCalendarOAuthService(
             fluent: services.fluent,
@@ -1890,13 +1890,13 @@ func buildRouter(
             syncService: calendarSyncService,
             sessionStore: CalendarOAuthSessionStore(),
             isConfigured: calendarConfigured,
-            logger: calendarLogger,
+            logger: calendarLogger
         )
         let calendarController = CalendarController(
             fluent: services.fluent,
             oauthService: calendarOAuthService,
             syncService: calendarSyncService,
-            logger: calendarLogger,
+            logger: calendarLogger
         )
         let calendarGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
         calendarController.addRoutes(to: calendarGroup)
@@ -1905,7 +1905,7 @@ func buildRouter(
             managedServices.append(CalendarSyncWorker(
                 fluent: services.fluent,
                 syncService: calendarSyncService,
-                logger: calendarLogger,
+                logger: calendarLogger
             ))
         }
     }
@@ -1915,7 +1915,7 @@ func buildRouter(
     // owns the project rows + live per-project todo counts.
     let projectsController = ProjectsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.projects"),
+        logger: Logger(label: "lv.projects")
     )
     let projectsGroup = router.group("/v1/projects").add(middleware: jwtAuthenticator)
     projectsController.addRoutes(to: projectsGroup)
@@ -1929,7 +1929,7 @@ func buildRouter(
         vaultPaths: vaultPaths,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
-        logger: Logger(label: "lv.todos"),
+        logger: Logger(label: "lv.todos")
     )
     let todosGroup = router.group("/v1/todos").add(middleware: jwtAuthenticator)
     todosController.addRoutes(to: todosGroup)
@@ -1943,7 +1943,7 @@ func buildRouter(
             memories: MemoryRepository(fluent: services.fluent),
             transport: routedTransport,
             defaultModel: services.hermesDefaultModel,
-            logger: Logger(label: "lv.synthesis"),
+            logger: Logger(label: "lv.synthesis")
         )
         managedServices.append(synthesisWorker)
     } else {
@@ -1953,7 +1953,7 @@ func buildRouter(
     // HER-245 / HER-259 — Sessions list. Joins conversations + messages.
     let sessionsController = SessionsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.sessions"),
+        logger: Logger(label: "lv.sessions")
     )
     let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
     sessionsController.addRoutes(to: sessionsGroup)
@@ -1966,7 +1966,7 @@ func buildRouter(
     let healthController = HealthIngestController(
         fluent: services.fluent,
         eventBus: eventBus,
-        logger: Logger(label: "lv.health"),
+        logger: Logger(label: "lv.health")
     )
     let healthIngestGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
         .add(middleware: EntitlementMiddleware(requires: .healthIngest, enforcementEnabled: services.billingEnforcementEnabled))
@@ -1979,7 +1979,7 @@ func buildRouter(
     // `reminders_list` tool reads in the background (device-RPC stays fallback).
     let appleRemindersController = AppleRemindersController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.apple.reminders"),
+        logger: Logger(label: "lv.apple.reminders")
     )
     let appleRemindersGroup = router.group("/v1/reminders").add(middleware: jwtAuthenticator)
     appleRemindersController.addRoutes(to: appleRemindersGroup)
@@ -1992,7 +1992,7 @@ func buildRouter(
     let gatewayProbe = HermesGatewayProbe(
         session: .shared,
         logger: Logger(label: "lv.hermes.probe"),
-        apiKey: services.hermesAPIKey,
+        apiKey: services.hermesAPIKey
     )
     let reconciler = HermesProfileReconciler(
         fluent: services.fluent,
@@ -2001,7 +2001,7 @@ func buildRouter(
         hermesDataRoot: services.hermesDataRoot,
         hermesGatewayURL: services.hermesGatewayURL,
         gatewayProbe: gatewayProbe,
-        logger: Logger(label: "lv.admin"),
+        logger: Logger(label: "lv.admin")
     )
     let adminController = AdminController(reconciler: reconciler)
     let adminGroup = router.group("/v1/admin/hermes-profiles")
@@ -2014,7 +2014,7 @@ func buildRouter(
     // ops dashboard can spot a dead key or upstream outage at a glance.
     let llmHealthController = LLMHealthController(
         registry: providerRegistry,
-        logger: routingLogger,
+        logger: routingLogger
     )
     let llmHealthGroup = router.group("/admin")
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
@@ -2035,7 +2035,7 @@ func buildRouter(
     if fluentEnabled, lvEnvironment != "test" {
         managedServices.append(HermesProfileReconcilerService(
             reconciler: reconciler,
-            logger: Logger(label: "lv.admin"),
+            logger: Logger(label: "lv.admin")
         ))
     }
 
@@ -2047,12 +2047,12 @@ func buildRouter(
         embeddings: embeddingService,
         memories: MemoryRepository(fluent: services.fluent),
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.health-correlate"),
+        logger: Logger(label: "lv.health-correlate")
     )
     let healthCorrelationJob = HealthCorrelationJob(
         fluent: services.fluent,
         service: healthCorrelationService,
-        logger: Logger(label: "lv.health-correlate"),
+        logger: Logger(label: "lv.health-correlate")
     )
     let healthAdminGroup = router.group("/v1/admin/health")
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
@@ -2062,24 +2062,24 @@ func buildRouter(
     // Monthly host cron: `POST /v1/admin/memory/prune`.
     let memoryScoringService = MemoryScoringService(
         fluent: services.fluent,
-        logger: Logger(label: "lv.memory-scoring"),
+        logger: Logger(label: "lv.memory-scoring")
     )
     let memoryPruningService = MemoryPruningService(
         fluent: services.fluent,
-        logger: Logger(label: "lv.memory-pruning"),
+        logger: Logger(label: "lv.memory-pruning")
     )
     let memoryPruningJob = MemoryPruningJob(
         fluent: services.fluent,
         scoring: memoryScoringService,
         pruning: memoryPruningService,
-        logger: Logger(label: "lv.memory-pruning"),
+        logger: Logger(label: "lv.memory-pruning")
     )
     let memoryAdminGroup = router.group("/v1/admin/memory")
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
     MemoryAdminController(
         scoring: memoryScoringService,
         pruning: memoryPruningService,
-        job: memoryPruningJob,
+        job: memoryPruningJob
     ).addRoutes(to: memoryAdminGroup)
 
     // Admin: billing tier override. Shared-secret gated; used for support,
@@ -2095,7 +2095,7 @@ func buildRouter(
     // Apple Integration P0b — device-RPC result callback.
     DeviceCommandController(
         broker: .shared,
-        logger: Logger(label: "lv.apple.device-rpc"),
+        logger: Logger(label: "lv.apple.device-rpc")
     ).addRoutes(to: deviceGroup)
 
     // Onboarding state (HER-93) — server-tracked resumable onboarding.
@@ -2124,7 +2124,7 @@ func buildRouter(
         let providersController = ProvidersController(
             credentialStore: userCredentialStore,
             fluent: services.fluent,
-            logger: Logger(label: "lv.me.providers"),
+            logger: Logger(label: "lv.me.providers")
         )
         let providersGroup = router.group("/v1/me/providers")
             .add(middleware: jwtAuthenticator)
@@ -2155,7 +2155,7 @@ func buildRouter(
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,
         defaultPrimaryModel: services.hermesDefaultManagedModel,
-        logger: Logger(label: "lv.me.llm-prefs"),
+        logger: Logger(label: "lv.me.llm-prefs")
     )
     let llmPrefsGroup = router.group("/v1/me/preferences/llm")
         .add(middleware: jwtAuthenticator)
@@ -2207,11 +2207,11 @@ func buildRouter(
         hasher: BcryptPasswordHasher(),
         vaultPaths: vaultPaths,
         hermesDataRoot: services.hermesDataRoot,
-        logger: Logger(label: "lv.account"),
+        logger: Logger(label: "lv.account")
     )
     let accountController = AccountController(
         service: accountDeletionService,
-        jwtKeys: services.jwtKeys,
+        jwtKeys: services.jwtKeys
     )
     let accountGroup = router.group("/v1/account").add(middleware: jwtAuthenticator)
     accountController.addRoutes(to: accountGroup)
@@ -2226,7 +2226,7 @@ func buildRouter(
     // so failed runs don't burn quota.
     let skillRunCapGuard = SkillRunCapGuard(
         fluent: services.fluent,
-        logger: skillsLogger,
+        logger: skillsLogger
     )
     let skillRunner = SkillRunner(
         catalog: skillCatalog,
@@ -2240,7 +2240,7 @@ func buildRouter(
         capGuard: skillRunCapGuard,
         eventBus: eventBus,
         usageMeter: usageMeterService,
-        logger: skillsLogger,
+        logger: skillsLogger
     )
     // HER-171 — fire-and-forget; the actor stores the subscription Tasks
     // internally so they stay alive for the lifetime of the application.
@@ -2250,7 +2250,7 @@ func buildRouter(
         runner: skillRunner,
         fluent: services.fluent,
         push: pushService,
-        logger: skillsLogger,
+        logger: skillsLogger
     )
     // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is
     // invoked for the application's lifetime. No-op today (catalog empty);
@@ -2261,7 +2261,7 @@ func buildRouter(
     let reminderScheduler = ReminderScheduler(
         fluent: services.fluent,
         push: pushService,
-        logger: Logger(label: "lv.reminders.scheduler"),
+        logger: Logger(label: "lv.reminders.scheduler")
     )
     if fluentEnabled, lvEnvironment != "test" { managedServices.append(reminderScheduler) }
     let skillsGroup = router.group("/v1/skills")
@@ -2273,7 +2273,7 @@ func buildRouter(
         memoryCompileController: memoryCompileController,
         fluent: services.fluent,
         enforcementEnabled: services.billingEnforcementEnabled,
-        logger: skillsLogger,
+        logger: skillsLogger
     ).addRoutes(to: skillsGroup)
 
     // HER-177 — Today-tab skill outputs feed.
@@ -2284,19 +2284,19 @@ func buildRouter(
     let jobAuthoring = JobAuthoring(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
-        logger: Logger(label: "lv.jobs"),
+        logger: Logger(label: "lv.jobs")
     )
     JobsController(
         classifier: JobIntentClassifier(transport: routedTransport, model: services.hermesDefaultModel),
         authoring: jobAuthoring,
-        logger: Logger(label: "lv.jobs"),
+        logger: Logger(label: "lv.jobs")
     ).addRoutes(to: jobsGroup)
 
     // Apple Ecosystem Integration P0 — per-domain data-access consent.
     let appleGroup = router.group("/v1/apple").add(middleware: jwtAuthenticator)
     AppleConsentController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.apple.consent"),
+        logger: Logger(label: "lv.apple.consent")
     ).addRoutes(to: appleGroup)
 
     // Apple Photos derived-text index (M81) — consent-gated OCR + scene-tag
@@ -2305,7 +2305,7 @@ func buildRouter(
     PhotoIndexController(
         fluent: services.fluent,
         embeddings: embeddingService,
-        logger: Logger(label: "lv.apple.photos"),
+        logger: Logger(label: "lv.apple.photos")
     ).addRoutes(to: photosGroup)
 
     // Apple Calendar (EventKit) selective-sync — persists derived event
@@ -2316,14 +2316,14 @@ func buildRouter(
     let appleCalendarSyncGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
     AppleCalendarController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.apple.calendar"),
+        logger: Logger(label: "lv.apple.calendar")
     ).addRoutes(to: appleCalendarSyncGroup)
 
     // HER-179 — per-tenant APNS category opt-out under /v1/me/apns-categories.
     let apnsPrefsGroup = router.group("/v1/me").add(middleware: jwtAuthenticator)
     ApnsCategoryPrefsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.me.apns-prefs"),
+        logger: Logger(label: "lv.me.apns-prefs")
     ).addRoutes(to: apnsPrefsGroup)
 
     let websocketGroup = router.group("/v1/ws").add(middleware: jwtAuthenticator)
@@ -2339,7 +2339,7 @@ func buildRouter(
         let connectionID = await connectionManager.register(
             tenantID: tenantID,
             username: user.username,
-            outbound: outbound,
+            outbound: outbound
         )
         defer {
             Task {
@@ -2375,7 +2375,7 @@ func buildRouter(
 
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
     let kanbanController = KanbanController(
-        service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
+        service: KanbanService(fluent: services.fluent, authoring: jobAuthoring)
     )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)
@@ -2434,14 +2434,14 @@ private actor OTelLatch {
             resource: resource,
             producer: registry,
             exporter: metricsExporter,
-            configuration: .init(environment: environment, exportInterval: .seconds(60)),
+            configuration: .init(environment: environment, exportInterval: .seconds(60))
         )
         MetricsSystem.bootstrap(OTLPMetricsFactory(registry: registry))
 
         let spanExporter = try OTLPGRPCSpanExporter(configuration: .init(environment: environment))
         let spanProcessor = OTelBatchSpanProcessor(
             exporter: spanExporter,
-            configuration: .init(environment: environment),
+            configuration: .init(environment: environment)
         )
         let tracer = OTelTracer(
             idGenerator: OTelRandomIDGenerator(),
@@ -2449,7 +2449,7 @@ private actor OTelLatch {
             propagator: OTelW3CPropagator(),
             processor: spanProcessor,
             environment: environment,
-            resource: resource,
+            resource: resource
         )
         InstrumentationSystem.bootstrap(tracer)
 
@@ -2463,7 +2463,7 @@ private actor OTelLatch {
             let logExporter = OTLPHTTPLogExporter(endpoint: logsEndpoint)
             let logProcessor = OTelBatchLogRecordProcessor(
                 exporter: logExporter,
-                configuration: .init(environment: environment),
+                configuration: .init(environment: environment)
             )
             LoggingSystem.bootstrap { _ in
                 OTelLogHandler(processor: logProcessor, logLevel: logLevel, resource: resource)
@@ -2486,7 +2486,7 @@ private func makeSMSSender(
     accountSID: String,
     authToken: String,
     fromNumber: String,
-    logger: Logger,
+    logger: Logger
 ) -> any SMSSender {
     switch kind.lowercased() {
     case "twilio":
@@ -2494,7 +2494,7 @@ private func makeSMSSender(
             accountSID: accountSID,
             authToken: authToken,
             fromNumber: fromNumber,
-            logger: logger,
+            logger: logger
         )
     case "logging":
         return LoggingSMSSender(logger: logger)
@@ -2507,7 +2507,7 @@ private func makeSMSSender(
 func makeHermesGateway(
     kind: String,
     dataRoot: String,
-    logger: Logger,
+    logger: Logger
 ) -> any HermesGateway {
     switch kind.lowercased() {
     case "filesystem":
@@ -2531,7 +2531,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         privacyNoCNOrigin: user.privacyNoCNOrigin,
         contextRouting: user.contextRouting,
         autoSaveLinks: user.autoSaveLinks,
-        mnemosyneEnabled: user.mnemosyneEnabled,
+        mnemosyneEnabled: user.mnemosyneEnabled
     )
 }
 
@@ -2541,7 +2541,7 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
 /// Takes effect on the next inbound request — ModelRouter + ContextRouter
 /// read from `User` on each request, no caching to invalidate.
 private func updatePrivacyHandler(
-    fluent: Fluent,
+    fluent: Fluent
 ) -> @Sendable (Request, AppRequestContext) async throws -> MeResponse {
     { req, ctx in
         let user = try ctx.requireIdentity()
@@ -2567,7 +2567,7 @@ private func updatePrivacyHandler(
             privacyNoCNOrigin: user.privacyNoCNOrigin,
             contextRouting: user.contextRouting,
             autoSaveLinks: user.autoSaveLinks,
-            mnemosyneEnabled: user.mnemosyneEnabled,
+            mnemosyneEnabled: user.mnemosyneEnabled
         )
     }
 }
@@ -2582,7 +2582,7 @@ struct MeBillingResponse: ResponseEncodable, Encodable {
 }
 
 private func meBillingHandler(
-    enforcementEnabled: Bool,
+    enforcementEnabled: Bool
 ) -> @Sendable (Request, AppRequestContext) async throws -> MeBillingResponse {
     { _, ctx in
         let user = try ctx.requireIdentity()
@@ -2601,13 +2601,13 @@ private func meBillingHandler(
             tierOverride: user.tierOverride,
             inTrial: inTrial,
             daysRemaining: daysRemaining,
-            enforcementEnabled: enforcementEnabled,
+            enforcementEnabled: enforcementEnabled
         )
     }
 }
 
 private func meUsageHandler(
-    fluent: Fluent,
+    fluent: Fluent
 ) -> @Sendable (Request, AppRequestContext) async throws -> MeUsageResponse {
     { _, ctx in
         let user = try ctx.requireIdentity()

@@ -20,7 +20,7 @@ struct FollowUpGeneratorTests {
         let out = await generator.generate(
             sessionKey: "ferocious-fox",
             summary: "You slept 8h this week.",
-            sources: [Self.hit("slept 9h Tuesday")],
+            sources: [Self.hit("slept 9h Tuesday")]
         )
         #expect(out == ["Go deeper", "Compare with last month", "Save as memo"])
     }
@@ -34,7 +34,7 @@ struct FollowUpGeneratorTests {
         let out = await generator.generate(
             sessionKey: "u",
             summary: "s",
-            sources: [Self.hit("hit")],
+            sources: [Self.hit("hit")]
         )
         #expect(out.count == 3)
         #expect(out == ["a", "b", "c"])
@@ -59,7 +59,7 @@ struct FollowUpGeneratorTests {
         let out = await generator.generate(
             sessionKey: "u",
             summary: "s",
-            sources: [Self.hit("h")],
+            sources: [Self.hit("h")]
         )
         #expect(out.isEmpty)
     }
@@ -100,7 +100,7 @@ struct FollowUpGeneratorTests {
         let messages = FollowUpGenerator.buildPrompt(
             summary: "s",
             sources: [Self.hit(long)],
-            max: 4,
+            max: 4
         )
         #expect(messages.count == 2)
         // User message contains numbered context with truncated content.
@@ -124,7 +124,7 @@ struct FollowUpGeneratorTests {
             transport: transport,
             defaultModel: "test-model",
             logger: Logger(label: "test.followups"),
-            maxFollowUps: max,
+            maxFollowUps: max
         )
     }
 

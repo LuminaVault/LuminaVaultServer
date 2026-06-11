@@ -12,7 +12,7 @@ import Testing
 @Suite(.serialized)
 struct MemoGeneratorTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent, URL) async throws -> T,
+        _ body: @Sendable (Fluent, URL) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -34,7 +34,7 @@ struct MemoGeneratorTests {
         let fluent = Fluent(logger: Logger(label: "test.memo"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -73,7 +73,7 @@ struct MemoGeneratorTests {
             vaultPaths: VaultPathService(rootPath: tmpRoot.appendingPathComponent("vault").path),
             fluent: fluent,
             defaultModel: "test-model",
-            logger: Logger(label: "test.memo"),
+            logger: Logger(label: "test.memo")
         )
     }
 
@@ -83,7 +83,7 @@ struct MemoGeneratorTests {
             id: id,
             email: "memo-\(UUID().uuidString.prefix(6).lowercased())@test.luminavault",
             username: "memo-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "stub",
+            passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
         return id
@@ -99,12 +99,12 @@ struct MemoGeneratorTests {
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "morning drink: jasmine tea, never coffee",
-                embedding: embedder.embed("morning drink: jasmine tea, never coffee"),
+                embedding: embedder.embed("morning drink: jasmine tea, never coffee")
             )
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "evening drink: chamomile tea before bed",
-                embedding: embedder.embed("evening drink: chamomile tea before bed"),
+                embedding: embedder.embed("evening drink: chamomile tea before bed")
             )
 
             let transport = ScriptedTransport(steps: [
@@ -130,7 +130,7 @@ struct MemoGeneratorTests {
                 sessionKey: "memo-test",
                 topic: "drinks",
                 hint: nil,
-                save: true,
+                save: true
             )
 
             #expect(result.summary.contains("## Summary"))
@@ -175,7 +175,7 @@ struct MemoGeneratorTests {
                 sessionKey: "memo-test",
                 topic: "anything",
                 hint: nil,
-                save: false,
+                save: false
             )
             #expect(result.path == nil)
             let rows = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).all()
@@ -190,7 +190,7 @@ struct MemoGeneratorTests {
             // Degenerate transport: always asks for another search, never plain content.
             let transport = ScriptedTransport(repeating: .toolCall(
                 name: "session_search",
-                arguments: #"{"query":"anything","limit":3}"#,
+                arguments: #"{"query":"anything","limit":3}"#
             ))
             let service = Self.makeService(fluent: fluent, tmpRoot: tmpRoot, transport: transport)
             await #expect(throws: (any Error).self) {
@@ -199,7 +199,7 @@ struct MemoGeneratorTests {
                     sessionKey: "memo-test",
                     topic: "loop",
                     hint: nil,
-                    save: false,
+                    save: false
                 )
             }
         }

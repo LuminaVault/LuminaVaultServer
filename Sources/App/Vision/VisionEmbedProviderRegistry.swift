@@ -31,7 +31,7 @@ actor VisionEmbedProviderRegistry: Service {
         active: VisionEmbedProviderKind,
         configs: [VisionEmbedProviderConfig] = [],
         adapters: [any VisionEmbedProviderAdapter],
-        logger: Logger,
+        logger: Logger
     ) {
         activeKind = active
         self.logger = logger
@@ -48,7 +48,7 @@ actor VisionEmbedProviderRegistry: Service {
     static func from(
         reader: ConfigReader,
         adapters: [any VisionEmbedProviderAdapter],
-        logger: Logger,
+        logger: Logger
     ) -> VisionEmbedProviderRegistry {
         let activeRaw = reader.string(forKey: ConfigKey("vision.embed.provider"), default: "cohere")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -58,7 +58,7 @@ actor VisionEmbedProviderRegistry: Service {
             active: active,
             configs: loadConfigs(from: reader),
             adapters: adapters,
-            logger: logger,
+            logger: logger
         )
     }
 
@@ -91,7 +91,7 @@ actor VisionEmbedProviderRegistry: Service {
 
     private static func loadConfig(
         kind: VisionEmbedProviderKind,
-        reader: ConfigReader,
+        reader: ConfigReader
     ) -> VisionEmbedProviderConfig? {
         let key = kind.rawValue
         let apiKey = reader.string(forKey: ConfigKey("vision.embed.provider.\(key).apiKey"), isSecret: true, default: "")
@@ -103,7 +103,7 @@ actor VisionEmbedProviderRegistry: Service {
             kind: kind,
             apiKey: apiKey,
             baseURL: baseURL,
-            model: model,
+            model: model
         )
         return config.isEnabled ? config : nil
     }

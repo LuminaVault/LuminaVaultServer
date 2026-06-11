@@ -53,7 +53,7 @@ final class CalendarAccount: Model, TenantModel, @unchecked Sendable {
         provider: String = "google",
         accountEmail: String? = nil,
         scope: String,
-        status: String = "connected",
+        status: String = "connected"
     ) {
         self.id = id
         self.tenantID = tenantID

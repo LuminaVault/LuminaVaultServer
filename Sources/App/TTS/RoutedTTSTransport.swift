@@ -24,7 +24,7 @@ struct RoutedTTSTransport {
         adapter: any TTSProviderAdapter,
         defaultModel: String,
         logger: Logger,
-        usageMeter: UsageMeterService? = nil,
+        usageMeter: UsageMeterService? = nil
     ) {
         self.adapter = adapter
         self.defaultModel = defaultModel
@@ -40,7 +40,7 @@ struct RoutedTTSTransport {
     func synthesize(
         text: String,
         voice: String,
-        userID: UUID?,
+        userID: UUID?
     ) async throws -> TTSSynthesisResponse {
         do {
             let result = try await adapter.synthesize(text: text, voice: voice, modelID: defaultModel)

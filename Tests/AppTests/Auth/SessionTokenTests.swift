@@ -39,7 +39,7 @@ struct SessionTokenTests {
         let token = SessionToken(
             userID: userID,
             expiration: Date().addingTimeInterval(3600),
-            hpid: "hermes-alice",
+            hpid: "hermes-alice"
         )
         let signed = try await keys.sign(token, kid: kid)
         let decoded = try await keys.verify(signed, as: SessionToken.self)

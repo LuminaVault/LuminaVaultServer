@@ -60,7 +60,7 @@ struct VaultImportController {
             spaceSlug: result.spaceSlug,
             imported: result.imported,
             skipped: result.skipped,
-            failed: result.failed,
+            failed: result.failed
         )
     }
 }

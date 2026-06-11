@@ -27,7 +27,7 @@ struct ContextRouterTests {
         func selectSkill(
             for userMessage: String,
             manifests: [SkillManifest],
-            timeout _: Duration,
+            timeout _: Duration
         ) async -> SkillManifest? {
             callCount += 1
             lastMessage = userMessage
@@ -41,7 +41,7 @@ struct ContextRouterTests {
     private static func makeManifest(
         name: String,
         description: String,
-        body: String = "BODY: \(UUID().uuidString)",
+        body: String = "BODY: \(UUID().uuidString)"
     ) -> SkillManifest {
         SkillManifest(
             source: .builtin,
@@ -53,7 +53,7 @@ struct ContextRouterTests {
             onEvent: [],
             outputs: [],
             dailyRunCap: nil,
-            body: body,
+            body: body
         )
     }
 
@@ -61,7 +61,7 @@ struct ContextRouterTests {
         let body = ChatRoutingBody(
             messages: messages.map { ChatRoutingBody.Message(role: $0.0, content: $0.1) },
             model: "stub",
-            temperature: 0,
+            temperature: 0
         )
         return try JSONEncoder().encode(body)
     }
@@ -73,7 +73,7 @@ struct ContextRouterTests {
         let body = ChatRoutingBody(
             messages: [.init(role: "user", content: "hello")],
             model: nil,
-            temperature: nil,
+            temperature: nil
         )
         let result = body.prependingSystem(content: "INJECTED")
         #expect(result.messages.count == 2)
@@ -89,7 +89,7 @@ struct ContextRouterTests {
                 .init(role: "system", content: "BASE"),
                 .init(role: "user", content: "hi"),
             ],
-            model: nil, temperature: nil,
+            model: nil, temperature: nil
         )
         let result = body.prependingSystem(content: "INJECTED")
         #expect(result.messages.count == 2)
@@ -105,7 +105,7 @@ struct ContextRouterTests {
                 .init(role: "assistant", content: "..."),
                 .init(role: "user", content: "newest"),
             ],
-            model: nil, temperature: nil,
+            model: nil, temperature: nil
         )
         #expect(body.latestUserContent == "newest")
     }
@@ -119,7 +119,7 @@ struct ContextRouterTests {
             manifestProvider: { _ in [] },
             selectorFactory: { _, _ in selector },
             entitlement: { _ in true },
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
 
         let router = Router(context: AppRequestContext.self)
@@ -134,7 +134,7 @@ struct ContextRouterTests {
                 uri: "/probe",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let echoed = try JSONDecoder().decode(ChatRoutingBody.self, from: Data(buffer: response.body))
@@ -157,7 +157,7 @@ struct ContextRouterTests {
             manifestProvider: { _ in [] },
             selectorFactory: { _, _ in selector },
             entitlement: { _ in true },
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
 
         let router = Router(context: AppRequestContext.self)
@@ -172,7 +172,7 @@ struct ContextRouterTests {
                 uri: "/probe",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let echoed = try JSONDecoder().decode(ChatRoutingBody.self, from: Data(buffer: response.body))
@@ -191,14 +191,14 @@ struct ContextRouterTests {
         let dailyBrief = Self.makeManifest(
             name: "daily-brief",
             description: "summarise yesterday's themes + today's nudges",
-            body: "## daily-brief SKILL BODY",
+            body: "## daily-brief SKILL BODY"
         )
         let selector = StubSelector(canned: dailyBrief)
         let middleware = ContextRouterMiddleware(
             manifestProvider: { _ in [dailyBrief] },
             selectorFactory: { _, _ in selector },
             entitlement: { _ in true },
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
 
         let router = Router(context: AppRequestContext.self)
@@ -216,7 +216,7 @@ struct ContextRouterTests {
                 uri: "/probe",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let echoed = try JSONDecoder().decode(ChatRoutingBody.self, from: Data(buffer: response.body))
@@ -238,7 +238,7 @@ struct ContextRouterTests {
             manifestProvider: { _ in [dailyBrief] },
             selectorFactory: { _, _ in selector },
             entitlement: { _ in false }, // gate refuses regardless of flag
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
 
         let router = Router(context: AppRequestContext.self)
@@ -253,7 +253,7 @@ struct ContextRouterTests {
                 uri: "/probe",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let echoed = try JSONDecoder().decode(ChatRoutingBody.self, from: Data(buffer: response.body))
@@ -277,14 +277,14 @@ private struct ForceIdentityMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         var ctx = context
         let user = User(
             id: UUID(),
             email: "test@luminavault.local",
             username: "test-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "x",
+            passwordHash: "x"
         )
         user.contextRouting = contextRouting
         ctx.identity = user

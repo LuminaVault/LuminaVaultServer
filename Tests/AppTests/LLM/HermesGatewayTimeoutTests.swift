@@ -56,7 +56,7 @@ struct HermesGatewayTimeoutTests {
         HermesGatewayAdapter(
             baseURL: URL(string: "https://managed.hermes.test")!,
             session: session,
-            logger: Logger(label: "lv.test.timeout"),
+            logger: Logger(label: "lv.test.timeout")
         )
     }
 
@@ -64,7 +64,7 @@ struct HermesGatewayTimeoutTests {
         url: URL(string: "https://managed.hermes.test/v1/chat/completions")!,
         statusCode: 200,
         httpVersion: "HTTP/1.1",
-        headerFields: ["Content-Type": "application/json"],
+        headerFields: ["Content-Type": "application/json"]
     )!
     private static let okBody = Data(#"{"choices":[]}"#.utf8)
     private static let nonStreamPayload = Data(#"{"model":"hermes-3","messages":[],"stream":false}"#.utf8)
@@ -102,7 +102,7 @@ struct HermesGatewayTimeoutTests {
         let data = try await adapter.chatCompletions(
             payload: Self.nonStreamPayload,
             sessionKey: "alice",
-            sessionID: nil,
+            sessionID: nil
         )
         #expect(captured.attempts == 2, "must retry exactly once after timeout")
         #expect(data == Self.okBody)
@@ -123,7 +123,7 @@ struct HermesGatewayTimeoutTests {
             _ = try await adapter.chatCompletions(
                 payload: Self.nonStreamPayload,
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         #expect(captured.attempts == 2, "exactly two attempts before throwing")
@@ -145,7 +145,7 @@ struct HermesGatewayTimeoutTests {
             _ = try await adapter.chatCompletions(
                 payload: streamPayload,
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         #expect(captured.attempts == 1, "streamed requests must not retry")
@@ -166,7 +166,7 @@ struct HermesGatewayTimeoutTests {
             _ = try await adapter.chatCompletions(
                 payload: Self.nonStreamPayload,
                 sessionKey: "alice",
-                sessionID: nil,
+                sessionID: nil
             )
         }
         #expect(captured.attempts == 1, "only timedOut triggers retry, not other URLErrors")

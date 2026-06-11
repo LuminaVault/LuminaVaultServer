@@ -45,7 +45,7 @@ final class AppleReminder: Model, TenantModel, @unchecked Sendable {
         completedAt: Date? = nil,
         listName: String? = nil,
         priority: Int? = nil,
-        remoteUpdatedAt: Date? = nil,
+        remoteUpdatedAt: Date? = nil
     ) {
         self.id = id
         self.tenantID = tenantID

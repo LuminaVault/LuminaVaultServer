@@ -26,7 +26,7 @@ final class ConversationMessage: Model, @unchecked Sendable {
         conversationID: UUID,
         role: ConversationMessageRole,
         content: String,
-        sourceMemoryIDs: [UUID] = [],
+        sourceMemoryIDs: [UUID] = []
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -45,7 +45,7 @@ final class ConversationMessage: Model, @unchecked Sendable {
             role: ConversationMessageRole(rawValue: role) ?? .user,
             content: content,
             sourceMemoryIDs: sourceMemoryIDs,
-            createdAt: createdAt ?? Date(),
+            createdAt: createdAt ?? Date()
         )
     }
 }

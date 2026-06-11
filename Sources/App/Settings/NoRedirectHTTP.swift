@@ -20,7 +20,7 @@ final class NoRedirectURLSessionDelegate: NSObject, URLSessionTaskDelegate, @unc
         task _: URLSessionTask,
         willPerformHTTPRedirection _: HTTPURLResponse,
         newRequest _: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void,
+        completionHandler: @escaping (URLRequest?) -> Void
     ) {
         // nil → do not follow; deliver the 3xx response as-is.
         completionHandler(nil)
@@ -34,7 +34,7 @@ enum BYOHTTP {
     static let session: URLSession = .init(
         configuration: .ephemeral,
         delegate: NoRedirectURLSessionDelegate(),
-        delegateQueue: nil,
+        delegateQueue: nil
     )
 
     /// `AsyncHTTPClient` that never follows redirects, for the BYO-Hermes chat
@@ -42,6 +42,6 @@ enum BYOHTTP {
     /// shutdown warning — same lifecycle model as `HTTPClient.shared`).
     static let httpClient: HTTPClient = .init(
         eventLoopGroupProvider: .singleton,
-        configuration: HTTPClient.Configuration(redirectConfiguration: .disallow),
+        configuration: HTTPClient.Configuration(redirectConfiguration: .disallow)
     )
 }

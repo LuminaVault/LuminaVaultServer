@@ -84,7 +84,7 @@ struct ProvidersController {
             tenantID: tenantID,
             provider: serverKind(for: providerID),
             apiKey: body.apiKey,
-            label: body.label,
+            label: body.label
         )
         return ProviderPoolKeyDTO(id: row.id ?? UUID(), label: row.label, createdAt: row.createdAt)
     }
@@ -123,7 +123,7 @@ struct ProvidersController {
                 label: row?.label,
                 verifiedAt: row?.verifiedAt,
                 lastFailureAt: row?.lastFailureAt,
-                lastFailureCode: row?.lastFailureCode,
+                lastFailureCode: row?.lastFailureCode
             )
         }
         return ProviderCredentialsListResponse(providers: dtos)
@@ -164,7 +164,7 @@ struct ProvidersController {
                 credentialKind: body.kind.rawValue,
                 apiKey: body.apiKey,
                 baseURL: body.baseUrl,
-                label: body.label,
+                label: body.label
             )
         } catch {
             logger.error("provider credential upsert failed: \(error)")
@@ -184,7 +184,7 @@ struct ProvidersController {
             label: row?.label,
             verifiedAt: row?.verifiedAt,
             lastFailureAt: row?.lastFailureAt,
-            lastFailureCode: row?.lastFailureCode,
+            lastFailureCode: row?.lastFailureCode
         )
     }
 
@@ -225,14 +225,14 @@ struct ProvidersController {
             try? await credentialStore.recordFailure(
                 tenantID: tenantID,
                 provider: kind,
-                code: error.reasonCode,
+                code: error.reasonCode
             )
             throw HTTPError(.badGateway, message: stableCode(for: error).rawValue)
         } catch {
             try? await credentialStore.recordFailure(
                 tenantID: tenantID,
                 provider: kind,
-                code: TestError.network.rawValue,
+                code: TestError.network.rawValue
             )
             throw HTTPError(.badGateway, message: TestError.network.rawValue)
         }
@@ -257,7 +257,7 @@ struct ProvidersController {
             ProviderModelsResponse(
                 provider: providerID,
                 models: LLMModelCatalog.models(for: providerID),
-                fetchedLive: false,
+                fetchedLive: false
             )
         }
 

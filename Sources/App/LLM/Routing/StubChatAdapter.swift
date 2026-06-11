@@ -24,7 +24,7 @@ struct StubChatAdapter: ProviderAdapter {
     init(
         kind: ProviderKind = .hermesGateway,
         replyContent: String = "Hello from the LuminaVault default brain.",
-        replyModel: String = "stub-default-brain",
+        replyModel: String = "stub-default-brain"
     ) {
         self.kind = kind
         self.replyContent = replyContent
@@ -41,10 +41,10 @@ struct StubChatAdapter: ProviderAdapter {
                 HermesUpstreamChoice(
                     index: 0,
                     message: ChatMessage(role: "assistant", content: replyContent),
-                    finishReason: "stop",
+                    finishReason: "stop"
                 ),
             ],
-            usage: HermesUpstreamUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0),
+            usage: HermesUpstreamUsage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
         )
         return try JSONEncoder().encode(response)
     }

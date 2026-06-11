@@ -23,7 +23,7 @@ struct FollowUpGenerator {
         transport: any HermesChatTransport,
         defaultModel: String,
         logger: Logger,
-        maxFollowUps: Int = 4,
+        maxFollowUps: Int = 4
     ) {
         self.transport = transport
         self.defaultModel = defaultModel
@@ -36,7 +36,7 @@ struct FollowUpGenerator {
         sessionKey: String,
         sessionID: String? = nil,
         summary: String,
-        sources: [QueryHitDTO],
+        sources: [QueryHitDTO]
     ) async -> [String] {
         // Skip the call entirely when there's nothing to riff on — keeps
         // latency in check on empty-hit / blank-summary queries.
@@ -51,7 +51,7 @@ struct FollowUpGenerator {
             messages: prompt,
             temperature: 0.5,
             response_format: .init(type: "json_object"),
-            stream: false,
+            stream: false
         )
 
         let payload: Data

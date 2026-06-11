@@ -25,7 +25,7 @@ struct SSEAwareResponseCompressionMiddleware<Context: RequestContext>: RouterMid
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let response = try await next(request, context)
         // SSE must stream frame-by-frame; compressing it buffers the whole body.

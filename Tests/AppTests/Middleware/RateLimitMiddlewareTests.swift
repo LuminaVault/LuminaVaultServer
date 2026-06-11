@@ -17,7 +17,7 @@ struct RateLimitMiddlewareTests {
         func handle(
             _ request: Request,
             context: Context,
-            next: (Request, Context) async throws -> Response,
+            next: (Request, Context) async throws -> Response
         ) async throws -> Response {
             var ctx = context
             if let raw = request.headers[.init("x-test-user")!],
@@ -27,7 +27,7 @@ struct RateLimitMiddlewareTests {
                     id: uuid,
                     email: "u-\(uuid.uuidString.prefix(6))@test",
                     username: "u\(uuid.uuidString.prefix(6))",
-                    passwordHash: "",
+                    passwordHash: ""
                 )
             }
             return try await next(request, ctx)
@@ -39,7 +39,7 @@ struct RateLimitMiddlewareTests {
         let policy = RateLimitPolicy(
             max: max,
             window: 60,
-            keyBuilder: RateLimitPolicy.userOrIPKey,
+            keyBuilder: RateLimitPolicy.userOrIPKey
         )
         let router = Router(context: AppRequestContext.self)
         router.group("/limited")
@@ -65,7 +65,7 @@ struct RateLimitMiddlewareTests {
                     headers: [
                         .init("x-test-user")!: userA.uuidString,
                         .init("x-real-ip")!: sharedIP,
-                    ],
+                    ]
                 ) { response in
                     #expect(response.status == .ok)
                 }
@@ -78,7 +78,7 @@ struct RateLimitMiddlewareTests {
                 headers: [
                     .init("x-test-user")!: userA.uuidString,
                     .init("x-real-ip")!: sharedIP,
-                ],
+                ]
             ) { response in
                 #expect(response.status == .tooManyRequests)
             }
@@ -91,7 +91,7 @@ struct RateLimitMiddlewareTests {
                 headers: [
                     .init("x-test-user")!: userB.uuidString,
                     .init("x-real-ip")!: sharedIP,
-                ],
+                ]
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -109,7 +109,7 @@ struct RateLimitMiddlewareTests {
                 try await client.execute(
                     uri: "/limited",
                     method: .post,
-                    headers: [.init("x-real-ip")!: ip],
+                    headers: [.init("x-real-ip")!: ip]
                 ) { response in
                     #expect(response.status == .ok)
                 }
@@ -118,7 +118,7 @@ struct RateLimitMiddlewareTests {
             try await client.execute(
                 uri: "/limited",
                 method: .post,
-                headers: [.init("x-real-ip")!: ip],
+                headers: [.init("x-real-ip")!: ip]
             ) { response in
                 #expect(response.status == .tooManyRequests)
             }
@@ -127,7 +127,7 @@ struct RateLimitMiddlewareTests {
             try await client.execute(
                 uri: "/limited",
                 method: .post,
-                headers: [.init("x-real-ip")!: "5.6.7.8"],
+                headers: [.init("x-real-ip")!: "5.6.7.8"]
             ) { response in
                 #expect(response.status == .ok)
             }

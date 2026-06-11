@@ -33,7 +33,7 @@ struct MemoryCompileSpaceCountersTests {
             try await service.refreshSpaceCounters(
                 tenantID: tenantID,
                 spaceIDs: [spaceA, spaceB],
-                at: at,
+                at: at
             )
 
             let reloadedA = try #require(try await Space.find(spaceA, on: db))
@@ -66,7 +66,7 @@ struct MemoryCompileSpaceCountersTests {
             try await service.refreshSpaceCounters(
                 tenantID: tenantA,
                 spaceIDs: [spaceA, spaceB],
-                at: Date(),
+                at: Date()
             )
 
             let reloadedA = try #require(try await Space.find(spaceA, on: db))
@@ -101,7 +101,7 @@ struct MemoryCompileSpaceCountersTests {
             try await service.refreshSpaceCounters(
                 tenantID: tenantID,
                 spaceIDs: [space],
-                at: Date(),
+                at: Date()
             )
 
             let reloaded = try #require(try await Space.find(space, on: db))
@@ -124,7 +124,7 @@ struct MemoryCompileSpaceCountersTests {
             try await service.refreshSpaceCounters(
                 tenantID: tenantID,
                 spaceIDs: [],
-                at: Date(),
+                at: Date()
             )
 
             let reloaded = try #require(try await Space.find(space, on: db))
@@ -144,7 +144,7 @@ struct MemoryCompileSpaceCountersTests {
             memories: MemoryRepository(fluent: fluent),
             embeddings: DeterministicEmbeddingService(),
             defaultModel: "test-model",
-            logger: Logger(label: "lv.test.kbcompile.counters"),
+            logger: Logger(label: "lv.test.kbcompile.counters")
         )
     }
 
@@ -155,7 +155,7 @@ struct MemoryCompileSpaceCountersTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)",
+            passwordHash: "stub-\(slug)"
         )
         try await user.save(on: fluent.db())
         return id
@@ -165,7 +165,7 @@ struct MemoryCompileSpaceCountersTests {
         let space = Space(
             tenantID: tenantID,
             name: "Space \(slug)",
-            slug: slug,
+            slug: slug
         )
         try await space.save(on: db)
         return try space.requireID()
@@ -175,7 +175,7 @@ struct MemoryCompileSpaceCountersTests {
         tenantID: UUID,
         spaceID: UUID,
         index: Int,
-        on db: any Database,
+        on db: any Database
     ) async throws {
         let file = VaultFile(
             tenantID: tenantID,
@@ -183,7 +183,7 @@ struct MemoryCompileSpaceCountersTests {
             path: "\(spaceID.uuidString)/file-\(index).md",
             contentType: "text/markdown",
             sizeBytes: 16,
-            sha256: String(repeating: "\(index)", count: 64).prefix(64).description,
+            sha256: String(repeating: "\(index)", count: 64).prefix(64).description
         )
         try await file.save(on: db)
     }

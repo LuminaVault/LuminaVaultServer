@@ -34,7 +34,7 @@ struct EmbeddingFallbackServiceTests {
         let chain = EmbeddingFallbackService(
             primary: primary,
             primaryKind: .openai,
-            fallbacks: [(.deterministic, fb)],
+            fallbacks: [(.deterministic, fb)]
         )
         await #expect(throws: EmbeddingProviderError.self) {
             _ = try await chain.embed("hi", tenantID: UUID())
@@ -50,7 +50,7 @@ struct EmbeddingFallbackServiceTests {
         let chain = EmbeddingFallbackService(
             primary: primary,
             primaryKind: .openai,
-            fallbacks: [(.deterministic, fb)],
+            fallbacks: [(.deterministic, fb)]
         )
         let v = try await chain.embed("hi", tenantID: UUID())
         #expect(v.count == 1536)
@@ -65,7 +65,7 @@ struct EmbeddingFallbackServiceTests {
         let chain = EmbeddingFallbackService(
             primary: primary,
             primaryKind: .openai,
-            fallbacks: [(.deterministic, fb)],
+            fallbacks: [(.deterministic, fb)]
         )
         await #expect(throws: EmbeddingProviderError.self) {
             _ = try await chain.embed("hi", tenantID: UUID())

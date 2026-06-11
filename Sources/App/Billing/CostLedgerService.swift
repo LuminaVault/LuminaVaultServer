@@ -56,7 +56,7 @@ actor CostLedgerService {
     init(
         fluent: Fluent,
         managedDailyCapUsdMicros: Int64,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.managedDailyCapUsdMicros = managedDailyCapUsdMicros

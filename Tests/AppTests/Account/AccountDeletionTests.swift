@@ -45,7 +45,7 @@ struct AccountDeletionTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try decodeAuthResponse($0.body) }
     }
 
@@ -59,7 +59,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .noContent)
             }
@@ -76,7 +76,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -94,7 +94,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
-                body: ByteBuffer(string: "{}"),
+                body: ByteBuffer(string: "{}")
             ) { response in
                 #expect(response.status == .noContent)
             }
@@ -114,13 +114,13 @@ struct AccountDeletionTests {
             let kid = JWKIdentifier(string: "test-kid")
             await keys.add(
                 hmac: HMACKey(stringLiteral: "test-secret-do-not-use-in-prod-32chars"),
-                digestAlgorithm: .sha256, kid: kid,
+                digestAlgorithm: .sha256, kid: kid
             )
             let now = Date()
             let stale = SessionToken(
                 userID: auth.userId,
                 expiration: now.addingTimeInterval(3600),
-                issuedAt: now.addingTimeInterval(-600),
+                issuedAt: now.addingTimeInterval(-600)
             )
             let signed = try await keys.sign(stale, kid: kid)
 
@@ -128,7 +128,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(signed)", .contentType: "application/json"],
-                body: ByteBuffer(string: "{}"),
+                body: ByteBuffer(string: "{}")
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -163,7 +163,7 @@ struct AccountDeletionTests {
                 uri: "/v1/devices",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: deviceBody,
+                body: deviceBody
             ) { #expect($0.status == .ok || $0.status == .created) }
 
             // 2) Memory row
@@ -172,14 +172,14 @@ struct AccountDeletionTests {
                 uri: "/v1/memory/upsert",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: memBody,
+                body: memBody
             ) { #expect($0.status == .ok || $0.status == .created) }
 
             // 3) Onboarding row (lazy-created on first GET)
             try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { #expect($0.status == .ok) }
 
             // 4) Delete
@@ -188,7 +188,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: delBody,
+                body: delBody
             ) { #expect($0.status == .noContent) }
 
             // 5) Verify cascade in DB directly. We can't reach the app's Fluent
@@ -230,7 +230,7 @@ struct AccountDeletionTests {
                 uri: "/v1/account",
                 method: .delete,
                 headers: [.authorization: "Bearer \(mallory.accessToken)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { #expect($0.status == .noContent) }
 
             try await withTestFluent(label: "test.account.delete") { fluent in
@@ -246,7 +246,7 @@ struct AccountDeletionTests {
         table: String,
         tenantColumn: String,
         tenantID: UUID,
-        fluent: Fluent,
+        fluent: Fluent
     ) async throws {
         guard let sql = fluent.db() as? any SQLDatabase else {
             Issue.record("SQL driver unavailable")

@@ -19,7 +19,7 @@ struct EmailVerificationTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -37,7 +37,7 @@ struct EmailVerificationTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -66,7 +66,7 @@ struct EmailVerificationTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "111111"),
+            generator: FixedOTPCodeGenerator(code: "111111")
         )
         let verifyRecorder = MFAChallengeRecorder()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -85,14 +85,14 @@ struct EmailVerificationTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
             ),
             soulService: SOULService(
                 vaultPaths: VaultPathService(rootPath: tmpRoot.path),
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger,
+                logger: logger
             ),
-            logger: logger,
+            logger: logger
         )
         return Harness(service: service, fluent: fluent, verifyRecorder: verifyRecorder)
     }

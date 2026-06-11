@@ -24,7 +24,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     init(
         apiKey: String,
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.apiKey = apiKey
         self.session = session
@@ -38,7 +38,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     func chatCompletionsWithMetadata(
         payload: Data,
         sessionKey _: String,
-        sessionID _: String?,
+        sessionID _: String?
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the OpenAI payload
         guard
@@ -49,7 +49,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "invalid OpenAI payload: cannot parse messages",
+                body: "invalid OpenAI payload: cannot parse messages"
             )
         }
 
@@ -66,7 +66,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             temperature: openAI["temperature"] as? Double,
             maxTokens: openAI["max_tokens"] as? Int,
             topP: openAI["top_p"] as? Double,
-            stopSequences: openAI["stop"] as? [String],
+            stopSequences: openAI["stop"] as? [String]
         )
 
         // 4. Encode Gemini request body
@@ -77,7 +77,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "failed to encode Gemini request: \(error)",
+                body: "failed to encode Gemini request: \(error)"
             )
         }
 
@@ -109,7 +109,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             // 6. Translate Gemini response → OpenAI shape
             let openAIResponse = Self.translateFromGemini(
                 body: data,
-                requestedModel: rawModel,
+                requestedModel: rawModel
             )
 
             let responseData: Data
@@ -119,7 +119,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
                 throw ProviderError.transient(
                     provider: kind,
                     status: status,
-                    body: "failed to encode OpenAI response",
+                    body: "failed to encode OpenAI response"
                 )
             }
 
@@ -200,7 +200,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: .gemini,
                 status: 400,
-                body: "invalid OpenAI payload: cannot parse messages",
+                body: "invalid OpenAI payload: cannot parse messages"
             )
         }
         let model = resolveGeminiModel(from: openAI["model"] as? String ?? "")
@@ -211,7 +211,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             temperature: openAI["temperature"] as? Double,
             maxTokens: openAI["max_tokens"] as? Int,
             topP: openAI["top_p"] as? Double,
-            stopSequences: openAI["stop"] as? [String],
+            stopSequences: openAI["stop"] as? [String]
         )
         let body = try JSONSerialization.data(withJSONObject: translated)
         return (makeStreamURL(for: model, apiKey: apiKey), body)
@@ -247,7 +247,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
         temperature: Double? = nil,
         maxTokens: Int? = nil,
         topP: Double? = nil,
-        stopSequences: [String]? = nil,
+        stopSequences: [String]? = nil
     ) -> [String: Any] {
         var result: [String: Any] = [:]
 
@@ -447,7 +447,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
 
     private static func translateFromGemini(
         body: Data,
-        requestedModel: String,
+        requestedModel: String
     ) -> [String: Any] {
         guard
             let json = try? JSONSerialization.jsonObject(with: body)
@@ -456,7 +456,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             return fallbackErrorResponse(
                 status: 502,
                 message: "invalid gemini response body",
-                model: requestedModel,
+                model: requestedModel
             )
         }
 
@@ -593,7 +593,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
     private static func fallbackErrorResponse(
         status _: Int,
         message: String,
-        model: String,
+        model: String
     ) -> [String: Any] {
         let now = Int(Date().timeIntervalSince1970)
         return [

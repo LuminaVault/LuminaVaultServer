@@ -29,7 +29,7 @@ struct GrokControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { response in
             let decoded = try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: response.body))
             return (decoded.accessToken, decoded.userId)
@@ -59,7 +59,7 @@ struct GrokControllerTests {
                 uri: "/v1/grok/chat",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"messages":[{"role":"user","content":"hi"}]}"#),
+                body: ByteBuffer(string: #"{"messages":[{"role":"user","content":"hi"}]}"#)
             ) { response in
                 #expect(response.status.code == 409, "premium without xai must surface as 409 reconnect prompt")
                 #expect(String(buffer: response.body).contains("xai_not_connected"))
@@ -78,7 +78,7 @@ struct GrokControllerTests {
                 uri: "/v1/grok/x-search",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"query":""}"#),
+                body: ByteBuffer(string: #"{"query":""}"#)
             ) { response in
                 #expect(response.status.code == 400)
             }
@@ -96,7 +96,7 @@ struct GrokControllerTests {
                 uri: "/v1/grok/vision",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"prompt":"describe","imageURLs":[]}"#),
+                body: ByteBuffer(string: #"{"prompt":"describe","imageURLs":[]}"#)
             ) { response in
                 #expect(response.status.code == 400)
             }
@@ -114,7 +114,7 @@ struct GrokControllerTests {
                 uri: "/v1/grok/tts",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"text":"hello"}"#),
+                body: ByteBuffer(string: #"{"text":"hello"}"#)
             ) { response in
                 #expect(response.status.code == 501)
                 #expect(String(buffer: response.body).contains("tts_coming_soon"))

@@ -64,7 +64,7 @@ struct VaultIngestService {
         return try await spaces.create(
             tenantID: tenantID, name: name, slugRaw: slug,
             description: "Imported from your Hermes vault.",
-            color: nil, icon: "tray.and.arrow.down", category: nil,
+            color: nil, icon: "tray.and.arrow.down", category: nil
         )
     }
 
@@ -91,7 +91,7 @@ struct VaultIngestService {
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)
         try FileManager.default.createDirectory(
-            at: target.deletingLastPathComponent(), withIntermediateDirectories: true,
+            at: target.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         try data.write(to: target, options: .atomic)
 
@@ -110,7 +110,7 @@ struct VaultIngestService {
             let row = VaultFile(
                 tenantID: tenantID, spaceID: spaceID, path: safeRelative,
                 contentType: "text/markdown", sizeBytes: Int64(data.count),
-                sha256: digest, processedAt: Date(), metadata: metadata,
+                sha256: digest, processedAt: Date(), metadata: metadata
             )
             try await row.save(on: db)
             savedID = try row.requireID()
@@ -123,7 +123,7 @@ struct VaultIngestService {
         } else {
             _ = try await memories.create(
                 tenantID: tenantID, content: content, embedding: embedding,
-                tags: nil, sourceVaultFileID: savedID, spaceID: spaceID, reviewState: "auto",
+                tags: nil, sourceVaultFileID: savedID, spaceID: spaceID, reviewState: "auto"
             )
         }
         return true

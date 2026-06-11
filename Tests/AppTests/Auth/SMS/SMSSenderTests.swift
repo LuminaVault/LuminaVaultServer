@@ -52,7 +52,7 @@ struct SMSSenderTests {
         StubURLProtocol.handler = { req in
             await captured.set(req)
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 201, httpVersion: "HTTP/1.1", headerFields: nil,
+                url: req.url!, statusCode: 201, httpVersion: "HTTP/1.1", headerFields: nil
             )!
             return (resp, Data())
         }
@@ -63,7 +63,7 @@ struct SMSSenderTests {
             authToken: "secret",
             fromNumber: "+15555550000",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio"),
+            logger: Logger(label: "test.twilio")
         )
         try await sender.send(code: "424242", to: "+15555550199", purpose: "login")
 
@@ -93,7 +93,7 @@ struct SMSSenderTests {
             authToken: "",
             fromNumber: "",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio"),
+            logger: Logger(label: "test.twilio")
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "+15555550000", purpose: "login")
@@ -104,7 +104,7 @@ struct SMSSenderTests {
     func `twilio sender throws on non 2 xx`() async throws {
         StubURLProtocol.handler = { req in
             let resp = HTTPURLResponse(
-                url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil,
+                url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
             )!
             return (resp, Data(#"{"message":"bad creds"}"#.utf8))
         }
@@ -115,7 +115,7 @@ struct SMSSenderTests {
             authToken: "wrong",
             fromNumber: "+15555550000",
             session: Self.makeStubSession(),
-            logger: Logger(label: "test.twilio"),
+            logger: Logger(label: "test.twilio")
         )
         await #expect(throws: (any Error).self) {
             try await sender.send(code: "1", to: "+15555550199", purpose: "login")

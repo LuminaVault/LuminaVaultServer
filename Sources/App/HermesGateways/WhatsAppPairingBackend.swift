@@ -42,7 +42,7 @@ struct LiveWhatsAppPairingBackend: WhatsAppPairingBackend {
         docker: any DockerExec,
         logger: Logger,
         hermesBinaryPath: String = "/opt/hermes/.venv/bin/hermes",
-        sessionDir: String = "/opt/data/.hermes/platforms/whatsapp/session",
+        sessionDir: String = "/opt/data/.hermes/platforms/whatsapp/session"
     ) {
         self.docker = docker
         self.logger = logger
@@ -57,14 +57,14 @@ struct LiveWhatsAppPairingBackend: WhatsAppPairingBackend {
         ])
         return try await docker.execStreaming(
             container: handle.containerName,
-            command: ["script", "-q", "-c", inner, "/dev/null"],
+            command: ["script", "-q", "-c", inner, "/dev/null"]
         )
     }
 
     func isPaired(handle: HermesContainerHandle) async -> Bool {
         let result = try? await docker.exec(
             container: handle.containerName,
-            command: ["test", "-d", sessionDir],
+            command: ["test", "-d", sessionDir]
         )
         return result?.ok ?? false
     }
@@ -72,7 +72,7 @@ struct LiveWhatsAppPairingBackend: WhatsAppPairingBackend {
     func unlink(handle: HermesContainerHandle) async throws -> Bool {
         let result = try await docker.exec(
             container: handle.containerName,
-            command: ["rm", "-rf", sessionDir],
+            command: ["rm", "-rf", sessionDir]
         )
         return result.ok
     }

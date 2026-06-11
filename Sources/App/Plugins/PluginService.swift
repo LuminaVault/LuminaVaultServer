@@ -48,7 +48,7 @@ struct PluginService {
         tenantID: UUID,
         category: PluginCategory?,
         featured: Bool? = nil,
-        premium: Bool? = nil,
+        premium: Bool? = nil
     ) async -> [PluginCatalogEntryDTO] {
         var entries = PluginCatalog.catalog(category: category, featured: featured, premium: premium)
         if category == nil || category == .skill, featured == nil, premium == nil {
@@ -97,7 +97,7 @@ struct PluginService {
         } else {
             PluginInstall(
                 tenantID: tenantID, pluginSlug: slug,
-                configCiphertext: sealed.ciphertext, configNonce: sealed.nonce,
+                configCiphertext: sealed.ciphertext, configNonce: sealed.nonce
             )
         }
         row.configCiphertext = sealed.ciphertext
@@ -112,7 +112,7 @@ struct PluginService {
         tenantID: UUID,
         installID: UUID,
         config: [String: String]?,
-        status: PluginInstallStatus?,
+        status: PluginInstallStatus?
     ) async throws -> PluginInstallDTO {
         let row = try await requireInstall(tenantID: tenantID, installID: installID)
         // Skill installs carry no config; enable/disable mirrors to SkillsState
@@ -181,7 +181,7 @@ struct PluginService {
         let result = try await importService.importLinks(
             tenantID: tenantID,
             sourceType: "connector:\(row.pluginSlug)",
-            urls: Array(urls.prefix(ImportService.maxBatch)),
+            urls: Array(urls.prefix(ImportService.maxBatch))
         )
 
         row.lastSyncAt = Date()
@@ -193,7 +193,7 @@ struct PluginService {
             status: ImportStatus.enriching,
             total: result.total,
             staged: result.staged,
-            skipped: result.skipped,
+            skipped: result.skipped
         )
     }
 
@@ -215,7 +215,7 @@ struct PluginService {
         } else {
             PluginInstall(
                 tenantID: tenantID, pluginSlug: slug,
-                configCiphertext: sealed.ciphertext, configNonce: sealed.nonce,
+                configCiphertext: sealed.ciphertext, configNonce: sealed.nonce
             )
         }
         row.configCiphertext = sealed.ciphertext
@@ -242,7 +242,7 @@ struct PluginService {
                 tenantID: tenantID,
                 source: SkillManifest.Source.builtin.rawValue,
                 name: name,
-                enabled: enabled,
+                enabled: enabled
             ).create(on: db)
         }
     }
@@ -302,7 +302,7 @@ struct PluginService {
             status: PluginInstallStatus(rawValue: row.status) ?? .enabled,
             hasConfig: !row.configCiphertext.isEmpty,
             createdAt: row.createdAt,
-            lastSyncAt: row.lastSyncAt,
+            lastSyncAt: row.lastSyncAt
         )
     }
 }

@@ -22,7 +22,7 @@ struct RateLimitMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let key = "rl:" + policy.keyBuilder(request, context)
         let now = Date().timeIntervalSince1970
@@ -43,7 +43,7 @@ struct RateLimitMiddleware: RouterMiddleware {
             throw HTTPError(
                 .tooManyRequests,
                 headers: [.retryAfter: String(retryAfter)],
-                message: "rate limit exceeded",
+                message: "rate limit exceeded"
             )
         }
         return try await next(request, context)

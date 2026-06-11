@@ -43,11 +43,11 @@ struct ImportController {
         }
         let result = try await service.importLinks(
             tenantID: tenantID, sourceType: "bookmarks",
-            urls: Array(urls.prefix(ImportService.maxBatch)),
+            urls: Array(urls.prefix(ImportService.maxBatch))
         )
         return ImportCreateResponse(
             sessionId: result.sessionID, status: ImportStatus.enriching,
-            total: result.total, staged: result.staged, skipped: result.skipped,
+            total: result.total, staged: result.staged, skipped: result.skipped
         )
     }
 
@@ -72,14 +72,14 @@ struct ImportController {
         let result = try await service.importLinks(
             tenantID: tenantID,
             sourceType: body.sourceType.isEmpty ? "bookmarks" : body.sourceType,
-            urls: body.urls,
+            urls: body.urls
         )
         return ImportCreateResponse(
             sessionId: result.sessionID,
             status: ImportStatus.enriching,
             total: result.total,
             staged: result.staged,
-            skipped: result.skipped,
+            skipped: result.skipped
         )
     }
 
@@ -99,11 +99,11 @@ struct ImportController {
         let result = try await service.importFiles(
             tenantID: tenantID,
             sourceType: body.sourceType.isEmpty ? "documents" : body.sourceType,
-            vaultFileIDs: body.vaultFileIds,
+            vaultFileIDs: body.vaultFileIds
         )
         return ImportCreateResponse(
             sessionId: result.sessionID, status: ImportStatus.enriching,
-            total: result.total, staged: result.staged, skipped: result.skipped,
+            total: result.total, staged: result.staged, skipped: result.skipped
         )
     }
 
@@ -125,11 +125,11 @@ struct ImportController {
         let sessionID = try Self.sessionID(ctx)
         let body = await (try? req.decode(as: ImportApproveRequest.self, context: ctx)) ?? ImportApproveRequest(overrides: nil)
         let result = try await service.approve(
-            tenantID: tenantID, sessionID: sessionID, overrides: body.overrides ?? [:],
+            tenantID: tenantID, sessionID: sessionID, overrides: body.overrides ?? [:]
         )
         return ImportApproveResponse(
             sessionId: sessionID, status: ImportStatus.done,
-            filed: result.filed, memoriesIngested: result.memories,
+            filed: result.filed, memoriesIngested: result.memories
         )
     }
 
@@ -155,9 +155,9 @@ struct ImportController {
                     url: $0.url,
                     title: $0.title,
                     proposedSpace: $0.proposedSpace,
-                    status: $0.status,
+                    status: $0.status
                 )
-            },
+            }
         )
     }
 }

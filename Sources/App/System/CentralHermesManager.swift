@@ -57,7 +57,7 @@ struct CentralHermesManager {
     /// running central container, or `nil` if the container is absent.
     func currentImageRef() async -> String? {
         guard let result = try? await docker.run(
-            args: ["inspect", "--format", "{{.Config.Image}}", config.containerName],
+            args: ["inspect", "--format", "{{.Config.Image}}", config.containerName]
         ), result.ok else { return nil }
         let ref = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return ref.isEmpty ? nil : ref
@@ -67,7 +67,7 @@ struct CentralHermesManager {
     /// container — the immutable sha that survives tag re-pointing.
     func currentImageDigest() async -> String? {
         guard let result = try? await docker.run(
-            args: ["inspect", "--format", "{{.Image}}", config.containerName],
+            args: ["inspect", "--format", "{{.Image}}", config.containerName]
         ), result.ok else { return nil }
         let digest = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return digest.isEmpty ? nil : digest
@@ -76,7 +76,7 @@ struct CentralHermesManager {
     /// Digest of a local **image** ref (after pull), via `{{.Id}}`.
     func imageDigest(ref: String) async -> String? {
         guard let result = try? await docker.run(
-            args: ["image", "inspect", "--format", "{{.Id}}", ref],
+            args: ["image", "inspect", "--format", "{{.Id}}", ref]
         ), result.ok else { return nil }
         let digest = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return digest.isEmpty ? nil : digest
@@ -99,7 +99,7 @@ struct CentralHermesManager {
         let result = try await docker.run(args: runArgs(
             name: config.tempContainerName,
             port: config.tempPort,
-            image: image,
+            image: image
         ))
         guard result.ok else {
             throw HermesUpdateError.containerRunFailed(stderr: result.stderr, exitCode: result.exitCode)
@@ -136,7 +136,7 @@ struct CentralHermesManager {
         let result = try await docker.run(args: runArgs(
             name: config.containerName,
             port: config.port,
-            image: image,
+            image: image
         ))
         guard result.ok else {
             throw HermesUpdateError.containerRunFailed(stderr: result.stderr, exitCode: result.exitCode)
@@ -156,7 +156,7 @@ struct CentralHermesManager {
         let result = try await docker.run(args: runArgs(
             name: config.containerName,
             port: config.port,
-            image: image,
+            image: image
         ))
         guard result.ok else {
             throw HermesUpdateError.containerRunFailed(stderr: result.stderr, exitCode: result.exitCode)

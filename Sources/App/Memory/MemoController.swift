@@ -26,13 +26,13 @@ struct MemoController {
             sessionKey: tenantID.uuidString,
             topic: body.topic,
             hint: body.hint,
-            save: body.save ?? true,
+            save: body.save ?? true
         )
         return MemoResponse(
             memo: result.memo,
             path: result.path,
             sourceMemoryIds: result.sourceMemoryIDs,
-            summary: result.summary,
+            summary: result.summary
         )
     }
 
@@ -55,7 +55,7 @@ struct MemoController {
                 title: Self.titleFromPath(row.path),
                 path: row.path,
                 createdAt: createdAt,
-                summary: nil,
+                summary: nil
             )
         }
         return MemoListResponse(memos: memos)

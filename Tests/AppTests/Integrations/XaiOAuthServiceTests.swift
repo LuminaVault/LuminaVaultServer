@@ -19,7 +19,7 @@ struct XaiOAuthServiceTests {
             id: id,
             email: "\(slug)-\(suffix)@test.luminavault",
             username: "\(slug)-\(suffix)",
-            passwordHash: "stub-hash-\(slug)",
+            passwordHash: "stub-hash-\(slug)"
         )
     }
 
@@ -33,7 +33,7 @@ struct XaiOAuthServiceTests {
 
     private static func makeService(
         fluent: Fluent,
-        backend: any XaiOAuthBackend,
+        backend: any XaiOAuthBackend
     ) throws -> (XaiOAuthService, HermesContainerManager) {
         let docker = StubDockerExec()
         let manager = try HermesContainerManager(
@@ -46,16 +46,16 @@ struct XaiOAuthServiceTests {
                 dataRootBase: "/tmp/lvtest",
                 portRangeStart: 9000,
                 portRangeEnd: 9100,
-                idleTTLSeconds: 60,
+                idleTTLSeconds: 60
             ),
-            logger: Logger(label: "test.her240a"),
+            logger: Logger(label: "test.her240a")
         )
         let service = XaiOAuthService(
             containerManager: manager,
             sessionStore: XaiOAuthSessionStore(),
             backend: backend,
             fluent: fluent,
-            logger: Logger(label: "test.her240a.svc"),
+            logger: Logger(label: "test.her240a.svc")
         )
         return (service, manager)
     }

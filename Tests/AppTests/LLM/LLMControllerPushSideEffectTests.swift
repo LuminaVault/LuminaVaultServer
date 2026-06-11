@@ -36,7 +36,7 @@ struct LLMControllerPushSideEffectTests {
             subtitle _: String?,
             body _: String,
             category _: APNSPushCategory,
-            topic _: String,
+            topic _: String
         ) async throws {
             calls.append(deviceToken)
             switch mode {
@@ -91,7 +91,7 @@ struct LLMControllerPushSideEffectTests {
             source _: String,
             file _: String,
             function _: String,
-            line _: UInt,
+            line _: UInt
         ) {
             capture.append(level: level, message: message.description)
         }
@@ -100,7 +100,7 @@ struct LLMControllerPushSideEffectTests {
     // MARK: - Harness
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Fluent, UUID) async throws -> T,
+        _ body: @Sendable (Fluent, UUID) async throws -> T
     ) async throws -> T {
         let fluent = Fluent(logger: Logger(label: "test.llm-push"))
         fluent.databases.use(.postgres(configuration: TestPostgres.configuration()), as: .psql)
@@ -121,7 +121,7 @@ struct LLMControllerPushSideEffectTests {
                 id: userID,
                 email: "llm-push-\(userID.uuidString.prefix(8))@test.luminavault",
                 username: "llm-push-\(userID.uuidString.prefix(8).lowercased())",
-                passwordHash: "x",
+                passwordHash: "x"
             )
             try await user.save(on: fluent.db())
 
@@ -129,7 +129,7 @@ struct LLMControllerPushSideEffectTests {
             let token = DeviceToken(
                 tenantID: userID,
                 token: "abc123",
-                platform: "ios",
+                platform: "ios"
             )
             try await token.save(on: fluent.db())
 
@@ -144,13 +144,13 @@ struct LLMControllerPushSideEffectTests {
 
     private static func makeAPNS(
         fluent: Fluent,
-        sender: RecordingPushSender,
+        sender: RecordingPushSender
     ) -> APNSNotificationService {
         APNSNotificationService(
             bundleID: "com.luminavault.test",
             fluent: fluent,
             pushSender: sender,
-            logger: Logger(label: "test.llm-push.apns"),
+            logger: Logger(label: "test.llm-push.apns")
         )
     }
 
@@ -166,8 +166,8 @@ struct LLMControllerPushSideEffectTests {
                 created: Int(Date().timeIntervalSince1970),
                 model: "test-model",
                 choices: [HermesUpstreamChoice(index: 0, message: message, finishReason: "stop")],
-                usage: nil,
-            ),
+                usage: nil
+            )
         )
     }
 
@@ -182,7 +182,7 @@ struct LLMControllerPushSideEffectTests {
                 pushService: apns,
                 userID: userID,
                 username: "tester",
-                response: Self.sampleResponse(),
+                response: Self.sampleResponse()
             )
             _ = await task.value
             let count = await sender.calls.count
@@ -206,7 +206,7 @@ struct LLMControllerPushSideEffectTests {
                 userID: userID,
                 username: "tester",
                 response: Self.sampleResponse(),
-                logger: logger,
+                logger: logger
             )
             _ = await task.value
 
@@ -241,7 +241,7 @@ struct LLMControllerPushSideEffectTests {
                 userID: userID,
                 username: "tester",
                 response: Self.sampleResponse(),
-                logger: logger,
+                logger: logger
             )
             _ = await task.value
 
@@ -263,7 +263,7 @@ struct LLMControllerPushSideEffectTests {
                 pushService: apns,
                 userID: userID,
                 username: "tester",
-                response: Self.sampleResponse(),
+                response: Self.sampleResponse()
             )
             _ = await task.value
             #expect(await sender.calls.count == 1)

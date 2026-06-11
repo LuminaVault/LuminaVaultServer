@@ -26,7 +26,7 @@ protocol XaiOAuthBackend: Sendable {
     func submitCallback(
         handle: HermesContainerHandle,
         sessionID: String,
-        callbackURL: String,
+        callbackURL: String
     ) async throws -> Bool
 
     /// Best-effort cancel for an in-flight session. Idempotent.
@@ -95,7 +95,7 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
         hermesBinaryPath: String = "/opt/hermes/.venv/bin/hermes",
         loopbackURL: String = "http://127.0.0.1:56121/callback",
         startTimeoutSeconds: Int = 30,
-        completeTimeoutSeconds: Int = 60,
+        completeTimeoutSeconds: Int = 60
     ) {
         self.docker = docker
         self.registry = registry
@@ -109,7 +109,7 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
     func requestAuthorizeURL(handle: HermesContainerHandle, sessionID: String) async throws -> String {
         let streaming = try await docker.execStreaming(
             container: handle.containerName,
-            command: [hermesBinaryPath, "auth", "add", "xai-oauth", "--no-browser"],
+            command: [hermesBinaryPath, "auth", "add", "xai-oauth", "--no-browser"]
         )
 
         let url = try await withTimeout(seconds: startTimeoutSeconds) {
@@ -130,7 +130,7 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
     func submitCallback(
         handle: HermesContainerHandle,
         sessionID: String,
-        callbackURL: String,
+        callbackURL: String
     ) async throws -> Bool {
         guard let entry = await registry.take(sessionID: sessionID) else {
             throw XaiOAuthError.sessionNotFound
@@ -142,12 +142,12 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
         // `state`.
         let forwardURL = Self.forwardURL(
             loopback: loopbackURL,
-            captured: callbackURL,
+            captured: callbackURL
         )
 
         let curlResult = try await docker.exec(
             container: handle.containerName,
-            command: ["curl", "--silent", "--show-error", "--max-time", "10", forwardURL],
+            command: ["curl", "--silent", "--show-error", "--max-time", "10", forwardURL]
         )
         guard curlResult.ok else {
             await entry.handle.cancel()
@@ -174,7 +174,7 @@ struct LiveXaiOAuthBackend: XaiOAuthBackend {
     func revoke(handle: HermesContainerHandle) async throws -> Bool {
         let result = try await docker.exec(
             container: handle.containerName,
-            command: [hermesBinaryPath, "auth", "remove", "xai-oauth"],
+            command: [hermesBinaryPath, "auth", "remove", "xai-oauth"]
         )
         return result.ok
     }
@@ -236,7 +236,7 @@ enum XaiOAuthError: Error, Equatable {
 private func withTimeout<R: Sendable>(
     seconds: Int,
     operation: @escaping @Sendable () async throws -> R,
-    onTimeout: @escaping @Sendable () async throws -> Void,
+    onTimeout: @escaping @Sendable () async throws -> Void
 ) async throws -> R {
     try await withThrowingTaskGroup(of: TimeoutOutcome<R>.self) { group in
         group.addTask {

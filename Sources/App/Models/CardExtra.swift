@@ -43,7 +43,7 @@ struct CardJobConfig: Codable, Equatable {
         prompt: String? = nil,
         spaceID: UUID? = nil,
         jobSlug: String? = nil,
-        promotedAt: Date? = nil,
+        promotedAt: Date? = nil
     ) {
         self.source = source
         self.cron = cron

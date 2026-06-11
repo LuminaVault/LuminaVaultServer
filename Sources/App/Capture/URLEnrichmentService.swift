@@ -41,7 +41,7 @@ struct URLEnrichmentService {
         jinaEnricher: JinaEnricher? = nil,
         captureHooks: CaptureHookDispatcher? = nil,
         embeddings: (any EmbeddingService)? = nil,
-        memories: MemoryRepository? = nil,
+        memories: MemoryRepository? = nil
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
@@ -102,7 +102,7 @@ struct URLEnrichmentService {
                     tenantID: tenantID,
                     url: urlString,
                     config: [:],
-                    metadata: metadata,
+                    metadata: metadata
                 )
                 metadata = await captureHooks.run(point: .postEnrich, context: context).metadata
             }
@@ -179,7 +179,7 @@ struct URLEnrichmentService {
                     metadata: metadata,
                     vaultFileID: vaultFileID,
                     spaceID: row.spaceID,
-                    tenantID: tenantID,
+                    tenantID: tenantID
                 )
             }
         } catch {
@@ -209,7 +209,7 @@ struct URLEnrichmentService {
         metadata: EnrichedMetadata,
         vaultFileID: UUID,
         spaceID: UUID?,
-        tenantID: UUID,
+        tenantID: UUID
     ) async {
         guard let embeddings, let memories else { return }
         let text = [metadata.title, metadata.description, metadata.transcript, metadata.body]
@@ -234,7 +234,7 @@ struct URLEnrichmentService {
                     tags: ["link"],
                     sourceVaultFileID: vaultFileID,
                     spaceID: spaceID,
-                    reviewState: "auto",
+                    reviewState: "auto"
                 )
                 logger.info("link memory created tenant=\(tenantID) file=\(vaultFileID) chars=\(text.count)")
             }

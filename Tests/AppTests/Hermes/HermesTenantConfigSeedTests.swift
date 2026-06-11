@@ -30,7 +30,7 @@ struct HermesTenantConfigSeedTests {
         try HermesTenantConfigTemplate.seed(
             volumePath: volume,
             apiKey: "deadbeef-test-key",
-            defaultModel: "hermes-3",
+            defaultModel: "hermes-3"
         )
 
         let configContent = try Self.read("\(volume)/config.yaml")

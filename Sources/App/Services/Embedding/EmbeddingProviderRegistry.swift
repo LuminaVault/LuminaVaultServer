@@ -21,7 +21,7 @@ struct EmbeddingProviderRegistry {
         reader: ConfigReader,
         fluent: Fluent,
         hermesHandleResolver: @escaping LocalHermesEmbeddingService.HandleResolver,
-        logger: Logger = Logger(label: "lv.embedding.registry"),
+        logger: Logger = Logger(label: "lv.embedding.registry")
     ) -> EmbeddingProviderRegistry {
         let activeRaw = reader.string(forKey: "embedding.provider", default: "deterministic")
         let activeKind = EmbeddingProviderKind(rawConfigValue: activeRaw) ?? .deterministic
@@ -57,7 +57,7 @@ struct EmbeddingProviderRegistry {
         // handle on each call. Always register.
         built[.hermesLocal] = LocalHermesEmbeddingService(
             resolveHandle: hermesHandleResolver,
-            logger: Logger(label: "lv.embedding.hermesLocal"),
+            logger: Logger(label: "lv.embedding.hermesLocal")
         )
 
         // Pick active. If the configured provider failed to register
@@ -86,21 +86,21 @@ struct EmbeddingProviderRegistry {
             primary: activeInner,
             primaryKind: resolvedActiveKind,
             fallbacks: fallbackPairs,
-            logger: Logger(label: "lv.embedding.fallback"),
+            logger: Logger(label: "lv.embedding.fallback")
         )
 
         let tracker = EmbeddingUsageTracker(
             inner: withFallback,
             usage: EmbeddingUsageRepository(fluent: fluent),
             monthlyCap: monthlyCap,
-            logger: Logger(label: "lv.embedding.usage"),
+            logger: Logger(label: "lv.embedding.usage")
         )
 
         logger.info("embedding registry active=\(resolvedActiveKind.rawValue) fallbacks=\(fallbackPairs.map(\.0.rawValue).joined(separator: ",")) cap=\(monthlyCap)")
         return EmbeddingProviderRegistry(
             active: tracker,
             activeKind: resolvedActiveKind,
-            fallbackKinds: fallbackPairs.map(\.0),
+            fallbackKinds: fallbackPairs.map(\.0)
         )
     }
 }

@@ -27,7 +27,7 @@ extension OnboardingStateDTO {
             firstQueryCompleted: row.firstQueryCompleted,
             firstQueryCompletedAt: row.firstQueryCompletedAt,
             brainConfiguredCompleted: row.brainConfiguredCompleted,
-            brainConfiguredCompletedAt: row.brainConfiguredCompletedAt,
+            brainConfiguredCompletedAt: row.brainConfiguredCompletedAt
         )
     }
 }

@@ -35,7 +35,7 @@ actor HermesProfileReconcilerService: Service {
         do {
             let h = try await reconciler.health()
             logger.info(
-                "hermes.reconciler.service started gateway_reachable=\(h.gatewayReachable) gateway_latency_ms=\(h.gatewayLatencyMs.map(String.init) ?? "nil")",
+                "hermes.reconciler.service started gateway_reachable=\(h.gatewayReachable) gateway_latency_ms=\(h.gatewayLatencyMs.map(String.init) ?? "nil")"
             )
         } catch {
             logger.info("hermes.reconciler.service started (health probe failed: \(error))")
@@ -53,7 +53,7 @@ actor HermesProfileReconcilerService: Service {
             do {
                 let summary = try await reconciler.reconcile()
                 logger.info(
-                    "hermes.reconciler.service ran scanned=\(summary.usersScanned) created=\(summary.profilesCreated) recovered=\(summary.profilesRecovered) ok=\(summary.profilesAlreadyOK) failures=\(summary.failures.count)",
+                    "hermes.reconciler.service ran scanned=\(summary.usersScanned) created=\(summary.profilesCreated) recovered=\(summary.profilesRecovered) ok=\(summary.profilesAlreadyOK) failures=\(summary.failures.count)"
                 )
             } catch {
                 logger.warning("hermes.reconciler.service error \(error)")

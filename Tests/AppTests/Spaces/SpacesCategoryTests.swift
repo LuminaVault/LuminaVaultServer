@@ -43,7 +43,7 @@ struct SpacesCategoryTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try Self.decodeAuth($0.body) }
     }
 
@@ -63,13 +63,13 @@ struct SpacesCategoryTests {
                 description: nil,
                 color: nil,
                 icon: "bitcoinsign.circle",
-                category: "stocks",
+                category: "stocks"
             )
             let created = try await client.execute(
                 uri: "/v1/spaces",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: Self.encode(create),
+                body: Self.encode(create)
             ) { try Self.decodeSpace($0.body) }
             #expect(created.category == "stocks")
             #expect(created.noteCount == 0)
@@ -94,8 +94,8 @@ struct SpacesCategoryTests {
                     description: nil,
                     color: nil,
                     icon: "book.fill",
-                    category: "ideas",
-                )),
+                    category: "ideas"
+                ))
             ) { try Self.decodeSpace($0.body) }
 
             // Move category from "ideas" → "work".
@@ -103,7 +103,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces/\(created.id)",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: Self.encode(UpdateSpaceRequest(category: "work")),
+                body: Self.encode(UpdateSpaceRequest(category: "work"))
             ) { try Self.decodeSpace($0.body) }
             #expect(moved.category == "work")
 
@@ -112,7 +112,7 @@ struct SpacesCategoryTests {
                 uri: "/v1/spaces/\(created.id)",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: Self.encode(UpdateSpaceRequest(category: "")),
+                body: Self.encode(UpdateSpaceRequest(category: ""))
             ) { try Self.decodeSpace($0.body) }
             #expect(cleared.category == nil)
         }
@@ -127,13 +127,13 @@ struct SpacesCategoryTests {
             _ = try await client.execute(
                 uri: "/v1/vault/create",
                 method: .post,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { $0 }
 
             let listed = try await client.execute(
                 uri: "/v1/spaces",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeList($0.body) }
 
             for entry in SpaceDefaults.entries {

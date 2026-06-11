@@ -14,7 +14,7 @@ struct TenantIsolationTests {
     /// Wraps each test with Fluent setup and guaranteed shutdown so the
     /// AsyncKit ConnectionPool deinit assertion can't crash the runner.
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -32,7 +32,7 @@ struct TenantIsolationTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -68,7 +68,7 @@ struct TenantIsolationTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-hash-\(slug)",
+            passwordHash: "stub-hash-\(slug)"
         )
     }
 
@@ -140,11 +140,11 @@ struct TenantIsolationTests {
 
             try await MFAChallenge(
                 tenantID: t1, purpose: "login", channel: "email", destination: "a@x.io",
-                codeHash: "h1", expiresAt: Date().addingTimeInterval(600),
+                codeHash: "h1", expiresAt: Date().addingTimeInterval(600)
             ).save(on: db)
             try await MFAChallenge(
                 tenantID: t2, purpose: "login", channel: "email", destination: "b@y.io",
-                codeHash: "h2", expiresAt: Date().addingTimeInterval(600),
+                codeHash: "h2", expiresAt: Date().addingTimeInterval(600)
             ).save(on: db)
 
             let t1Ch = try await MFAChallenge.query(on: db, tenantID: t1).all()
@@ -191,7 +191,7 @@ struct TenantIsolationTests {
             let service = HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: Logger(label: "test.hermes")),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
             )
 
             let p1 = try await service.ensure(for: u1)

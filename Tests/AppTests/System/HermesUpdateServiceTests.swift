@@ -32,7 +32,7 @@ struct HermesUpdateServiceTests {
 
     private static func makeCentral(
         docker: any DockerExec,
-        healthy: HealthFlag,
+        healthy: HealthFlag
     ) -> CentralHermesManager {
         CentralHermesManager(
             docker: docker,
@@ -46,17 +46,17 @@ struct HermesUpdateServiceTests {
                 port: 8642,
                 tempPort: 8643,
                 apiServerKey: "test-key",
-                mnemosyneDataDir: "/opt/data/mnemosyne",
+                mnemosyneDataDir: "/opt/data/mnemosyne"
             ),
             healthProbe: { _, _ in await healthy.value },
-            logger: Logger(label: "test.her330"),
+            logger: Logger(label: "test.her330")
         )
     }
 
     private static func awaitTerminal(
         _ service: HermesUpdateService,
         _ jobID: UUID,
-        timeout: Duration = .seconds(15),
+        timeout: Duration = .seconds(15)
     ) async throws -> HermesUpdateJobStatus {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {
@@ -83,7 +83,7 @@ struct HermesUpdateServiceTests {
                 central: Self.makeCentral(docker: docker, healthy: healthy),
                 containerManager: nil,
                 healthTimeoutSeconds: 5,
-                logger: Logger(label: "test.her330"),
+                logger: Logger(label: "test.her330")
             )
 
             let started = try await service.startUpdate(targetTag: "v2")
@@ -123,7 +123,7 @@ struct HermesUpdateServiceTests {
                 central: Self.makeCentral(docker: docker, healthy: healthy),
                 containerManager: nil,
                 healthTimeoutSeconds: 1,
-                logger: Logger(label: "test.her330"),
+                logger: Logger(label: "test.her330")
             )
 
             let started = try await service.startUpdate(targetTag: "broken")
@@ -156,7 +156,7 @@ struct HermesUpdateServiceTests {
                 state: .running,
                 steps: [HermesUpdateStep(id: .pullImage, state: .running)],
                 fromVersion: nil,
-                toVersion: "ghcr.io/luminavault/luminavault-hermes:latest",
+                toVersion: "ghcr.io/luminavault/luminavault-hermes:latest"
             )
             try await running.create(on: fluent.db())
 
@@ -165,7 +165,7 @@ struct HermesUpdateServiceTests {
                 fluent: fluent,
                 central: Self.makeCentral(docker: docker, healthy: HealthFlag(true)),
                 containerManager: nil,
-                logger: Logger(label: "test.her330"),
+                logger: Logger(label: "test.her330")
             )
 
             await #expect(throws: HermesUpdateError.alreadyRunning) {

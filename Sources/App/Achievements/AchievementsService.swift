@@ -39,7 +39,7 @@ struct AchievementsService {
         catalog: AchievementCatalog = .current,
         pushService: APNSNotificationService? = nil,
         eventBus: EventBus? = nil,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.catalog = catalog
@@ -62,7 +62,7 @@ struct AchievementsService {
                     try await pushService.notifyAchievement(
                         userID: tenantID,
                         key: unlock.key,
-                        label: unlock.label,
+                        label: unlock.label
                     )
                 } catch {
                     logger.warning("achievements push failed key=\(unlock.key): \(error)")
@@ -105,7 +105,7 @@ struct AchievementsService {
                     eventBus.publish(SkillEvent(
                         type: .achievementUnlocked,
                         tenantID: tenantID,
-                        payload: ["achievement_key": sub.key],
+                        payload: ["achievement_key": sub.key]
                     ))
                 }
             }

@@ -14,7 +14,7 @@ struct HermesMemoryServiceTests {
     // MARK: - Fixtures
 
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -31,7 +31,7 @@ struct HermesMemoryServiceTests {
         let fluent = Fluent(logger: Logger(label: "test.memory"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -71,7 +71,7 @@ struct HermesMemoryServiceTests {
             id: id,
             email: "mem-\(UUID().uuidString.prefix(8).lowercased())@test.luminavault",
             username: "mem-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "stub",
+            passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
         return id
@@ -87,7 +87,7 @@ struct HermesMemoryServiceTests {
                 // Turn 1: model decides to call memory_upsert
                 .toolCall(
                     name: "memory_upsert",
-                    arguments: #"{"content":"alice prefers tea over coffee"}"#,
+                    arguments: #"{"content":"alice prefers tea over coffee"}"#
                 ),
                 // Turn 2: after tool returns, plain acknowledgement
                 .plainContent("Saved that you prefer tea over coffee."),
@@ -97,13 +97,13 @@ struct HermesMemoryServiceTests {
                 memories: MemoryRepository(fluent: fluent),
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
 
             let result = try await service.upsert(
                 tenantID: tenantID,
                 sessionKey: "alice",
-                content: "I prefer tea over coffee.",
+                content: "I prefer tea over coffee."
             )
 
             #expect(result.summary == "Saved that you prefer tea over coffee.")
@@ -132,18 +132,18 @@ struct HermesMemoryServiceTests {
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "favourite drink: jasmine tea",
-                embedding: embedder.embed("favourite drink: jasmine tea"),
+                embedding: embedder.embed("favourite drink: jasmine tea")
             )
             _ = try await repo.create(
                 tenantID: tenantID,
                 content: "weekly sleep average: 7.2 hours",
-                embedding: embedder.embed("weekly sleep average: 7.2 hours"),
+                embedding: embedder.embed("weekly sleep average: 7.2 hours")
             )
 
             let transport = ScriptedTransport(steps: [
                 .toolCall(
                     name: "session_search",
-                    arguments: #"{"query":"what does the user drink","limit":3}"#,
+                    arguments: #"{"query":"what does the user drink","limit":3}"#
                 ),
                 .plainContent("Your notes mention jasmine tea as the favourite drink."),
             ])
@@ -152,13 +152,13 @@ struct HermesMemoryServiceTests {
                 memories: repo,
                 embeddings: embedder,
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
 
             let answer = try await service.search(
                 tenantID: tenantID,
                 sessionKey: "alice",
-                query: "what does the user drink",
+                query: "what does the user drink"
             )
 
             #expect(answer.summary.contains("jasmine"))
@@ -179,13 +179,13 @@ struct HermesMemoryServiceTests {
                 memories: MemoryRepository(fluent: fluent),
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
             await #expect(throws: (any Error).self) {
                 _ = try await service.upsert(
                     tenantID: tenantID,
                     sessionKey: "bob",
-                    content: "remember anything",
+                    content: "remember anything"
                 )
             }
             // No memory persisted because handler never ran.
@@ -203,11 +203,11 @@ struct HermesMemoryServiceTests {
             let transport = ScriptedTransport(steps: [
                 .toolCall(
                     name: "memory_upsert",
-                    arguments: #"{"content":"finished a 5k run, felt great"}"#,
+                    arguments: #"{"content":"finished a 5k run, felt great"}"#
                 ),
                 .toolCall(
                     name: "tag_extract",
-                    arguments: #"{"tags":["running","fitness","5k"]}"#,
+                    arguments: #"{"tags":["running","fitness","5k"]}"#
                 ),
                 .plainContent("Stored your 5k run note."),
             ])
@@ -216,13 +216,13 @@ struct HermesMemoryServiceTests {
                 memories: MemoryRepository(fluent: fluent),
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
 
             let result = try await service.upsert(
                 tenantID: tenantID,
                 sessionKey: "alice",
-                content: "I finished a 5k run.",
+                content: "I finished a 5k run."
             )
 
             #expect(result.summary == "Stored your 5k run note.")
@@ -240,13 +240,13 @@ struct HermesMemoryServiceTests {
             let transport = ScriptedTransport(steps: [
                 .toolCall(
                     name: "memory_upsert",
-                    arguments: #"{"content":"work meeting about Q3 goals"}"#,
+                    arguments: #"{"content":"work meeting about Q3 goals"}"#
                 ),
                 // 7 tags with mixed-case + dupes + whitespace + empty.
                 // Expect: lowercased, deduped, capped at 5 in declared order.
                 .toolCall(
                     name: "tag_extract",
-                    arguments: #"{"tags":["  Work ","WORK","meeting","Q3","goals","planning","quarterly"]}"#,
+                    arguments: #"{"tags":["  Work ","WORK","meeting","Q3","goals","planning","quarterly"]}"#
                 ),
                 .plainContent("Stored the meeting note."),
             ])
@@ -255,13 +255,13 @@ struct HermesMemoryServiceTests {
                 memories: MemoryRepository(fluent: fluent),
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
 
             _ = try await service.upsert(
                 tenantID: tenantID,
                 sessionKey: "alice",
-                content: "Meeting about Q3.",
+                content: "Meeting about Q3."
             )
             let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
             let tags = try #require(stored?.tags)
@@ -278,7 +278,7 @@ struct HermesMemoryServiceTests {
             let transport = ScriptedTransport(steps: [
                 .toolCall(
                     name: "memory_upsert",
-                    arguments: #"{"content":"call mom on sunday"}"#,
+                    arguments: #"{"content":"call mom on sunday"}"#
                 ),
                 .plainContent("Saved."),
             ])
@@ -287,13 +287,13 @@ struct HermesMemoryServiceTests {
                 memories: MemoryRepository(fluent: fluent),
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
-                logger: Logger(label: "test.memory"),
+                logger: Logger(label: "test.memory")
             )
 
             let result = try await service.upsert(
                 tenantID: tenantID,
                 sessionKey: "alice",
-                content: "Call mom Sunday.",
+                content: "Call mom Sunday."
             )
             #expect(result.summary == "Saved.")
             let stored = try await Memory.query(on: fluent.db(), tenantID: tenantID).first()
@@ -316,7 +316,7 @@ struct HermesMemoryServiceTests {
             // Transport that ALWAYS asks for another memory_upsert (degenerate model).
             let transport = ScriptedTransport(repeating: .toolCall(
                 name: "memory_upsert",
-                arguments: #"{"content":"stuck in a loop"}"#,
+                arguments: #"{"content":"stuck in a loop"}"#
             ))
             let service = HermesMemoryService(
                 transport: transport,
@@ -324,13 +324,13 @@ struct HermesMemoryServiceTests {
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test",
                 logger: Logger(label: "test.memory"),
-                maxToolIterations: 3,
+                maxToolIterations: 3
             )
             await #expect(throws: (any Error).self) {
                 _ = try await service.upsert(
                     tenantID: tenantID,
                     sessionKey: "carol",
-                    content: "loop me",
+                    content: "loop me"
                 )
             }
         }

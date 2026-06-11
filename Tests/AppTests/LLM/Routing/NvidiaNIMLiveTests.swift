@@ -43,7 +43,7 @@ struct NvidiaNIMLiveTests {
             kind: .nvidia,
             apiKey: key,
             baseURL: OpenAICompatibleAdapter.defaultBaseURL(for: .nvidia),
-            logger: Logger(label: "test.nvidia-nim"),
+            logger: Logger(label: "test.nvidia-nim")
         )
 
         let payload = try JSONSerialization.data(withJSONObject: [
@@ -56,7 +56,7 @@ struct NvidiaNIMLiveTests {
         let data = try await adapter.chatCompletions(
             payload: payload,
             sessionKey: "nvidia-live-test",
-            sessionID: nil,
+            sessionID: nil
         )
 
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)

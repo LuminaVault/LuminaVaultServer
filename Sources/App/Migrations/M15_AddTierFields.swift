@@ -15,16 +15,16 @@ struct M15_AddTierFields: AsyncMigration {
             throw MigrationError.requiresSQL
         }
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'trial'"#,
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'trial'"#
         ).run()
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier_expires_at TIMESTAMPTZ"#,
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier_expires_at TIMESTAMPTZ"#
         ).run()
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier_override TEXT NOT NULL DEFAULT 'none'"#,
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS tier_override TEXT NOT NULL DEFAULT 'none'"#
         ).run()
         try await sql.raw(
-            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS revenuecat_user_id TEXT"#,
+            #"ALTER TABLE users ADD COLUMN IF NOT EXISTS revenuecat_user_id TEXT"#
         ).run()
         // CHECK constraints. IF NOT EXISTS isn't supported for constraints; guard via DO block.
         try await sql.raw(#"""
@@ -40,10 +40,10 @@ struct M15_AddTierFields: AsyncMigration {
         EXCEPTION WHEN duplicate_object THEN NULL; END $$;
         """#).run()
         try await sql.raw(
-            #"CREATE UNIQUE INDEX IF NOT EXISTS users_revenuecat_user_id_key ON users(revenuecat_user_id) WHERE revenuecat_user_id IS NOT NULL"#,
+            #"CREATE UNIQUE INDEX IF NOT EXISTS users_revenuecat_user_id_key ON users(revenuecat_user_id) WHERE revenuecat_user_id IS NOT NULL"#
         ).run()
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS users_tier_expires_idx ON users(tier_expires_at) WHERE tier_expires_at IS NOT NULL"#,
+            #"CREATE INDEX IF NOT EXISTS users_tier_expires_idx ON users(tier_expires_at) WHERE tier_expires_at IS NOT NULL"#
         ).run()
     }
 

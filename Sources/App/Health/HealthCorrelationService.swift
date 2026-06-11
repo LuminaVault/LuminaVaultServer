@@ -64,7 +64,7 @@ actor HealthCorrelationService {
         logger: Logger,
         minHealthHistoryDays: Int = 30,
         lookbackDays: Int = 7,
-        runIntervalDays: Int = 7,
+        runIntervalDays: Int = 7
     ) {
         self.transport = transport
         self.fluent = fluent
@@ -123,7 +123,7 @@ actor HealthCorrelationService {
             tenantID: tenantID,
             content: trimmed,
             embedding: embedding,
-            tags: ["correlation", "weekly"],
+            tags: ["correlation", "weekly"]
         )
         let id = try memory.requireID()
         logger.info("health correlation saved tenant=\(tenantID) memory=\(id) eventCount=\(events.count) memoryCount=\(recentMemories.count)")
@@ -179,7 +179,7 @@ actor HealthCorrelationService {
                 OAIChatMessage(role: "user", content: prompt),
             ],
             temperature: 0.3,
-            stream: false,
+            stream: false
         )
         let payload = try JSONEncoder().encode(body)
         let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)

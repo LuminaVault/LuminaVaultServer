@@ -41,14 +41,14 @@ struct KBCompileProgressServiceTests {
                 tenantID: tenantID,
                 rootPath: rootURL.path,
                 relativePath: relativePath,
-                content: "# Progress\n\nUser prefers chunky markdown sections.",
+                content: "# Progress\n\nUser prefers chunky markdown sections."
             )
             let row = VaultFile(
                 tenantID: tenantID,
                 path: relativePath,
                 contentType: "text/markdown",
                 sizeBytes: 64,
-                sha256: String(repeating: "d", count: 64),
+                sha256: String(repeating: "d", count: 64)
             )
             try await row.save(on: db)
 
@@ -58,7 +58,7 @@ struct KBCompileProgressServiceTests {
                 Self.toolCallTurn(
                     id: "call_1",
                     name: "memory_upsert",
-                    argsJSON: #"{"content":"User prefers chunky markdown sections."}"#,
+                    argsJSON: #"{"content":"User prefers chunky markdown sections."}"#
                 ),
                 // Turn 2: plain assistant content → loop exits.
                 Self.contentTurn(text: "Stored 1 memory from this batch."),
@@ -71,7 +71,7 @@ struct KBCompileProgressServiceTests {
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test-model",
                 logger: Logger(label: "lv.test.kbcompile.progress.happy"),
-                progress: recorder,
+                progress: recorder
             )
 
             let runId = UUID()
@@ -80,7 +80,7 @@ struct KBCompileProgressServiceTests {
                 sessionKey: "test-user",
                 rows: [row],
                 hint: nil,
-                runId: runId,
+                runId: runId
             )
 
             let observed = await recorder.snapshot()
@@ -126,14 +126,14 @@ struct KBCompileProgressServiceTests {
                 tenantID: tenantID,
                 rootPath: rootURL.path,
                 relativePath: relativePath,
-                content: "# Will fail\n\nTransport will throw on the first turn.",
+                content: "# Will fail\n\nTransport will throw on the first turn."
             )
             let row = VaultFile(
                 tenantID: tenantID,
                 path: relativePath,
                 contentType: "text/markdown",
                 sizeBytes: 64,
-                sha256: String(repeating: "e", count: 64),
+                sha256: String(repeating: "e", count: 64)
             )
             try await row.save(on: db)
 
@@ -147,7 +147,7 @@ struct KBCompileProgressServiceTests {
                 embeddings: DeterministicEmbeddingService(),
                 defaultModel: "test-model",
                 logger: Logger(label: "lv.test.kbcompile.progress.error"),
-                progress: recorder,
+                progress: recorder
             )
 
             let runId = UUID()
@@ -157,7 +157,7 @@ struct KBCompileProgressServiceTests {
                     sessionKey: "test-user",
                     rows: [row],
                     hint: nil,
-                    runId: runId,
+                    runId: runId
                 )
             }
 
@@ -184,7 +184,7 @@ struct KBCompileProgressServiceTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)",
+            passwordHash: "stub-\(slug)"
         )
         try await user.save(on: fluent.db())
         return id
@@ -194,7 +194,7 @@ struct KBCompileProgressServiceTests {
         tenantID: UUID,
         rootPath: String,
         relativePath: String,
-        content: String,
+        content: String
     ) throws {
         let target = URL(fileURLWithPath: rootPath)
             .appendingPathComponent("tenants")
@@ -203,7 +203,7 @@ struct KBCompileProgressServiceTests {
             .appendingPathComponent(relativePath)
         try FileManager.default.createDirectory(
             at: target.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         try Data(content.utf8).write(to: target, options: .atomic)
     }

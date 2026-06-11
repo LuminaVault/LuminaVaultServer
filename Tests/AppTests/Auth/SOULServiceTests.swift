@@ -21,13 +21,13 @@ struct SOULServiceTests {
         let service = SOULService(
             vaultPaths: VaultPathService(rootPath: vaultRoot.path),
             hermesDataRoot: hermesRoot.path,
-            logger: Logger(label: "test.soul"),
+            logger: Logger(label: "test.soul")
         )
         let user = User(
             id: UUID(),
             email: "soul-\(UUID().uuidString.prefix(6))@test.luminavault",
             username: "soul-\(UUID().uuidString.prefix(8).lowercased())",
-            passwordHash: "x",
+            passwordHash: "x"
         )
         return Harness(service: service, user: user, vaultRoot: vaultRoot, hermesRoot: hermesRoot)
     }

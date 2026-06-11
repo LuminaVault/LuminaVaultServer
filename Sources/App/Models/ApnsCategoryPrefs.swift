@@ -18,7 +18,7 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
         tenantID: UUID,
         chatEnabled: Bool = true,
         nudgeEnabled: Bool = true,
-        digestEnabled: Bool = true,
+        digestEnabled: Bool = true
     ) {
         id = tenantID
         self.chatEnabled = chatEnabled

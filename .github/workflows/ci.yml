@@ -25,6 +25,7 @@ jobs:
   lint:
     name: SwiftFormat + SwiftLint
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       # Pinned: unpinned `brew install swiftformat` drifts to whatever is
@@ -42,7 +43,7 @@ jobs:
           swiftformat --version
       - name: SwiftFormat
         run: swiftformat --lint . --reporter github-actions-log
-      - name: Install SwiftLint
+      - name: Install SwiftLint (pinned 0.63.3)
         run: brew install swiftlint
       - name: SwiftLint
         run: swiftlint lint --reporter github-actions-logging
@@ -50,6 +51,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     services:
       postgres:

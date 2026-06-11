@@ -43,7 +43,7 @@ struct VaultInitTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try Self.decodeAuth($0.body) }
     }
 
@@ -57,7 +57,7 @@ struct VaultInitTests {
             let status = try await client.execute(
                 uri: "/v1/vault/status",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { try Self.decodeStatus($0.body) }
             #expect(status.initialized == false)
             #expect(status.defaultSpaceSlugs.isEmpty)
@@ -75,7 +75,7 @@ struct VaultInitTests {
             let first = try await client.execute(
                 uri: "/v1/vault/create",
                 method: .post,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeStatus($0.body) }
             #expect(first.initialized == true)
             #expect(Set(first.defaultSpaceSlugs) == Set(SpaceDefaults.entries.map(\.slug)))
@@ -84,7 +84,7 @@ struct VaultInitTests {
             let listed = try await client.execute(
                 uri: "/v1/spaces",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeSpaces($0.body) }
             let listedSlugs = Set(listed.spaces.map(\.slug))
             #expect(Set(SpaceDefaults.entries.map(\.slug)).isSubset(of: listedSlugs))
@@ -93,7 +93,7 @@ struct VaultInitTests {
             let second = try await client.execute(
                 uri: "/v1/vault/create",
                 method: .post,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeStatus($0.body) }
             #expect(second.initialized == true)
         }
@@ -112,13 +112,13 @@ struct VaultInitTests {
             _ = try await client.execute(
                 uri: "/v1/vault/create",
                 method: .post,
-                headers: [.authorization: "Bearer \(preCreate.accessToken)"],
+                headers: [.authorization: "Bearer \(preCreate.accessToken)"]
             ) { try Self.decodeStatus($0.body) }
 
             let status = try await client.execute(
                 uri: "/v1/vault/status",
                 method: .get,
-                headers: [.authorization: "Bearer \(preCreate.accessToken)"],
+                headers: [.authorization: "Bearer \(preCreate.accessToken)"]
             ) { try Self.decodeStatus($0.body) }
             #expect(status.initialized == true)
             #expect(status.defaultSpaceSlugs.count == SpaceDefaults.entries.count)

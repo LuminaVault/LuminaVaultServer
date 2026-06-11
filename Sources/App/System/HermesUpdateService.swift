@@ -44,7 +44,7 @@ actor HermesUpdateService {
         containerManager: HermesContainerManager?,
         healthTimeoutSeconds: Int = 90,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
         self.central = central
@@ -74,7 +74,7 @@ actor HermesUpdateService {
             state: .running,
             steps: initialSteps,
             fromVersion: currentRef,
-            toVersion: targetRef,
+            toVersion: targetRef
         )
         try await row.create(on: fluent.db())
 
@@ -102,7 +102,7 @@ actor HermesUpdateService {
             state: .running,
             steps: steps,
             fromVersion: failed.toVersion,
-            toVersion: restoreRef,
+            toVersion: restoreRef
         )
         try await row.create(on: fluent.db())
 
@@ -161,7 +161,7 @@ actor HermesUpdateService {
             currentLabel: label,
             availableLabel: nil,
             updateAvailable: false,
-            lastUpdatedAt: lastUpdated ?? nil,
+            lastUpdatedAt: lastUpdated ?? nil
         )
     }
 
@@ -198,7 +198,7 @@ actor HermesUpdateService {
     private func registerSubscriber(
         jobID: UUID,
         subID: UUID,
-        continuation: AsyncThrowingStream<HermesUpdateEvent, Error>.Continuation,
+        continuation: AsyncThrowingStream<HermesUpdateEvent, Error>.Continuation
     ) {
         subscribers[jobID, default: [:]][subID] = continuation
     }
@@ -272,7 +272,7 @@ actor HermesUpdateService {
                 await finalize(
                     jobID,
                     state: .rolledBack,
-                    errorMessage: "The new version started but didn't respond in time. The previous version is still running.",
+                    errorMessage: "The new version started but didn't respond in time. The previous version is still running."
                 )
                 return
             }
@@ -314,7 +314,7 @@ actor HermesUpdateService {
                 await finalize(
                     jobID,
                     state: .rolledBack,
-                    errorMessage: Self.userMessage(for: error) + " The previous version is still running.",
+                    errorMessage: Self.userMessage(for: error) + " The previous version is still running."
                 )
             } else {
                 await finalize(jobID, state: .failed, errorMessage: Self.userMessage(for: error))
@@ -342,14 +342,14 @@ actor HermesUpdateService {
             await finalize(
                 jobID,
                 state: .rolledBack,
-                errorMessage: "The update didn't complete, so the previous version was restored.",
+                errorMessage: "The update didn't complete, so the previous version was restored."
             )
         } catch {
             try? await addOrMark(jobID, .rollback, .failed, detail: "\(error)")
             await finalize(
                 jobID,
                 state: .failed,
-                errorMessage: "The update failed and automatic restore did not succeed. Your assistant may be offline — manual recovery required.",
+                errorMessage: "The update failed and automatic restore did not succeed. Your assistant may be offline — manual recovery required."
             )
         }
     }
@@ -380,7 +380,7 @@ actor HermesUpdateService {
     private func step(
         _ jobID: UUID,
         _ id: HermesUpdateStepID,
-        _ work: () async throws -> String?,
+        _ work: () async throws -> String?
     ) async throws {
         try await mark(jobID, id, .running)
         let detail = try await work()
@@ -391,7 +391,7 @@ actor HermesUpdateService {
         _ jobID: UUID,
         _ id: HermesUpdateStepID,
         _ state: HermesUpdateStepState,
-        detail: String? = nil,
+        detail: String? = nil
     ) async throws {
         guard let row = try await loadRow(jobID: jobID) else { return }
         var steps = row.steps
@@ -403,7 +403,7 @@ actor HermesUpdateService {
                 state: state,
                 detail: detail ?? prior.detail,
                 startedAt: state == .running ? ts : prior.startedAt,
-                finishedAt: (state == .succeeded || state == .failed || state == .skipped) ? ts : prior.finishedAt,
+                finishedAt: (state == .succeeded || state == .failed || state == .skipped) ? ts : prior.finishedAt
             )
         }
         row.stepsJSON = HermesUpdateJob.encodeSteps(steps)
@@ -419,7 +419,7 @@ actor HermesUpdateService {
         _ jobID: UUID,
         _ id: HermesUpdateStepID,
         _ state: HermesUpdateStepState,
-        detail: String? = nil,
+        detail: String? = nil
     ) async throws {
         guard let row = try await loadRow(jobID: jobID) else { return }
         var steps = row.steps

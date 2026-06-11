@@ -26,7 +26,7 @@ final class NomicEmbeddingService: EmbeddingService {
         baseURL: URL = NomicEmbeddingService.defaultBaseURL,
         model: String = NomicEmbeddingService.defaultModel,
         session: URLSession = .shared,
-        logger: Logger = Logger(label: "lv.embedding.nomic"),
+        logger: Logger = Logger(label: "lv.embedding.nomic")
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL

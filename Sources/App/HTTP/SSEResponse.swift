@@ -59,7 +59,7 @@ struct SSEStreamResponse: ResponseGenerator {
 
     private static func encodeEventLine(
         _ event: QueryStreamEvent,
-        encoder: JSONEncoder,
+        encoder: JSONEncoder
     ) throws -> ByteBuffer {
         let json = try encoder.encode(event)
         var buf = ByteBuffer()

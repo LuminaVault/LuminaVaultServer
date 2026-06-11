@@ -28,7 +28,7 @@ struct SkillOutputsController {
             outputs: [],
             streakDays: 0,
             activeRun: false,
-            nextCursor: nil,
+            nextCursor: nil
         )
     }
 }

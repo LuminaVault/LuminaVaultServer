@@ -96,8 +96,8 @@ struct TodosController {
                 isTodo: true,
                 done: false,
                 dueAt: body.dueAt,
-                projectID: body.projectID,
-            ),
+                projectID: body.projectID
+            )
         )
         try await row.save(on: fluent.db())
 
@@ -108,7 +108,7 @@ struct TodosController {
                 let embedding = try await embeddings.embed(title, tenantID: tenantID)
                 _ = try await memories.create(
                     tenantID: tenantID, content: title, embedding: embedding,
-                    sourceVaultFileID: row.requireID(), reviewState: "auto",
+                    sourceVaultFileID: row.requireID(), reviewState: "auto"
                 )
             } catch {
                 logger.error("todo memory create failed tenant=\(tenantID): \(error)")
@@ -197,7 +197,7 @@ struct TodosController {
             done: m?.done ?? false,
             dueAt: m?.dueAt,
             projectID: m?.projectID,
-            createdAt: f.createdAt ?? Date(),
+            createdAt: f.createdAt ?? Date()
         )
     }
 }

@@ -49,7 +49,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(phone: phone),
+                body: Self.startBody(phone: phone)
             ) { response in
                 #expect(response.status == .ok)
                 let start = try Self.decodeStart(response.body)
@@ -60,7 +60,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyBody(phone: phone, code: Self.fixedOTP),
+                body: Self.verifyBody(phone: phone, code: Self.fixedOTP)
             ) { response -> AuthResponse in
                 #expect(response.status == .ok)
                 return try Self.decodeAuth(response.body)
@@ -91,14 +91,14 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(phone: phone),
+                body: Self.startBody(phone: phone)
             ) { #expect($0.status == .ok) }
 
             try await client.execute(
                 uri: "/v1/auth/phone/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyBody(phone: phone, code: "000000"),
+                body: Self.verifyBody(phone: phone, code: "000000")
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -115,7 +115,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyBody(phone: Self.randomE164(), code: Self.fixedOTP),
+                body: Self.verifyBody(phone: Self.randomE164(), code: Self.fixedOTP)
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -130,7 +130,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(phone: "555-1234"),
+                body: Self.startBody(phone: "555-1234")
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -152,7 +152,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(phone: phone),
+                body: Self.startBody(phone: phone)
             ) { #expect($0.status == .ok) }
 
             // Re-issue (different request, new in-memory entry).
@@ -160,7 +160,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/start",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.startBody(phone: phone),
+                body: Self.startBody(phone: phone)
             ) { #expect($0.status == .ok) }
 
             // Verify succeeds against the latest challenge.
@@ -168,7 +168,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyBody(phone: phone, code: Self.fixedOTP),
+                body: Self.verifyBody(phone: phone, code: Self.fixedOTP)
             ) { #expect($0.status == .ok) }
 
             // The challenge is now burned-on-success; a second verify with
@@ -177,7 +177,7 @@ struct PhoneAuthFlowTests {
                 uri: "/v1/auth/phone/verify",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.verifyBody(phone: phone, code: Self.fixedOTP),
+                body: Self.verifyBody(phone: phone, code: Self.fixedOTP)
             ) { #expect($0.status == .unauthorized) }
         }
     }

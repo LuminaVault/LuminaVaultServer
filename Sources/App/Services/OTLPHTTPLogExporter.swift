@@ -22,7 +22,7 @@ struct OTLPHTTPLogExporter: OTelLogRecordExporter {
     init(
         endpoint: String,
         headers: [(String, String)] = [],
-        httpClient: HTTPClient? = nil,
+        httpClient: HTTPClient? = nil
     ) {
         self.endpoint = endpoint
         self.headers = headers
@@ -56,7 +56,7 @@ struct OTLPHTTPLogExporter: OTelLogRecordExporter {
             let detail = try? await response.body.collect(upTo: 2 * 1024)
             throw OTLPHTTPLogExporterError.unexpectedStatus(
                 code: response.status.code,
-                body: detail.map { String(buffer: $0) } ?? "",
+                body: detail.map { String(buffer: $0) } ?? ""
             )
         }
     }
@@ -88,9 +88,9 @@ struct OTLPHTTPLogExporter: OTelLogRecordExporter {
                 scopeLogs: [
                     OTLPScopeLogs(
                         scope: OTLPInstrumentationScope(name: "luminavault.app", version: nil),
-                        logRecords: records.map(makeLogRecord),
+                        logRecords: records.map(makeLogRecord)
                     ),
-                ],
+                ]
             )
         }
         return OTLPLogsRequest(resourceLogs: resourceLogs)
@@ -107,7 +107,7 @@ struct OTLPHTTPLogExporter: OTelLogRecordExporter {
             body: .string(r.body.description),
             attributes: attrs,
             traceId: r.spanContext.map { String(describing: $0.traceID) } ?? "",
-            spanId: r.spanContext.map { String(describing: $0.spanID) } ?? "",
+            spanId: r.spanContext.map { String(describing: $0.spanID) } ?? ""
         )
     }
 

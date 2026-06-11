@@ -87,7 +87,7 @@ struct DefaultAuthService: AuthService {
         to user: User,
         on db: any Database,
         trialDays: Int = 14,
-        now: Date = Date(),
+        now: Date = Date()
     ) async throws {
         user.tier = "trial"
         if user.tierExpiresAt == nil {
@@ -232,7 +232,7 @@ struct DefaultAuthService: AuthService {
         let row = EmailVerificationToken(
             tenantID: userID,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(verifyCodeLifetime),
+            expiresAt: Date().addingTimeInterval(verifyCodeLifetime)
         )
         try await row.save(on: fluent.db())
         try await verificationCodeSender.send(code: code, to: user.email, purpose: "verify")
@@ -244,7 +244,7 @@ struct DefaultAuthService: AuthService {
         let row = PasswordResetToken(
             tenantID: userID,
             codeHash: sha256Hex(code),
-            expiresAt: Date().addingTimeInterval(resetCodeLifetime),
+            expiresAt: Date().addingTimeInterval(resetCodeLifetime)
         )
         try await row.save(on: fluent.db())
         try await resetCodeSender.send(code: code, to: user.email, purpose: "reset")
@@ -256,7 +256,7 @@ struct DefaultAuthService: AuthService {
             provider: provider.name,
             providerUserID: info.providerUserID,
             email: info.email,
-            emailVerified: info.emailVerified,
+            emailVerified: info.emailVerified
         )
         return try await issueTokens(for: user)
     }
@@ -271,7 +271,7 @@ struct DefaultAuthService: AuthService {
         provider: String,
         providerUserID: String,
         email: String,
-        emailVerified: Bool,
+        emailVerified: Bool
     ) async throws -> User {
         // 1) Existing identity for this (provider, providerUserID) → login.
         if let identity = try await OAuthIdentity.query(on: fluent.db())
@@ -290,7 +290,7 @@ struct DefaultAuthService: AuthService {
                 provider: provider,
                 providerUserID: providerUserID,
                 email: email,
-                emailVerified: emailVerified,
+                emailVerified: emailVerified
             )
             try await identity.save(on: fluent.db())
             return user
@@ -306,7 +306,7 @@ struct DefaultAuthService: AuthService {
             provider: provider,
             providerUserID: providerUserID,
             email: email,
-            emailVerified: emailVerified,
+            emailVerified: emailVerified
         )
         try await identity.save(on: fluent.db())
         // HER-29 — soft-fail Hermes; see register(...) for rationale.
@@ -362,14 +362,14 @@ struct DefaultAuthService: AuthService {
             userID: userID,
             expiration: now.addingTimeInterval(accessTokenLifetime),
             issuedAt: now,
-            hpid: hpid,
+            hpid: hpid
         )
         let signed = try await jwtKeys.sign(access, kid: jwtKID)
         let refreshRaw = randomToken()
         let refreshRow = RefreshToken(
             tenantID: userID,
             tokenHash: sha256Hex(refreshRaw),
-            expiresAt: Date().addingTimeInterval(refreshTokenLifetime),
+            expiresAt: Date().addingTimeInterval(refreshTokenLifetime)
         )
         try await refreshRow.save(on: fluent.db())
         return AuthResponse(
@@ -380,7 +380,7 @@ struct DefaultAuthService: AuthService {
             expiresIn: Int(accessTokenLifetime),
             mfaRequired: nil,
             mfaChallengeId: nil,
-            vaultInitialized: user.vaultInitialized,
+            vaultInitialized: user.vaultInitialized
         )
     }
 
@@ -395,7 +395,7 @@ struct DefaultAuthService: AuthService {
             expiresIn: 0,
             mfaRequired: true,
             mfaChallengeId: challengeID,
-            vaultInitialized: user.vaultInitialized,
+            vaultInitialized: user.vaultInitialized
         )
     }
 

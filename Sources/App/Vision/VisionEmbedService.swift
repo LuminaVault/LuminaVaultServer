@@ -26,7 +26,7 @@ struct VisionEmbedService {
         image: ByteBuffer,
         mime: String,
         tenantID: UUID,
-        indexAsMemory: UUID?,
+        indexAsMemory: UUID?
     ) async throws -> VisionEmbedResponse {
         guard let adapter = await registry.active() else {
             logger.error("no active vision embed provider — check vision.embed.provider env knob")
@@ -70,7 +70,7 @@ struct VisionEmbedService {
             dim: targetDim,
             model: result.model,
             sourceWidth: result.sourceWidth ?? 0,
-            sourceHeight: result.sourceHeight ?? 0,
+            sourceHeight: result.sourceHeight ?? 0
         )
     }
 

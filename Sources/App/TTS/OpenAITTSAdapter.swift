@@ -31,7 +31,7 @@ struct OpenAITTSAdapter: TTSProviderAdapter {
         baseURL: URL = URL(string: "https://api.openai.com")!,
         defaultModel: String = "tts-1",
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
@@ -84,7 +84,7 @@ struct OpenAITTSAdapter: TTSProviderAdapter {
             return TTSSynthesisResponse(
                 audioData: data,
                 contentType: "audio/mpeg",
-                charactersBilled: text.count,
+                charactersBilled: text.count
             )
         }
         let preview = String(data: data.prefix(512), encoding: .utf8)

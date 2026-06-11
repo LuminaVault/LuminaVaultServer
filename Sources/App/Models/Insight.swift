@@ -36,7 +36,7 @@ final class Insight: Model, TenantModel, @unchecked Sendable {
         sourceMemoryIDs: [UUID] = [],
         periodStart: Date? = nil,
         periodEnd: Date? = nil,
-        dismissedAt: Date? = nil,
+        dismissedAt: Date? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -62,7 +62,7 @@ final class Insight: Model, TenantModel, @unchecked Sendable {
             sourceMemoryIDs: sourceMemoryIDs,
             dismissed: dismissedAt != nil,
             periodStart: periodStart,
-            periodEnd: periodEnd,
+            periodEnd: periodEnd
         )
     }
 }

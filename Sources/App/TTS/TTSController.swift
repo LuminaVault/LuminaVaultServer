@@ -59,7 +59,7 @@ struct TTSController {
         return Response(
             status: .ok,
             headers: headers,
-            body: .init(byteBuffer: ByteBuffer(bytes: result.audioData)),
+            body: .init(byteBuffer: ByteBuffer(bytes: result.audioData))
         )
     }
 }

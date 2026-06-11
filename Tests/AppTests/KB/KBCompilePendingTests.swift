@@ -38,7 +38,7 @@ struct KBCompilePendingTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
     }
 
@@ -49,7 +49,7 @@ struct KBCompilePendingTests {
     private static func seedVaultFile(
         tenantID: UUID,
         path: String,
-        processedAt: Date? = nil,
+        processedAt: Date? = nil
     ) async throws -> UUID {
         try await withTestFluent(label: "kbcompile.pending.seed") { fluent -> UUID in
             let row = VaultFile(
@@ -58,7 +58,7 @@ struct KBCompilePendingTests {
                 contentType: "text/markdown",
                 sizeBytes: 12,
                 sha256: String(repeating: "a", count: 64),
-                processedAt: processedAt,
+                processedAt: processedAt
             )
             try await row.save(on: fluent.db())
             return try row.requireID()
@@ -73,7 +73,7 @@ struct KBCompilePendingTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/kb-compile/pending",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -90,7 +90,7 @@ struct KBCompilePendingTests {
             try await client.execute(
                 uri: "/v1/kb-compile/pending",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodePending(response.body)
@@ -113,13 +113,13 @@ struct KBCompilePendingTests {
             _ = try await Self.seedVaultFile(
                 tenantID: auth.userId,
                 path: "notes/c.md",
-                processedAt: Date(),
+                processedAt: Date()
             )
 
             try await client.execute(
                 uri: "/v1/kb-compile/pending",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodePending(response.body)
@@ -144,7 +144,7 @@ struct KBCompilePendingTests {
             try await client.execute(
                 uri: "/v1/kb-compile/pending",
                 method: .get,
-                headers: [.authorization: "Bearer \(tenantB.accessToken)"],
+                headers: [.authorization: "Bearer \(tenantB.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodePending(response.body)
@@ -155,7 +155,7 @@ struct KBCompilePendingTests {
             try await client.execute(
                 uri: "/v1/kb-compile/pending",
                 method: .get,
-                headers: [.authorization: "Bearer \(tenantA.accessToken)"],
+                headers: [.authorization: "Bearer \(tenantA.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodePending(response.body)

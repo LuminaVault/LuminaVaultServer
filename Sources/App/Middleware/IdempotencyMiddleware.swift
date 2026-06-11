@@ -48,7 +48,7 @@ struct IdempotencyMiddleware: RouterMiddleware {
         logger: Logger = Logger(label: "lv.idempotency"),
         ttl: TimeInterval = 24 * 3600,
         maxRequestBodyBytes: Int = 32 * 1024 * 1024,
-        maxResponseBodyBytes: Int = 1 * 1024 * 1024,
+        maxResponseBodyBytes: Int = 1 * 1024 * 1024
     ) {
         self.fluent = fluent
         self.logger = logger
@@ -60,7 +60,7 @@ struct IdempotencyMiddleware: RouterMiddleware {
     func handle(
         _ request: Request,
         context: Context,
-        next: (Request, Context) async throws -> Response,
+        next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         guard let headerName = HTTPField.Name("Idempotency-Key"),
               let rawHeader = request.headers[headerName],
@@ -86,7 +86,7 @@ struct IdempotencyMiddleware: RouterMiddleware {
         let requestHash = Self.hash(
             body: collected,
             method: request.method.rawValue,
-            path: request.uri.path,
+            path: request.uri.path
         )
 
         // Tenant-scoped lookup: a tenant cannot see another tenant's cached
@@ -134,7 +134,7 @@ struct IdempotencyMiddleware: RouterMiddleware {
                 responseStatus: Int(response.status.code),
                 responseContentType: response.headers[.contentType],
                 responseBody: bodyData,
-                expiresAt: Date().addingTimeInterval(ttl),
+                expiresAt: Date().addingTimeInterval(ttl)
             )
             do {
                 try await row.create(on: db)
@@ -169,7 +169,7 @@ struct IdempotencyMiddleware: RouterMiddleware {
         return Response(
             status: .init(code: row.responseStatus),
             headers: headers,
-            body: .init(byteBuffer: ByteBuffer(bytes: row.responseBody)),
+            body: .init(byteBuffer: ByteBuffer(bytes: row.responseBody))
         )
     }
 }

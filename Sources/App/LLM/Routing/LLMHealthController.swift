@@ -42,7 +42,7 @@ struct LLMHealthController {
                         region: kind.region.rawValue,
                         ok: result.ok,
                         latencyMs: result.latencyMs,
-                        error: result.error,
+                        error: result.error
                     )
                 }
             }

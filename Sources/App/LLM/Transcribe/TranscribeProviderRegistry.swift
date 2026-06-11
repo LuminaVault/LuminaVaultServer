@@ -40,7 +40,7 @@ actor TranscribeProviderRegistry: Service {
         active: TranscribeProviderKind,
         configs: [TranscribeProviderConfig] = [],
         adapters: [any TranscribeProviderAdapter],
-        logger: Logger,
+        logger: Logger
     ) {
         activeKind = active
         self.logger = logger
@@ -61,7 +61,7 @@ actor TranscribeProviderRegistry: Service {
     static func from(
         reader: ConfigReader,
         adapters: [any TranscribeProviderAdapter],
-        logger: Logger,
+        logger: Logger
     ) -> TranscribeProviderRegistry {
         let activeRaw = reader.string(forKey: ConfigKey("transcribe.provider"), default: "groq")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -71,7 +71,7 @@ actor TranscribeProviderRegistry: Service {
             active: active,
             configs: loadConfigs(from: reader),
             adapters: adapters,
-            logger: logger,
+            logger: logger
         )
     }
 
@@ -110,7 +110,7 @@ actor TranscribeProviderRegistry: Service {
 
     private static func loadConfig(
         kind: TranscribeProviderKind,
-        reader: ConfigReader,
+        reader: ConfigReader
     ) -> TranscribeProviderConfig? {
         let key = kind.rawValue
         let apiKey = reader.string(forKey: ConfigKey("transcribe.provider.\(key).apiKey"), isSecret: true, default: "")
@@ -124,7 +124,7 @@ actor TranscribeProviderRegistry: Service {
             apiKey: apiKey,
             baseURL: baseURL,
             model: model,
-            mtokPerSecond: mtokPerSecond,
+            mtokPerSecond: mtokPerSecond
         )
         return config.isEnabled ? config : nil
     }

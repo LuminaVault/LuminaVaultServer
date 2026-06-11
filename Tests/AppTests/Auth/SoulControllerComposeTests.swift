@@ -45,7 +45,7 @@ struct SoulControllerComposeTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -63,7 +63,7 @@ struct SoulControllerComposeTests {
                 agentName: "Athena",
                 tone: .warm,
                 role: .secondBrain,
-                autonomy: .suggest,
+                autonomy: .suggest
             )
             let body = try JSONEncoder().encode(request)
 
@@ -71,7 +71,7 @@ struct SoulControllerComposeTests {
                 uri: "/v1/soul/compose",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(data: body),
+                body: ByteBuffer(data: body)
             ) { response -> SoulResponse in
                 #expect(response.status == .ok)
                 return try Self.decodeSoulResponse(response.body)
@@ -83,7 +83,7 @@ struct SoulControllerComposeTests {
             let fetched = try await client.execute(
                 uri: "/v1/soul",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response -> SoulResponse in
                 #expect(response.status == .ok)
                 return try Self.decodeSoulResponse(response.body)

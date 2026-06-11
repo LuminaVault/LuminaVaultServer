@@ -41,7 +41,7 @@ struct MemoryCompileMemoryUpsertTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
     }
 
@@ -58,7 +58,7 @@ struct MemoryCompileMemoryUpsertTests {
         relativePath: String,
         content: String,
         fluent: Fluent,
-        rootPath: String,
+        rootPath: String
     ) async throws -> UUID {
         let raw = URL(fileURLWithPath: rootPath)
             .appendingPathComponent("tenants")
@@ -67,7 +67,7 @@ struct MemoryCompileMemoryUpsertTests {
             .appendingPathComponent(relativePath)
         try FileManager.default.createDirectory(
             at: raw.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         let data = Data(content.utf8)
         try data.write(to: raw, options: .atomic)
@@ -76,7 +76,7 @@ struct MemoryCompileMemoryUpsertTests {
             path: relativePath,
             contentType: "text/markdown",
             sizeBytes: Int64(data.count),
-            sha256: String(repeating: "c", count: 64),
+            sha256: String(repeating: "c", count: 64)
         )
         try await row.save(on: fluent.db())
         return try row.requireID()
@@ -94,7 +94,7 @@ struct MemoryCompileMemoryUpsertTests {
 
         let app = try await buildApplication(
             reader: dbTestReader,
-            kbCompileTransportOverride: stub,
+            kbCompileTransportOverride: stub
         )
 
         try await app.test(.router) { client in
@@ -112,7 +112,7 @@ struct MemoryCompileMemoryUpsertTests {
                     I journal every Sunday evening before bed.
                     """,
                     fluent: fluent,
-                    rootPath: "/tmp/luminavault-test",
+                    rootPath: "/tmp/luminavault-test"
                 )
             }
 
@@ -123,7 +123,7 @@ struct MemoryCompileMemoryUpsertTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)

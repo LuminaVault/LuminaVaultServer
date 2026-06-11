@@ -10,14 +10,14 @@ struct M72_AddKanbanCardExtra: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            "ALTER TABLE kanban_cards ADD COLUMN IF NOT EXISTS extra JSONB",
+            "ALTER TABLE kanban_cards ADD COLUMN IF NOT EXISTS extra JSONB"
         ).run()
     }
 
     func revert(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
         try await sql.raw(
-            "ALTER TABLE kanban_cards DROP COLUMN IF EXISTS extra",
+            "ALTER TABLE kanban_cards DROP COLUMN IF EXISTS extra"
         ).run()
     }
 }

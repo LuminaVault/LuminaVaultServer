@@ -45,7 +45,7 @@ final class HermesTenantContainer: Model, TenantModel, @unchecked Sendable {
         apiServerKeyNonce: Data,
         xaiConnectedAt: Date? = nil,
         nousConnectedAt: Date? = nil,
-        lastUsedAt: Date? = nil,
+        lastUsedAt: Date? = nil
     ) {
         self.tenantID = tenantID
         self.containerName = containerName

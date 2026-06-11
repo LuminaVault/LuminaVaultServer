@@ -38,14 +38,14 @@ struct AchievementsController {
                         label: sub.label,
                         target: sub.target,
                         progress: row?.progressCount ?? 0,
-                        unlockedAt: row?.unlockedAt,
+                        unlockedAt: row?.unlockedAt
                     )
-                },
+                }
             )
         }
         return AchievementsListResponse(
             catalogVersion: service.catalog.catalogVersion,
-            archetypes: archetypes,
+            archetypes: archetypes
         )
     }
 
@@ -62,7 +62,7 @@ struct AchievementsController {
             return AchievementsRecentResponse.UnlockDTO(
                 key: row.achievementKey,
                 label: label,
-                unlockedAt: unlockedAt,
+                unlockedAt: unlockedAt
             )
         }
         return AchievementsRecentResponse(unlocks: unlocks)

@@ -71,7 +71,7 @@ actor SkillRunner {
         capGuard: SkillRunCapGuard,
         eventBus: EventBus,
         usageMeter: UsageMeterService? = nil,
-        logger: Logger,
+        logger: Logger
     ) {
         self.catalog = catalog
         self.transport = transport
@@ -139,14 +139,14 @@ actor SkillRunner {
         skill: SkillManifest,
         tenantID: UUID,
         profileUsername: String,
-        trigger: SkillTrigger,
+        trigger: SkillTrigger
     ) async throws -> SkillRunResult {
         try await run(
             skill: skill,
             tenantID: tenantID,
             tier: "trial",
             profileUsername: profileUsername,
-            trigger: trigger,
+            trigger: trigger
         )
     }
 
@@ -157,7 +157,7 @@ actor SkillRunner {
         profileUsername: String,
         trigger: SkillTrigger,
         input: String? = nil,
-        arguments: [String: String] = [:],
+        arguments: [String: String] = [:]
     ) async throws -> SkillRunResult {
         let startedAt = Date()
         let runID = UUID()
@@ -187,14 +187,14 @@ actor SkillRunner {
                 arguments: arguments,
                 mtokIn: &mtokIn,
                 mtokOut: &mtokOut,
-                modelUsed: &modelUsed,
+                modelUsed: &modelUsed
             )
             try await dispatchOutputs(
                 skill: skill,
                 tenantID: tenantID,
                 profileUsername: profileUsername,
                 trigger: trigger,
-                content: outcome.summary,
+                content: outcome.summary
             )
             let endedAt = Date()
             let result = SkillRunResult(
@@ -207,7 +207,7 @@ actor SkillRunner {
                 mtokIn: mtokIn,
                 mtokOut: mtokOut,
                 startedAt: startedAt,
-                endedAt: endedAt,
+                endedAt: endedAt
             )
             try await persist(result: result, skill: skill, tenantID: tenantID)
             return result
@@ -226,7 +226,7 @@ actor SkillRunner {
                 mtokIn: mtokIn,
                 mtokOut: mtokOut,
                 startedAt: startedAt,
-                endedAt: endedAt,
+                endedAt: endedAt
             )
             try? await persist(result: result, skill: skill, tenantID: tenantID)
             throw error
@@ -427,7 +427,7 @@ actor SkillRunner {
         arguments: [String: String],
         mtokIn: inout Int,
         mtokOut: inout Int,
-        modelUsed: inout String?,
+        modelUsed: inout String?
     ) async throws -> AgentOutcome {
         let allowed = Set(skill.allowedTools)
         let tools = AvailableTool.allCases
@@ -469,7 +469,7 @@ actor SkillRunner {
                 tools: tools,
                 toolChoice: "auto",
                 temperature: 0.2,
-                stream: false,
+                stream: false
             )
             let payload = try JSONEncoder().encode(body)
             let metadata = try await transport.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
@@ -496,13 +496,13 @@ actor SkillRunner {
                     let result = try await dispatch(
                         tenantID: tenantID,
                         allowedTools: allowed,
-                        toolCall: call,
+                        toolCall: call
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name,
+                        name: call.function.name
                     ))
                 }
                 continue
@@ -516,7 +516,7 @@ actor SkillRunner {
     private func dispatch(
         tenantID: UUID,
         allowedTools: Set<String>,
-        toolCall: ToolCall,
+        toolCall: ToolCall
     ) async throws -> String {
         guard allowedTools.contains(toolCall.function.name) else {
             return Self.toolErrorJSON("tool \(toolCall.function.name) not allowed by this skill manifest")
@@ -532,7 +532,7 @@ actor SkillRunner {
                 let saved = try await persistMemory(
                     tenantID: tenantID,
                     content: args.content,
-                    sourceVaultFileID: args.sourceVaultFileId,
+                    sourceVaultFileID: args.sourceVaultFileId
                 )
                 return Self.encodeJSON([
                     "status": "ok",
@@ -548,7 +548,7 @@ actor SkillRunner {
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,
-                    limit: max(1, min(args.limit ?? 5, 20)),
+                    limit: max(1, min(args.limit ?? 5, 20))
                 )
                 let serializable = hits.map { hit in
                     [
@@ -715,7 +715,7 @@ actor SkillRunner {
         do {
             let result = try await DeviceCommandBroker.shared.request(
                 tenantID: tenantID,
-                command: DeviceCommand(kind: kind, domain: domain, payload: payload),
+                command: DeviceCommand(kind: kind, domain: domain, payload: payload)
             )
             guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
             var out = ["status": "ok"]
@@ -786,7 +786,7 @@ actor SkillRunner {
         do {
             let result = try await DeviceCommandBroker.shared.request(
                 tenantID: tenantID,
-                command: DeviceCommand(kind: .deviceFetch, domain: domain, payload: payload),
+                command: DeviceCommand(kind: .deviceFetch, domain: domain, payload: payload)
             )
             guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
             return Self.encodeJSON(["status": "ok", "items": result.payload?["items"] ?? "[]"])
@@ -818,7 +818,7 @@ actor SkillRunner {
                     tenantID: tenantID,
                     queryEmbedding: embedding,
                     limit: limit,
-                    sql: sql,
+                    sql: sql
                 )
                 let items: [[String: String]] = hits.map { hit in
                     [
@@ -846,7 +846,7 @@ actor SkillRunner {
         tenantID: UUID,
         profileUsername: String,
         trigger: SkillTrigger,
-        content: String,
+        content: String
     ) async throws {
         for output in skill.outputs {
             switch output.kind {
@@ -855,7 +855,7 @@ actor SkillRunner {
                     tenantID: tenantID,
                     path: output.path ?? "memos/\(Self.dateStamp())/\(Self.slug(skill.name)).md",
                     content: content,
-                    contentType: "text/markdown",
+                    contentType: "text/markdown"
                 )
             case .apnsDigest:
                 try await apns.notifyDigest(userID: tenantID, username: profileUsername, body: content)
@@ -873,7 +873,7 @@ actor SkillRunner {
                     path: row.path,
                     content: content,
                     contentType: row.contentType,
-                    existing: row,
+                    existing: row
                 )
             }
         }
@@ -885,7 +885,7 @@ actor SkillRunner {
             tenantID: tenantID,
             content: content,
             embedding: embedding,
-            sourceVaultFileID: sourceVaultFileID,
+            sourceVaultFileID: sourceVaultFileID
         )
     }
 
@@ -895,7 +895,7 @@ actor SkillRunner {
         content: String,
         contentType: String,
         existing: VaultFile? = nil,
-        spaceID: UUID? = nil,
+        spaceID: UUID? = nil
     ) async throws {
         let safePath = try Self.validateRelativePath(path)
         try vaultPaths.ensureTenantDirectories(for: tenantID)
@@ -928,7 +928,7 @@ actor SkillRunner {
                 path: safePath,
                 contentType: contentType,
                 sizeBytes: Int64(data.count),
-                sha256: digest,
+                sha256: digest
             )
             try await row.save(on: fluent.db())
         }
@@ -961,7 +961,7 @@ actor SkillRunner {
             path: path,
             content: result.markdown,
             contentType: "text/markdown",
-            spaceID: spaceID,
+            spaceID: spaceID
         )
     }
 
@@ -1057,8 +1057,8 @@ actor SkillRunner {
                         "content": .init(type: "string", description: "Memory text to persist."),
                         "source_vault_file_id": .init(type: "string", description: "Optional source vault file UUID."),
                     ],
-                    required: ["content"],
-                ),
+                    required: ["content"]
+                )
             ))
         case .sessionSearch:
             ToolDefinition(function: .init(
@@ -1069,8 +1069,8 @@ actor SkillRunner {
                         "query": .init(type: "string", description: "Natural language query."),
                         "limit": .init(type: "integer", description: "Maximum memories, 1-20."),
                     ],
-                    required: ["query"],
-                ),
+                    required: ["query"]
+                )
             ))
         case .vaultRead:
             ToolDefinition(function: .init(
@@ -1081,8 +1081,8 @@ actor SkillRunner {
                         "path": .init(type: "string", description: "Vault path relative to raw root."),
                         "vault_file_id": .init(type: "string", description: "Vault file UUID."),
                     ],
-                    required: [],
-                ),
+                    required: []
+                )
             ))
         case .healthQuery:
             ToolDefinition(function: .init(
@@ -1093,8 +1093,8 @@ actor SkillRunner {
                         "metric": .init(type: "string", description: "Optional event type to filter (e.g. step_count, sleep, heart_rate). Omit for all."),
                         "days": .init(type: "integer", description: "Lookback window in days, 1-365 (default 30)."),
                     ],
-                    required: [],
-                ),
+                    required: []
+                )
             ))
         case .reminderCreate:
             ToolDefinition(function: .init(
@@ -1106,8 +1106,8 @@ actor SkillRunner {
                         "notes": .init(type: "string", description: "Optional notes/body."),
                         "due": .init(type: "string", description: "Optional ISO-8601 due date-time."),
                     ],
-                    required: ["title"],
-                ),
+                    required: ["title"]
+                )
             ))
         case .calendarCreate:
             ToolDefinition(function: .init(
@@ -1120,8 +1120,8 @@ actor SkillRunner {
                         "end": .init(type: "string", description: "ISO-8601 end date-time."),
                         "location": .init(type: "string", description: "Optional location."),
                     ],
-                    required: ["title", "start"],
-                ),
+                    required: ["title", "start"]
+                )
             ))
         case .calendarQuery:
             ToolDefinition(function: .init(
@@ -1131,14 +1131,14 @@ actor SkillRunner {
                     properties: [
                         "days": .init(type: "integer", description: "How many days ahead to include, 1-90 (default 7)."),
                     ],
-                    required: [],
-                ),
+                    required: []
+                )
             ))
         case .remindersList:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
                 description: "List the user's open (incomplete) Apple Reminders, overdue and upcoming items soonest-due first. Served from the synced server-side cache when available (falls back to a live device fetch). Requires the user to have allowed Reminders access. Returns a JSON array of {title,due,notes}.",
-                parameters: .init(properties: [:], required: []),
+                parameters: .init(properties: [:], required: [])
             ))
         case .photosSearch:
             ToolDefinition(function: .init(
@@ -1149,20 +1149,20 @@ actor SkillRunner {
                         "query": .init(type: "string", description: "Natural-language description of the photo/screenshot to find. Omit to list recent photos instead."),
                         "limit": .init(type: "integer", description: "Maximum results, 1-30 (default 10)."),
                     ],
-                    required: [],
-                ),
+                    required: []
+                )
             ))
         case .locationRecent:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
                 description: "Get the user's current location with a place name. Requires Location access. Returns a JSON array of {lat,lng,place,at}.",
-                parameters: .init(properties: [:], required: []),
+                parameters: .init(properties: [:], required: [])
             ))
         case .filesPick:
             ToolDefinition(function: .init(
                 name: tool.rawValue,
                 description: "Prompt the user to pick one or more documents on their device; extracted text (from PDFs and plain-text files) is read on-device and only that text is returned, never the file bytes. Requires Files access and the app to be open. Returns a JSON array of {name,type,chars,text}.",
-                parameters: .init(properties: [:], required: []),
+                parameters: .init(properties: [:], required: [])
             ))
         }
     }
@@ -1171,7 +1171,7 @@ actor SkillRunner {
         metadata: HermesChatTransportMetadata,
         response: ChatResponseBody,
         mtokIn: inout Int,
-        mtokOut: inout Int,
+        mtokOut: inout Int
     ) {
         if let value = firstIntHeader(["x-mtok-in", "x-usage-mtok-in", "x-luminavault-mtok-in"], in: metadata.headers) {
             mtokIn += value

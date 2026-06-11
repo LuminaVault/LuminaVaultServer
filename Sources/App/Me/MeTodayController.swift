@@ -60,7 +60,7 @@ struct MeTodayController {
         return Response(
             status: .ok,
             headers: headers,
-            body: ResponseBody(byteBuffer: ByteBuffer(data: entry.body)),
+            body: ResponseBody(byteBuffer: ByteBuffer(data: entry.body))
         )
     }
 

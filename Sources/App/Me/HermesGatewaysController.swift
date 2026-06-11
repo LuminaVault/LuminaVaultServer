@@ -128,7 +128,7 @@ struct HermesGatewaysController {
     private func entryDTO(
         for id: HermesGatewayID,
         tenantID: UUID,
-        row: UserHermesGateway?,
+        row: UserHermesGateway?
     ) async -> HermesGatewayCatalogEntry {
         let entry = HermesGatewayCatalog.entry(for: id)
         let status: HermesGatewayStatus
@@ -151,7 +151,7 @@ struct HermesGatewaysController {
             hasConfig: hasConfig,
             verifiedAt: row?.verifiedAt,
             lastFailureCode: row?.lastFailureCode,
-            pairingKind: entry.pairingKind,
+            pairingKind: entry.pairingKind
         )
     }
 
@@ -206,7 +206,7 @@ struct HermesGatewaysController {
             status: .configured,
             hasConfig: true,
             verifiedAt: nil,
-            lastFailureCode: nil,
+            lastFailureCode: nil
         )
     }
 
@@ -238,7 +238,7 @@ struct HermesGatewaysController {
 
         let result = await gatewayClient.health(
             baseURL: resolution.baseURL,
-            authHeader: resolution.authHeader,
+            authHeader: resolution.authHeader
         )
 
         let row = try await loadRow(tenantID: tenantID, gatewayID: id)
@@ -252,7 +252,7 @@ struct HermesGatewaysController {
             }
             return HermesGatewayTestResponse(
                 ok: true,
-                verifiedAt: row?.verifiedAt ?? Date(),
+                verifiedAt: row?.verifiedAt ?? Date()
             )
         case .unauthorized, .unreachable:
             let code = result.errorCode ?? "unknown"
@@ -264,7 +264,7 @@ struct HermesGatewaysController {
             return HermesGatewayTestResponse(
                 ok: false,
                 errorCode: code,
-                errorMessage: nil,
+                errorMessage: nil
             )
         }
     }

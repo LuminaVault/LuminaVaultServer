@@ -22,7 +22,7 @@ struct PremiumGuardMiddlewareTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { response in
             let decoded = try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: response.body))
             return decoded.accessToken
@@ -38,7 +38,7 @@ struct PremiumGuardMiddlewareTests {
                 uri: "/v1/grok/chat",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: ByteBuffer(string: #"{"messages":[{"role":"user","content":"hi"}]}"#),
+                body: ByteBuffer(string: #"{"messages":[{"role":"user","content":"hi"}]}"#)
             ) { response in
                 #expect(response.status.code == 402)
                 let bodyText = String(buffer: response.body)
@@ -55,7 +55,7 @@ struct PremiumGuardMiddlewareTests {
                 uri: "/v1/grok/chat",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: #"{"messages":[]}"#),
+                body: ByteBuffer(string: #"{"messages":[]}"#)
             ) { response in
                 #expect(response.status == .unauthorized)
             }

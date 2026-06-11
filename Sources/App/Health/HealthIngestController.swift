@@ -43,7 +43,7 @@ extension HealthEventDTO {
             valueNumeric: row.valueNumeric,
             valueText: row.valueText,
             unit: row.unit,
-            source: row.source,
+            source: row.source
         )
     }
 }
@@ -182,7 +182,7 @@ struct HealthIngestController {
                 date: row.day,
                 type: type,
                 value: row.value,
-                sampleCount: row.sample_count,
+                sampleCount: row.sample_count
             )
         }
 
@@ -194,7 +194,7 @@ struct HealthIngestController {
                 date: bucket,
                 type: type,
                 value: 0,
-                sampleCount: 0,
+                sampleCount: 0
             ))
         }
 
@@ -254,13 +254,13 @@ struct HealthIngestController {
                 unit: input.unit,
                 recordedAt: input.recordedAt,
                 source: input.source,
-                metadata: input.metadata,
+                metadata: input.metadata
             )
             try await row.save(on: db)
             try refs.append(HealthIngestedRef(
                 id: row.requireID(),
                 type: row.eventType,
-                recordedAt: row.recordedAt,
+                recordedAt: row.recordedAt
             ))
         }
 
@@ -279,7 +279,7 @@ struct HealthIngestController {
                 payload: [
                     SkillEvent.PayloadKey.healthSampleType: dominantType,
                     SkillEvent.PayloadKey.healthSampleCount: String(refs.count),
-                ],
+                ]
             )
             eventBus.publish(event)
         }
@@ -287,7 +287,7 @@ struct HealthIngestController {
         return HealthIngestResponse(
             inserted: refs.count,
             skipped: skipped,
-            events: refs,
+            events: refs
         )
     }
 
@@ -344,7 +344,7 @@ struct HealthIngestController {
         return HealthListResponse(
             events: rows.map(HealthEventDTO.fromHealthEvent),
             limit: limit,
-            offset: offset,
+            offset: offset
         )
     }
 

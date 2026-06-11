@@ -32,7 +32,7 @@ final class ImportItem: Model, TenantModel, @unchecked Sendable {
         url: String? = nil,
         title: String? = nil,
         proposedSpace: String? = nil,
-        status: String = "staged",
+        status: String = "staged"
     ) {
         self.id = id
         self.tenantID = tenantID

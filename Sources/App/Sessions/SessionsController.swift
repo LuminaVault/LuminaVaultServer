@@ -101,7 +101,7 @@ struct SessionsController {
                 lastMessageAt: row.updated_at,
                 workspaceID: row.space_id,
                 pinned: false,
-                archived: false,
+                archived: false
             )
         }
         return SessionListResponse(sessions: sessions, nextCursor: nil)

@@ -19,7 +19,7 @@ struct StubVisionEmbedAdapter: VisionEmbedProviderAdapter {
         fill: Float = 0.1,
         model: String = "stub-clip",
         sourceWidth: Int? = 768,
-        sourceHeight: Int? = 768,
+        sourceHeight: Int? = 768
     ) {
         self.dim = dim
         self.fill = fill
@@ -33,7 +33,7 @@ struct StubVisionEmbedAdapter: VisionEmbedProviderAdapter {
             embedding: Array(repeating: fill, count: dim),
             model: model,
             sourceWidth: sourceWidth,
-            sourceHeight: sourceHeight,
+            sourceHeight: sourceHeight
         )
     }
 }

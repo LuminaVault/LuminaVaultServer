@@ -86,7 +86,7 @@ struct KanbanController {
             tenantID: tenant,
             boardID: boardID(ctx),
             columnID: columnID(ctx),
-            title: body.title,
+            title: body.title
         )
     }
 
@@ -95,7 +95,7 @@ struct KanbanController {
         return try await service.deleteColumn(
             tenantID: tenant,
             boardID: boardID(ctx),
-            columnID: columnID(ctx),
+            columnID: columnID(ctx)
         )
     }
 
@@ -112,7 +112,7 @@ struct KanbanController {
             tenantID: tenant,
             boardID: boardID(ctx),
             columnID: body.columnID,
-            req: body,
+            req: body
         )
         return try CardDTO(
             id: card.requireID(),
@@ -122,7 +122,7 @@ struct KanbanController {
             priority: card.priority.flatMap { CardPriority(rawValue: $0) },
             dueAt: card.dueAt,
             rank: card.rank,
-            updatedAt: card.updatedAt,
+            updatedAt: card.updatedAt
         )
     }
 
@@ -166,7 +166,7 @@ struct KanbanController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(promoted.spec.prefix(160)),
+            bodyExcerpt: String(promoted.spec.prefix(160))
         )
     }
 

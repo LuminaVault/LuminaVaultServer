@@ -19,7 +19,7 @@ struct NousOAuthServiceTests {
             id: id,
             email: "\(slug)-\(suffix)@test.luminavault",
             username: "\(slug)-\(suffix)",
-            passwordHash: "stub-hash-\(slug)",
+            passwordHash: "stub-hash-\(slug)"
         )
     }
 
@@ -31,7 +31,7 @@ struct NousOAuthServiceTests {
 
     private static func makeService(
         fluent: Fluent,
-        backend: any NousOAuthBackend,
+        backend: any NousOAuthBackend
     ) throws -> (NousOAuthService, HermesContainerManager) {
         let docker = StubDockerExec()
         let manager = try HermesContainerManager(
@@ -44,16 +44,16 @@ struct NousOAuthServiceTests {
                 dataRootBase: "/tmp/lvtest",
                 portRangeStart: 9200,
                 portRangeEnd: 9300,
-                idleTTLSeconds: 60,
+                idleTTLSeconds: 60
             ),
-            logger: Logger(label: "test.nous"),
+            logger: Logger(label: "test.nous")
         )
         let service = NousOAuthService(
             containerManager: manager,
             sessionStore: NousOAuthSessionStore(),
             backend: backend,
             fluent: fluent,
-            logger: Logger(label: "test.nous.svc"),
+            logger: Logger(label: "test.nous.svc")
         )
         return (service, manager)
     }

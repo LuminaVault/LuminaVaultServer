@@ -90,7 +90,7 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
             "projectId": projectId,
             "projectSecret": projectSecret,
             "tenantId": tenantId.uuidString.lowercased(),
-            "options": options ?? [:]
+            "options": options ?? [:],
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -128,7 +128,7 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
 
         var body: [String: Any] = [
             "projectId": projectId,
-            "spaceId": spaceId
+            "spaceId": spaceId,
         ]
         if let text { body["text"] = text }
         if let atts = attachments, !atts.isEmpty {
@@ -137,7 +137,7 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
                 "name": $0.name as Any,
                 "mimeType": $0.mimeType as Any,
                 "caption": $0.caption as Any,
-                "kind": $0.kind
+                "kind": $0.kind,
             ] }
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -146,7 +146,8 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
         try validateResponse(resp, data: data, operation: "send")
 
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let ok = json["ok"] as? Bool {
+           let ok = json["ok"] as? Bool
+        {
             let mid = json["messageId"] as? String
             return PhotonSendResult(ok: ok, messageId: mid)
         }
@@ -160,11 +161,12 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
 
         do {
             let (data, resp) = try await session.data(for: req)
-            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            guard let http = resp as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                 return .unhealthy(reason: "bad_status")
             }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let active = json["activeProjects"] as? Int {
+               let active = json["activeProjects"] as? Int
+            {
                 return .healthy(activeProjects: active)
             }
             return .healthy(activeProjects: -1)
@@ -178,7 +180,7 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
         guard let http = response as? HTTPURLResponse else {
             throw PhotonSidecarError.unexpected("no_http_response")
         }
-        if (200..<300).contains(http.statusCode) { return }
+        if (200 ..< 300).contains(http.statusCode) { return }
         let body = String(data: data, encoding: .utf8) ?? ""
         logger.warning("photon sidecar \(operation) failed", metadata: [
             "status": .stringConvertible(http.statusCode),
@@ -197,12 +199,15 @@ enum PhotonSidecarError: Error, Equatable {
     case http(status: Int, body: String)
 }
 
-// Stub for tests / when sidecar disabled
+/// Stub for tests / when sidecar disabled
 struct NoopPhotonSidecarClient: PhotonSidecarClienting {
-    func activate(projectId: String, projectSecret: String, tenantId: UUID, options: [String: String]?) async throws {}
-    func deactivate(projectId: String) async throws {}
-    func send(projectId: String, spaceId: String, text: String?, attachments: [PhotonAttachmentInput]?) async throws -> PhotonSendResult {
+    func activate(projectId _: String, projectSecret _: String, tenantId _: UUID, options _: [String: String]?) async throws {}
+    func deactivate(projectId _: String) async throws {}
+    func send(projectId _: String, spaceId _: String, text _: String?, attachments _: [PhotonAttachmentInput]?) async throws -> PhotonSendResult {
         PhotonSendResult(ok: true, messageId: "noop-\(UUID().uuidString)")
     }
-    func health() async -> PhotonSidecarHealth { .healthy(activeProjects: 0) }
+
+    func health() async -> PhotonSidecarHealth {
+        .healthy(activeProjects: 0)
+    }
 }

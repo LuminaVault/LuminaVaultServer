@@ -55,7 +55,7 @@ struct MemoryPruningJob {
             scoreRowsUpdated: scoreRowsUpdated,
             memoriesArchived: totalArchived,
             perTenant: perTenant,
-            failures: failures,
+            failures: failures
         )
     }
 }

@@ -27,7 +27,7 @@ extension SpaceDTO {
             category: space.category,
             noteCount: space.noteCount,
             lastCompiledAt: space.lastCompiledAt,
-            createdAt: space.createdAt,
+            createdAt: space.createdAt
         )
     }
 }
@@ -61,7 +61,7 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category,
+            category: body.category
         )
         return try SpaceDTO.fromSpace(space)
     }
@@ -86,7 +86,7 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category,
+            category: body.category
         )
         return try SpaceDTO.fromSpace(space)
     }

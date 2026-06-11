@@ -14,7 +14,7 @@ import Testing
 @Suite(.serialized)
 struct CronPushTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -56,7 +56,7 @@ struct CronPushTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.cronpush"),
+                logger: Logger(label: "test.cronpush")
             )
             try await service.notifyCron(userID: userID, skillName: "pattern-detector", body: "ran")
 

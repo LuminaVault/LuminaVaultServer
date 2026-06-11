@@ -30,7 +30,7 @@ struct HermesLLMStreamServiceTests {
             sessionKey: "tenant-uuid",
             sessionID: "conv-123",
             apiKey: "k-test",
-            payloadData: Self.payload,
+            payloadData: Self.payload
         )
 
         #expect(req.method == .POST)
@@ -50,7 +50,7 @@ struct HermesLLMStreamServiceTests {
             sessionKey: "tenant-uuid",
             sessionID: nil,
             apiKey: "",
-            payloadData: Self.payload,
+            payloadData: Self.payload
         )
 
         #expect(Self.headerValue(req, "Authorization") == nil)
@@ -67,7 +67,7 @@ struct HermesLLMStreamServiceTests {
             sessionKey: "tenant-uuid",
             sessionID: "",
             apiKey: "k-test",
-            payloadData: Self.payload,
+            payloadData: Self.payload
         )
 
         #expect(Self.headerValue(req, "X-Hermes-Session-Id") == nil)
@@ -86,7 +86,7 @@ struct HermesLLMStreamServiceTests {
                 record,
                 decoder: decoder,
                 yield: { yielded.append($0) },
-                logger: Logger(label: "lv.test.hermes-stream"),
+                logger: Logger(label: "lv.test.hermes-stream")
             )
         }
         #expect(yielded.isEmpty)
@@ -96,7 +96,7 @@ struct HermesLLMStreamServiceTests {
     func `empty assistant completion maps to stream error event`() {
         let event = ChatStreamCompletionPolicy.emptyCompletionEvent(
             assistantBuffer: "",
-            tokenCount: 0,
+            tokenCount: 0
         )
 
         #expect(event == .error(ChatStreamCompletionPolicy.emptyResponseMessage))
@@ -106,7 +106,7 @@ struct HermesLLMStreamServiceTests {
     func `non-empty assistant completion does not map to stream error event`() {
         let event = ChatStreamCompletionPolicy.emptyCompletionEvent(
             assistantBuffer: "Hello",
-            tokenCount: 1,
+            tokenCount: 1
         )
 
         #expect(event == nil)

@@ -47,12 +47,12 @@ enum PluginCatalog {
                         label: "Access token",
                         placeholder: "readwise.io/access_token",
                         kind: .secret,
-                        isRequired: true,
+                        isRequired: true
                     ),
-                ],
+                ]
             ),
             binding: "readwise",
-            featured: true,
+            featured: true
         ),
         "rss": Entry(
             dto: PluginCatalogEntryDTO(
@@ -76,11 +76,11 @@ enum PluginCatalog {
                         label: "Feed URL",
                         placeholder: "https://example.com/feed.xml",
                         kind: .url,
-                        isRequired: true,
+                        isRequired: true
                     ),
-                ],
+                ]
             ),
-            binding: "rss",
+            binding: "rss"
         ),
         "raindrop": Entry(
             dto: PluginCatalogEntryDTO(
@@ -105,11 +105,11 @@ enum PluginCatalog {
                         label: "Access token",
                         placeholder: "test token from raindrop.io integrations",
                         kind: .secret,
-                        isRequired: true,
+                        isRequired: true
                     ),
-                ],
+                ]
             ),
-            binding: "raindrop",
+            binding: "raindrop"
         ),
         "byok-embeddings": Entry(
             dto: PluginCatalogEntryDTO(
@@ -135,12 +135,12 @@ enum PluginCatalog {
                         label: "Embedding API key",
                         placeholder: "sk-… (OpenAI) or nomic key",
                         kind: .secret,
-                        isRequired: true,
+                        isRequired: true
                     ),
-                ],
+                ]
             ),
             binding: "byok-embeddings",
-            premium: true,
+            premium: true
         ),
         "reading-time": Entry(
             dto: PluginCatalogEntryDTO(
@@ -159,9 +159,9 @@ enum PluginCatalog {
                 version: "1.0.0",
                 publisher: "LuminaVault",
                 verified: true,
-                configFields: [],
+                configFields: []
             ),
-            binding: "reading-time",
+            binding: "reading-time"
         ),
     ]
 
@@ -175,7 +175,7 @@ enum PluginCatalog {
     static func catalog(
         category: PluginCategory? = nil,
         featured: Bool? = nil,
-        premium: Bool? = nil,
+        premium: Bool? = nil
     ) -> [PluginCatalogEntryDTO] {
         entries.values
             .filter { entry in

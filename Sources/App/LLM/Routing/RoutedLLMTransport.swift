@@ -38,7 +38,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         currentUser: @escaping @Sendable () async -> User? = { LLMRoutingContext.currentUser },
         logger: Logger,
         usageMeter: UsageMeterService? = nil,
-        failoverLogger: ProviderFailoverLogger? = nil,
+        failoverLogger: ProviderFailoverLogger? = nil
     ) {
         self.registry = registry
         self.router = router
@@ -85,7 +85,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                         originalError: prior.error,
                         fallback: candidate,
                         tenantID: userID,
-                        source: source,
+                        source: source
                     )
                 }
                 if let usageMeter, let user {
@@ -110,7 +110,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 throw UpstreamErrorResponse(
                     reasonCode: providerError.reasonCode,
                     userMessage: providerError.userMessage,
-                    retryAfterMs: Self.retryHint(for: providerError.reasonCode),
+                    retryAfterMs: Self.retryHint(for: providerError.reasonCode)
                 )
             } catch {
                 lastRecoverable = error
@@ -122,12 +122,12 @@ struct RoutedLLMTransport: HermesChatTransport {
         if let lastFailedCandidate {
             UpstreamErrorTelemetry.record(
                 reasonCode: lastFailedCandidate.error.reasonCode,
-                provider: lastFailedCandidate.route.provider.rawValue,
+                provider: lastFailedCandidate.route.provider.rawValue
             )
             throw UpstreamErrorResponse(
                 reasonCode: lastFailedCandidate.error.reasonCode,
                 userMessage: lastFailedCandidate.error.userMessage,
-                retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode),
+                retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode)
             )
         }
         if lastRecoverable != nil {
@@ -136,13 +136,13 @@ struct RoutedLLMTransport: HermesChatTransport {
             UpstreamErrorTelemetry.record(reasonCode: "upstream_error", provider: "unknown")
             throw UpstreamErrorResponse(
                 reasonCode: "upstream_error",
-                userMessage: "LLM upstream failed.",
+                userMessage: "LLM upstream failed."
             )
         }
         UpstreamErrorTelemetry.record(reasonCode: "no_providers", provider: "n/a")
         throw UpstreamErrorResponse(
             reasonCode: "no_providers",
-            userMessage: "No LLM provider available.",
+            userMessage: "No LLM provider available."
         )
     }
 
@@ -154,7 +154,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         originalError: ProviderError,
         fallback: ModelRoute,
         tenantID: UUID?,
-        source: ProviderFailoverNotice.TelemetrySource,
+        source: ProviderFailoverNotice.TelemetrySource
     ) {
         let statusCode: Int? = switch originalError {
         case let .transient(_, status, _): status
@@ -177,7 +177,7 @@ struct RoutedLLMTransport: HermesChatTransport {
             userMessage: originalError.userMessage,
             statusCode: statusCode,
             bodyPreview: bodyPreview,
-            source: source,
+            source: source
         )
         FailoverNoticeContext.sink?(notice)
         failoverLogger?.record(notice: notice, tenantID: tenantID)
@@ -213,7 +213,7 @@ struct RoutedLLMTransport: HermesChatTransport {
     private static func extractUsage(
         from metadata: HermesChatTransportMetadata,
         mtokIn: inout Int,
-        mtokOut: inout Int,
+        mtokOut: inout Int
     ) {
         let lower = Dictionary(uniqueKeysWithValues: metadata.headers.map { ($0.key.lowercased(), $0.value) })
         for name in ["x-mtok-in", "x-usage-mtok-in", "x-luminavault-mtok-in"] {

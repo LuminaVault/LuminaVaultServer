@@ -51,7 +51,7 @@ actor GoogleCalendarOAuthService {
         sessionStore: CalendarOAuthSessionStore,
         isConfigured: Bool,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
         self.oauth = oauth
@@ -71,7 +71,7 @@ actor GoogleCalendarOAuthService {
             connected: account?.status == "connected",
             needsReauth: account?.status == "needs_reauth",
             accountEmail: account?.accountEmail,
-            lastSyncedAt: account?.lastSyncedAt,
+            lastSyncedAt: account?.lastSyncedAt
         )
     }
 
@@ -102,7 +102,7 @@ actor GoogleCalendarOAuthService {
             try await tokenStore.storeInitialTokens(
                 tenantID: session.tenantID,
                 tokens: tokens,
-                accountEmail: email,
+                accountEmail: email
             )
             // Best-effort initial sync; failure doesn't block the connect.
             do {

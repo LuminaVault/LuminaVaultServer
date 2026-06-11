@@ -25,12 +25,12 @@ struct InsightTests {
                 section: .patterns,
                 headline: "You run on Mondays",
                 summary: "Of 4 runs this month, 3 were Mondays.",
-                sourceMemoryIDs: [UUID(), UUID()],
+                sourceMemoryIDs: [UUID(), UUID()]
             )
             try await row.save(on: fluent.db())
 
             let fetched = try #require(
-                await Insight.query(on: fluent.db(), tenantID: tenantID).first(),
+                await Insight.query(on: fluent.db(), tenantID: tenantID).first()
             )
             #expect(fetched.headline == "You run on Mondays")
             #expect(fetched.section == "patterns")
@@ -54,7 +54,7 @@ struct InsightTests {
                 headline: "Your week, in two lines",
                 summary: "Lots of writing.",
                 periodStart: start,
-                periodEnd: end,
+                periodEnd: end
             )
             try await row.save(on: fluent.db())
 
@@ -165,7 +165,7 @@ struct InsightTests {
                 memories: MemoryRepository(fluent: fluent),
                 transport: transport,
                 defaultModel: "test-model",
-                logger: Logger(label: "test.synth"),
+                logger: Logger(label: "test.synth")
             )
 
             let now = Date()
@@ -193,7 +193,7 @@ struct InsightTests {
                 tenantID: tenantID,
                 section: .patterns,
                 headline: "recent",
-                summary: "still fresh",
+                summary: "still fresh"
             ).save(on: fluent.db())
 
             let transport = StubSynthTransport(plainContent: """
@@ -204,7 +204,7 @@ struct InsightTests {
                 memories: MemoryRepository(fluent: fluent),
                 transport: transport,
                 defaultModel: "test-model",
-                logger: Logger(label: "test.synth"),
+                logger: Logger(label: "test.synth")
             )
 
             let inserted = try await worker.runPatternJob(tenantID: tenantID, sessionKey: "u", now: Date())
@@ -234,7 +234,7 @@ struct InsightTests {
                 transport: transport,
                 defaultModel: "test-model",
                 logger: Logger(label: "test.synth"),
-                maxPatternsPerRun: 2,
+                maxPatternsPerRun: 2
             )
 
             let inserted = try await worker.runPatternJob(tenantID: tenantID, sessionKey: "u", now: Date())
@@ -258,7 +258,7 @@ struct InsightTests {
                 tenantID: tenantID,
                 section: .contradictions,
                 headline: "recent",
-                summary: "still fresh",
+                summary: "still fresh"
             ).save(on: fluent.db())
 
             let transport = StubSynthTransport(plainContent: """
@@ -269,7 +269,7 @@ struct InsightTests {
                 memories: MemoryRepository(fluent: fluent),
                 transport: transport,
                 defaultModel: "test-model",
-                logger: Logger(label: "test.synth"),
+                logger: Logger(label: "test.synth")
             )
 
             let inserted = try await worker.runContradictionJob(tenantID: tenantID, sessionKey: "u", now: Date())
@@ -299,7 +299,7 @@ struct InsightTests {
                 transport: transport,
                 defaultModel: "test-model",
                 logger: Logger(label: "test.synth"),
-                maxPatternsPerRun: 2,
+                maxPatternsPerRun: 2
             )
 
             let inserted = try await worker.runContradictionJob(tenantID: tenantID, sessionKey: "u", now: Date())
@@ -326,12 +326,12 @@ struct InsightTests {
                 memories: MemoryRepository(fluent: fluent),
                 transport: transport,
                 defaultModel: "test-model",
-                logger: Logger(label: "test.synth"),
+                logger: Logger(label: "test.synth")
             )
             let result = try await worker.runWeeklyJob(
                 tenantID: tenantID,
                 sessionKey: "u",
-                window: SynthesisWorker.weeklyWindow(endingAt: Date()),
+                window: SynthesisWorker.weeklyWindow(endingAt: Date())
             )
             #expect(result == false)
         }
@@ -345,7 +345,7 @@ struct InsightTests {
             id: id,
             email: "ins-\(UUID().uuidString.prefix(8).lowercased())@test.luminavault",
             username: "ins-\(UUID().uuidString.prefix(6).lowercased())",
-            passwordHash: "stub",
+            passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
         return id

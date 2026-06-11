@@ -60,7 +60,7 @@ struct ImportService {
             tenantID: tenantID,
             sourceType: sourceType,
             status: ImportStatus.staging,
-            totalItems: urls.count,
+            totalItems: urls.count
         )
         try await session.save(on: db)
         let sessionID = try session.requireID()
@@ -80,11 +80,11 @@ struct ImportService {
             seen.insert(url)
             do {
                 let captured = try await linkCapture.captureLink(
-                    tenantID: tenantID, url: url, note: nil, spaceID: importedSpaceID,
+                    tenantID: tenantID, url: url, note: nil, spaceID: importedSpaceID
                 )
                 let item = ImportItem(
                     tenantID: tenantID, sessionID: sessionID, vaultFileID: captured.fileID,
-                    url: url, status: ImportItemStatus.staged,
+                    url: url, status: ImportItemStatus.staged
                 )
                 try await item.save(on: db)
                 staged += 1
@@ -92,7 +92,7 @@ struct ImportService {
                 LinkCaptureService.CaptureError.nonPublicHost
             {
                 let item = ImportItem(
-                    tenantID: tenantID, sessionID: sessionID, url: url, status: ImportItemStatus.skipped,
+                    tenantID: tenantID, sessionID: sessionID, url: url, status: ImportItemStatus.skipped
                 )
                 try await item.save(on: db)
                 skipped += 1
@@ -114,7 +114,7 @@ struct ImportService {
         let db = fluent.db()
         let session = ImportSession(
             tenantID: tenantID, sourceType: sourceType,
-            status: ImportStatus.staging, totalItems: vaultFileIDs.count,
+            status: ImportStatus.staging, totalItems: vaultFileIDs.count
         )
         try await session.save(on: db)
         let sessionID = try session.requireID()
@@ -126,7 +126,7 @@ struct ImportService {
             else { continue }
             let item = ImportItem(
                 tenantID: tenantID, sessionID: sessionID, vaultFileID: vfID,
-                title: (vf.path as NSString).lastPathComponent, status: ImportItemStatus.staged,
+                title: (vf.path as NSString).lastPathComponent, status: ImportItemStatus.staged
             )
             try await item.save(on: db)
             staged += 1
@@ -217,7 +217,7 @@ struct ImportService {
             if !rows.isEmpty {
                 let result = try await memoryCompile.compileExistingVaultFiles(
                     tenantID: tenantID, sessionKey: tenantID.uuidString,
-                    rows: rows, hint: nil, runId: UUID(),
+                    rows: rows, hint: nil, runId: UUID()
                 )
                 memories = result.memories.count
             }
@@ -288,7 +288,7 @@ struct ImportService {
             if try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$slug == slug).first() == nil {
                 _ = try? await spaces.create(
                     tenantID: tenantID, name: name.isEmpty ? slug : name, slugRaw: slug,
-                    description: nil, color: nil, icon: nil, category: nil,
+                    description: nil, color: nil, icon: nil, category: nil
                 )
             }
             return slug
@@ -321,7 +321,7 @@ struct ImportService {
         let space = try await spaces.create(
             tenantID: tenantID, name: "Imported", slugRaw: Self.importedSlug,
             description: "Inbox for imported items awaiting Smart Import.",
-            color: nil, icon: "tray", category: nil,
+            color: nil, icon: "tray", category: nil
         )
         return try space.requireID()
     }

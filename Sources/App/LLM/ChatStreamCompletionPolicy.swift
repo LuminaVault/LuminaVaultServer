@@ -6,7 +6,7 @@ enum ChatStreamCompletionPolicy {
 
     static func emptyCompletionEvent(
         assistantBuffer: String,
-        tokenCount: Int,
+        tokenCount: Int
     ) -> QueryStreamEvent? {
         let hasNoTokens = tokenCount == 0
         let hasNoContent = assistantBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

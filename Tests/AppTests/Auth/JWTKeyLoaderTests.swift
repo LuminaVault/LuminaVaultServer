@@ -87,7 +87,7 @@ struct JWTKeyLoaderTests {
 
         let oldToken = try await initialCollection.sign(
             TestPayload(sub: "u-1"),
-            kid: JWKIdentifier(string: "kid1"),
+            kid: JWKIdentifier(string: "kid1")
         )
 
         // Rotate: kid2 promoted to active, kid1 kept for verify-only during
@@ -106,17 +106,17 @@ struct JWTKeyLoaderTests {
         let original = JWTKeyCollection()
         try await loadJWTKeys(
             into: original,
-            secrets: parseJWTSecrets("kid1:\(Self.secretA)"),
+            secrets: parseJWTSecrets("kid1:\(Self.secretA)")
         )
         let token = try await original.sign(
             TestPayload(sub: "u-1"),
-            kid: JWKIdentifier(string: "kid1"),
+            kid: JWKIdentifier(string: "kid1")
         )
 
         let postRotation = JWTKeyCollection()
         try await loadJWTKeys(
             into: postRotation,
-            secrets: parseJWTSecrets("kid2:\(Self.secretB)"),
+            secrets: parseJWTSecrets("kid2:\(Self.secretB)")
         )
         await #expect(throws: (any Error).self) {
             _ = try await postRotation.verify(token, as: TestPayload.self)

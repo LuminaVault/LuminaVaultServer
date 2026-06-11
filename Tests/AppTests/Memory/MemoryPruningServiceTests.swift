@@ -22,13 +22,13 @@ struct MemoryPruningServiceTests {
     private static func withHarness<T: Sendable>(
         scoringConfig: MemoryScoringConfig = .default,
         pruningConfig: MemoryPruningConfig = .default,
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let logger = Logger(label: "test.memory-prune")
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         // HER-310 — Everything throwable AFTER `Fluent` is constructed
         // must run inside the do/catch so `fluent.shutdown()` is
@@ -64,7 +64,7 @@ struct MemoryPruningServiceTests {
         content: String,
         createdAt: Date,
         accessCount: Int = 0,
-        queryHitCount: Int = 0,
+        queryHitCount: Int = 0
     ) async throws -> UUID {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "need SQL")
@@ -90,18 +90,18 @@ struct MemoryPruningServiceTests {
             // Three rows with varied access patterns.
             let fresh = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "fresh", createdAt: now,
+                content: "fresh", createdAt: now
             )
             let oldQuiet = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "old quiet", createdAt: now.addingTimeInterval(-180 * day),
+                content: "old quiet", createdAt: now.addingTimeInterval(-180 * day)
             )
             let oldPopular = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
                 content: "old popular",
                 createdAt: now.addingTimeInterval(-180 * day),
                 accessCount: 100,
-                queryHitCount: 30,
+                queryHitCount: 30
             )
 
             let updated = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
@@ -129,12 +129,12 @@ struct MemoryPruningServiceTests {
             // (a) Fresh, low score → kept (under min-age).
             let recent = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "recent low-score", createdAt: now,
+                content: "recent low-score", createdAt: now
             )
             // (b) Old, low score → archived.
             let oldLow = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "old & quiet", createdAt: now.addingTimeInterval(-180 * day),
+                content: "old & quiet", createdAt: now.addingTimeInterval(-180 * day)
             )
             // (c) Old, high score → kept (above threshold even though old).
             let oldHigh = try await Self.insertMemory(
@@ -142,7 +142,7 @@ struct MemoryPruningServiceTests {
                 content: "old & loved",
                 createdAt: now.addingTimeInterval(-180 * day),
                 accessCount: 100,
-                queryHitCount: 30,
+                queryHitCount: 30
             )
 
             _ = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
@@ -170,7 +170,7 @@ struct MemoryPruningServiceTests {
             let now = Date()
             _ = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: tenantID,
-                content: "drop me", createdAt: now.addingTimeInterval(-180 * 86400),
+                content: "drop me", createdAt: now.addingTimeInterval(-180 * 86400)
             )
             _ = try await h.scoring.recomputeForTenant(tenantID: tenantID, now: now)
 
@@ -196,11 +196,11 @@ struct MemoryPruningServiceTests {
             // Both users get an old, low-score row.
             let aliceMem = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: aliceID,
-                content: "alice old", createdAt: oldDate,
+                content: "alice old", createdAt: oldDate
             )
             let malloryMem = try await Self.insertMemory(
                 fluent: h.fluent, tenantID: malloryID,
-                content: "mallory old", createdAt: oldDate,
+                content: "mallory old", createdAt: oldDate
             )
 
             _ = try await h.scoring.recomputeAll(now: now)

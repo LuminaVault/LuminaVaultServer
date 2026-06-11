@@ -64,7 +64,7 @@ struct SecretBox {
         let sealed = try AES.GCM.seal(Data(plaintext.utf8), using: key, nonce: nonce)
         return Sealed(
             ciphertext: sealed.ciphertext + sealed.tag,
-            nonce: Data(nonce),
+            nonce: Data(nonce)
         )
     }
 
@@ -111,7 +111,7 @@ struct SecretBox {
             inputKeyMaterial: masterKey,
             salt: salt,
             info: Self.hkdfInfo,
-            outputByteCount: 32,
+            outputByteCount: 32
         )
     }
 }

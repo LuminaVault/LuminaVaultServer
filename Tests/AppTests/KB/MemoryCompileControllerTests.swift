@@ -47,7 +47,7 @@ struct MemoryCompileControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
     }
 
@@ -71,7 +71,7 @@ struct MemoryCompileControllerTests {
                 uri: "/v1/kb-compile",
                 method: .post,
                 headers: [.contentType: "application/json"],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -92,7 +92,7 @@ struct MemoryCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -122,7 +122,7 @@ struct MemoryCompileControllerTests {
                         .authorization: "Bearer \(auth.accessToken)",
                         .contentType: "application/json",
                     ],
-                    body: Self.compileBody(KBCompileRequest()),
+                    body: Self.compileBody(KBCompileRequest())
                 ) { response in
                     let body = try Self.decodeCompileResponse(response.body)
                     return body.runId
@@ -147,7 +147,7 @@ struct MemoryCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest(forceFullRecompile: true)),
+                body: Self.compileBody(KBCompileRequest(forceFullRecompile: true))
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -174,7 +174,7 @@ struct MemoryCompileControllerTests {
                     path: "notes/leak.md",
                     contentType: "text/markdown",
                     sizeBytes: 12,
-                    sha256: String(repeating: "a", count: 64),
+                    sha256: String(repeating: "a", count: 64)
                 )
                 try await row.save(on: fluent.db())
                 return try row.requireID()
@@ -187,7 +187,7 @@ struct MemoryCompileControllerTests {
                     .authorization: "Bearer \(tenantB.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest(vaultFileIds: [seededID])),
+                body: Self.compileBody(KBCompileRequest(vaultFileIds: [seededID]))
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
@@ -218,7 +218,7 @@ struct MemoryCompileControllerTests {
                     .authorization: "Bearer \(auth.accessToken)",
                     .contentType: "application/json",
                 ],
-                body: Self.compileBody(KBCompileRequest()),
+                body: Self.compileBody(KBCompileRequest())
             ) { response in
                 #expect(response.status == .ok)
             }
@@ -226,7 +226,7 @@ struct MemoryCompileControllerTests {
             try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(auth.accessToken)"],
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
                 #expect(response.status == .ok)
                 let state = try testJSONDecoder().decode(OnboardingStateDTO.self, from: Data(buffer: response.body))

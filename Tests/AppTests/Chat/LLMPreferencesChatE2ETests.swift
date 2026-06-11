@@ -57,7 +57,7 @@ struct LLMPreferencesChatE2ETests {
             headers: [.contentType: "application/json"],
             body: ByteBuffer(string: """
             {"email":"\(email)","username":"\(username)","password":"\(password)"}
-            """),
+            """)
         ) { resp in
             #expect(resp.status == .ok)
         }
@@ -67,7 +67,7 @@ struct LLMPreferencesChatE2ETests {
             headers: [.contentType: "application/json"],
             body: ByteBuffer(string: """
             {"email":"\(email)","password":"\(password)"}
-            """),
+            """)
         ) { resp in
             #expect(resp.status == .ok)
             let auth = try decodeAuth(resp.body)
@@ -93,7 +93,7 @@ struct LLMPreferencesChatE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
                 {"mode":"managed","primaryProvider":"openRouter","primaryModel":"qwen/qwen-2.5-72b-instruct","fallbackChain":[]}
-                """),
+                """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -107,7 +107,7 @@ struct LLMPreferencesChatE2ETests {
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -123,7 +123,7 @@ struct LLMPreferencesChatE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
                 {"messages":[{"role":"user","content":"Hello, who are you?"}]}
-                """),
+                """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let chat = try Self.decodeChat(resp.body)
@@ -147,7 +147,7 @@ struct LLMPreferencesChatE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
                 {"mode":"byok","primaryProvider":"anthropic","primaryModel":"claude-opus-4-7","fallbackChain":[{"provider":"openai","model":"gpt-4o"}]}
-                """),
+                """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -161,7 +161,7 @@ struct LLMPreferencesChatE2ETests {
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -199,7 +199,7 @@ struct LLMPreferencesChatE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
                 {"mode":"managed","primaryProvider":"openRouter","primaryModel":"\(model)","fallbackChain":[]}
-                """),
+                """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -213,7 +213,7 @@ struct LLMPreferencesChatE2ETests {
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
-                headers: Self.auth(token),
+                headers: Self.auth(token)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
@@ -227,7 +227,7 @@ struct LLMPreferencesChatE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
                 {"messages":[{"role":"user","content":"Hello from the stepfun e2e test."}]}
-                """),
+                """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let chat = try Self.decodeChat(resp.body)

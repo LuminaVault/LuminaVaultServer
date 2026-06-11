@@ -9,7 +9,7 @@ struct PreAuthChallengeStoreTests {
             channel: "sms",
             destination: "+15551112222",
             purpose: "phone_signin",
-            code: "123456",
+            code: "123456"
         )
         #expect(!id.uuidString.isEmpty)
         #expect(expiresAt > Date())

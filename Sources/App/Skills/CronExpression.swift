@@ -45,7 +45,7 @@ struct CronExpression: Equatable {
         calendar.timeZone = timeZone
         let components = calendar.dateComponents(
             [.minute, .hour, .day, .month, .weekday],
-            from: date,
+            from: date
         )
         guard
             let minuteValue = components.minute,
@@ -100,7 +100,7 @@ extension CronExpression {
         _ raw: String,
         name: String,
         lo: Int,
-        hi: Int,
+        hi: Int
     ) throws -> FieldSet {
         if raw == "*" {
             return FieldSet(values: Set(lo ... hi), isWildcard: true)

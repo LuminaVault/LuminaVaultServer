@@ -83,7 +83,7 @@ struct RemindersController {
             title: title,
             body: body.body,
             fireAt: body.fireAt,
-            recurrenceCron: body.recurrenceCron,
+            recurrenceCron: body.recurrenceCron
         )
         try await reminder.save(on: fluent.db())
         return try reminder.toDTO()

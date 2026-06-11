@@ -28,7 +28,7 @@ final class Reminder: Model, TenantModel, @unchecked Sendable {
         body: String,
         fireAt: Date,
         recurrenceCron: String? = nil,
-        firedAt: Date? = nil,
+        firedAt: Date? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -47,7 +47,7 @@ final class Reminder: Model, TenantModel, @unchecked Sendable {
             fireAt: fireAt,
             recurrenceCron: recurrenceCron,
             firedAt: firedAt,
-            createdAt: createdAt ?? Date(),
+            createdAt: createdAt ?? Date()
         )
     }
 }

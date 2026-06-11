@@ -28,7 +28,7 @@ actor ReminderScheduler: Service {
         push: APNSNotificationService?,
         logger: Logger,
         tickInterval: Duration = .seconds(60),
-        maxConcurrent: Int = 4,
+        maxConcurrent: Int = 4
     ) {
         self.fluent = fluent
         self.push = push

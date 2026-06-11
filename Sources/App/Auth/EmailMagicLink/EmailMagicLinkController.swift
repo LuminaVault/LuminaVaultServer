@@ -45,7 +45,7 @@ struct EmailMagicLinkController {
             channel: "email",
             destination: email,
             purpose: "magic_link",
-            code: code,
+            code: code
         )
         try await emailSender.send(code: code, to: email, purpose: "magic_link")
         logger.info("magic-link OTP issued: email=\(email)")
@@ -63,7 +63,7 @@ struct EmailMagicLinkController {
             provider: "email_magic_link",
             providerUserID: email,
             email: email,
-            emailVerified: true,
+            emailVerified: true
         )
         return try await authService.issueTokens(for: user)
     }

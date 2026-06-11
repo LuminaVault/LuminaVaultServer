@@ -55,7 +55,7 @@ struct MemoryGraphServiceTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try Self.decodeAuth($0.body) }
         return resp.userId
     }
@@ -69,7 +69,7 @@ struct MemoryGraphServiceTests {
                 tenantID: tenant,
                 limit: 100,
                 similarity: 0.5,
-                maxEdgesPerNode: 5,
+                maxEdgesPerNode: 5
             )
             #expect(graph.nodes.isEmpty)
             #expect(graph.edges.isEmpty)
@@ -95,7 +95,7 @@ struct MemoryGraphServiceTests {
                     tenantID: tenant,
                     limit: 100,
                     similarity: 0.99,
-                    maxEdgesPerNode: 5,
+                    maxEdgesPerNode: 5
                 )
                 #expect(graph.nodes.count == 3)
                 let tagEdges = graph.edges.filter { $0.kind == .tag }
@@ -127,7 +127,7 @@ struct MemoryGraphServiceTests {
                     tenantID: tenant,
                     limit: 100,
                     similarity: 0.8,
-                    maxEdgesPerNode: 5,
+                    maxEdgesPerNode: 5
                 )
                 let semanticEdges = graph.edges.filter { $0.kind == .semantic }
                 #expect(semanticEdges.count == 1)
@@ -166,7 +166,7 @@ struct MemoryGraphServiceTests {
         ]
         let pruned = MemoryGraphService.mergeAndCap(
             groupsInPrecedence: [candidates],
-            maxEdgesPerNode: 2,
+            maxEdgesPerNode: 2
         )
         var degree: [UUID: Int] = [:]
         for e in pruned {
@@ -189,7 +189,7 @@ struct MemoryGraphServiceTests {
         func row(_ id: UUID, source: UUID?) -> MemoryNodeRow {
             MemoryNodeRow(
                 id: id, content: "c", tags: nil, created_at: Date(), score: 1,
-                space_id: nil, source_vault_file_id: source,
+                space_id: nil, source_vault_file_id: source
             )
         }
         let rows = [row(mem, source: page), row(orphanSource, source: orphanSource)]
@@ -209,7 +209,7 @@ struct MemoryGraphServiceTests {
         let s1 = try #require(UUID(uuidString: "10000000-0000-0000-0000-000000000000"))
         let nodes = (0 ..< 4).map { i in
             MemoryGraphService.NodeMeta(
-                id: UUID(), spaceID: s1, createdAt: Date(timeIntervalSince1970: Double(i) * 1000),
+                id: UUID(), spaceID: s1, createdAt: Date(timeIntervalSince1970: Double(i) * 1000)
             )
         } + [
             // A lone node in its own Space contributes no edge.
@@ -217,7 +217,7 @@ struct MemoryGraphServiceTests {
         ]
         let edges = MemoryGraphService.chainEdges(
             grouping: nodes, by: { $0.spaceID.map(MemoryGraphService.AnyGroupKey.uuid) },
-            kind: .space, weight: 0.45,
+            kind: .space, weight: 0.45
         )
         // 4-node group → a 3-edge chain; the singleton group adds nothing.
         #expect(edges.count == 3)
@@ -237,7 +237,7 @@ struct MemoryGraphServiceTests {
         // precedence (earlier group) so it must win the dedupe.
         let merged = MemoryGraphService.mergeAndCap(
             groupsInPrecedence: [[wikilink], [temporal]],
-            maxEdgesPerNode: 8,
+            maxEdgesPerNode: 8
         )
         #expect(merged.count == 1)
         #expect(merged.first?.kind == .wikilink)
@@ -264,7 +264,7 @@ struct MemoryGraphServiceTests {
                     tenantID: tenantA,
                     limit: 100,
                     similarity: 0.5,
-                    maxEdgesPerNode: 5,
+                    maxEdgesPerNode: 5
                 )
                 #expect(graphA.nodes.count == 2)
                 let nodeIDs = Set(graphA.nodes.map(\.id))

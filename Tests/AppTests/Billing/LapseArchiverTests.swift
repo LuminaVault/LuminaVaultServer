@@ -18,7 +18,7 @@ struct LapseArchiverTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let suffix = UUID().uuidString
         let vaultRoot = FileManager.default.temporaryDirectory
@@ -39,7 +39,7 @@ struct LapseArchiverTests {
                 fluent: fluent,
                 vaultPaths: VaultPathService(rootPath: vaultRoot.path),
                 coldStoragePath: coldRoot.path,
-                logger: Logger(label: "test.lapse-archiver"),
+                logger: Logger(label: "test.lapse-archiver")
             )
             let result = try await body(Harness(fluent: fluent, vaultRoot: vaultRoot, coldRoot: coldRoot, job: job))
             try await fluent.shutdown()
@@ -95,7 +95,7 @@ struct LapseArchiverTests {
     private static func makeUser(
         tier: UserTier,
         expiresAt: Date,
-        override: TierOverride = .none,
+        override: TierOverride = .none
     ) -> User {
         let slug = "lapse-\(UUID().uuidString.prefix(8).lowercased())"
         return User(
@@ -104,7 +104,7 @@ struct LapseArchiverTests {
             passwordHash: "x",
             tier: tier.rawValue,
             tierExpiresAt: expiresAt,
-            tierOverride: override.rawValue,
+            tierOverride: override.rawValue
         )
     }
 
@@ -180,7 +180,7 @@ struct LapseArchiverTests {
             try Self.createVaultFile(root: h.vaultRoot, userID: userID)
             try FileManager.default.createDirectory(
                 at: h.coldRoot.appendingPathComponent(userID.uuidString, isDirectory: true),
-                withIntermediateDirectories: true,
+                withIntermediateDirectories: true
             )
 
             let summary = try await h.job.run(now: now)

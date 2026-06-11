@@ -30,7 +30,7 @@ final class ImportSession: Model, TenantModel, @unchecked Sendable {
         sourceType: String,
         status: String = "staging",
         totalItems: Int = 0,
-        stagedItems: Int = 0,
+        stagedItems: Int = 0
     ) {
         self.id = id
         self.tenantID = tenantID

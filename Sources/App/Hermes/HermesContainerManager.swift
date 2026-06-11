@@ -42,7 +42,7 @@ actor HermesContainerManager {
             portRangeEnd: Int,
             idleTTLSeconds: Int,
             defaultModel: String = "hermes-3",
-            mnemosyneDefault: Bool = true,
+            mnemosyneDefault: Bool = true
         ) {
             self.image = image
             self.network = network
@@ -96,7 +96,7 @@ actor HermesContainerManager {
         secretBox: SecretBox,
         config: Config,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.docker = docker
         self.fluent = fluent
@@ -120,7 +120,7 @@ actor HermesContainerManager {
                     containerName: row.containerName,
                     port: row.port,
                     apiServerKey: decrypt(row: row, tenantID: tenantID),
-                    tenantID: tenantID,
+                    tenantID: tenantID
                 )
             }
             row.lastUsedAt = now()
@@ -140,7 +140,7 @@ actor HermesContainerManager {
             apiServerKeyCiphertext: sealed.ciphertext,
             apiServerKeyNonce: sealed.nonce,
             xaiConnectedAt: nil,
-            lastUsedAt: now(),
+            lastUsedAt: now()
         )
         try await row.create(on: fluent.db())
         do {
@@ -148,7 +148,7 @@ actor HermesContainerManager {
                 containerName: containerName,
                 port: port,
                 apiServerKey: apiServerKey,
-                tenantID: tenantID,
+                tenantID: tenantID
             )
         } catch {
             // Roll back the row so a re-call retries cleanly.
@@ -166,7 +166,7 @@ actor HermesContainerManager {
             port: port,
             apiServerKey: apiServerKey,
             xaiConnectedAt: nil,
-            nousConnectedAt: nil,
+            nousConnectedAt: nil
         )
     }
 
@@ -258,7 +258,7 @@ actor HermesContainerManager {
                     containerName: row.containerName,
                     port: row.port,
                     apiServerKey: decrypt(row: row, tenantID: row.tenantID),
-                    tenantID: row.tenantID,
+                    tenantID: row.tenantID
                 )
                 row.lastUsedAt = now()
                 try await row.update(on: fluent.db())
@@ -291,7 +291,7 @@ actor HermesContainerManager {
             port: row.port,
             apiServerKey: key,
             xaiConnectedAt: row.xaiConnectedAt,
-            nousConnectedAt: row.nousConnectedAt,
+            nousConnectedAt: row.nousConnectedAt
         )
     }
 
@@ -299,9 +299,9 @@ actor HermesContainerManager {
         try secretBox.open(
             SecretBox.Sealed(
                 ciphertext: row.apiServerKeyCiphertext,
-                nonce: row.apiServerKeyNonce,
+                nonce: row.apiServerKeyNonce
             ),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
     }
 
@@ -326,7 +326,7 @@ actor HermesContainerManager {
         containerName: String,
         port: Int,
         apiServerKey: String,
-        tenantID: UUID,
+        tenantID: UUID
     ) async throws {
         let volumePath = "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
         let gateways = try await gatewaySeeds(tenantID: tenantID)
@@ -339,7 +339,7 @@ actor HermesContainerManager {
             apiKey: apiServerKey,
             defaultModel: config.defaultModel,
             gateways: gateways,
-            mnemosyneEnabled: mnemosyneEnabled,
+            mnemosyneEnabled: mnemosyneEnabled
         )
         let args = [
             "run",
@@ -392,7 +392,7 @@ actor HermesContainerManager {
             do {
                 let plaintext = try secretBox.open(
                     SecretBox.Sealed(ciphertext: row.configCiphertext, nonce: row.configNonce),
-                    tenantID: tenantID,
+                    tenantID: tenantID
                 )
                 let config = try JSONDecoder().decode([String: String].self, from: Data(plaintext.utf8))
                 seeds.append(HermesGatewaySeed(gatewayID: gatewayID, config: config))
@@ -424,7 +424,7 @@ actor HermesContainerManager {
             apiKey: decrypt(row: row, tenantID: tenantID),
             defaultModel: config.defaultModel,
             gateways: gateways,
-            mnemosyneEnabled: mnemosyneEnabled,
+            mnemosyneEnabled: mnemosyneEnabled
         )
         return gateways.reduce(0) { $0 + HermesGatewayCatalog.envVars($1.gatewayID, config: $1.config).count }
     }
@@ -449,7 +449,7 @@ actor HermesContainerManager {
             containerName: row.containerName,
             port: row.port,
             apiServerKey: decrypt(row: row, tenantID: tenantID),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
         row.lastUsedAt = now()
         try await row.update(on: fluent.db())

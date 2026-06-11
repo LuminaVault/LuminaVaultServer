@@ -27,7 +27,7 @@ struct ResendEmailOTPSender: EmailOTPSender {
         fromAddress: String,
         replyTo: String,
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.apiKey = apiKey
         self.fromAddress = fromAddress

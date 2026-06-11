@@ -37,7 +37,7 @@ struct AnthropicAdapter: ProviderAdapter {
         baseURL: URL = URL(string: "https://api.anthropic.com")!,
         session: URLSession = .shared,
         logger: Logger,
-        userCredentials: UserCredentialStore? = nil,
+        userCredentials: UserCredentialStore? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
@@ -53,7 +53,7 @@ struct AnthropicAdapter: ProviderAdapter {
     func chatCompletionsWithMetadata(
         payload: Data,
         sessionKey _: String,
-        sessionID _: String?,
+        sessionID _: String?
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the inbound OpenAI payload.
         guard
@@ -63,7 +63,7 @@ struct AnthropicAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "invalid OpenAI payload: cannot parse messages",
+                body: "invalid OpenAI payload: cannot parse messages"
             )
         }
 
@@ -105,7 +105,7 @@ struct AnthropicAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "failed to serialize anthropic payload",
+                body: "failed to serialize anthropic payload"
             )
         }
 
@@ -141,7 +141,7 @@ struct AnthropicAdapter: ProviderAdapter {
                 throw ProviderError.transient(
                     provider: kind,
                     status: status,
-                    body: "failed to encode OpenAI response",
+                    body: "failed to encode OpenAI response"
                 )
             }
             var headers: [String: String] = [:]

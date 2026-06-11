@@ -79,7 +79,7 @@ struct XOAuthTests {
             name: "Stub User",
             username: "stubuser",
             email: nil,
-            verified: false,
+            verified: false
         ))
         let result = try await stub.fetchMe(accessToken: "doesnt-matter-stub")
         #expect(result.id == "stub-user-id")
@@ -106,7 +106,7 @@ struct XOAuthTests {
         // ever changes, downstream tenant code that assumes uniqueness has to
         // be checked. The check lives here so we notice.
         let xUser = XUserResponse.XUserData(
-            id: "9876", name: "n", username: "u", email: nil, verified: false,
+            id: "9876", name: "n", username: "u", email: nil, verified: false
         )
         let resolved = xUser.email?.lowercased() ?? "\(xUser.id)@x.luminavault.local"
         #expect(resolved == "9876@x.luminavault.local")
@@ -115,7 +115,7 @@ struct XOAuthTests {
     @Test
     func `email fallback uses X provided email when present`() {
         let xUser = XUserResponse.XUserData(
-            id: "9876", name: "n", username: "u", email: "Mixed.Case@Example.com", verified: false,
+            id: "9876", name: "n", username: "u", email: "Mixed.Case@Example.com", verified: false
         )
         let resolved = xUser.email?.lowercased() ?? "\(xUser.id)@x.luminavault.local"
         #expect(resolved == "mixed.case@example.com")
@@ -133,7 +133,7 @@ struct XOAuthTests {
                 provider: "x",
                 providerUserID: providerUserID,
                 email: placeholderEmail,
-                emailVerified: false,
+                emailVerified: false
             )
             #expect(user.email == placeholderEmail)
 
@@ -162,11 +162,11 @@ struct XOAuthTests {
 
             let first = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: false,
+                email: email, emailVerified: false
             )
             let second = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: false,
+                email: email, emailVerified: false
             )
             #expect(try first.requireID() == (second.requireID()))
 
@@ -191,7 +191,7 @@ struct XOAuthTests {
             let providerUserID = "x-\(UUID().uuidString.prefix(8).lowercased())"
             let user = try await h.service.upsertOAuthUser(
                 provider: "x", providerUserID: providerUserID,
-                email: email, emailVerified: true,
+                email: email, emailVerified: true
             )
             #expect(user.email == email)
             #expect(user.username == username) // password-flow username preserved
@@ -219,7 +219,7 @@ struct XOAuthTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -237,7 +237,7 @@ struct XOAuthTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -261,12 +261,12 @@ struct XOAuthTests {
         let kid = JWKIdentifier(string: "test-kid")
         await jwtKeys.add(
             hmac: HMACKey(stringLiteral: "test-secret-do-not-use-in-prod-32chars"),
-            digestAlgorithm: .sha256, kid: kid,
+            digestAlgorithm: .sha256, kid: kid
         )
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "123456"),
+            generator: FixedOTPCodeGenerator(code: "123456")
         )
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-x-oauth-test-\(UUID().uuidString)", isDirectory: true)
@@ -284,14 +284,14 @@ struct XOAuthTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: VaultPathService(rootPath: tmpRoot.path),
+                vaultPaths: VaultPathService(rootPath: tmpRoot.path)
             ),
             soulService: SOULService(
                 vaultPaths: VaultPathService(rootPath: tmpRoot.path),
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger,
+                logger: logger
             ),
-            logger: logger,
+            logger: logger
         )
         return Harness(service: service, fluent: fluent)
     }

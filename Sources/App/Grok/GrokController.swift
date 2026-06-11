@@ -22,7 +22,7 @@ struct GrokController {
         containerManager: HermesContainerManager,
         proxy: HermesGrokProxy,
         logger: Logger,
-        ttsDisabled: Bool = true,
+        ttsDisabled: Bool = true
     ) {
         self.containerManager = containerManager
         self.proxy = proxy

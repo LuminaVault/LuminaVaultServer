@@ -23,7 +23,7 @@ protocol ContextRouterSelector: Sendable {
     func selectSkill(
         for userMessage: String,
         manifests: [SkillManifest],
-        timeout: Duration,
+        timeout: Duration
     ) async -> SkillManifest?
 }
 
@@ -41,7 +41,7 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
     func selectSkill(
         for userMessage: String,
         manifests: [SkillManifest],
-        timeout: Duration = .milliseconds(300),
+        timeout: Duration = .milliseconds(300)
     ) async -> SkillManifest? {
         guard !manifests.isEmpty else { return nil }
         guard !userMessage.isEmpty else { return nil }
@@ -74,7 +74,7 @@ struct DefaultContextRouterSelector: ContextRouterSelector {
                 .init(role: "user", content: userPrompt),
             ],
             temperature: 0,
-            stream: false,
+            stream: false
         )
         let payload: Data
         do {

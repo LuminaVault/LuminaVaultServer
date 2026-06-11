@@ -21,7 +21,7 @@ actor StubXaiOAuthBackend: XaiOAuthBackend {
     func submitCallback(
         handle _: HermesContainerHandle,
         sessionID: String,
-        callbackURL: String,
+        callbackURL: String
     ) async throws -> Bool {
         submitCalls.append((sessionID, callbackURL))
         return try submitCallbackResult.get()

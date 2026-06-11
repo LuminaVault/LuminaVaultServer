@@ -44,7 +44,7 @@ struct AppleRemindersControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -61,14 +61,14 @@ struct AppleRemindersControllerTests {
         client: some TestClientProtocol,
         token: String,
         domain: AppleDataDomain,
-        allowed: Bool,
+        allowed: Bool
     ) async throws {
         let body = try wireEncoder.encode(AppleConsentUpdateRequest(domain: domain, allowed: allowed))
         try await client.execute(
             uri: "/v1/apple/consent",
             method: .put,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: body),
+            body: ByteBuffer(data: body)
         ) { #expect($0.status == .ok) }
     }
 
@@ -79,14 +79,14 @@ struct AppleRemindersControllerTests {
         client: some TestClientProtocol,
         token: String,
         reminders: [AppleReminderInput],
-        expectStatus: HTTPResponse.Status = .ok,
+        expectStatus: HTTPResponse.Status = .ok
     ) async throws -> AppleSyncResponse? {
         let body = try wireEncoder.encode(AppleRemindersSyncRequest(reminders: reminders))
         return try await client.execute(
             uri: "/v1/reminders/sync",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: body),
+            body: ByteBuffer(data: body)
         ) { response in
             #expect(response.status == expectStatus)
             guard response.status == .ok else { return nil }
@@ -105,7 +105,7 @@ struct AppleRemindersControllerTests {
                 client: client,
                 token: token,
                 reminders: [AppleReminderInput(externalID: "r-1", title: "Buy milk")],
-                expectStatus: .forbidden,
+                expectStatus: .forbidden
             )
         }
     }

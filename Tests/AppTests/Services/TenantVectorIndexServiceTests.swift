@@ -32,7 +32,7 @@ struct TenantVectorIndexServiceTests {
             let tenantID = UUID()
             let service = TenantVectorIndexService(
                 fluent: fluent,
-                logger: Logger(label: "lv.test.tenantidx"),
+                logger: Logger(label: "lv.test.tenantidx")
             )
             try await service.ensureIndex(for: tenantID)
 
@@ -57,7 +57,7 @@ struct TenantVectorIndexServiceTests {
             let tenantID = UUID()
             let service = TenantVectorIndexService(
                 fluent: fluent,
-                logger: Logger(label: "lv.test.tenantidx"),
+                logger: Logger(label: "lv.test.tenantidx")
             )
             try await service.ensureIndex(for: tenantID)
             try await service.ensureIndex(for: tenantID)
@@ -74,7 +74,7 @@ struct TenantVectorIndexServiceTests {
             let tenantID = UUID()
             let service = TenantVectorIndexService(
                 fluent: fluent,
-                logger: Logger(label: "lv.test.tenantidx"),
+                logger: Logger(label: "lv.test.tenantidx")
             )
             try await service.ensureIndex(for: tenantID)
             try await service.dropIndex(for: tenantID)

@@ -11,7 +11,7 @@ struct ProviderErrorClassifierTests {
         ProviderErrorClassifier.classify(
             provider: .openai,
             status: status,
-            body: body.flatMap { Data($0.utf8) },
+            body: body.flatMap { Data($0.utf8) }
         )
     }
 

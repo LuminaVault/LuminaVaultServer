@@ -29,7 +29,7 @@ struct JobAuthoring {
         runAt: Date? = nil,
         domain: String?,
         spec: String,
-        spaceID: UUID?,
+        spaceID: UUID?
     ) async throws -> String {
         switch (cron, runAt) {
         case let (cron?, nil):

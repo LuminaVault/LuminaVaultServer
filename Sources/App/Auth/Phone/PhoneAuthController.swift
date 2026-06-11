@@ -69,7 +69,7 @@ actor PreAuthChallengeStore {
             channel: channel,
             destination: destination,
             purpose: purpose,
-            expiresAt: expiresAt,
+            expiresAt: expiresAt
         )
         byID[id] = entry
         latestByDestination[destination] = id
@@ -170,7 +170,7 @@ struct PhoneAuthController {
             channel: "sms",
             destination: phone,
             purpose: "phone_signin",
-            code: code,
+            code: code
         )
         try await smsSender.send(code: code, to: phone, purpose: "phone_signin")
         logger.info("phone OTP issued: phone=\(phone)")
@@ -194,7 +194,7 @@ struct PhoneAuthController {
             provider: "phone",
             providerUserID: phone,
             email: placeholderEmail,
-            emailVerified: false,
+            emailVerified: false
         )
         return try await authService.issueTokens(for: user)
     }

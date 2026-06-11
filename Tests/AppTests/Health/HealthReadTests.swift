@@ -39,7 +39,7 @@ struct HealthReadTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -57,7 +57,7 @@ struct HealthReadTests {
     private static func seedEvents(
         client: some TestClientProtocol,
         token: String,
-        events: [LuminaVaultShared.HealthEventInput],
+        events: [LuminaVaultShared.HealthEventInput]
     ) async throws -> HealthIngestResponse {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -66,7 +66,7 @@ struct HealthReadTests {
             uri: "/v1/health",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: bodyData),
+            body: ByteBuffer(data: bodyData)
         ) { try decodeIngestResponse($0.body) }
     }
 
@@ -95,7 +95,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -124,7 +124,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health?type=steps",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -149,7 +149,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health?type=weight_kg",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -162,7 +162,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health?type=weight_kg&from=\(from)&to=\(to)",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -182,7 +182,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health?limit=10000",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -193,7 +193,7 @@ struct HealthReadTests {
             try await client.execute(
                 uri: "/v1/health?limit=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeListResponse(response.body)
@@ -214,7 +214,7 @@ struct HealthReadTests {
                     type: "steps",
                     recordedAt: now.addingTimeInterval(-Double(i) * 60),
                     valueNumeric: Double(1000 + i),
-                    unit: "count",
+                    unit: "count"
                 )
             }
             try await Self.seedEvents(client: client, token: token, events: events)
@@ -222,7 +222,7 @@ struct HealthReadTests {
             let page1: HealthListResponse = try await client.execute(
                 uri: "/v1/health?type=steps&limit=4&offset=0",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) {
                 #expect($0.status == .ok)
                 return try Self.decodeListResponse($0.body)
@@ -230,7 +230,7 @@ struct HealthReadTests {
             let page2: HealthListResponse = try await client.execute(
                 uri: "/v1/health?type=steps&limit=4&offset=4",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) {
                 #expect($0.status == .ok)
                 return try Self.decodeListResponse($0.body)

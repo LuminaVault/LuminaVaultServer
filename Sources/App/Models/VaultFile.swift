@@ -25,7 +25,7 @@ struct VaultFileMetadata: Codable {
         isTodo: Bool? = nil,
         done: Bool? = nil,
         dueAt: Date? = nil,
-        projectID: UUID? = nil,
+        projectID: UUID? = nil
     ) {
         self.enrichmentStatus = enrichmentStatus
         self.title = title
@@ -67,7 +67,7 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
         sizeBytes: Int64,
         sha256: String,
         processedAt: Date? = nil,
-        metadata: VaultFileMetadata? = nil,
+        metadata: VaultFileMetadata? = nil
     ) {
         self.id = id
         self.tenantID = tenantID

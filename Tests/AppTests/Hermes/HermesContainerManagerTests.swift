@@ -18,7 +18,7 @@ struct HermesContainerManagerTests {
             id: id,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-hash-\(slug)",
+            passwordHash: "stub-hash-\(slug)"
         )
     }
 
@@ -40,7 +40,7 @@ struct HermesContainerManagerTests {
         fluent: Fluent,
         portStart: Int = 9000,
         portEnd: Int = 9100,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) throws -> HermesContainerManager {
         try HermesContainerManager(
             docker: docker,
@@ -52,10 +52,10 @@ struct HermesContainerManagerTests {
                 dataRootBase: "/tmp/lvtest",
                 portRangeStart: portStart,
                 portRangeEnd: portEnd,
-                idleTTLSeconds: 60,
+                idleTTLSeconds: 60
             ),
             logger: Logger(label: "test.her240a"),
-            now: now,
+            now: now
         )
     }
 
@@ -210,7 +210,7 @@ struct HermesContainerManagerTests {
                 docker: docker,
                 fluent: fluent,
                 portStart: 9000,
-                portEnd: 9001,
+                portEnd: 9001
             )
 
             let t1 = UUID(); let t2 = UUID()

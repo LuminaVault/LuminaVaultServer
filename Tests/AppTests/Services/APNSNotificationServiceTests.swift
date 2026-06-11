@@ -16,7 +16,7 @@ struct APNSNotificationServiceTests {
     // MARK: - Fixtures
 
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T,
+        _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -33,7 +33,7 @@ struct APNSNotificationServiceTests {
         let fluent = Fluent(logger: Logger(label: "test.apns"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -68,7 +68,7 @@ struct APNSNotificationServiceTests {
         let user = User(
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)",
+            passwordHash: "stub-\(slug)"
         )
         try await user.save(on: db)
         return user
@@ -92,12 +92,12 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns"),
+                logger: Logger(label: "test.apns")
             )
             let response = ChatResponse(
                 id: "test", model: "test",
                 message: ChatMessage(role: "assistant", content: "Hello there", tool_calls: nil),
-                raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
+                raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil)
             )
             try await service.notifyLLMReply(userID: userID, username: slug, response: response)
 
@@ -127,7 +127,7 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns"),
+                logger: Logger(label: "test.apns")
             )
             try await service.notifyNudge(userID: userID, username: slug, body: "test nudge")
 
@@ -156,7 +156,7 @@ struct APNSNotificationServiceTests {
                 bundleID: "com.luminavault.test",
                 fluent: fluent,
                 pushSender: recorder,
-                logger: Logger(label: "test.apns"),
+                logger: Logger(label: "test.apns")
             )
             try await service.notifyDigest(userID: userID, username: slug, body: "today")
 
@@ -184,7 +184,7 @@ struct APNSNotificationServiceTests {
                 privateKeyPath: "",
                 environment: "development",
                 fluent: fluent,
-                logger: Logger(label: "test.apns"),
+                logger: Logger(label: "test.apns")
             )
             try await service.notifyLLMReply(
                 userID: userID,
@@ -192,8 +192,8 @@ struct APNSNotificationServiceTests {
                 response: ChatResponse(
                     id: "test", model: "test",
                     message: ChatMessage(role: "assistant", content: "x", tool_calls: nil),
-                    raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil),
-                ),
+                    raw: HermesUpstreamResponse(id: "test", object: nil, created: nil, model: "test", choices: [], usage: nil)
+                )
             )
             // No throw, no crash. Token row untouched.
             let remaining = try await DeviceToken.query(on: fluent.db(), tenantID: userID).all()
@@ -247,7 +247,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String,
+        topic: String
     ) async throws {
         try await record(
             deviceToken: deviceToken,
@@ -255,7 +255,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
-            topic: topic,
+            topic: topic
         )
     }
 
@@ -265,7 +265,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String,
+        topic: String
     ) throws {
         sends.append(Send(
             token: deviceToken,
@@ -273,7 +273,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
-            topic: topic,
+            topic: topic
         ))
         if let reason = failures[deviceToken] {
             throw try APNSNotificationServiceTests.makeAPNSError(reason: reason)

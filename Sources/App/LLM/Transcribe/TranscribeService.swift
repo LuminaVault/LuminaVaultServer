@@ -56,7 +56,7 @@ struct TranscribeService {
             language: result.language,
             confidence: result.confidence,
             durationSeconds: result.durationSeconds,
-            segments: result.segments,
+            segments: result.segments
         )
     }
 }

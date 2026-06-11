@@ -14,7 +14,7 @@ struct M35_AddUsageMeterCharsOut: AsyncMigration {
             throw M35Error.requiresSQL
         }
         try await sql.raw(
-            "ALTER TABLE usage_meter ADD COLUMN IF NOT EXISTS chars_out BIGINT NOT NULL DEFAULT 0",
+            "ALTER TABLE usage_meter ADD COLUMN IF NOT EXISTS chars_out BIGINT NOT NULL DEFAULT 0"
         ).run()
     }
 

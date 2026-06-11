@@ -21,7 +21,7 @@ struct HermesProvisioningLifecycleTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -39,7 +39,7 @@ struct HermesProvisioningLifecycleTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -67,7 +67,7 @@ struct HermesProvisioningLifecycleTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "123456"),
+            generator: FixedOTPCodeGenerator(code: "123456")
         )
         let tmpRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-hpl-\(UUID().uuidString)", isDirectory: true)
@@ -88,14 +88,14 @@ struct HermesProvisioningLifecycleTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: AlwaysFailingHermesGateway(),
-                vaultPaths: vaultPaths,
+                vaultPaths: vaultPaths
             ),
             soulService: SOULService(
                 vaultPaths: vaultPaths,
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger,
+                logger: logger
             ),
-            logger: logger,
+            logger: logger
         )
         return Harness(service: service, fluent: fluent, jwtKeys: jwtKeys, kid: kid)
     }
@@ -111,7 +111,7 @@ struct HermesProvisioningLifecycleTests {
             let response = try await harness.service.register(
                 email: email,
                 username: username,
-                password: password,
+                password: password
             )
 
             // Signup still issues tokens despite the gateway being down.

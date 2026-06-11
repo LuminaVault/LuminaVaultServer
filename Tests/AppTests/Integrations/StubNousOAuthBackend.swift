@@ -17,7 +17,7 @@ actor StubNousOAuthBackend: NousOAuthBackend {
 
     func requestVerification(
         handle _: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> (verifyURL: String, userCode: String?) {
         requestCalls.append(sessionID)
         return try verificationResult.get()
@@ -25,7 +25,7 @@ actor StubNousOAuthBackend: NousOAuthBackend {
 
     func awaitCompletion(
         handle _: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> Bool {
         completeCalls.append(sessionID)
         return try completionResult.get()

@@ -42,7 +42,7 @@ struct KanbanControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username),
+            body: registerBody(email: email, username: username)
         ) { try decodeAuth($0.body) }
         return resp.accessToken
     }
@@ -61,7 +61,7 @@ struct KanbanControllerTests {
             try await client.execute(
                 uri: "/v1/boards",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let boards = try Self.decodeBoardList(response.body)

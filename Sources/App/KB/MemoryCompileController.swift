@@ -58,7 +58,7 @@ struct MemoryCompileController {
 
         await progress.publish(
             .started(.init(runId: runId, totalFiles: rows.count)),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
 
         guard !rows.isEmpty else {
@@ -75,12 +75,12 @@ struct MemoryCompileController {
                 sessionKey: tenantID.uuidString,
                 rows: rows,
                 hint: nil,
-                runId: runId,
+                runId: runId
             )
             let elapsed = ContinuousClock.now - started
             let elapsedMs = Int(
                 elapsed.components.seconds * 1000
-                    + elapsed.components.attoseconds / 1_000_000_000_000_000,
+                    + elapsed.components.attoseconds / 1_000_000_000_000_000
             )
 
             try await markFirstKBCompileCompleted(tenantID: tenantID)
@@ -94,7 +94,7 @@ struct MemoryCompileController {
                 memoriesUpdated: nil,
                 durationMs: elapsedMs,
                 runId: runId,
-                pendingMemoryIds: result.memories.map(\.id),
+                pendingMemoryIds: result.memories.map(\.id)
             )
             await progress.publish(.completed(.init(runId: runId, response: response)), tenantID: tenantID)
             await usageMetrics?.recordMemoryCompile(tenantID: tenantID, runID: runId, files: result.writtenFiles.count)
@@ -102,7 +102,7 @@ struct MemoryCompileController {
         } catch {
             await progress.publish(
                 .error(.init(runId: runId, message: "\(error)")),
-                tenantID: tenantID,
+                tenantID: tenantID
             )
             throw error
         }

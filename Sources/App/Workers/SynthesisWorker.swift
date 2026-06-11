@@ -49,7 +49,7 @@ actor SynthesisWorker: Service {
         logger: Logger,
         tickInterval: Duration = .seconds(3600),
         maxPatternsPerRun: Int = 3,
-        memorySampleSize: Int = 30,
+        memorySampleSize: Int = 30
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -117,7 +117,7 @@ actor SynthesisWorker: Service {
         guard !rows.isEmpty else { return false }
         guard let synth = await synthesise(
             sessionKey: sessionKey,
-            prompt: Self.weeklyPrompt(for: rows, window: window),
+            prompt: Self.weeklyPrompt(for: rows, window: window)
         ) else { return false }
         let insight = Insight(
             tenantID: tenantID,
@@ -126,7 +126,7 @@ actor SynthesisWorker: Service {
             summary: synth.summary,
             sourceMemoryIDs: rows.map { $0.id ?? UUID() },
             periodStart: window.start,
-            periodEnd: window.end,
+            periodEnd: window.end
         )
         try await insight.save(on: fluent.db())
         return true
@@ -164,7 +164,7 @@ actor SynthesisWorker: Service {
         guard rows.count >= 3 else { return 0 }
         guard let patterns = await detectPatterns(
             sessionKey: sessionKey,
-            prompt: Self.patternsPrompt(for: rows, max: maxPatternsPerRun),
+            prompt: Self.patternsPrompt(for: rows, max: maxPatternsPerRun)
         ), !patterns.isEmpty else { return 0 }
         var inserted = 0
         for pattern in patterns.prefix(maxPatternsPerRun) {
@@ -173,7 +173,7 @@ actor SynthesisWorker: Service {
                 section: .patterns,
                 headline: pattern.headline,
                 summary: pattern.summary,
-                sourceMemoryIDs: rows.map { $0.id ?? UUID() },
+                sourceMemoryIDs: rows.map { $0.id ?? UUID() }
             )
             try await insight.save(on: fluent.db())
             inserted += 1
@@ -213,7 +213,7 @@ actor SynthesisWorker: Service {
         guard rows.count >= 3 else { return 0 }
         guard let contradictions = await detectContradictions(
             sessionKey: sessionKey,
-            prompt: Self.contradictionsPrompt(for: rows, max: maxPatternsPerRun),
+            prompt: Self.contradictionsPrompt(for: rows, max: maxPatternsPerRun)
         ), !contradictions.isEmpty else { return 0 }
         var inserted = 0
         for contradiction in contradictions.prefix(maxPatternsPerRun) {
@@ -222,7 +222,7 @@ actor SynthesisWorker: Service {
                 section: .contradictions,
                 headline: contradiction.headline,
                 summary: contradiction.summary,
-                sourceMemoryIDs: rows.map { $0.id ?? UUID() },
+                sourceMemoryIDs: rows.map { $0.id ?? UUID() }
             )
             try await insight.save(on: fluent.db())
             inserted += 1

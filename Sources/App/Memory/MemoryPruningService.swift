@@ -14,7 +14,7 @@ struct MemoryPruningConfig {
 
     static let `default` = MemoryPruningConfig(
         scoreThreshold: 0.2,
-        minAgeMonths: 3,
+        minAgeMonths: 3
     )
 }
 
@@ -109,7 +109,7 @@ actor MemoryPruningService {
         return MemoryPruneResult(
             tenantID: tenantID,
             candidatesScanned: candidateCount,
-            archived: archived.count,
+            archived: archived.count
         )
     }
 }

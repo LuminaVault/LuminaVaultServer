@@ -45,7 +45,7 @@ extension Logger {
         s.replacingOccurrences(
             of: #"Bearer\s+[A-Za-z0-9._\-]+"#,
             with: "Bearer ***",
-            options: .regularExpression,
+            options: .regularExpression
         )
     }
 }
@@ -59,7 +59,7 @@ func loggedStage<T>(
     _ stage: String,
     logger: Logger,
     metadata: Logger.Metadata = [:],
-    _ body: () async throws -> T,
+    _ body: () async throws -> T
 ) async throws -> T {
     let start = DispatchTime.now().uptimeNanoseconds
     func elapsedMs() -> Int64 {

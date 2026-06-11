@@ -30,7 +30,7 @@ struct VaultUploadSpaceTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: testPassword),
+            body: registerBody(email: email, username: username, password: testPassword)
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
         return resp.accessToken
     }
@@ -41,7 +41,7 @@ struct VaultUploadSpaceTests {
     private static func createSpace(
         client: some TestClientProtocol,
         token: String,
-        name: String,
+        name: String
     ) async throws -> LuminaVaultShared.SpaceDTO {
         try await client.execute(
             uri: "/v1/spaces",
@@ -49,7 +49,7 @@ struct VaultUploadSpaceTests {
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
             body: ByteBuffer(string: """
             {"name":"\(name)"}
-            """),
+            """)
         ) { response in
             #expect(response.status == .ok || response.status == .created)
             return try testJSONDecoder().decode(LuminaVaultShared.SpaceDTO.self, from: Data(buffer: response.body))
@@ -62,7 +62,7 @@ struct VaultUploadSpaceTests {
         token: String,
         path: String,
         spaceIDRaw: String? = nil,
-        body: String = "# capture",
+        body: String = "# capture"
     ) async throws -> (status: HTTPResponse.Status, body: ByteBuffer) {
         var uri = "/v1/vault/files?path=\(path)"
         if let spaceIDRaw {
@@ -75,7 +75,7 @@ struct VaultUploadSpaceTests {
                 .authorization: "Bearer \(token)",
                 .contentType: "text/markdown",
             ],
-            body: ByteBuffer(string: body),
+            body: ByteBuffer(string: body)
         ) { (response: TestResponse) in
             (response.status, response.body)
         }
@@ -83,12 +83,12 @@ struct VaultUploadSpaceTests {
 
     private static func listFiles(
         client: some TestClientProtocol,
-        token: String,
+        token: String
     ) async throws -> [VaultFileDTO] {
         try await client.execute(
             uri: "/v1/vault/files",
             method: .get,
-            headers: [.authorization: "Bearer \(token)"],
+            headers: [.authorization: "Bearer \(token)"]
         ) { response in
             #expect(response.status == .ok)
             return try testJSONDecoder().decode(VaultFileListResponse.self, from: Data(buffer: response.body)).files
@@ -106,7 +106,7 @@ struct VaultUploadSpaceTests {
                 client: client,
                 token: token,
                 path: "capture/note.md",
-                spaceIDRaw: space.id.uuidString,
+                spaceIDRaw: space.id.uuidString
             )
             #expect(status == .ok)
 
@@ -124,7 +124,7 @@ struct VaultUploadSpaceTests {
             let (status, _) = try await Self.uploadRaw(
                 client: client,
                 token: token,
-                path: "unfiled/note.md",
+                path: "unfiled/note.md"
             )
             #expect(status == .ok)
 
@@ -143,7 +143,7 @@ struct VaultUploadSpaceTests {
                 client: client,
                 token: token,
                 path: "bad/note.md",
-                spaceIDRaw: "not-a-uuid",
+                spaceIDRaw: "not-a-uuid"
             )
             #expect(status == .badRequest)
         }
@@ -161,7 +161,7 @@ struct VaultUploadSpaceTests {
                 client: client,
                 token: bob,
                 path: "bob/leak.md",
-                spaceIDRaw: aliceSpace.id.uuidString,
+                spaceIDRaw: aliceSpace.id.uuidString
             )
             #expect(status == .badRequest)
         }
@@ -179,13 +179,13 @@ struct VaultUploadSpaceTests {
                 client: client,
                 token: token,
                 path: "shared/path.md",
-                spaceIDRaw: spaceA.id.uuidString,
+                spaceIDRaw: spaceA.id.uuidString
             )
             _ = try await Self.uploadRaw(
                 client: client,
                 token: token,
                 path: "shared/path.md",
-                spaceIDRaw: spaceB.id.uuidString,
+                spaceIDRaw: spaceB.id.uuidString
             )
 
             let files = try await Self.listFiles(client: client, token: token)
@@ -205,14 +205,14 @@ struct VaultUploadSpaceTests {
                 client: client,
                 token: token,
                 path: "keep/path.md",
-                spaceIDRaw: space.id.uuidString,
+                spaceIDRaw: space.id.uuidString
             )
             _ = try await Self.uploadRaw(
                 client: client,
                 token: token,
                 path: "keep/path.md",
                 spaceIDRaw: nil,
-                body: "# updated content",
+                body: "# updated content"
             )
 
             let files = try await Self.listFiles(client: client, token: token)

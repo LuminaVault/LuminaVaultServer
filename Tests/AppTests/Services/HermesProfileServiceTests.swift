@@ -15,7 +15,7 @@ import Testing
 struct HermesProfileServiceTests {
     private static func withService<T: Sendable>(
         gateway: any HermesGateway,
-        _ body: @Sendable (HermesProfileService, Fluent, URL) async throws -> T,
+        _ body: @Sendable (HermesProfileService, Fluent, URL) async throws -> T
     ) async throws -> T {
         let fluent = try await makeFluent()
         let tmpRoot = FileManager.default.temporaryDirectory
@@ -25,7 +25,7 @@ struct HermesProfileServiceTests {
         let service = HermesProfileService(
             fluent: fluent,
             gateway: gateway,
-            vaultPaths: vaultPaths,
+            vaultPaths: vaultPaths
         )
         do {
             let result = try await body(service, fluent, tmpRoot)
@@ -43,7 +43,7 @@ struct HermesProfileServiceTests {
         let fluent = Fluent(logger: Logger(label: "test.hps"))
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -72,7 +72,7 @@ struct HermesProfileServiceTests {
         let user = User(
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-\(slug)",
+            passwordHash: "stub-\(slug)"
         )
         try await user.save(on: db)
         return user
@@ -130,7 +130,7 @@ struct HermesProfileServiceTests {
             let stale = try HermesProfile(
                 tenantID: user.requireID(),
                 hermesProfileID: "pending-\(user.requireID().uuidString)",
-                status: "error",
+                status: "error"
             )
             stale.lastError = "boom from a previous attempt"
             try await stale.save(on: fluent.db())
@@ -156,7 +156,7 @@ struct HermesProfileServiceTests {
             let stuck = try HermesProfile(
                 tenantID: user.requireID(),
                 hermesProfileID: "pending-\(user.requireID().uuidString)",
-                status: "provisioning",
+                status: "provisioning"
             )
             try await stuck.save(on: fluent.db())
 

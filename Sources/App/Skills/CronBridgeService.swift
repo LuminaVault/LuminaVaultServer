@@ -63,7 +63,7 @@ struct CronBridgeService {
                 prompt: text,
                 name: Self.deriveName(text),
                 deliver: deliver,
-                skills: nil,
+                skills: nil
             )
         }
 
@@ -76,7 +76,7 @@ struct CronBridgeService {
             prompt: proposal.spec ?? text,
             name: proposal.title ?? Self.deriveName(text),
             deliver: deliver,
-            skills: nil,
+            skills: nil
         )
     }
 
@@ -278,7 +278,7 @@ struct CronBridgeService {
         let result = try await docker.exec(
             container: handle.containerName,
             command: ["cat", "\(hermesHome)/cron/jobs.json"],
-            stdin: nil,
+            stdin: nil
         )
         // Missing file (no jobs yet) → empty list, not an error.
         guard result.ok, let data = result.stdout.data(using: .utf8) else { return [] }
@@ -310,7 +310,7 @@ struct CronBridgeService {
         let result = try await docker.exec(
             container: handle.containerName,
             command: ["hermes", "cron", action, id],
-            stdin: nil,
+            stdin: nil
         )
         guard result.ok else { throw HTTPError(.badGateway, message: "cron_\(action)_failed") }
         return try await listManaged(tenantID: tenantID)
@@ -361,7 +361,7 @@ struct CronBridgeService {
                 deliver: j["deliver"] as? String,
                 lastRun: lastRun,
                 status: status,
-                mode: mode,
+                mode: mode
             )
         }
     }

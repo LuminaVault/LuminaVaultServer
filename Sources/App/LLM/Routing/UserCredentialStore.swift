@@ -113,7 +113,7 @@ actor UserCredentialStore {
         credentialKind: String,
         apiKey: String?,
         baseURL: String?,
-        label: String?,
+        label: String?
     ) async throws {
         let existing = try await UserProviderCredential.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
@@ -195,7 +195,7 @@ actor UserCredentialStore {
         tenantID: UUID,
         provider: ProviderKind,
         apiKey: String,
-        label: String?,
+        label: String?
     ) async throws -> UserProviderCredentialPoolKey {
         let row = UserProviderCredentialPoolKey()
         row.tenantID = tenantID

@@ -37,9 +37,9 @@ extension VaultFileDTO {
                     tags: $0.tags,
                     isTodo: $0.isTodo,
                     done: $0.done,
-                    dueAt: $0.dueAt,
+                    dueAt: $0.dueAt
                 )
-            },
+            }
         )
     }
 }
@@ -85,7 +85,7 @@ struct VaultController {
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
         memories: MemoryRepository? = nil,
-        embeddings: (any EmbeddingService)? = nil,
+        embeddings: (any EmbeddingService)? = nil
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
@@ -158,7 +158,7 @@ struct VaultController {
         // the misconfiguration instead of orphaning the file.
         let spaceID = try await resolveOptionalSpaceID(
             raw: request.uri.queryParameters["space_id"].map(String.init),
-            tenantID: tenantID,
+            tenantID: tenantID
         )
 
         // HER-105 — file the upload under its Space's folder `raw/<slug>/<name>`
@@ -199,7 +199,7 @@ struct VaultController {
         let fm = FileManager.default
         try fm.createDirectory(
             at: target.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
         try data.write(to: tmp, options: .atomic)
@@ -220,7 +220,7 @@ struct VaultController {
             sizeBytes: Int64(data.count),
             sha256: digest,
             processed: processed,
-            metadata: noteMetadata,
+            metadata: noteMetadata
         )
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
@@ -238,7 +238,7 @@ struct VaultController {
                 payload: [
                     SkillEvent.PayloadKey.vaultFileID: savedID.uuidString,
                     SkillEvent.PayloadKey.vaultPath: safeRelative,
-                ],
+                ]
             )
             eventBus.publish(event)
         }
@@ -255,11 +255,11 @@ struct VaultController {
             do {
                 let embedding = try await embeddings.embed(content, tenantID: tenantID)
                 if let existingMemID = try await memories.idBySourceVaultFileID(
-                    tenantID: tenantID, sourceVaultFileID: savedID,
+                    tenantID: tenantID, sourceVaultFileID: savedID
                 ) {
                     _ = try await memories.updateContent(
                         tenantID: tenantID, id: existingMemID,
-                        content: content, embedding: embedding,
+                        content: content, embedding: embedding
                     )
                 } else {
                     _ = try await memories.create(
@@ -269,7 +269,7 @@ struct VaultController {
                         tags: noteMetadata?.tags,
                         sourceVaultFileID: savedID,
                         spaceID: spaceID,
-                        reviewState: "auto",
+                        reviewState: "auto"
                     )
                 }
             } catch {
@@ -281,7 +281,7 @@ struct VaultController {
             path: safeRelative,
             size: data.count,
             contentType: contentType,
-            sha256: digest,
+            sha256: digest
         )
     }
 
@@ -294,7 +294,7 @@ struct VaultController {
 
         let limit = Self.clamp(
             request.uri.queryParameters["limit"].flatMap { Int($0) } ?? Self.defaultLimit,
-            min: 1, max: Self.maxLimit,
+            min: 1, max: Self.maxLimit
         )
         let before = request.uri.queryParameters["before"].flatMap { Self.parseISODate(String($0)) }
         let after = request.uri.queryParameters["after"].flatMap { Self.parseISODate(String($0)) }
@@ -352,7 +352,7 @@ struct VaultController {
         return VaultFileListResponse(
             files: dtos,
             limit: limit,
-            nextBefore: rows.count == limit ? rows.last?.createdAt : nil,
+            nextBefore: rows.count == limit ? rows.last?.createdAt : nil
         )
     }
 
@@ -394,7 +394,7 @@ struct VaultController {
         return Response(
             status: .ok,
             headers: headers,
-            body: ResponseBody(byteBuffer: ByteBuffer(data: data)),
+            body: ResponseBody(byteBuffer: ByteBuffer(data: data))
         )
     }
 
@@ -485,7 +485,7 @@ struct VaultController {
         let fm = FileManager.default
         try fm.createDirectory(
             at: dst.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
+            withIntermediateDirectories: true
         )
         if fm.fileExists(atPath: src.path) {
             try fm.moveItem(at: src, to: dst)
@@ -510,7 +510,7 @@ struct VaultController {
         let exporter = VaultExportService(
             vaultPaths: vaultPaths,
             fluent: fluent,
-            logger: logger,
+            logger: logger
         )
         let capturedUser = user
         let body = ResponseBody { writer in
@@ -540,7 +540,7 @@ struct VaultController {
         sizeBytes: Int64,
         sha256: String,
         processed: Bool = false,
-        metadata: VaultFileMetadata? = nil,
+        metadata: VaultFileMetadata? = nil
     ) async throws -> UUID {
         let db = fluent.db()
         // HER-105 — `processed` marks the row already-compiled so Sync & Learn
@@ -573,7 +573,7 @@ struct VaultController {
             sizeBytes: sizeBytes,
             sha256: sha256,
             processedAt: processedAt,
-            metadata: metadata,
+            metadata: metadata
         )
         try await row.save(on: db)
         return try row.requireID()
@@ -585,7 +585,7 @@ struct VaultController {
     /// carry one.
     private static func mergeMetadata(
         _ old: VaultFileMetadata?,
-        _ new: VaultFileMetadata,
+        _ new: VaultFileMetadata
     ) -> VaultFileMetadata {
         VaultFileMetadata(
             enrichmentStatus: new.enrichmentStatus ?? old?.enrichmentStatus,
@@ -594,7 +594,7 @@ struct VaultController {
             isTodo: new.isTodo,
             done: new.done,
             dueAt: new.dueAt,
-            projectID: new.projectID ?? old?.projectID,
+            projectID: new.projectID ?? old?.projectID
         )
     }
 

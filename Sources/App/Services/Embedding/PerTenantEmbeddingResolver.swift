@@ -39,7 +39,7 @@ actor PerTenantEmbeddingResolver: PerTenantEmbeddingResolving {
         secretBox: SecretBox,
         ttl: TimeInterval = 300,
         logger: Logger,
-        makeKeyedService: @escaping @Sendable (_ apiKey: String) -> (any EmbeddingService)?,
+        makeKeyedService: @escaping @Sendable (_ apiKey: String) -> (any EmbeddingService)?
     ) {
         self.fluent = fluent
         self.secretBox = secretBox

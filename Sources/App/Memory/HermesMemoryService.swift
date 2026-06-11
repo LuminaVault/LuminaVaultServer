@@ -159,7 +159,7 @@ private struct PropertySchema: Encodable {
         type: String,
         description: String? = nil,
         additionalProperties: Bool? = nil,
-        items: ItemsSchema? = nil,
+        items: ItemsSchema? = nil
     ) {
         self.type = type
         self.description = description
@@ -255,7 +255,7 @@ actor HermesMemoryService {
         defaultModel: String,
         eventBus: EventBus? = nil,
         logger: Logger,
-        maxToolIterations: Int = 5,
+        maxToolIterations: Int = 5
     ) {
         self.transport = transport
         self.memories = memories
@@ -271,7 +271,7 @@ actor HermesMemoryService {
         sessionKey: String,
         sessionID: String? = nil,
         content: String,
-        metadata _: [String: String]? = nil,
+        metadata _: [String: String]? = nil
     ) async throws -> MemoryUpsertResult {
         let messages: [AgentMessage] = [
             .init(role: "system", content: """
@@ -292,7 +292,7 @@ actor HermesMemoryService {
             sessionKey: sessionKey,
             sessionID: sessionID,
             messages: messages,
-            allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract],
+            allowedTools: [.memoryUpsert, .sessionSearch, .tagExtract]
         )
         guard let saved = outcome.memoriesUpserted.first else {
             throw HTTPError(.badGateway, message: "hermes did not call memory_upsert")
@@ -305,7 +305,7 @@ actor HermesMemoryService {
         sessionKey: String,
         sessionID: String? = nil,
         query: String,
-        limit: Int = 5,
+        limit: Int = 5
     ) async throws -> MemorySearchAnswer {
         let messages: [AgentMessage] = [
             .init(role: "system", content: """
@@ -322,7 +322,7 @@ actor HermesMemoryService {
             sessionKey: sessionKey,
             sessionID: sessionID,
             messages: messages,
-            allowedTools: [.sessionSearch],
+            allowedTools: [.sessionSearch]
         )
         return MemorySearchAnswer(hits: outcome.searchHits, summary: outcome.summary)
     }
@@ -362,7 +362,7 @@ actor HermesMemoryService {
         sessionKey: String,
         sessionID: String?,
         messages initial: [AgentMessage],
-        allowedTools: [AvailableTool],
+        allowedTools: [AvailableTool]
     ) async throws -> AgentOutcome {
         var conversation = initial
         var outcome = AgentOutcome()
@@ -374,7 +374,7 @@ actor HermesMemoryService {
                 tools: allowedTools.map { Self.definition(for: $0) },
                 toolChoice: "auto",
                 temperature: 0.2,
-                stream: false,
+                stream: false
             )
             let payload = try JSONEncoder().encode(body)
             let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
@@ -392,13 +392,13 @@ actor HermesMemoryService {
                     let result = try await dispatch(
                         tenantID: tenantID,
                         toolCall: call,
-                        outcome: &outcome,
+                        outcome: &outcome
                     )
                     conversation.append(.init(
                         role: "tool",
                         content: result,
                         toolCallId: call.id,
-                        name: call.function.name,
+                        name: call.function.name
                     ))
                 }
                 continue
@@ -414,7 +414,7 @@ actor HermesMemoryService {
     private func dispatch(
         tenantID: UUID,
         toolCall: ToolCall,
-        outcome: inout AgentOutcome,
+        outcome: inout AgentOutcome
     ) async throws -> String {
         guard let argsData = toolCall.function.arguments.data(using: .utf8) else {
             return Self.toolErrorJSON("invalid arguments encoding")
@@ -429,7 +429,7 @@ actor HermesMemoryService {
                     tenantID: tenantID,
                     content: args.content,
                     embedding: embedding,
-                    sourceVaultFileID: args.sourceVaultFileId,
+                    sourceVaultFileID: args.sourceVaultFileId
                 )
                 outcome.memoriesUpserted.append(saved)
                 // HER-171: notify the skills runtime that a memory landed.
@@ -445,7 +445,7 @@ actor HermesMemoryService {
                     let event = SkillEvent(
                         type: .memoryUpserted,
                         tenantID: tenantID,
-                        payload: payload,
+                        payload: payload
                     )
                     eventBus.publish(event)
                 }
@@ -465,7 +465,7 @@ actor HermesMemoryService {
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,
-                    limit: max(1, min(args.limit ?? 5, 20)),
+                    limit: max(1, min(args.limit ?? 5, 20))
                 )
                 outcome.searchHits = hits
                 let serializable = hits.map { hit -> [String: String] in
@@ -491,7 +491,7 @@ actor HermesMemoryService {
                 let updated = try await memories.updateTags(
                     tenantID: tenantID,
                     id: memoryID,
-                    tags: normalized,
+                    tags: normalized
                 )
                 if updated {
                     target.tags = normalized.isEmpty ? nil : normalized
@@ -525,7 +525,7 @@ actor HermesMemoryService {
                     properties: [
                         "content": PropertySchema(
                             type: "string",
-                            description: "The memory text to persist verbatim.",
+                            description: "The memory text to persist verbatim."
                         ),
                         "source_vault_file_id": PropertySchema(
                             type: "string",
@@ -536,11 +536,11 @@ actor HermesMemoryService {
                             so the system can build a "Hermes learned X from your <date> note" \
                             lineage trace. Omit when the memory is volunteered by the user \
                             with no anchor file.
-                            """,
+                            """
                         ),
                     ],
-                    required: ["content"],
-                ),
+                    required: ["content"]
+                )
             ))
         case .sessionSearch:
             ToolDefinition(function: .init(
@@ -554,15 +554,15 @@ actor HermesMemoryService {
                     properties: [
                         "query": PropertySchema(
                             type: "string",
-                            description: "The natural-language search query.",
+                            description: "The natural-language search query."
                         ),
                         "limit": PropertySchema(
                             type: "integer",
-                            description: "Maximum number of memories to return (1-20, default 5).",
+                            description: "Maximum number of memories to return (1-20, default 5)."
                         ),
                     ],
-                    required: ["query"],
-                ),
+                    required: ["query"]
+                )
             ))
         case .tagExtract:
             ToolDefinition(function: .init(
@@ -578,11 +578,11 @@ actor HermesMemoryService {
                         "tags": PropertySchema(
                             type: "array",
                             description: "1–5 lowercase tag strings.",
-                            items: ItemsSchema(type: "string"),
+                            items: ItemsSchema(type: "string")
                         ),
                     ],
-                    required: ["tags"],
-                ),
+                    required: ["tags"]
+                )
             ))
         }
     }

@@ -27,7 +27,7 @@ actor ImportCategorizationService {
         transport: any HermesChatTransport,
         vaultPaths: VaultPathService,
         defaultModel: String,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.transport = transport
@@ -96,7 +96,7 @@ actor ImportCategorizationService {
             ],
             responseFormat: ["type": "json_object"],
             temperature: 0.1,
-            stream: false,
+            stream: false
         )
         let payload = try JSONEncoder().encode(body)
         let raw = try await transport.chatCompletions(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)

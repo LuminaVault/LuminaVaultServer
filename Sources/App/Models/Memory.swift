@@ -59,7 +59,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         lng: Double? = nil,
         accuracyM: Double? = nil,
         placeName: String? = nil,
-        reviewState: String = "auto",
+        reviewState: String = "auto"
     ) {
         self.id = id
         self.tenantID = tenantID

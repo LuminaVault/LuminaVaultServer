@@ -39,7 +39,7 @@ actor NousOAuthService {
         backend: any NousOAuthBackend,
         fluent: Fluent,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.containerManager = containerManager
         self.sessionStore = sessionStore
@@ -69,7 +69,7 @@ actor NousOAuthService {
             sessionID: sessionID,
             tenantID: tenantID,
             verifyURL: parsed.verifyURL,
-            startedAt: now(),
+            startedAt: now()
         ))
         logger.info("nous oauth start", metadata: [
             "tenantID": "\(tenantID)",

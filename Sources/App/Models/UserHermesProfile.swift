@@ -38,7 +38,7 @@ final class UserHermesProfile: Model, TenantModel, @unchecked Sendable {
         label: String,
         systemPrompt: String,
         isDefault: Bool,
-        skillsEnabled: [String] = [],
+        skillsEnabled: [String] = []
     ) {
         self.tenantID = tenantID
         self.slug = slug

@@ -28,7 +28,7 @@ struct M31_CreateUsageMeter: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS usage_meter_tenant_day_idx ON usage_meter(tenant_id, day)"#,
+            #"CREATE INDEX IF NOT EXISTS usage_meter_tenant_day_idx ON usage_meter(tenant_id, day)"#
         ).run()
     }
 

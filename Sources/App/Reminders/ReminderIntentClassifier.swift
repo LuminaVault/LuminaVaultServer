@@ -52,7 +52,7 @@ struct ReminderIntentClassifier {
         let body = ChatRequestBody(model: model, messages: messages, temperature: 0.1, stream: false)
         guard let payload = try? JSONEncoder().encode(body),
               let meta = try? await transport.chatCompletionsWithMetadata(
-                  payload: payload, sessionKey: tenantID.uuidString, sessionID: nil,
+                  payload: payload, sessionKey: tenantID.uuidString, sessionID: nil
               ),
               let response = try? JSONDecoder().decode(ChatResponseBody.self, from: meta.data),
               let content = response.choices.first?.message.content
@@ -90,7 +90,7 @@ struct ReminderIntentClassifier {
             body: env.body ?? "",
             fireAt: fireAt,
             recurrenceCron: cron,
-            scheduleHuman: env.scheduleHuman,
+            scheduleHuman: env.scheduleHuman
         )
     }
 

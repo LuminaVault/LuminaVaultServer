@@ -83,7 +83,7 @@ struct SpacesService {
         description: String?,
         color: String?,
         icon: String?,
-        category: String? = nil,
+        category: String? = nil
     ) async throws -> Space {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { throw SpacesError.nameRequired }
@@ -108,7 +108,7 @@ struct SpacesService {
             description: description,
             color: color,
             icon: icon,
-            category: category?.isEmpty == true ? nil : category,
+            category: category?.isEmpty == true ? nil : category
         )
         do {
             try await space.save(on: db)
@@ -130,7 +130,7 @@ struct SpacesService {
         description: String?,
         color: String?,
         icon: String?,
-        category: String? = nil,
+        category: String? = nil
     ) async throws -> Space {
         let space = try await get(tenantID: tenantID, id: id)
         if let name {
@@ -163,7 +163,7 @@ struct SpacesService {
                     description: nil,
                     color: nil,
                     icon: entry.icon,
-                    category: entry.slug,
+                    category: entry.slug
                 )
                 created.append(entry.slug)
             } catch let httpError as HTTPError where httpError.status == .conflict {

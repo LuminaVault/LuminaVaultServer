@@ -28,7 +28,7 @@ struct OllamaAdapter: ProviderAdapter {
         defaultBaseURL: URL = URL(string: "http://localhost:11434")!,
         session: URLSession = .shared,
         logger: Logger,
-        userCredentials: UserCredentialStore? = nil,
+        userCredentials: UserCredentialStore? = nil
     ) {
         self.defaultBaseURL = defaultBaseURL
         self.session = session
@@ -43,7 +43,7 @@ struct OllamaAdapter: ProviderAdapter {
     func chatCompletionsWithMetadata(
         payload: Data,
         sessionKey _: String,
-        sessionID _: String?,
+        sessionID _: String?
     ) async throws -> HermesChatTransportMetadata {
         // 1. Parse the inbound OpenAI payload.
         guard
@@ -53,7 +53,7 @@ struct OllamaAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "invalid OpenAI payload",
+                body: "invalid OpenAI payload"
             )
         }
         let model = (openAI["model"] as? String) ?? "llama3.1"
@@ -72,7 +72,7 @@ struct OllamaAdapter: ProviderAdapter {
             throw ProviderError.permanent(
                 provider: kind,
                 status: 400,
-                body: "failed to serialize ollama payload",
+                body: "failed to serialize ollama payload"
             )
         }
 
@@ -105,7 +105,7 @@ struct OllamaAdapter: ProviderAdapter {
                 throw ProviderError.transient(
                     provider: kind,
                     status: status,
-                    body: "failed to encode OpenAI response",
+                    body: "failed to encode OpenAI response"
                 )
             }
             var headers: [String: String] = [:]

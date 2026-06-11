@@ -32,9 +32,9 @@ func runMigrateCommand(reader: ConfigReader) async throws {
             username: reader.string(forKey: "postgres.user", default: "luminavault"),
             password: reader.string(forKey: "postgres.password", default: "luminavault"),
             database: reader.string(forKey: "postgres.database", default: "luminavault"),
-            tls: .disable,
+            tls: .disable
         )),
-        as: .psql,
+        as: .psql
     )
     await registerMigrations(on: fluent)
 

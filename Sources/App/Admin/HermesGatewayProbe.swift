@@ -36,7 +36,7 @@ actor HermesGatewayProbe {
         logger: Logger,
         timeout: TimeInterval = 1.0,
         ttl: TimeInterval = 30.0,
-        apiKey: String = "",
+        apiKey: String = ""
     ) {
         self.session = session
         self.logger = logger

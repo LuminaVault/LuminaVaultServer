@@ -29,7 +29,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]]),
+            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]])
         )
         await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("ftp")) {
             _ = try await guardian.validate(rawURL: "ftp://example.com")
@@ -41,7 +41,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: true,
-            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]]),
+            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]])
         )
         await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
             _ = try await guardian.validate(rawURL: "http://example.com")
@@ -53,7 +53,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]]),
+            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]])
         )
         let url = try await guardian.validate(rawURL: "http://example.com")
         #expect(url.host == "example.com")
@@ -66,7 +66,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: ["203.0.113.5": ["203.0.113.5"]]),
+            resolver: StubResolver(answers: ["203.0.113.5": ["203.0.113.5"]])
         )
         let url = try await guardian.validate(rawURL: "http://203.0.113.5:8080")
         #expect(url.host == "203.0.113.5")
@@ -79,7 +79,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: ["evil.com": ["10.0.0.5"]]),
+            resolver: StubResolver(answers: ["evil.com": ["10.0.0.5"]])
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("10.0.0.5")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -93,7 +93,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(),
+            resolver: StubResolver()
         )
         await #expect(throws: SSRFGuard.Rejection.loopback("localhost")) {
             _ = try await guardian.validate(rawURL: "http://localhost")
@@ -105,7 +105,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]]),
+            resolver: StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]])
         )
         await #expect(throws: SSRFGuard.Rejection.loopback("127.0.0.1")) {
             _ = try await guardian.validate(rawURL: "http://127.0.0.1")
@@ -120,7 +120,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("10.0.0.5")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -133,7 +133,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("192.168.1.1")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -146,7 +146,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("172.20.0.1")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -159,7 +159,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.linkLocal("169.254.169.254")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -172,7 +172,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.loopback("::1")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -185,7 +185,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("fc00::1")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -198,7 +198,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         await #expect(throws: SSRFGuard.Rejection.privateAddress("0.0.0.0")) {
             _ = try await guardian.validate(rawURL: "http://evil.com")
@@ -213,7 +213,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         let url = try await guardian.validate(rawURL: "https://api.example.com")
         #expect(url.host == "api.example.com")
@@ -225,7 +225,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
 
         // First call: public IP → accepted.
@@ -248,7 +248,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: false,
             requireHTTPS: false,
-            resolver: StubResolver(answers: [:]),
+            resolver: StubResolver(answers: [:])
         )
         await #expect(throws: SSRFGuard.Rejection.unresolvable("ghost.example")) {
             _ = try await guardian.validate(rawURL: "https://ghost.example")
@@ -261,7 +261,7 @@ struct SSRFGuardTests {
         let guardian = SSRFGuard(
             allowPrivateRanges: true,
             requireHTTPS: false,
-            resolver: resolver,
+            resolver: resolver
         )
         let url = try await guardian.validate(rawURL: "http://127.0.0.1")
         #expect(url.host == "127.0.0.1")

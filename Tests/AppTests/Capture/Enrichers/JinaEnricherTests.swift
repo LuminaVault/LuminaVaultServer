@@ -58,7 +58,7 @@ struct JinaEnricherTests {
             url: URL(string: "https://r.jina.ai/")!,
             statusCode: 200,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "text/markdown"],
+            headerFields: ["Content-Type": "text/markdown"]
         )!
     }
 

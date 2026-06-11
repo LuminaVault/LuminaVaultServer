@@ -64,7 +64,7 @@ final class CalendarEvent: Model, TenantModel, @unchecked Sendable {
         recurrence: CalendarRecurrence? = nil,
         htmlLink: String? = nil,
         etag: String? = nil,
-        remoteUpdatedAt: Date,
+        remoteUpdatedAt: Date
     ) {
         self.id = id
         self.tenantID = tenantID

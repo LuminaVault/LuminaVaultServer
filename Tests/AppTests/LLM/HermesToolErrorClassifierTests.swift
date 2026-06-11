@@ -145,9 +145,9 @@ struct HermesToolErrorClassifierTests {
                 ChatToolCall(
                     id: "call_1",
                     type: "function",
-                    function: ChatToolCallFunction(name: "search", arguments: "{}"),
+                    function: ChatToolCallFunction(name: "search", arguments: "{}")
                 ),
-            ],
+            ]
         )
         let clean = HermesToolErrorClassifier.sanitize(message: dirty)
         #expect(clean.role == "assistant")
@@ -161,7 +161,7 @@ struct HermesToolErrorClassifierTests {
         let dirty = ChatMessage(
             role: "assistant",
             content: "/usr/bin/bash: line 1: pip: command not found",
-            tool_calls: nil,
+            tool_calls: nil
         )
         let clean = HermesToolErrorClassifier.sanitize(message: dirty)
         #expect(clean.content == "")

@@ -26,9 +26,9 @@ struct SkillManifestTests {
             Bundle.module.url(
                 forResource: "SKILL",
                 withExtension: "md",
-                subdirectory: "Skills/\(name)",
+                subdirectory: "Skills/\(name)"
             ),
-            "missing built-in SKILL.md for \(name)",
+            "missing built-in SKILL.md for \(name)"
         )
         return try String(contentsOf: url, encoding: .utf8)
     }

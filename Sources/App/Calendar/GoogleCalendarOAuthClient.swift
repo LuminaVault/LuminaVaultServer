@@ -48,7 +48,7 @@ struct GoogleCalendarOAuthClient {
         clientSecret: String,
         redirectURI: String,
         session: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.clientID = clientID
         self.clientSecret = clientSecret
@@ -133,7 +133,7 @@ struct GoogleCalendarOAuthClient {
             refreshToken: json["refresh_token"] as? String,
             expiresIn: (json["expires_in"] as? Int) ?? 3600,
             scope: json["scope"] as? String,
-            idToken: json["id_token"] as? String,
+            idToken: json["id_token"] as? String
         )
     }
 

@@ -129,8 +129,8 @@ struct WebAuthnService {
             configuration: .init(
                 relyingPartyID: relyingPartyID,
                 relyingPartyName: relyingPartyName,
-                relyingPartyOrigin: relyingPartyOrigin,
-            ),
+                relyingPartyOrigin: relyingPartyOrigin
+            )
         )
     }
 
@@ -168,7 +168,7 @@ struct WebAuthnService {
                 id: $0.credentialID,
                 createdAt: $0.createdAt ?? Date(),
                 lastUsedAt: $0.updatedAt,
-                nickname: nil,
+                nickname: nil
             )
         }
         return WebAuthnCredentialListResponse(credentials: summaries)
@@ -207,7 +207,7 @@ struct WebAuthnService {
         let userEntity = PublicKeyCredentialUserEntity(
             id: userIDBytes,
             name: body.username,
-            displayName: body.displayName ?? body.username,
+            displayName: body.displayName ?? body.username
         )
         let options = manager.beginRegistration(user: userEntity)
         await store.storeRegistration(username: body.username, challenge: Array(options.challenge))
@@ -234,13 +234,13 @@ struct WebAuthnService {
                     .filter(\.$credentialID == credentialID)
                     .first()
                 return existing == nil
-            },
+            }
         )
         let row = WebAuthnCredential(
             tenantID: tenantID,
             credentialID: credential.id,
             publicKey: Data(credential.publicKey),
-            signCount: credential.signCount,
+            signCount: credential.signCount
         )
         try await row.save(on: db)
         await store.clearRegistration(username: body.username)
@@ -287,7 +287,7 @@ struct WebAuthnService {
             credential: body.credential,
             expectedChallenge: challenge,
             credentialPublicKey: Array(row.publicKey),
-            credentialCurrentSignCount: UInt32(row.signCount),
+            credentialCurrentSignCount: UInt32(row.signCount)
         )
         row.signCount = Int64(verified.newSignCount)
         try await row.save(on: db)

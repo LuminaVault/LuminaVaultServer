@@ -29,16 +29,16 @@ enum HermesGatewayCatalog {
                     label: "Bot token",
                     placeholder: "123456:ABC-DEF…",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Your Telegram user ID(s)",
                     placeholder: "476978568 (from @userinfobot)",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
-            ],
+            ]
         ),
         .discord: Entry(
             displayName: "Discord",
@@ -50,16 +50,16 @@ enum HermesGatewayCatalog {
                     label: "Bot token",
                     placeholder: "MTE3…",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Your Discord user ID(s)",
                     placeholder: "184264928281100288",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
-            ],
+            ]
         ),
         .slack: Entry(
             displayName: "Slack",
@@ -71,23 +71,23 @@ enum HermesGatewayCatalog {
                     label: "Bot token (xoxb-…)",
                     placeholder: "xoxb-…",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "app_token",
                     label: "App token (xapp-…)",
                     placeholder: "xapp-…",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Your Slack member ID(s)",
                     placeholder: "U01234567",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
-            ],
+            ]
         ),
         .email: Entry(
             displayName: "Email",
@@ -99,58 +99,58 @@ enum HermesGatewayCatalog {
                     label: "Email address",
                     placeholder: "lumina@gmail.com",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "password",
                     label: "Password (or app password)",
                     placeholder: "app password",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "imap_host",
                     label: "IMAP host",
                     placeholder: "imap.gmail.com",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "smtp_host",
                     label: "SMTP host",
                     placeholder: "smtp.gmail.com",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Allowed senders (comma-separated)",
                     placeholder: "you@email.com",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "imap_port",
                     label: "IMAP port",
                     placeholder: "993",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: false
                 ),
                 HermesGatewayField(
                     key: "smtp_port",
                     label: "SMTP port",
                     placeholder: "587",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: false
                 ),
                 HermesGatewayField(
                     key: "home_address",
                     label: "Home address (cron delivery)",
                     placeholder: "you@email.com",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: false
                 ),
-            ],
+            ]
         ),
         .matrix: Entry(
             displayName: "Matrix",
@@ -162,30 +162,30 @@ enum HermesGatewayCatalog {
                     label: "Homeserver URL",
                     placeholder: "https://matrix.org",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "access_token",
                     label: "Access token",
                     placeholder: "syt_…",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Allowed user ID(s)",
                     placeholder: "@you:matrix.org",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "user_id",
                     label: "Bot user ID (optional)",
                     placeholder: "@lumina:matrix.org",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: false
                 ),
-            ],
+            ]
         ),
         .ntfy: Entry(
             displayName: "ntfy",
@@ -197,30 +197,30 @@ enum HermesGatewayCatalog {
                     label: "Topic",
                     placeholder: "lumina-yourname-2026",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Allowed topic(s)",
                     placeholder: "lumina-yourname-2026",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "server_url",
                     label: "Server URL (optional)",
                     placeholder: "https://ntfy.sh",
                     kind: .text,
-                    isRequired: false,
+                    isRequired: false
                 ),
                 HermesGatewayField(
                     key: "token",
                     label: "Token (optional)",
                     placeholder: "tk_…",
                     kind: .secret,
-                    isRequired: false,
+                    isRequired: false
                 ),
-            ],
+            ]
         ),
         .mattermost: Entry(
             displayName: "Mattermost",
@@ -232,37 +232,37 @@ enum HermesGatewayCatalog {
                     label: "Server URL",
                     placeholder: "https://mm.example.com",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "token",
                     label: "Bot token",
                     placeholder: "bot account access token",
                     kind: .secret,
-                    isRequired: true,
+                    isRequired: true
                 ),
                 HermesGatewayField(
                     key: "allowed_users",
                     label: "Allowed user ID(s)",
                     placeholder: "3uo8dkh1p7g1mfk49ear5fzs5c",
                     kind: .text,
-                    isRequired: true,
+                    isRequired: true
                 ),
-            ],
+            ]
         ),
         .whatsapp: Entry(
             displayName: "WhatsApp",
             iconSlug: "whatsapp",
             description: "Chat with Lumina on WhatsApp. Pairs by scanning a QR with your phone — no token to enter.",
             requiredFields: [],
-            pairingKind: .whatsappQR,
+            pairingKind: .whatsappQR
         ),
         .photon: Entry(
             displayName: "iMessage (Photon)",
             iconSlug: "photon",
             description: "Free iMessage access via Photon shared lines (the new free path). Device-code login + phone bind; contacts text the assigned number directly.",
             requiredFields: [],
-            pairingKind: .photonSetup,
+            pairingKind: .photonSetup
         ),
     ]
 
@@ -335,7 +335,7 @@ enum HermesGatewayCatalog {
             iconSlug: String,
             description: String,
             requiredFields: [HermesGatewayField],
-            pairingKind: HermesGatewayPairingKind? = nil,
+            pairingKind: HermesGatewayPairingKind? = nil
         ) {
             self.displayName = displayName
             self.iconSlug = iconSlug

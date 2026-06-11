@@ -19,7 +19,7 @@ struct SOULInitTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -39,7 +39,7 @@ struct SOULInitTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -73,7 +73,7 @@ struct SOULInitTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: MFAChallengeRecorder(),
-            generator: FixedOTPCodeGenerator(code: "123456"),
+            generator: FixedOTPCodeGenerator(code: "123456")
         )
         let service = DefaultAuthService(
             repo: DatabaseAuthRepository(fluent: fluent),
@@ -89,14 +89,14 @@ struct SOULInitTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: vaultPaths,
+                vaultPaths: vaultPaths
             ),
             soulService: SOULService(
                 vaultPaths: vaultPaths,
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger,
+                logger: logger
             ),
-            logger: logger,
+            logger: logger
         )
         return Harness(service: service, fluent: fluent, vaultRoot: tmpRoot)
     }
@@ -116,7 +116,7 @@ struct SOULInitTests {
             let response = try await h.service.register(
                 email: Self.randomEmail(),
                 username: username,
-                password: "CorrectHorseBatteryStaple1!",
+                password: "CorrectHorseBatteryStaple1!"
             )
 
             let soulPath = h.vaultRoot
@@ -145,7 +145,7 @@ struct SOULInitTests {
             let response = try await h.service.register(
                 email: Self.randomEmail(),
                 username: username,
-                password: "CorrectHorseBatteryStaple1!",
+                password: "CorrectHorseBatteryStaple1!"
             )
 
             let soulPath = h.vaultRoot
@@ -159,12 +159,12 @@ struct SOULInitTests {
             try sentinel.data(using: .utf8)!.write(to: soulPath, options: .atomic)
 
             let user = try #require(
-                try await User.query(on: h.fluent.db()).filter(\.$username == username).first(),
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
             )
             let soul = SOULService(
                 vaultPaths: VaultPathService(rootPath: h.vaultRoot.path),
                 hermesDataRoot: h.vaultRoot.appendingPathComponent("hermes").path,
-                logger: Logger(label: "test.soul.idem"),
+                logger: Logger(label: "test.soul.idem")
             )
             let wrote = try soul.initIfMissing(for: user)
             #expect(wrote == false)

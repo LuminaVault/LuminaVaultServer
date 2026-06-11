@@ -27,7 +27,7 @@ final class OpenAIEmbeddingService: EmbeddingService {
         model: String = OpenAIEmbeddingService.defaultModel,
         session: URLSession = .shared,
         logger: Logger = Logger(label: "lv.embedding.openai"),
-        usageCallback: (@Sendable (UUID, Int64) async -> Void)? = nil,
+        usageCallback: (@Sendable (UUID, Int64) async -> Void)? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL

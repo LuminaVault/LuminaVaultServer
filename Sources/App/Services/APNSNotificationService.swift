@@ -35,7 +35,7 @@ protocol APNSPushSender: Sendable {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String,
+        topic: String
     ) async throws
 }
 
@@ -51,21 +51,21 @@ struct LiveAPNSPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        topic: String,
+        topic: String
     ) async throws {
         let content = APNSAlertNotificationContent(
             title: .raw(title),
             subtitle: subtitle.map { .raw($0) },
             body: .raw(body),
             launchImage: nil,
-            sound: APNSAlertNotificationSound.default,
+            sound: APNSAlertNotificationSound.default
         )
         let notification = APNSAlertNotification(
             alert: content,
             expiration: APNSNotificationExpiration.none,
             priority: .immediately,
             topic: topic,
-            payload: ["category": category.rawValue],
+            payload: ["category": category.rawValue]
         )
         let request = APNSRequest(
             message: notification,
@@ -75,7 +75,7 @@ struct LiveAPNSPushSender: APNSPushSender {
             priority: .immediately,
             apnsID: nil,
             topic: topic,
-            collapseID: nil,
+            collapseID: nil
         )
         _ = try await client.send(request)
     }
@@ -116,7 +116,7 @@ struct APNSNotificationService {
         privateKeyPath: String,
         environment: String,
         fluent: Fluent,
-        logger: Logger,
+        logger: Logger
     ) {
         self.enabled = enabled
         self.bundleID = bundleID
@@ -129,7 +129,7 @@ struct APNSNotificationService {
                     privateKeyPath: privateKeyPath,
                     environment: environment,
                     keyID: keyID,
-                    teamID: teamID,
+                    teamID: teamID
                 )
                 pushSender = LiveAPNSPushSender(client: client)
             } catch {
@@ -147,7 +147,7 @@ struct APNSNotificationService {
         bundleID: String,
         fluent: Fluent,
         pushSender: any APNSPushSender,
-        logger: Logger,
+        logger: Logger
     ) {
         enabled = true
         self.bundleID = bundleID
@@ -165,7 +165,7 @@ struct APNSNotificationService {
             title: "LuminaVault reply ready",
             subtitle: username,
             body: preview,
-            category: .chat,
+            category: .chat
         )
     }
 
@@ -175,7 +175,7 @@ struct APNSNotificationService {
             title: "Hermes noticed something",
             subtitle: username,
             body: body,
-            category: .nudge,
+            category: .nudge
         )
     }
 
@@ -185,7 +185,7 @@ struct APNSNotificationService {
             title: "Your daily brief",
             subtitle: username,
             body: body,
-            category: .digest,
+            category: .digest
         )
     }
 
@@ -199,7 +199,7 @@ struct APNSNotificationService {
             title: "Achievement unlocked",
             subtitle: label,
             body: "You evolved one step closer to your true form.",
-            category: .achievement,
+            category: .achievement
         )
     }
 
@@ -210,7 +210,7 @@ struct APNSNotificationService {
             title: title,
             subtitle: nil,
             body: body,
-            category: .reminder,
+            category: .reminder
         )
     }
 
@@ -222,7 +222,7 @@ struct APNSNotificationService {
             title: "Scheduled job ran",
             subtitle: skillName,
             body: body,
-            category: .cron,
+            category: .cron
         )
     }
 
@@ -233,7 +233,7 @@ struct APNSNotificationService {
         title: String,
         subtitle: String?,
         body: String,
-        category: APNSPushCategory,
+        category: APNSPushCategory
     ) async throws {
         guard enabled, let pushSender, !bundleID.isEmpty else { return }
 
@@ -261,7 +261,7 @@ struct APNSNotificationService {
                     subtitle: subtitle,
                     body: body,
                     category: category,
-                    topic: bundleID,
+                    topic: bundleID
                 )
                 row.lastSeenAt = Date()
                 try await row.save(on: db)
@@ -297,7 +297,7 @@ struct APNSNotificationService {
     static func isCategorySuppressed(
         _ category: APNSPushCategory,
         tenantID: UUID,
-        on db: any Database,
+        on db: any Database
     ) async throws -> Bool {
         switch category {
         case .achievement, .reminder, .cron:
@@ -322,20 +322,20 @@ struct APNSNotificationService {
         privateKeyPath: String,
         environment: String,
         keyID: String,
-        teamID: String,
+        teamID: String
     ) throws -> APNSClient<JSONDecoder, JSONEncoder> {
         let privateKeyPEM = try String(contentsOfFile: privateKeyPath, encoding: .utf8)
         let privateKey = try P256.Signing.PrivateKey(pemRepresentation: privateKeyPEM)
         let apnsEnvironment: APNSEnvironment = environment.lowercased() == "production" ? .production : .development
         let configuration = APNSClientConfiguration(
             authenticationMethod: .jwt(privateKey: privateKey, keyIdentifier: keyID, teamIdentifier: teamID),
-            environment: apnsEnvironment,
+            environment: apnsEnvironment
         )
         return APNSClient(
             configuration: configuration,
             eventLoopGroupProvider: .shared(MultiThreadedEventLoopGroup.singleton),
             responseDecoder: JSONDecoder(),
-            requestEncoder: JSONEncoder(),
+            requestEncoder: JSONEncoder()
         )
     }
 }

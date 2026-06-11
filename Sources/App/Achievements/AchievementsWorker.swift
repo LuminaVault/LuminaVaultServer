@@ -27,7 +27,7 @@ actor AchievementsWorker: Service {
         self.service = service
         self.logger = logger
         (stream, continuation) = AsyncStream<Job>.makeStream(
-            bufferingPolicy: .bufferingNewest(bufferSize),
+            bufferingPolicy: .bufferingNewest(bufferSize)
         )
     }
 

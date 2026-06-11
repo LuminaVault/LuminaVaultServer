@@ -36,7 +36,7 @@ struct HermesHubSkillsService {
         let result = try await docker.exec(
             container: handle.containerName,
             command: ["hermes", "skills", "install", ref],
-            stdin: nil,
+            stdin: nil
         )
         guard result.ok else {
             logger.error("hermes skills install failed tenant=\(tenantID) exit=\(result.exitCode)")
@@ -54,7 +54,7 @@ struct HermesHubSkillsService {
         let result = try await docker.exec(
             container: handle.containerName,
             command: ["hermes", "skills", "uninstall", ref],
-            stdin: nil,
+            stdin: nil
         )
         guard result.ok else {
             logger.error("hermes skills uninstall failed tenant=\(tenantID) exit=\(result.exitCode)")
@@ -77,7 +77,7 @@ struct HermesHubSkillsService {
         guard let baseURL = URL(string: handle.baseURL) else { return [] }
         return await installedSkillsClient.installedSkills(
             baseURL: baseURL,
-            authHeader: "Bearer \(handle.apiServerKey)",
+            authHeader: "Bearer \(handle.apiServerKey)"
         )
     }
 

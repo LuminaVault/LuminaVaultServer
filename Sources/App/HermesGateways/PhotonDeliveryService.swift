@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 import Logging
 import LuminaVaultShared
@@ -45,19 +45,19 @@ actor PhotonDeliveryService {
             // Use the incoming text as the user message. In a more advanced version we could
             // include space context or a system note "incoming from iMessage via Photon".
             let messages: [[String: Any]] = [
-                ["role": "user", "content": event.text]
+                ["role": "user", "content": event.text],
             ]
 
             let body: [String: Any] = [
                 "model": "hermes-3", // or let the tenant decide via its default
                 "messages": messages,
                 "stream": false,
-                "max_tokens": 2048
+                "max_tokens": 2048,
             ]
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
             let (data, resp) = try await session.data(for: req)
-            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            guard let http = resp as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                 logger.warning("photon delivery: tenant hermes chat failed", metadata: [
                     "tenant": .stringConvertible(event.tenantId),
                     "status": .stringConvertible((resp as? HTTPURLResponse)?.statusCode ?? 0),
@@ -71,7 +71,8 @@ actor PhotonDeliveryService {
                   let first = choices.first,
                   let message = first["message"] as? [String: Any],
                   let replyText = message["content"] as? String,
-                  !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                  !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
                 logger.debug("photon delivery: no usable reply text from tenant hermes")
                 return
             }

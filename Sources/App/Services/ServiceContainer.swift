@@ -185,7 +185,7 @@ struct ServiceContainer {
     /// validation. Must be free.
     let hermesCentralTempPort: Int
 
-    // --- Photon sidecar (central Node for the free iMessage path) ---
+    /// --- Photon sidecar (central Node for the free iMessage path) ---
     /// Base URL of the photon-sidecar control surface (e.g. http://photon-sidecar:8789).
     let photonSidecarURL: String
     /// Shared token for authenticating control calls to the sidecar.

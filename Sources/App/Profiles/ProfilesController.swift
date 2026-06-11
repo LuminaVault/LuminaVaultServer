@@ -69,7 +69,7 @@ struct ProfilesController {
 
         let systemPrompt = try Self.resolveSystemPrompt(
             explicit: body.systemPrompt,
-            templateSlug: body.templateSlug,
+            templateSlug: body.templateSlug
         )
 
         let duplicate = try await UserHermesProfile.query(on: fluent.db(), tenantID: tenantID)
@@ -90,7 +90,7 @@ struct ProfilesController {
             label: body.label,
             systemPrompt: systemPrompt,
             isDefault: !hasAnyProfile,
-            skillsEnabled: body.skillsEnabled ?? [],
+            skillsEnabled: body.skillsEnabled ?? []
         )
         try await row.save(on: fluent.db())
         return Self.toDTO(row)
@@ -213,7 +213,7 @@ struct ProfilesController {
     /// before B5 lands.
     private static func resolveSystemPrompt(
         explicit: String?,
-        templateSlug: String?,
+        templateSlug: String?
     ) throws -> String {
         if let slug = templateSlug, !slug.isEmpty {
             guard let body = builtInTemplate(slug) else {
@@ -285,7 +285,7 @@ struct ProfilesController {
             isDefault: row.isDefault,
             skillsEnabled: row.skillsEnabled,
             createdAt: row.createdAt ?? Date(),
-            updatedAt: row.updatedAt ?? Date(),
+            updatedAt: row.updatedAt ?? Date()
         )
     }
 }

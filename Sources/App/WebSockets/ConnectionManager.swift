@@ -21,7 +21,7 @@ public actor ConnectionManager {
     public func register(
         tenantID: String,
         username: String,
-        outbound: WebSocketOutboundWriter,
+        outbound: WebSocketOutboundWriter
     ) -> UUID {
         let connectionID = UUID()
         let connection = Connection(
@@ -29,7 +29,7 @@ public actor ConnectionManager {
             tenantID: tenantID,
             username: username,
             connectedAt: Date(),
-            outbound: outbound,
+            outbound: outbound
         )
         var tenantConnections = connectionsByTenant[tenantID] ?? [:]
         tenantConnections[connectionID] = connection

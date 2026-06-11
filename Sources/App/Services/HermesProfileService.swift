@@ -134,7 +134,7 @@ struct HermesProfileService {
                 label: "Default",
                 systemPrompt: HermesProfileService.defaultSeedPrompt,
                 isDefault: true,
-                skillsEnabled: [],
+                skillsEnabled: []
             )
             try await seed.save(on: db)
             return seed
@@ -163,7 +163,7 @@ struct HermesProfileService {
         let row = HermesProfile(
             tenantID: tenantID,
             hermesProfileID: "pending-\(tenantID.uuidString)",
-            status: "provisioning",
+            status: "provisioning"
         )
         try await row.save(on: fluent.db())
         return row

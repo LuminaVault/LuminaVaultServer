@@ -32,7 +32,7 @@ struct PowerLevelTests {
         // base 52 + connections 7*1 + spaces 3*5 + streak 4*3 = 52+7+15+12 = 86
         let xp = PowerLevel.xp(
             memoriesTotal: 10, sessionsCount: 4, jobsCount: 5, badgesEarned: 2,
-            graphConnections: 7, activeSpaces: 3, streakDays: 4,
+            graphConnections: 7, activeSpaces: 3, streakDays: 4
         )
         #expect(xp == 86)
     }
@@ -42,7 +42,7 @@ struct PowerLevelTests {
         let legacy = PowerLevel.xp(memoriesTotal: 10, sessionsCount: 4, jobsCount: 5, badgesEarned: 2)
         let explicit = PowerLevel.xp(
             memoriesTotal: 10, sessionsCount: 4, jobsCount: 5, badgesEarned: 2,
-            graphConnections: 0, activeSpaces: 0, streakDays: 0,
+            graphConnections: 0, activeSpaces: 0, streakDays: 0
         )
         #expect(legacy == 52)
         #expect(legacy == explicit)

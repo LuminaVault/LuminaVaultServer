@@ -52,7 +52,7 @@ struct FilesystemHermesGateway: HermesGateway {
                 username: username,
                 tenantID: tenantID,
                 createdAt: Date(),
-                schemaVersion: 1,
+                schemaVersion: 1
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

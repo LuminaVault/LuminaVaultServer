@@ -34,7 +34,7 @@ struct ProviderFailoverNotice {
             fallbackProvider: fallbackProvider.toShared() ?? .openai,
             fallbackModel: fallbackModel,
             reasonCode: reasonCode,
-            userMessage: userMessage,
+            userMessage: userMessage
         )
     }
 }

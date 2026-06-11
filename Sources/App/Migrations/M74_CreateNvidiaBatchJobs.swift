@@ -34,7 +34,7 @@ struct M74_CreateNvidiaBatchJobs: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS nvidia_batch_jobs_tenant_created_idx ON nvidia_batch_jobs(tenant_id, created_at DESC)"#,
+            #"CREATE INDEX IF NOT EXISTS nvidia_batch_jobs_tenant_created_idx ON nvidia_batch_jobs(tenant_id, created_at DESC)"#
         ).run()
     }
 

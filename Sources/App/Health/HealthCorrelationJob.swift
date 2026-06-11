@@ -63,7 +63,7 @@ struct HealthCorrelationJob {
             skippedAlreadyRan: skippedAlready,
             skippedNoEvents: skippedNoEvents,
             skippedNoSynthesis: skippedNoSynth,
-            failures: failures,
+            failures: failures
         )
     }
 

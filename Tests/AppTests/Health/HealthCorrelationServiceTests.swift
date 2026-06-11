@@ -51,13 +51,13 @@ struct HealthCorrelationServiceTests {
     }
 
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let logger = Logger(label: "test.health-correlate")
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         let transport = StubHermesTransport()
         let memoryRepo = MemoryRepository(fluent: fluent)
@@ -67,7 +67,7 @@ struct HealthCorrelationServiceTests {
             embeddings: DeterministicEmbeddingService(),
             memories: memoryRepo,
             defaultModel: "stub",
-            logger: logger,
+            logger: logger
         )
         let harness = Harness(service: service, transport: transport, fluent: fluent, memoryRepo: memoryRepo)
         do {
@@ -86,7 +86,7 @@ struct HealthCorrelationServiceTests {
         let user = User(
             email: "\(username)@test.luminavault",
             username: username,
-            passwordHash: "x",
+            passwordHash: "x"
         )
         try await user.save(on: fluent.db())
         return user
@@ -98,7 +98,7 @@ struct HealthCorrelationServiceTests {
         tenantID: UUID,
         count: Int,
         from start: Date,
-        to end: Date,
+        to end: Date
     ) async throws {
         let stepSeconds = max(1, Int(end.timeIntervalSince(start)) / max(1, count))
         for i in 0 ..< count {
@@ -109,7 +109,7 @@ struct HealthCorrelationServiceTests {
                 valueNumeric: Double(1000 + i * 37),
                 unit: i.isMultiple(of: 2) ? "count" : "hours",
                 recordedAt: when,
-                source: "test",
+                source: "test"
             )
             try await row.save(on: fluent.db())
         }
@@ -133,7 +133,7 @@ struct HealthCorrelationServiceTests {
                 tenantID: user.requireID(),
                 count: 5,
                 from: now.addingTimeInterval(-5 * 86400),
-                to: now,
+                to: now
             )
             let outcome = try await h.service.correlate(user: user, now: now)
             #expect(outcome == .skippedInsufficientHistory)
@@ -153,7 +153,7 @@ struct HealthCorrelationServiceTests {
                 tenantID: user.requireID(),
                 count: 30,
                 from: now.addingTimeInterval(-60 * 86400),
-                to: now.addingTimeInterval(-10 * 86400), // ends >7d ago
+                to: now.addingTimeInterval(-10 * 86400) // ends >7d ago
             )
             let outcome = try await h.service.correlate(user: user, now: now)
             #expect(outcome == .skippedNoRecentEvents)
@@ -170,7 +170,7 @@ struct HealthCorrelationServiceTests {
                 tenantID: user.requireID(),
                 count: 40,
                 from: now.addingTimeInterval(-35 * 86400),
-                to: now.addingTimeInterval(-60),
+                to: now.addingTimeInterval(-60)
             )
             try await Self.seedMemory(fluent: h.fluent, tenantID: user.requireID(), content: "felt tired today")
 
@@ -200,7 +200,7 @@ struct HealthCorrelationServiceTests {
                 tenantID: user.requireID(),
                 count: 40,
                 from: now.addingTimeInterval(-35 * 86400),
-                to: now.addingTimeInterval(-60),
+                to: now.addingTimeInterval(-60)
             )
             // First run saves.
             let first = try await h.service.correlate(user: user, now: now)
@@ -227,7 +227,7 @@ struct HealthCorrelationServiceTests {
                 tenantID: user.requireID(),
                 count: 40,
                 from: now.addingTimeInterval(-35 * 86400),
-                to: now.addingTimeInterval(-60),
+                to: now.addingTimeInterval(-60)
             )
             let outcome = try await h.service.correlate(user: user, now: now)
             #expect(outcome == .skippedNoSynthesis)
@@ -243,11 +243,11 @@ struct HealthCorrelationServiceTests {
             eventType: "steps",
             valueNumeric: 8420,
             unit: "count",
-            recordedAt: now.addingTimeInterval(-3600),
+            recordedAt: now.addingTimeInterval(-3600)
         )
         let memory = Memory(
             tenantID: tenantID,
-            content: "Slept poorly. Skipped the morning run.",
+            content: "Slept poorly. Skipped the morning run."
         )
         memory.createdAt = now.addingTimeInterval(-3600)
         let prompt = HealthCorrelationService.buildUserPrompt(events: [event], memories: [memory], now: now)

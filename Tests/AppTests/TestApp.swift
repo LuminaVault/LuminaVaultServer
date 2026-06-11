@@ -82,7 +82,7 @@ let dbTestReader = ConfigReader(providers: [
 /// returns a canned reply with no upstream call. Scoped to tests that
 /// assert an actual LLM reply; other DB tests keep the default gateway.
 func dbTestReaderWithStubChat(
-    replyContent: String = "Hello from the LuminaVault default brain.",
+    replyContent: String = "Hello from the LuminaVault default brain."
 ) -> ConfigReader {
     var values = dbTestConfigValues
     values["llm.provider"] = cfg("stub")

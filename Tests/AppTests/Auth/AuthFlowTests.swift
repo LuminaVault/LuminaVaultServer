@@ -22,7 +22,7 @@ struct AuthFlowTests {
     /// Setup + guaranteed Fluent shutdown so the AsyncKit ConnectionPool
     /// deinit assertion doesn't crash the runner.
     private static func withHarness<T: Sendable>(
-        _ body: @Sendable (Harness) async throws -> T,
+        _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
         let harness = try await makeHarness()
         do {
@@ -40,7 +40,7 @@ struct AuthFlowTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql,
+            as: .psql
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -73,7 +73,7 @@ struct AuthFlowTests {
         let mfaService = DefaultMFAService(
             fluent: fluent,
             sender: recorder,
-            generator: FixedOTPCodeGenerator(code: "123456"),
+            generator: FixedOTPCodeGenerator(code: "123456")
         )
         let resetRecorder = MFAChallengeRecorder()
         let verifyRecorder = MFAChallengeRecorder()
@@ -94,14 +94,14 @@ struct AuthFlowTests {
             hermesProfileService: HermesProfileService(
                 fluent: fluent,
                 gateway: LoggingHermesGateway(logger: logger),
-                vaultPaths: vaultPaths,
+                vaultPaths: vaultPaths
             ),
             soulService: SOULService(
                 vaultPaths: vaultPaths,
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
-                logger: logger,
+                logger: logger
             ),
-            logger: logger,
+            logger: logger
         )
         return Harness(service: service, fluent: fluent, recorder: recorder)
     }
@@ -147,7 +147,7 @@ struct AuthFlowTests {
             let after = Date()
 
             let user = try #require(
-                try await User.query(on: h.fluent.db()).filter(\.$username == username).first(),
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
             )
             #expect(user.tier == "trial")
             #expect(user.tierOverride == "none")

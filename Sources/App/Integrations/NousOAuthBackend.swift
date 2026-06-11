@@ -23,7 +23,7 @@ protocol NousOAuthBackend: Sendable {
     /// approves and the CLI exits — observed via `awaitCompletion`.
     func requestVerification(
         handle: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> (verifyURL: String, userCode: String?)
 
     /// Await the parked CLI subprocess's exit (it self-completes by polling
@@ -31,7 +31,7 @@ protocol NousOAuthBackend: Sendable {
     /// (exit code 0) completion.
     func awaitCompletion(
         handle: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> Bool
 
     /// Best-effort cancel for an in-flight session. Idempotent.
@@ -104,7 +104,7 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
         logger: Logger,
         hermesBinaryPath: String = "/opt/hermes/.venv/bin/hermes",
         startTimeoutSeconds: Int = 30,
-        completeTimeoutSeconds: Int = 300,
+        completeTimeoutSeconds: Int = 300
     ) {
         self.docker = docker
         self.registry = registry
@@ -116,11 +116,11 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
 
     func requestVerification(
         handle: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> (verifyURL: String, userCode: String?) {
         let streaming = try await docker.execStreaming(
             container: handle.containerName,
-            command: [hermesBinaryPath, "auth", "add", "nous", "--type", "oauth"],
+            command: [hermesBinaryPath, "auth", "add", "nous", "--type", "oauth"]
         )
 
         let parsed = try await withNousTimeout(seconds: startTimeoutSeconds) {
@@ -140,7 +140,7 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
 
     func awaitCompletion(
         handle _: HermesContainerHandle,
-        sessionID: String,
+        sessionID: String
     ) async throws -> Bool {
         guard let entry = await registry.take(sessionID: sessionID) else {
             throw NousOAuthError.sessionNotFound
@@ -165,7 +165,7 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
     func revoke(handle: HermesContainerHandle) async throws -> Bool {
         let result = try await docker.exec(
             container: handle.containerName,
-            command: [hermesBinaryPath, "auth", "remove", "nous"],
+            command: [hermesBinaryPath, "auth", "remove", "nous"]
         )
         return result.ok
     }
@@ -173,7 +173,7 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
     func subscriptionPlan(handle: HermesContainerHandle) async -> String? {
         let result = try? await docker.exec(
             container: handle.containerName,
-            command: [hermesBinaryPath, "portal", "status"],
+            command: [hermesBinaryPath, "portal", "status"]
         )
         guard let result, result.ok else { return nil }
         return Self.extractPlan(from: result.stdout)
@@ -205,7 +205,7 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
     /// Collects a user-code if one is printed (separately or embedded in the
     /// URL as `?user_code=…`). Returns as soon as the URL is known.
     static func consumeVerification(
-        from lines: AsyncStream<String>,
+        from lines: AsyncStream<String>
     ) async throws -> (verifyURL: String, userCode: String?) {
         var foundURL: String?
         var foundCode: String?
@@ -286,7 +286,7 @@ enum NousOAuthError: Error, Equatable {
 private func withNousTimeout<R: Sendable>(
     seconds: Int,
     operation: @escaping @Sendable () async throws -> R,
-    onTimeout: @escaping @Sendable () async throws -> Void,
+    onTimeout: @escaping @Sendable () async throws -> Void
 ) async throws -> R {
     try await withThrowingTaskGroup(of: NousTimeoutOutcome<R>.self) { group in
         group.addTask {

@@ -40,7 +40,7 @@ actor WhatsAppPairingService {
     init(
         containerManager: HermesContainerManager,
         backend: any WhatsAppPairingBackend,
-        logger: Logger,
+        logger: Logger
     ) {
         self.containerManager = containerManager
         self.backend = backend
@@ -115,7 +115,7 @@ actor WhatsAppPairingService {
 
     private func attach(
         sessionID: UUID,
-        continuation: AsyncThrowingStream<HermesWhatsAppPairEvent, Error>.Continuation,
+        continuation: AsyncThrowingStream<HermesWhatsAppPairEvent, Error>.Continuation
     ) {
         guard var session = sessions[sessionID] else {
             continuation.finish(throwing: WhatsAppPairingError.sessionNotFound)

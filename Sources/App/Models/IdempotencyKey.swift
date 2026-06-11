@@ -33,7 +33,7 @@ final class IdempotencyKey: Model, TenantModel, @unchecked Sendable {
         responseStatus: Int,
         responseContentType: String?,
         responseBody: Data,
-        expiresAt: Date,
+        expiresAt: Date
     ) {
         self.id = id
         self.tenantID = tenantID

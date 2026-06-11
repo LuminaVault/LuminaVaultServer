@@ -39,7 +39,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     func chatStream(
         sessionKey: String,
         sessionID: String?,
-        request: ChatRequest,
+        request: ChatRequest
     ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
@@ -51,7 +51,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     let metadata = try await transport.chatCompletionsWithMetadata(
                         payload: payload,
                         sessionKey: sessionKey,
-                        sessionID: sessionID,
+                        sessionID: sessionID
                     )
                     let text = Self.extractContent(from: metadata.data)
                     continuation.yield(ChatStreamChunk(delta: text, finishReason: "stop"))
@@ -60,7 +60,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     for try await chunk in fallback.chatStream(
                         sessionKey: sessionKey,
                         sessionID: sessionID,
-                        request: request,
+                        request: request
                     ) {
                         continuation.yield(chunk)
                     }
@@ -99,7 +99,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             let temperature: Double?
         }
         return try JSONEncoder().encode(
-            Payload(model: model, messages: request.messages, temperature: request.temperature),
+            Payload(model: model, messages: request.messages, temperature: request.temperature)
         )
     }
 

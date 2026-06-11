@@ -19,7 +19,7 @@ struct IdempotencyMiddlewareTests {
         func handle(
             _ request: Request,
             context: Context,
-            next: (Request, Context) async throws -> Response,
+            next: (Request, Context) async throws -> Response
         ) async throws -> Response {
             var ctx = context
             if let raw = request.headers[.init("x-test-user")!],
@@ -29,7 +29,7 @@ struct IdempotencyMiddlewareTests {
                     id: uuid,
                     email: "u-\(uuid.uuidString.prefix(6))@test",
                     username: "u\(uuid.uuidString.prefix(6))",
-                    passwordHash: "",
+                    passwordHash: ""
                 )
             }
             return try await next(request, ctx)
@@ -58,7 +58,7 @@ struct IdempotencyMiddlewareTests {
                 return Response(
                     status: responseStatus,
                     headers: [.contentType: "text/plain"],
-                    body: .init(byteBuffer: ByteBuffer(string: echoed)),
+                    body: .init(byteBuffer: ByteBuffer(string: echoed))
                 )
             }
         return Application(router: router)
@@ -145,7 +145,7 @@ struct IdempotencyMiddlewareTests {
                         .init("x-test-user")!: userA.uuidString,
                         .init("Idempotency-Key")!: sharedKey.uuidString,
                     ],
-                    body: ByteBuffer(string: "payload"),
+                    body: ByteBuffer(string: "payload")
                 ) { response in
                     #expect(response.status == .ok)
                 }
@@ -159,7 +159,7 @@ struct IdempotencyMiddlewareTests {
                         .init("x-test-user")!: userB.uuidString,
                         .init("Idempotency-Key")!: sharedKey.uuidString,
                     ],
-                    body: ByteBuffer(string: "payload"),
+                    body: ByteBuffer(string: "payload")
                 ) { response in
                     #expect(response.status == .ok)
                     #expect(response.headers[.init("Idempotent-Replayed")!] == nil)

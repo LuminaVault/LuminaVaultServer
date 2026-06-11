@@ -59,7 +59,7 @@ struct SSRFGuard {
     init(
         allowPrivateRanges: Bool,
         requireHTTPS: Bool,
-        resolver: any HostResolver = SystemHostResolver(),
+        resolver: any HostResolver = SystemHostResolver()
     ) {
         self.allowPrivateRanges = allowPrivateRanges
         self.requireHTTPS = requireHTTPS
@@ -227,7 +227,7 @@ struct SystemHostResolver: HostResolver {
                 socklen_t(buf.count),
                 nil,
                 0,
-                NI_NUMERICHOST,
+                NI_NUMERICHOST
             )
             if nrc == 0 {
                 let bytes = buf.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }

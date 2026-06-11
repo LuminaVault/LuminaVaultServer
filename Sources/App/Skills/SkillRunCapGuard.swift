@@ -57,7 +57,7 @@ actor SkillRunCapGuard {
         fluent: Fluent,
         userLocalTimeZone: TimeZone = .current,
         now: @Sendable @escaping () -> Date = Date.init,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.userLocalTimeZone = userLocalTimeZone
@@ -75,7 +75,7 @@ actor SkillRunCapGuard {
     func checkAndIncrement(
         tenantID: UUID,
         tier: String,
-        manifest: SkillManifest,
+        manifest: SkillManifest
     ) async throws -> Decision {
         let cap = manifest.dailyRunCap?.value(for: tier) ?? 0
         if cap <= 0 {
@@ -137,7 +137,7 @@ actor SkillRunCapGuard {
     /// drive the counter negative.
     func recordFailure(
         tenantID: UUID,
-        manifest: SkillManifest,
+        manifest: SkillManifest
     ) async throws {
         guard let sql = fluent.db() as? any SQLDatabase else { return }
         try await sql.raw("""

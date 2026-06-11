@@ -1,0 +1,12 @@
+# SwiftFormat configuration — keep in sync with .swiftlint.yml.
+#
+# Goal: consistent formatting without fighting established patterns.
+# SwiftLint handles structural/semantic rules; SwiftFormat handles layout.
+
+--swiftversion 6.0
+
+# Exclude generated code (OpenAPI) and build artifacts.
+--exclude .build,Tests/AppTests/.build,Sources/AppAPI/Generated.swift,data
+
+# Trailing commas match .swiftlint.yml `mandatory_comma: true`.
+--commas always

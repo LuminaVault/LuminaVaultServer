@@ -41,7 +41,7 @@ actor ProviderRegistry: Service {
     init(
         configs: [ProviderConfig] = [],
         adapters: [any ProviderAdapter],
-        logger: Logger,
+        logger: Logger
     ) {
         self.logger = logger
         for config in configs where config.isEnabled {
@@ -61,7 +61,7 @@ actor ProviderRegistry: Service {
         ProviderRegistry(
             configs: loadConfigs(from: reader),
             adapters: adapters,
-            logger: logger,
+            logger: logger
         )
     }
 

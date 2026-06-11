@@ -33,7 +33,7 @@ struct HermesDataPathService {
         } catch {
             throw HermesDataError.notWritable(
                 path: profiles.path,
-                reason: "could not create profiles directory: \(error)",
+                reason: "could not create profiles directory: \(error)"
             )
         }
 
@@ -44,7 +44,7 @@ struct HermesDataPathService {
         } catch {
             throw HermesDataError.notWritable(
                 path: profiles.path,
-                reason: "profiles directory is not writable by the app process: \(error)",
+                reason: "profiles directory is not writable by the app process: \(error)"
             )
         }
 

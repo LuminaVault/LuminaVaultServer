@@ -73,7 +73,7 @@ let package = Package(
                 .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
             ],
             path: "Sources/AppAPI",
-            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")],
+            plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
         ),
         .testTarget(name: "AppTests",
                     dependencies: [
@@ -84,5 +84,5 @@ let package = Package(
                     ],
                     path: "Tests/AppTests"),
     ],
-    swiftLanguageVersions: [.v6],
+    swiftLanguageVersions: [.v6]
 )

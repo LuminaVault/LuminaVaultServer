@@ -69,7 +69,7 @@ struct TableModelRouter: ModelRouter {
         let routes = tableRoutes(capability: capability, tier: effectiveRoutingTier(for: user))
         let privacyFiltered = ModelOriginRegistry.filter(
             routes,
-            privacyNoCNOrigin: user?.privacyNoCNOrigin == true,
+            privacyNoCNOrigin: user?.privacyNoCNOrigin == true
         )
 
         var enabled: [ModelRoute] = []
@@ -141,7 +141,7 @@ struct SingleGatewayModelRouter: ModelRouter {
     func pick(forModel _: String?, capability _: LLMCapabilityLevel, user _: User?) async -> RouteDecision {
         RouteDecision(
             primary: ModelRoute(provider: .hermesGateway, modelID: hermesDefaultModel),
-            fallbacks: [],
+            fallbacks: []
         )
     }
 }
@@ -164,19 +164,19 @@ struct RoutingModelRouter: ModelRouter {
         guard let model, !model.isEmpty else {
             return RouteDecision(
                 primary: ModelRoute(provider: .hermesGateway, modelID: hermesDefaultModel),
-                fallbacks: fallbackRoutes,
+                fallbacks: fallbackRoutes
             )
         }
         let lower = model.lowercased()
         if lower.hasPrefix("gemini") {
             return RouteDecision(
                 primary: ModelRoute(provider: .gemini, modelID: model),
-                fallbacks: [ModelRoute(provider: .hermesGateway, modelID: hermesDefaultModel)] + fallbackRoutes,
+                fallbacks: [ModelRoute(provider: .hermesGateway, modelID: hermesDefaultModel)] + fallbackRoutes
             )
         }
         return RouteDecision(
             primary: ModelRoute(provider: .hermesGateway, modelID: model),
-            fallbacks: fallbackRoutes,
+            fallbacks: fallbackRoutes
         )
     }
 }

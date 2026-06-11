@@ -35,7 +35,7 @@ final class HermesUpdateJob: Model, @unchecked Sendable {
         steps: [HermesUpdateStep],
         fromVersion: String?,
         toVersion: String?,
-        errorMessage: String? = nil,
+        errorMessage: String? = nil
     ) {
         self.id = id
         self.state = state.rawValue
@@ -75,7 +75,7 @@ final class HermesUpdateJob: Model, @unchecked Sendable {
             toVersion: toVersion,
             errorMessage: errorMessage,
             startedAt: createdAt ?? Date(),
-            updatedAt: updatedAt ?? Date(),
+            updatedAt: updatedAt ?? Date()
         )
     }
 }

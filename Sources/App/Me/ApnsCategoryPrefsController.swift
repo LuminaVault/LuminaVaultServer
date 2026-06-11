@@ -27,7 +27,7 @@ struct ApnsCategoryPrefsController {
             return APNSCategoryPrefsResponse(
                 chatEnabled: row.chatEnabled,
                 nudgeEnabled: row.nudgeEnabled,
-                digestEnabled: row.digestEnabled,
+                digestEnabled: row.digestEnabled
             )
         }
         return APNSCategoryPrefsResponse(chatEnabled: true, nudgeEnabled: true, digestEnabled: true)
@@ -50,7 +50,7 @@ struct ApnsCategoryPrefsController {
         return APNSCategoryPrefsResponse(
             chatEnabled: row.chatEnabled,
             nudgeEnabled: row.nudgeEnabled,
-            digestEnabled: row.digestEnabled,
+            digestEnabled: row.digestEnabled
         )
     }
 }

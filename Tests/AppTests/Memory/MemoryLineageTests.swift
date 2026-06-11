@@ -39,7 +39,7 @@ struct MemoryLineageTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuth($0.body) }
         return (resp.accessToken, resp.userId)
     }
@@ -54,7 +54,7 @@ struct MemoryLineageTests {
             path: path,
             contentType: "text/markdown",
             sizeBytes: 0,
-            sha256: String(repeating: "0", count: 64),
+            sha256: String(repeating: "0", count: 64)
         )
         try await row.save(on: fluent.db())
         return try row.requireID()
@@ -72,7 +72,7 @@ struct MemoryLineageTests {
                 let vaultFileID = try await Self.insertVaultFile(
                     fluent: fluent,
                     tenantID: tenantID,
-                    path: "notes/2026-05-11-standup.md",
+                    path: "notes/2026-05-11-standup.md"
                 )
 
                 // Embed-less write so we don't need the real embedding service.
@@ -81,14 +81,14 @@ struct MemoryLineageTests {
                     tenantID: tenantID,
                     content: "Met with infra team about migrations.",
                     embedding: Array(repeating: Float(0), count: 1536),
-                    sourceVaultFileID: vaultFileID,
+                    sourceVaultFileID: vaultFileID
                 )
                 let memoryID = try memory.requireID()
 
                 try await client.execute(
                     uri: "/v1/memory/\(memoryID)/lineage",
                     method: .get,
-                    headers: [.authorization: "Bearer \(token)"],
+                    headers: [.authorization: "Bearer \(token)"]
                 ) { response in
                     #expect(response.status == .ok)
                     let body = try Self.decodeLineage(response.body)
@@ -114,14 +114,14 @@ struct MemoryLineageTests {
                 let memory = try await repo.create(
                     tenantID: tenantID,
                     content: "Random thought, no source.",
-                    embedding: Array(repeating: Float(0), count: 1536),
+                    embedding: Array(repeating: Float(0), count: 1536)
                 )
                 let memoryID = try memory.requireID()
 
                 try await client.execute(
                     uri: "/v1/memory/\(memoryID)/lineage",
                     method: .get,
-                    headers: [.authorization: "Bearer \(token)"],
+                    headers: [.authorization: "Bearer \(token)"]
                 ) { response in
                     #expect(response.status == .ok)
                     let body = try Self.decodeLineage(response.body)
@@ -141,7 +141,7 @@ struct MemoryLineageTests {
             try await client.execute(
                 uri: "/v1/memory/\(UUID())/lineage",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -163,14 +163,14 @@ struct MemoryLineageTests {
                 let memory = try await repo.create(
                     tenantID: tenantA,
                     content: "Tenant A secret.",
-                    embedding: Array(repeating: Float(0), count: 1536),
+                    embedding: Array(repeating: Float(0), count: 1536)
                 )
                 let memoryID = try memory.requireID()
 
                 try await client.execute(
                     uri: "/v1/memory/\(memoryID)/lineage",
                     method: .get,
-                    headers: [.authorization: "Bearer \(tokenB)"],
+                    headers: [.authorization: "Bearer \(tokenB)"]
                 ) { response in
                     #expect(response.status == .notFound)
                 }

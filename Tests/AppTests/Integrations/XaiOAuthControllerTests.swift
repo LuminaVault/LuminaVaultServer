@@ -41,7 +41,7 @@ struct XaiOAuthControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuth($0.body).accessToken }
     }
 
@@ -53,7 +53,7 @@ struct XaiOAuthControllerTests {
             try await client.execute(
                 uri: "/v1/integrations/xai",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let body = try testJSONDecoder().decode(XaiStatusResponse.self, from: Data(buffer: response.body))
@@ -71,7 +71,7 @@ struct XaiOAuthControllerTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/integrations/xai",
-                method: .get,
+                method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -88,7 +88,7 @@ struct XaiOAuthControllerTests {
                 uri: "/v1/integrations/xai/complete",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .notFound)
             }
@@ -105,7 +105,7 @@ struct XaiOAuthControllerTests {
                 uri: "/v1/integrations/xai/complete",
                 method: .post,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .badRequest)
             }

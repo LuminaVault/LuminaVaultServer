@@ -62,7 +62,7 @@ struct HermesConfigController {
         secretBox: SecretBox,
         ssrfGuard: SSRFGuard,
         probeSession: URLSession = .shared,
-        logger: Logger,
+        logger: Logger
     ) {
         self.fluent = fluent
         self.secretBox = secretBox
@@ -90,7 +90,7 @@ struct HermesConfigController {
             baseUrl: row.baseURL,
             hasAuthHeader: row.authHeaderCiphertext != nil,
             verifiedAt: row.verifiedAt,
-            name: row.name,
+            name: row.name
         )
     }
 
@@ -109,7 +109,7 @@ struct HermesConfigController {
         } catch let rejection as SSRFGuard.Rejection {
             throw HTTPError(
                 .badRequest,
-                message: "invalid_base_url:\(rejection)",
+                message: "invalid_base_url:\(rejection)"
             )
         }
 
@@ -122,7 +122,7 @@ struct HermesConfigController {
             } catch {
                 logger.error(
                     "secretbox seal failed",
-                    metadata: ["tenant": .string(tenantID.uuidString)],
+                    metadata: ["tenant": .string(tenantID.uuidString)]
                 )
                 throw HTTPError(.internalServerError, message: "seal_failed")
             }
@@ -149,7 +149,7 @@ struct HermesConfigController {
             baseUrl: row.baseURL,
             hasAuthHeader: row.authHeaderCiphertext != nil,
             verifiedAt: row.verifiedAt,
-            name: row.name,
+            name: row.name
         )
     }
 
@@ -185,11 +185,11 @@ struct HermesConfigController {
                 metadata: [
                     "tenant": .string(tenantID.uuidString),
                     "rejection": .string(String(describing: rejection)),
-                ],
+                ]
             )
             throw HTTPError(
                 .badGateway,
-                message: TestError.ssrfRejected.rawValue,
+                message: TestError.ssrfRejected.rawValue
             )
         }
 
@@ -198,12 +198,12 @@ struct HermesConfigController {
             do {
                 authHeader = try secretBox.open(
                     SecretBox.Sealed(ciphertext: ct, nonce: nonce),
-                    tenantID: tenantID,
+                    tenantID: tenantID
                 )
             } catch {
                 throw HTTPError(
                     .badGateway,
-                    message: TestError.decryptFailed.rawValue,
+                    message: TestError.decryptFailed.rawValue
                 )
             }
         } else {
@@ -214,7 +214,7 @@ struct HermesConfigController {
         if let probeError {
             throw HTTPError(
                 .badGateway,
-                message: probeError.rawValue,
+                message: probeError.rawValue
             )
         }
 
@@ -238,7 +238,7 @@ struct HermesConfigController {
     private func probe(baseURL: URL, authHeader: String?) async -> TestError? {
         if let err = await probeOne(
             url: baseURL.appendingPathComponent("v1/models"),
-            authHeader: authHeader,
+            authHeader: authHeader
         ) {
             switch err {
             case .http4xx:
@@ -246,7 +246,7 @@ struct HermesConfigController {
                 // health endpoint before giving up.
                 return await probeOne(
                     url: baseURL.appendingPathComponent("healthz"),
-                    authHeader: authHeader,
+                    authHeader: authHeader
                 )
             default:
                 return err

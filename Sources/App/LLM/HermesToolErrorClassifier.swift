@@ -79,8 +79,8 @@ enum HermesToolErrorClassifier {
                     toolName: toolName,
                     category: categorise(rawMessage: String(message)),
                     message: sanitizeSingleLine(String(message)),
-                    isRetryable: false,
-                ),
+                    isRetryable: false
+                )
             )
         }
 
@@ -91,8 +91,8 @@ enum HermesToolErrorClassifier {
                     toolName: toolName,
                     category: .loopExhausted,
                     message: "Tool failed repeatedly and was disabled for this turn.",
-                    isRetryable: false,
-                ),
+                    isRetryable: false
+                )
             )
         }
 
@@ -120,7 +120,7 @@ enum HermesToolErrorClassifier {
         ChatMessage(
             role: message.role,
             content: sanitize(content: message.content) ?? "",
-            tool_calls: message.tool_calls,
+            tool_calls: message.tool_calls
         )
     }
 
@@ -130,7 +130,7 @@ enum HermesToolErrorClassifier {
         errors: [ChatToolError],
         model: String,
         profile: String,
-        logger: Logger,
+        logger: Logger
     ) {
         for error in errors {
             logger.warning(
@@ -139,7 +139,7 @@ enum HermesToolErrorClassifier {
                 category=\(error.category.rawValue) model=\(model) \
                 profile=\(profile) retryable=\(error.isRetryable) \
                 msg=\(error.message)
-                """,
+                """
             )
             Counter(label: "luminavault.llm.tool_failure", dimensions: [
                 ("tool", error.toolName),

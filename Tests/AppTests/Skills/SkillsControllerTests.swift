@@ -16,7 +16,7 @@ struct SkillsControllerTests {
         try await app.test(.router) { client in
             try await client.execute(
                 uri: "/v1/skills/daily-brief/run",
-                method: .post,
+                method: .post
             ) { response in
                 // No Authorization header → 401 from jwtAuthenticator,
                 // proves the route is wired and protected.

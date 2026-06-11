@@ -16,7 +16,7 @@ enum DeviceCommandError: Error, Equatable {
 actor DeviceCommandBroker {
     static let shared = DeviceCommandBroker(
         connectionManager: .shared,
-        logger: Logger(label: "lv.apple.device-rpc"),
+        logger: Logger(label: "lv.apple.device-rpc")
     )
 
     private var pending: [UUID: CheckedContinuation<DeviceCommandResult, Error>] = [:]

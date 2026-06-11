@@ -44,7 +44,7 @@ struct MemoryGeoTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuthResponse($0.body) }
         return resp.accessToken
     }
@@ -55,7 +55,7 @@ struct MemoryGeoTests {
     private static func upsert(
         client: some TestClientProtocol,
         token: String,
-        request: MemoryUpsertRequest,
+        request: MemoryUpsertRequest
     ) async throws -> UUID {
         let encoder = JSONEncoder()
         let data = try encoder.encode(request)
@@ -63,19 +63,19 @@ struct MemoryGeoTests {
             uri: "/v1/memory/upsert",
             method: .post,
             headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-            body: ByteBuffer(data: data),
+            body: ByteBuffer(data: data)
         ) { try decodeUpsert($0.body).memoryId }
     }
 
     private static func fetch(
         client: some TestClientProtocol,
         token: String,
-        id: UUID,
+        id: UUID
     ) async throws -> MemoryDTO {
         try await client.execute(
             uri: "/v1/memory/\(id.uuidString)",
             method: .get,
-            headers: [.authorization: "Bearer \(token)"],
+            headers: [.authorization: "Bearer \(token)"]
         ) { try decodeOne($0.body) }
     }
 
@@ -89,7 +89,7 @@ struct MemoryGeoTests {
                 lat: 38.7106,
                 lng: -9.1418,
                 accuracyM: 12.5,
-                placeName: "Café A Brasileira, Lisbon",
+                placeName: "Café A Brasileira, Lisbon"
             )
             let id = try await Self.upsert(client: client, token: token, request: request)
 
@@ -131,7 +131,7 @@ struct MemoryGeoTests {
                 lat: 38.7,
                 lng: -9.14,
                 accuracyM: 25.0,
-                placeName: nil,
+                placeName: nil
             )
             let id = try await Self.upsert(client: client, token: token, request: request)
 

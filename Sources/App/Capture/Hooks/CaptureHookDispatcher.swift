@@ -44,7 +44,7 @@ struct CaptureHookDispatcher {
                 .map(\.pluginSlug)
         } catch {
             logger.error(
-                "capture-hook dispatch query failed tenant=\(context.tenantID) point=\(point.rawValue): \(error)",
+                "capture-hook dispatch query failed tenant=\(context.tenantID) point=\(point.rawValue): \(error)"
             )
             return context
         }
@@ -57,7 +57,7 @@ struct CaptureHookDispatcher {
     func dispatch(
         point: CaptureHookPoint,
         installedSlugs: [String],
-        context: CaptureHookContext,
+        context: CaptureHookContext
     ) async -> CaptureHookContext {
         var ctx = context
         for slug in installedSlugs.sorted() {
@@ -71,7 +71,7 @@ struct CaptureHookDispatcher {
                 ctx = try await hook.apply(ctx)
             } catch {
                 logger.warning(
-                    "capture-hook \(slug) failed at \(point.rawValue) tenant=\(context.tenantID); skipping: \(error)",
+                    "capture-hook \(slug) failed at \(point.rawValue) tenant=\(context.tenantID); skipping: \(error)"
                 )
             }
         }

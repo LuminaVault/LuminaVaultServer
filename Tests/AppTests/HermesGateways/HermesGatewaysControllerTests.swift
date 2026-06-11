@@ -50,7 +50,7 @@ struct HermesGatewaysControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try decodeAuth($0.body).accessToken }
     }
 
@@ -62,7 +62,7 @@ struct HermesGatewaysControllerTests {
             try await client.execute(
                 uri: "/v1/me/hermes-gateways",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
@@ -91,7 +91,7 @@ struct HermesGatewaysControllerTests {
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { response in
                 #expect(response.status == .ok)
                 let entry = try Self.decodeEntry(response.body)
@@ -106,7 +106,7 @@ struct HermesGatewaysControllerTests {
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let entry = try Self.decodeEntry(response.body)
@@ -130,7 +130,7 @@ struct HermesGatewaysControllerTests {
                 uri: "/v1/me/hermes-gateways/discord",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { response in
                 #expect(response.status == .badRequest)
                 let body = String(buffer: response.body)
@@ -152,7 +152,7 @@ struct HermesGatewaysControllerTests {
                 uri: "/v1/me/hermes-gateways/signal",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { response in
                 #expect(response.status == .notFound)
                 let body = String(buffer: response.body)
@@ -172,13 +172,13 @@ struct HermesGatewaysControllerTests {
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .put,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { $0.status }
 
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .delete,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .noContent)
             }
@@ -186,7 +186,7 @@ struct HermesGatewaysControllerTests {
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 let entry = try Self.decodeEntry(response.body)
                 #expect(entry.status == .notConfigured)
@@ -207,13 +207,13 @@ struct HermesGatewaysControllerTests {
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .put,
                 headers: [.authorization: "Bearer \(tokenA)", .contentType: "application/json"],
-                body: putBody,
+                body: putBody
             ) { $0.status }
 
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .get,
-                headers: [.authorization: "Bearer \(tokenB)"],
+                headers: [.authorization: "Bearer \(tokenB)"]
             ) { response in
                 #expect(response.status == .ok)
                 let entry = try Self.decodeEntry(response.body)

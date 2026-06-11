@@ -33,7 +33,7 @@ struct M73_CreateCostLedger: AsyncMigration {
         """#).run()
 
         try await sql.raw(
-            #"CREATE INDEX IF NOT EXISTS cost_ledger_tenant_day_idx ON cost_ledger(tenant_id, day)"#,
+            #"CREATE INDEX IF NOT EXISTS cost_ledger_tenant_day_idx ON cost_ledger(tenant_id, day)"#
         ).run()
     }
 

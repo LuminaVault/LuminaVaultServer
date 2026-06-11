@@ -68,7 +68,7 @@ struct OpenAIEmbeddingServiceTests {
             apiKey: "sk-test",
             baseURL: #require(URL(string: "https://api.example.com")),
             model: "text-embedding-3-small",
-            session: makeSession(),
+            session: makeSession()
         )
         let v = try await svc.embed("hello", tenantID: UUID())
         #expect(v.count == 1536)
@@ -164,7 +164,7 @@ struct OpenAIEmbeddingServiceTests {
             apiKey: "sk",
             baseURL: #require(URL(string: "https://api.example.com")),
             session: makeSession(),
-            usageCallback: { tid, tok in await cap.set((tid, tok)) },
+            usageCallback: { tid, tok in await cap.set((tid, tok)) }
         )
         let tenantID = UUID()
         _ = try await svc.embed("x", tenantID: tenantID)

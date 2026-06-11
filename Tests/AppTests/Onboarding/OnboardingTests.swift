@@ -37,7 +37,7 @@ struct OnboardingTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!"),
+            body: registerBody(email: email, username: username, password: "CorrectHorseBatteryStaple1!")
         ) { try decodeAuthResponse($0.body) }
         return (resp.accessToken, email, username)
     }
@@ -50,7 +50,7 @@ struct OnboardingTests {
             try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 #expect(response.status == .ok)
                 let state = try Self.decodeOnboarding(response.body)
@@ -76,7 +76,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let state = try Self.decodeOnboarding(response.body)
@@ -100,7 +100,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { try Self.decodeOnboarding($0.body) }
             #expect(first.firstCaptureCompleted == true)
             let firstAt = first.firstCaptureCompletedAt
@@ -113,7 +113,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { try Self.decodeOnboarding($0.body) }
             #expect(second.firstCaptureCompleted == true)
             #expect(second.firstCaptureCompletedAt == firstAt)
@@ -130,7 +130,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -148,7 +148,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: #"{"firstQueryCompleted":true}"#),
+                body: ByteBuffer(string: #"{"firstQueryCompleted":true}"#)
             ) { response in
                 #expect(response.status == .unauthorized)
             }
@@ -165,7 +165,7 @@ struct OnboardingTests {
             try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 let state = try Self.decodeOnboarding(response.body)
                 #expect(state.brainConfiguredCompleted == false)
@@ -184,7 +184,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .ok)
                 let state = try Self.decodeOnboarding(response.body)
@@ -204,7 +204,7 @@ struct OnboardingTests {
                 uri: "/v1/onboarding",
                 method: .patch,
                 headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
-                body: body,
+                body: body
             ) { response in
                 #expect(response.status == .badRequest)
             }
@@ -219,12 +219,12 @@ struct OnboardingTests {
             let one = try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeOnboarding($0.body) }
             let two = try await client.execute(
                 uri: "/v1/onboarding",
                 method: .get,
-                headers: [.authorization: "Bearer \(token)"],
+                headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeOnboarding($0.body) }
             #expect(one.signupCompletedAt == two.signupCompletedAt)
         }

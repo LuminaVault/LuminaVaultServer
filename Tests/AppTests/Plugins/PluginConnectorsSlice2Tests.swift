@@ -91,7 +91,7 @@ struct RaindropConnectorTests {
         RaindropConnector(
             http: FixedHTTP(status: status, body: Data(json.utf8)),
             maxPages: 3,
-            logger: Logger(label: "test"),
+            logger: Logger(label: "test")
         )
     }
 
