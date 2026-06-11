@@ -12,7 +12,9 @@ import Testing
 /// migrated in CI). `IntegrationDatabaseTrait` activates the suite DB in
 /// `prepare(for:)` before every test; `dbTestReader` reads the active name.
 enum TestDatabaseIsolation {
-    @TaskLocal static var currentDatabase: String?
+    // FIXME: This cannot be @TaskLocal if we assign to it directly without wrapping.
+    // Changing to nonisolated(unsafe) to allow compilation, but this will race if integration tests are run in parallel.
+    nonisolated(unsafe) static var currentDatabase: String?
 
     /// Base database from env (`hermes_test` on CI). Template source for clones.
     static var baseDatabase: String {
@@ -99,11 +101,18 @@ private actor IsolationStore {
             .postgres(configuration: TestPostgres.configuration(database: "postgres")),
             as: .psql
         )
-        defer { try? await fluent.shutdown() }
-        guard let sql = fluent.db() as? any SQLDatabase else {
-            throw IsolationError.noSQLDatabase
+        let result: T
+        do {
+            guard let sql = fluent.db() as? any SQLDatabase else {
+                throw IsolationError.noSQLDatabase
+            }
+            result = try await body(sql)
+        } catch {
+            try? await fluent.shutdown()
+            throw error
         }
-        return try await body(sql)
+        try? await fluent.shutdown()
+        return result
     }
 
     private func databaseExists(_ name: String) async throws -> Bool {
