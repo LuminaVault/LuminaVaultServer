@@ -72,9 +72,10 @@ jobs:
       - name: Run unit tests (parallel)
         env:
           LOG_LEVEL: error
-        # Pure-logic suites: no Postgres/Redis. Integration suites are tagged
-        # `.integration` and run in the sibling job below.
-        run: swift test --skip-tags integration --parallel
+          # IntegrationDatabaseTrait skips test bodies when this is set,
+          # replacing the unsupported `swift test --skip-tags` CLI flag.
+          SKIP_INTEGRATION_TESTS: "1"
+        run: swift test --parallel
 
   test-integration:
     name: Integration Tests
@@ -142,7 +143,7 @@ jobs:
           POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
-        run: swift test --tags integration --parallel --enable-code-coverage
+        run: swift test --parallel --enable-code-coverage
 
       - name: Export coverage to lcov
         if: always()

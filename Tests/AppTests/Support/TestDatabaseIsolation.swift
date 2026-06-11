@@ -54,16 +54,32 @@ enum TestDatabaseIsolation {
 
 /// Activates an isolated Postgres database for the enclosing suite before each
 /// test. Pair with `.tags(.integration)` and use `dbTestReader` / `withTestFluent`.
-struct IntegrationDatabaseTrait: SuiteTrait, TestTrait {
-    func prepare(for test: Test) async throws {
+///
+/// When `SKIP_INTEGRATION_TESTS=1` is set in the environment (e.g. the unit-test
+/// CI job), the trait skips the test body entirely without attempting a Postgres
+/// connection. This replaces the unsupported `swift test --skip-tags` CLI flag.
+struct IntegrationDatabaseTrait: SuiteTrait, TestTrait, CustomExecutionTrait {
+    static var isSkipped: Bool {
+        ProcessInfo.processInfo.environment["SKIP_INTEGRATION_TESTS"] == "1"
+    }
+
+    func execute(
+        _ function: @Sendable () async throws -> Void,
+        for test: Test,
+        testCase _: Test.Case?
+    ) async throws {
+        guard !Self.isSkipped else { return }
         try await TestDatabaseIsolation.activate(
             suiteName: TestDatabaseIsolation.suiteName(from: test)
         )
+        try await function()
     }
 }
 
 extension Trait where Self == IntegrationDatabaseTrait {
-    static var integrationDatabase: Self { Self() }
+    static var integrationDatabase: Self {
+        Self()
+    }
 }
 
 // MARK: - Database provisioning
@@ -118,8 +134,8 @@ private actor IsolationStore {
     private func databaseExists(_ name: String) async throws -> Bool {
         try await withAdminSQL { sql in
             let rows = try await sql.raw("""
-                SELECT 1 AS one FROM pg_database WHERE datname = \(bind: name)
-                """).all()
+            SELECT 1 AS one FROM pg_database WHERE datname = \(bind: name)
+            """).all()
             return !rows.isEmpty
         }
     }
@@ -133,8 +149,8 @@ private actor IsolationStore {
     private func cloneDatabase(from template: String, to name: String) async throws {
         try await withAdminSQL { sql in
             try await sql.raw("""
-                CREATE DATABASE \(ident: name) WITH TEMPLATE \(ident: template)
-                """).run()
+            CREATE DATABASE \(ident: name) WITH TEMPLATE \(ident: template)
+            """).run()
         }
     }
 }
