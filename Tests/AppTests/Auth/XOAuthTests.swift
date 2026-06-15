@@ -15,7 +15,7 @@ import Testing
 /// X tokens aren't id_tokens, so X falls outside the OIDC `OAuthProvider`
 /// protocol — that's why this has its own test file rather than slotting
 /// into a generic OAuthControllerTests.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct XOAuthTests {
     // MARK: - JSON decoding
 

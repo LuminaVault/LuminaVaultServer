@@ -9,7 +9,7 @@ import Testing
 
 /// HER-146 unit tests for `HealthCorrelationService`.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HealthCorrelationServiceTests {
     // MARK: - Stub transport
 

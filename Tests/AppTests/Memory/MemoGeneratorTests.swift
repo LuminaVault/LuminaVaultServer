@@ -9,7 +9,7 @@ import Testing
 /// Drives `MemoGeneratorService` against a scripted Hermes transport so we
 /// can verify: agent loop terminates, citations parse, memo body is shaped
 /// correctly, and `save=true` lands a `vault_files` row + on-disk file.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoGeneratorTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent, URL) async throws -> T

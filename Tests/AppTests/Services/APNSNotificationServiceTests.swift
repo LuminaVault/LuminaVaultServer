@@ -11,7 +11,7 @@ import Testing
 /// Drives `APNSNotificationService` through the new `APNSPushSender` test
 /// seam. Verifies fan-out to multiple device tokens, dead-token reaping,
 /// no-op when service disabled, and category routing.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct APNSNotificationServiceTests {
     // MARK: - Fixtures
 

@@ -7,7 +7,7 @@ import Logging
 import SQLKit
 import Testing
 
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct SkillRunnerTests {
     private static func withHarness<T: Sendable>(
         _ body: @Sendable (Harness) async throws -> T

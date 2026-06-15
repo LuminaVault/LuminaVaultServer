@@ -6,7 +6,7 @@ import HummingbirdFluent
 import Logging
 import Testing
 
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HermesProfileReconcilerTests {
     private static func withReconciler<T: Sendable>(
         _ body: @Sendable (HermesProfileReconciler, Fluent, URL) async throws -> T

@@ -9,7 +9,7 @@ import Testing
 /// Drives the HermesMemoryService agent loop against a stub transport so
 /// tool-call dispatch + DB writes are exercised without a live Hermes.
 /// Postgres MUST be up: `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HermesMemoryServiceTests {
     // MARK: - Fixtures
 

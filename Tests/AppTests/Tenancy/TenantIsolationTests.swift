@@ -9,7 +9,7 @@ import Testing
 /// Cross-tenant data isolation. Each test creates two distinct tenant UUIDs
 /// and verifies that `TenantModel.query(on: db, tenantID:)` strictly partitions
 /// rows. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct TenantIsolationTests {
     /// Wraps each test with Fluent setup and guaranteed shutdown so the
     /// AsyncKit ConnectionPool deinit assertion can't crash the runner.

@@ -27,3 +27,16 @@ func withTestFluent<Result>(
         throw error
     }
 }
+
+/// Like `withTestFluent`, but builds a harness from `Fluent` first. Guarantees
+/// pool shutdown even when `setup` throws (e.g. Postgres down, migrate failure).
+func withTestFluentHarness<Result, Harness: Sendable>(
+    label: String,
+    setup: (Fluent) async throws -> Harness,
+    _ body: (Harness) async throws -> Result
+) async throws -> Result {
+    try await withTestFluent(label: label) { fluent in
+        let harness = try await setup(fluent)
+        return try await body(harness)
+    }
+}

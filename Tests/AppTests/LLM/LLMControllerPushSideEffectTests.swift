@@ -10,7 +10,7 @@ import Testing
 /// HER-200 H2 — verifies `LLMController.dispatchChatPushSideEffect` runs
 /// the push as a structured Task, swallows `CancellationError` silently,
 /// and surfaces other errors via the supplied logger rather than `try?`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct LLMControllerPushSideEffectTests {
     // MARK: - Stubs
 

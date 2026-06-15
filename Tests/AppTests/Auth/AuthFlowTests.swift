@@ -11,7 +11,7 @@ import Testing
 /// Each test creates ephemeral users with random usernames and emails so
 /// there's no cross-test contamination on a shared schema.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct AuthFlowTests {
     fileprivate struct Harness {
         let service: DefaultAuthService
@@ -24,24 +24,11 @@ struct AuthFlowTests {
     private static func withHarness<T: Sendable>(
         _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
-        let harness = try await makeHarness()
-        do {
-            let result = try await body(harness)
-            try await harness.fluent.shutdown()
-            return result
-        } catch {
-            try? await harness.fluent.shutdown()
-            throw error
-        }
+        try await withTestFluentHarness(label: "test.auth", setup: makeHarness(fluent:), body)
     }
 
-    private static func makeHarness() async throws -> Harness {
+    private static func makeHarness(fluent: Fluent) async throws -> Harness {
         let logger = Logger(label: "test.auth")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
-        )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
         await fluent.migrations.add(M02_CreateRefreshToken())

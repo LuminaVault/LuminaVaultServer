@@ -11,7 +11,7 @@ import Testing
 /// Validates the usage-summary data layer: month-to-date `usage_meter` token
 /// sums and the `embedding_usage` lookup that `AnalyticsController` reads.
 /// Exercises the same SQL the controller uses, against the real migrations.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct UsageSummaryAggregationTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T

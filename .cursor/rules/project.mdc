@@ -1,0 +1,45 @@
+---
+description: LuminaVaultServer — Hummingbird backend conventions
+alwaysApply: true
+---
+
+# LuminaVaultServer
+
+Swift 6 Hummingbird 2 backend. Full agent instructions: `AGENTS.md`.
+
+## Sibling repos
+
+| Repo | Role |
+| --- | --- |
+| `LuminaVaultShared` | Wire DTOs (`APIDTOs.swift`) |
+| `LuminaVaultClient` | iOS consumer |
+| `LuminaVaultWebApp` | SvelteKit web consumer |
+
+When opened in the ObsidianClaudeBrain monorepo, also see root `LUMINAVAULT_DEPLOYMENT_CONFIG_GUIDE.md`.
+
+## Swift 6 concurrency
+
+- Strict concurrency checking; no `@unchecked Sendable` / `nonisolated(unsafe)` without a documented reason.
+- Prefer structured concurrency (`async let`, task groups). Avoid detached `Task { }` for fire-and-forget work.
+- Shared mutable state → `actor`. Default to `struct` + `Sendable`.
+- Fluent/Hummingbird shutdown: use `withTestFluent` or `ServiceGroup`. Never `defer { Task { try? await x.shutdown() } }`.
+
+## API & DTOs
+
+1. Change `Sources/AppAPI/openapi.yaml` first.
+2. Add/update wire DTOs in **LuminaVaultShared** (`Sources/LuminaVaultShared/APIDTOs.swift`).
+3. Run `make bruno-regen` and commit generated Bruno files with the same change.
+4. Do not duplicate DTOs here — use `...Row` for DB-only types.
+
+## Tests & CI
+
+- **Lint:** `swiftformat --lint .` and `swiftlint lint` (pinned in `.github/workflows/ci.yml`).
+- **Unit tests:** `SKIP_INTEGRATION_TESTS=1 swift test --parallel` (no Postgres required).
+- **Integration tests:** `RUN_INTEGRATION_ONLY=1 swift test --parallel` with Postgres/Redis (see CI job).
+- Integration suites use `.tags(.integration)` and `.integrationDatabase`; unit suites skip when `RUN_INTEGRATION_ONLY=1`.
+
+## Key docs
+
+- `docs/CONFIG.md` — env vars
+- `docs/integration.md` — Hermes/OAuth wiring
+- `docs/deploy.md` — VPS/Docker deploy

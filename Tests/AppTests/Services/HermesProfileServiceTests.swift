@@ -11,7 +11,7 @@ import Testing
 /// tests pin the service contract itself: idempotency, error-row creation on
 /// gateway failure (with the user untouched), recovery from `error`, and the
 /// `provisioning -> ready` transition.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HermesProfileServiceTests {
     private static func withService<T: Sendable>(
         gateway: any HermesGateway,

@@ -11,7 +11,7 @@ import Testing
 /// Covers the HER-Cron push surface: `notifyCron` fans out with the `.cron`
 /// category and the skill name as subtitle. Reuses `RecordingPushSender`
 /// from `APNSNotificationServiceTests`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct CronPushTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T

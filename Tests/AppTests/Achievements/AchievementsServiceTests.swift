@@ -10,7 +10,7 @@ import Testing
 /// (`record idempotent`, `tenant isolation`) need a running Postgres. Run
 /// with `docker compose up -d postgres`. The catalog snapshot test is
 /// pure-in-memory and runs without DB.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct AchievementsServiceTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T

@@ -10,7 +10,7 @@ import Testing
 /// HER-87: Email verification flow tests.
 /// Mirrors AuthFlowTests harness — service-layer integration against real Postgres at :5433.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct EmailVerificationTests {
     fileprivate struct Harness {
         let service: DefaultAuthService

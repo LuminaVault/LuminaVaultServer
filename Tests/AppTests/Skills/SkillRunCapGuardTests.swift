@@ -9,7 +9,7 @@ import Testing
 
 /// HER-193 DB-touching tests for `SkillRunCapGuard`. Run with
 /// `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct SkillRunCapGuardTests {
     fileprivate struct Harness {
         let fluent: Fluent

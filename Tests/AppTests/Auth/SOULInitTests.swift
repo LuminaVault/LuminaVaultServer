@@ -10,7 +10,7 @@ import Testing
 /// HER-86 — verifies the default `SOUL.md` lands on disk for every fresh
 /// register (and OAuth net-new), and that the rollback path leaves no
 /// orphan user row if the SOUL write fails. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct SOULInitTests {
     fileprivate struct Harness {
         let service: DefaultAuthService
@@ -21,26 +21,20 @@ struct SOULInitTests {
     private static func withHarness<T: Sendable>(
         _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
-        let harness = try await makeHarness()
-        do {
-            let result = try await body(harness)
-            try await harness.fluent.shutdown()
-            try? FileManager.default.removeItem(at: harness.vaultRoot)
-            return result
-        } catch {
-            try? await harness.fluent.shutdown()
-            try? FileManager.default.removeItem(at: harness.vaultRoot)
-            throw error
+        try await withTestFluentHarness(label: "test.soul", setup: makeHarness(fluent:)) { harness in
+            do {
+                let result = try await body(harness)
+                try? FileManager.default.removeItem(at: harness.vaultRoot)
+                return result
+            } catch {
+                try? FileManager.default.removeItem(at: harness.vaultRoot)
+                throw error
+            }
         }
     }
 
-    private static func makeHarness() async throws -> Harness {
+    private static func makeHarness(fluent: Fluent) async throws -> Harness {
         let logger = Logger(label: "test.soul")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
-        )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
         await fluent.migrations.add(M02_CreateRefreshToken())

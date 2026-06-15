@@ -10,7 +10,7 @@ import Testing
 
 /// HER-147 DB-touching tests for `MemoryScoringService` + `MemoryPruningService`.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryPruningServiceTests {
     fileprivate struct Harness {
         let fluent: Fluent
@@ -24,35 +24,17 @@ struct MemoryPruningServiceTests {
         pruningConfig: MemoryPruningConfig = .default,
         _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
-        let logger = Logger(label: "test.memory-prune")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
-        )
-        // HER-310 — Everything throwable AFTER `Fluent` is constructed
-        // must run inside the do/catch so `fluent.shutdown()` is
-        // guaranteed before the struct deinits. Previously `user.save`
-        // ran above the do/catch — a transient PG error would leak the
-        // EventLoopGroupConnectionPool and SIGILL the test binary on
-        // process exit (AsyncKit precondition).
-        do {
+        try await withTestFluentHarness(label: "test.memory-prune", setup: { fluent in
+            let logger = Logger(label: "test.memory-prune")
             let scoring = MemoryScoringService(fluent: fluent, config: scoringConfig, logger: logger)
             let pruning = MemoryPruningService(fluent: fluent, config: pruningConfig, logger: logger)
 
-            // Ephemeral user.
             let username = "mp-\(UUID().uuidString.prefix(8).lowercased())"
             let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
             try await user.save(on: fluent.db())
 
-            let harness = Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
-            let result = try await body(harness)
-            try await fluent.shutdown()
-            return result
-        } catch {
-            try? await fluent.shutdown()
-            throw error
-        }
+            return Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
+        }, body)
     }
 
     /// Inserts a memory row with explicit `created_at`, `access_count`, `query_hit_count`.

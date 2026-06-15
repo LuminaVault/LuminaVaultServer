@@ -10,7 +10,7 @@ import Testing
 /// Direct-Fluent coverage for the Projects backend: M64 migration applies,
 /// Project round-trips through Postgres + `toDTO`, and queries are
 /// tenant-scoped (one tenant never sees another's projects).
-@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct ProjectModelTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T
