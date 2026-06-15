@@ -11,7 +11,7 @@ import Testing
 /// `register(...)` must still succeed: the User is created, a
 /// `status="error"` HermesProfile row is recorded for the daily reconciler,
 /// and the access token issues without an `hpid` claim.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesProvisioningLifecycleTests {
     fileprivate struct Harness {
         let service: DefaultAuthService

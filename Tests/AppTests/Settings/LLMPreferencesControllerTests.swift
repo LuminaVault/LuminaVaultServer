@@ -7,7 +7,7 @@ import Testing
 
 /// HER-300 — `/v1/me/preferences/llm` GET/PUT including the
 /// `mode` field that distinguishes managed default routing from BYOK.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct LLMPreferencesControllerTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

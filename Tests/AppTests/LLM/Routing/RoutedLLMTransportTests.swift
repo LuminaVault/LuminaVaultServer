@@ -5,7 +5,7 @@ import Testing
 
 /// HER-165/HER-161 — failover behaviour of `RoutedLLMTransport`.
 /// No DB / no network. Stub adapters drive each scenario.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RoutedLLMTransportTests {
     // MARK: - Stubs
 

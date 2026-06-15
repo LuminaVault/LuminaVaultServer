@@ -8,7 +8,7 @@ import LuminaVaultShared
 import SQLKit
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct LapseArchiverTests {
     fileprivate struct Harness {
         let fluent: Fluent

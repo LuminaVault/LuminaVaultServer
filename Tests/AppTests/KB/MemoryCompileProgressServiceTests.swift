@@ -20,7 +20,7 @@ import Testing
 /// Pattern mirrors `KBCompileSpaceCountersTests` — go around `buildApplication`
 /// and call the service directly so the suite stays focused on the service
 /// contract.
-@Suite("MemoryCompileService progress ordering", .tags(.integration), .integrationDatabase)
+@Suite("MemoryCompileService progress ordering", .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct KBCompileProgressServiceTests {
     @Test func `happy path emits preparing then thinking then memory saved`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.happy") { fluent in

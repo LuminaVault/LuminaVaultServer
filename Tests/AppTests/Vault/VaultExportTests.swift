@@ -7,7 +7,7 @@ import Testing
 
 /// HER-91 end-to-end tests for `GET /v1/vault/export`.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct VaultExportTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

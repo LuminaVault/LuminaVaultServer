@@ -7,7 +7,7 @@ import Testing
     import FoundationNetworking
 #endif
 
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct JinaEnricherTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> Result<(HTTPURLResponse, Data), URLError>)?

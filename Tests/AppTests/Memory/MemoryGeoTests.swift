@@ -13,7 +13,7 @@ import Testing
 /// Hummingbird app + Postgres so the Memory model, the M36 migration,
 /// MemoryController::upsert, and MemoryDTO.fromMemory are all exercised
 /// against a real schema. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryGeoTests {
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
         ByteBuffer(string: """

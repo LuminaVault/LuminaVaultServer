@@ -4,7 +4,7 @@ import Testing
 
 /// HER-43 Slice 3b — hub skill install/uninstall. Pure validation logic (no
 /// docker / no DB), avoiding the AsyncKit teardown SIGILL (HER-310).
-@Suite("Hermes hub skill ref validation")
+@Suite("Hermes hub skill ref validation", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesHubSkillsServiceTests {
     @Test
     func `accepts hub ids and urls, trimming whitespace`() throws {

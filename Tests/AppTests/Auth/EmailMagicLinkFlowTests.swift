@@ -13,7 +13,7 @@ import Testing
 /// `dbTestReader` pins `magic.fixedOtp = "313131"` so verify is
 /// deterministic. `LoggingEmailOTPSender` is used by default so no real
 /// email is sent. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct EmailMagicLinkFlowTests {
     private static let fixedOTP = "313131"
 

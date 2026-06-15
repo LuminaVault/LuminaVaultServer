@@ -14,7 +14,7 @@ import Testing
 /// Postgres (`docker compose up -d postgres`). Mirrors the
 /// `HermesGatewaysControllerTests` shape: register a fresh user per
 /// test, drive the routes, assert the wire response.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct ProfilesControllerTests {
     // MARK: - Fixtures
 

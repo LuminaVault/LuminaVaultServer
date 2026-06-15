@@ -9,7 +9,7 @@ import Testing
 /// These tests require a live Postgres instance (dbTestReader) and are
 /// not run in CI (HER-310 — `test` job is non-required). They only need
 /// to compile under `swift build --build-tests`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct KanbanControllerTests {
     // MARK: - Helpers
 

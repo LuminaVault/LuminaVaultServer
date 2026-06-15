@@ -14,7 +14,7 @@ import Testing
 /// The test RSA-2048 keypair is the same well-known fixture JWTKit uses
 /// in its own RSATests — non-secret, intentionally reused so the keysize
 /// guard passes without ad-hoc key generation.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct GoogleOAuthProviderTests {
     // MARK: - Constants
 

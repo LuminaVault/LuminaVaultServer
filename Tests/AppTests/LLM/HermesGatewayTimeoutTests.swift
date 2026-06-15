@@ -10,7 +10,7 @@ import Testing
 /// Timeout hardening for HermesGatewayAdapter. Covers explicit 90s
 /// per-request timeout, retry-once-on-timedOut for non-streamed
 /// payloads, and no-retry for streamed payloads.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesGatewayTimeoutTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> Result<(HTTPURLResponse, Data), URLError>)?

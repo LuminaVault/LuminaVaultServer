@@ -11,7 +11,7 @@ import Testing
 ///   1. completes against a real Postgres without throwing,
 ///   2. is idempotent (a second run is a no-op),
 ///   3. leaves the schema queryable (verified via `users.is_admin` column).
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MigrateCommandTests {
     private static func reader() -> ConfigReader {
         ConfigReader(providers: [

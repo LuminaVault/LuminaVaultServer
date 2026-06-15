@@ -7,7 +7,7 @@ import Testing
 
 /// HER-88 end-to-end tests for vault list / delete / move endpoints.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct VaultCRUDTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

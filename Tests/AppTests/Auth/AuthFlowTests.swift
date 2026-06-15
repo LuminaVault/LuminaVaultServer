@@ -11,7 +11,7 @@ import Testing
 /// Each test creates ephemeral users with random usernames and emails so
 /// there's no cross-test contamination on a shared schema.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct AuthFlowTests {
     fileprivate struct Harness {
         let service: DefaultAuthService

@@ -1,20 +1,23 @@
-import CryptoKit
 import Foundation
 import HummingbirdFluent
 import Logging
 import SQLKit
+import Synchronization
 import Testing
 
 /// Per-suite Postgres database isolation so integration `@Suite`s can run in
 /// parallel without racing on `_fluent_migrations` or shared table data.
 ///
 /// Each suite gets `t_<hash>` cloned from the base test database (already
-/// migrated in CI). `IntegrationDatabaseTrait` activates the suite DB in
-/// `prepare(for:)` before every test; `dbTestReader` reads the active name.
+/// migrated in CI). `IntegrationDatabaseTrait.prepare(for:)` runs before each
+/// test in the same task, so `@TaskLocal currentDatabase` is visible to
+/// `dbTestReader` for the duration of that test.
 enum TestDatabaseIsolation {
-    // FIXME: This cannot be @TaskLocal if we assign to it directly without wrapping.
-    // Changing to nonisolated(unsafe) to allow compilation, but this will race if integration tests are run in parallel.
-    nonisolated(unsafe) static var currentDatabase: String?
+    /// Active suite for the current test task; set in `IntegrationDatabaseTrait.prepare`.
+    @TaskLocal static var activeSuiteName: String?
+
+    /// Isolated DB names keyed by suite (parallel-safe).
+    private static let suiteDatabases = Mutex<[String: String]>([:])
 
     /// Base database from env (`hermes_test` on CI). Template source for clones.
     static var baseDatabase: String {
@@ -22,14 +25,23 @@ enum TestDatabaseIsolation {
     }
 
     static var resolvedDatabase: String {
-        currentDatabase ?? baseDatabase
+        if let suite = activeSuiteName,
+           let database = suiteDatabases.withLock({ $0[suite] })
+        {
+            return database
+        }
+        return baseDatabase
     }
 
     /// Stable, Postgres-safe database name for a suite (max 63 chars).
+    /// FNV-1a — no CryptoKit (Apple-only, breaks Linux CI).
     static func databaseName(forSuite suiteName: String) -> String {
-        let digest = SHA256.hash(data: Data(suiteName.utf8))
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        let suffix = String(hex.prefix(12))
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in suiteName.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        let suffix = String(format: "%012llx", hash % 0x000f_ffff_ffff_ffff)
         return "t_\(suffix)"
     }
 
@@ -43,36 +55,43 @@ enum TestDatabaseIsolation {
         return qualified
     }
 
-    static func activate(suiteName: String) async throws {
+    /// Provisions (if needed) and registers the isolated database for `suiteName`.
+    static func registerDatabase(forSuite suiteName: String) async throws -> String {
+        let database = try await prepareDatabase(forSuite: suiteName)
+        suiteDatabases.withLock { $0[suiteName] = database }
+        return database
+    }
+
+    /// Provisions (if needed) and returns the isolated database name for `suiteName`.
+    private static func prepareDatabase(forSuite suiteName: String) async throws -> String {
         let database = databaseName(forSuite: suiteName)
         try await IsolationStore.shared.ensureDatabase(database)
-        currentDatabase = database
+        return database
     }
 }
 
 // MARK: - Trait
 
-/// Activates an isolated Postgres database for the enclosing suite before each
-/// test. Pair with `.tags(.integration)` and use `dbTestReader` / `withTestFluent`.
-///
-/// When `SKIP_INTEGRATION_TESTS=1` is set in the environment (e.g. the unit-test
-/// CI job), the trait skips the test body entirely without attempting a Postgres
-/// connection. This replaces the unsupported `swift test --skip-tags` CLI flag.
-struct IntegrationDatabaseTrait: SuiteTrait, TestTrait, CustomExecutionTrait {
-    static var isSkipped: Bool {
-        ProcessInfo.processInfo.environment["SKIP_INTEGRATION_TESTS"] == "1"
+/// Provisions an isolated Postgres database around each test in the suite.
+/// Pair with `.tags(.integration)`, `.disabled(if: IntegrationTestEnv.skipIntegration)`,
+/// and use `dbTestReader` / `withTestFluent`.
+struct IntegrationDatabaseTrait: SuiteTrait, TestTrait, TestScoping {
+    typealias TestScopeProvider = IntegrationDatabaseTrait
+
+    func scopeProvider(for _: Test, testCase _: Test.Case?) -> IntegrationDatabaseTrait? {
+        self
     }
 
-    func execute(
-        _ function: @Sendable () async throws -> Void,
+    func provideScope(
         for test: Test,
-        testCase _: Test.Case?
+        testCase _: Test.Case?,
+        performing function: @Sendable () async throws -> Void
     ) async throws {
-        guard !Self.isSkipped else { return }
-        try await TestDatabaseIsolation.activate(
-            suiteName: TestDatabaseIsolation.suiteName(from: test)
-        )
-        try await function()
+        let suite = TestDatabaseIsolation.suiteName(from: test)
+        _ = try await TestDatabaseIsolation.registerDatabase(forSuite: suite)
+        try await TestDatabaseIsolation.$activeSuiteName.withValue(suite) {
+            try await function()
+        }
     }
 }
 

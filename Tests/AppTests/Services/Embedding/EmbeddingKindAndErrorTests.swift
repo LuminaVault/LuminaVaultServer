@@ -4,7 +4,7 @@ import Testing
 
 /// HER-134 — exercises the small enums backing the embedding registry.
 /// Kept hermetic (no HTTP / no fluent) so they run on every CI minute.
-@Suite("EmbeddingProviderKind + Error")
+@Suite("EmbeddingProviderKind + Error", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct EmbeddingKindAndErrorTests {
     @Test
     func `kind init accepts canonical + aliased + case-insensitive inputs`() {

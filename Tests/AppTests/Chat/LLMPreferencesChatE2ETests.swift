@@ -18,7 +18,7 @@ import Testing
 /// Built with `dbTestReaderWithStubChat()` so the chat hop resolves to the
 /// deterministic `StubChatAdapter` (no network). Requires
 /// `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct LLMPreferencesChatE2ETests {
     // MARK: - Helpers
 

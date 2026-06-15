@@ -16,7 +16,7 @@ private struct FixedHTTP: ConnectorHTTPClient {
     }
 }
 
-@Suite("Plugin catalog slice 2")
+@Suite("Plugin catalog slice 2", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct PluginCatalogSlice2Tests {
     @Test
     func `rss + raindrop are in the catalog with the right field kinds`() {
@@ -34,7 +34,7 @@ struct PluginCatalogSlice2Tests {
     }
 }
 
-@Suite("RSS connector")
+@Suite("RSS connector", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RSSConnectorTests {
     @Test
     func `extractLinks parses RSS <link> + Atom href, dedupes, drops non-http`() {
@@ -85,7 +85,7 @@ struct RSSConnectorTests {
     }
 }
 
-@Suite("Raindrop connector")
+@Suite("Raindrop connector", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RaindropConnectorTests {
     private func connector(status: Int, json: String) -> RaindropConnector {
         RaindropConnector(

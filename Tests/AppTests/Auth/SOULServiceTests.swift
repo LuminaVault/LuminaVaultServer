@@ -4,7 +4,7 @@ import Logging
 import Testing
 
 /// HER-85: SOUL.md service unit tests. Filesystem-only — no DB required.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct SOULServiceTests {
     private struct Harness {
         let service: SOULService

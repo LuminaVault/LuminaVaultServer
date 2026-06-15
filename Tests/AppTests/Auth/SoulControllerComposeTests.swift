@@ -19,7 +19,7 @@ import Testing
 /// `.convertToSnakeCase` here would double-snake and silently nil-decode.
 ///
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct SoulControllerComposeTests {
     // MARK: - Helpers
 

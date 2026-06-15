@@ -4,7 +4,7 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-@Suite("WebSocketMemoryCompileProgressPublisher")
+@Suite("WebSocketMemoryCompileProgressPublisher", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct MemoryCompileProgressPublisherTests {
     @Test func `publish encodes envelope and broadcasts`() async throws {
         let manager = ConnectionManager()

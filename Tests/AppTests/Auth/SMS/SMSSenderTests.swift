@@ -16,7 +16,7 @@ import Testing
 ///
 /// `.serialized` because the URLProtocol stub uses a static handler — running
 /// in parallel would let one test's response satisfy another test's request.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct SMSSenderTests {
     // MARK: - LoggingSMSSender
 

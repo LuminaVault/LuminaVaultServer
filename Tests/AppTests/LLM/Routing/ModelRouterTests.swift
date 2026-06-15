@@ -5,7 +5,7 @@ import LuminaVaultShared
 import Testing
 
 /// HER-161 — full routing matrix coverage for `TableModelRouter`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ModelRouterTests {
     private static func registry(enabled: [ProviderKind]) -> ProviderRegistry {
         let configs = enabled

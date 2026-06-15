@@ -10,7 +10,7 @@ import Testing
 /// `/opt/data/.env`) — the only paths Hermes reads via `get_config_path()` /
 /// `get_env_path()`. (A prior version wrote under `.hermes/`, which Hermes
 /// never reads — these tests assert the corrected root paths.)
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesTenantConfigSeedTests {
     private static func makeTempVolume() throws -> String {
         let path = "\(NSTemporaryDirectory())lv-her254-\(UUID().uuidString)"

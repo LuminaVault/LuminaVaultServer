@@ -5,7 +5,7 @@ import Testing
 
 /// HER-43 Slice 6 — marketplace curation (featured/premium) + premium gating.
 /// Pure-logic (no DB / no HTTP), avoiding the AsyncKit teardown SIGILL (HER-310).
-@Suite("Plugin marketplace curation")
+@Suite("Plugin marketplace curation", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct PluginMarketplaceTests {
     @Test
     func `readwise is featured, byok-embeddings is premium`() {

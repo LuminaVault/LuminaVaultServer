@@ -15,7 +15,7 @@ import Testing
 /// NOTE: These tests require a running Postgres. They are written-but-not-executed
 /// per the build policy (HER-310 / `swift build --build-tests` only). Execution
 /// happens post-merge against the main dev stack.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct KanbanServiceTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T

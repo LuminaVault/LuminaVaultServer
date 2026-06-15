@@ -9,7 +9,7 @@ import Testing
 /// `MemoryController::list` and reuses the existing JWT auth path; tests
 /// boot the full app so middleware, decoding, and Fluent paging are all
 /// exercised. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HealthReadTests {
     // MARK: - Helpers
 

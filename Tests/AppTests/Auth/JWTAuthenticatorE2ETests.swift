@@ -9,7 +9,7 @@ import Testing
 /// Drives the full middleware chain through `app.test(.router)` so a real
 /// JWT travels in `Authorization: Bearer ...` and JWTAuthenticator hydrates
 /// `AppRequestContext.identity`. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct JWTAuthenticatorE2ETests {
     private static let jwtSecret = "test-secret-do-not-use-in-prod-32chars"
     private static let jwtKid = "test-kid"

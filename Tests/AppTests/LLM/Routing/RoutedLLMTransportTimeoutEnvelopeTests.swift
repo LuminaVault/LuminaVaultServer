@@ -6,7 +6,7 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RoutedLLMTransportTimeoutEnvelopeTests {
     actor StubAdapter: ProviderAdapter {
         nonisolated let kind: ProviderKind

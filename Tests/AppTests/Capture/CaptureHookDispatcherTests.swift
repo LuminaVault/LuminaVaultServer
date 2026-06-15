@@ -47,7 +47,7 @@ private func makeDispatcher(hooks: [any CaptureHook]) -> CaptureHookDispatcher {
     )
 }
 
-@Suite("Capture hook dispatcher")
+@Suite("Capture hook dispatcher", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct CaptureHookDispatcherTests {
     @Test
     func `reading-time hook installed transforms metadata at postEnrich`() async {

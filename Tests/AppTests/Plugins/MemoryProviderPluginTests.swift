@@ -5,7 +5,7 @@ import Testing
 
 /// HER-43 Slice 4 — BYO embedding-key memory plugin. Pure-logic (no DB / no
 /// HTTP), avoiding the AsyncKit teardown SIGILL (HER-310).
-@Suite("Memory provider plugin (BYO embeddings)")
+@Suite("Memory provider plugin (BYO embeddings)", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct MemoryProviderPluginTests {
     @Test
     func `byok-embeddings is a memory plugin with a required secret key`() {
@@ -41,7 +41,7 @@ private struct StubResolver: PerTenantEmbeddingResolving {
     }
 }
 
-@Suite("Tenant-aware embedding routing")
+@Suite("Tenant-aware embedding routing", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct TenantAwareEmbeddingServiceTests {
     @Test
     func `uses per-tenant service when resolver returns one`() async throws {

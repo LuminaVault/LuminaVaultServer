@@ -5,7 +5,7 @@ import Testing
 /// HER-134 — Nomic native dim is 768; we pad to 1536 to fit the column.
 /// `padToTarget` is the unit of truth — covering it under test means the
 /// HTTP path only has to assert the request body shape.
-@Suite("NomicEmbeddingService")
+@Suite("NomicEmbeddingService", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct NomicEmbeddingServiceTests {
     @Test
     func `padToTarget zero-pads short vectors to 1536`() {

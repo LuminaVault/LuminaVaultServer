@@ -143,6 +143,9 @@ jobs:
           POSTGRES_DATABASE: hermes_test
           REDIS_URL: redis://redis:6379
           LOG_LEVEL: error
+          # Non-integration suites carry `.skipInIntegrationJob` so this job
+          # only executes Postgres-backed tests (already run in test-unit).
+          RUN_INTEGRATION_ONLY: "1"
         run: swift test --parallel --enable-code-coverage
 
       - name: Export coverage to lcov

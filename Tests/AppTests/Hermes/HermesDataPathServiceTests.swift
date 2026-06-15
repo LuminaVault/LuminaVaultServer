@@ -3,7 +3,7 @@ import Foundation
 import Logging
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesDataPathServiceTests {
     @Test
     func `ensure creates profiles and accepts writes`() throws {

@@ -9,7 +9,7 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct RevenueCatWebhookTests {
     private static let webhookSecret = "test-rc-webhook-secret-32-chars-min"
     private static let password = "CorrectHorseBatteryStaple1!"

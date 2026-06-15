@@ -14,7 +14,7 @@ import Testing
 ///   2. idempotency: a second invocation finds the existing row and
 ///      promotes without throwing on `emailExists`,
 ///   3. missing credentials raise `BootstrapAdminError.missingCredentials`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct BootstrapAdminCommandTests {
     private static func slug() -> String {
         UUID().uuidString.prefix(8).lowercased()

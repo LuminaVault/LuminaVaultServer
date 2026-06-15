@@ -10,7 +10,7 @@ import Testing
 /// HER-134 — OpenAI embedding adapter HTTP contract: request shape,
 /// auth header, dim assertion, error classification. URLProtocol stub
 /// mirrors `HermesGatewayAdapterTests`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct OpenAIEmbeddingServiceTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?

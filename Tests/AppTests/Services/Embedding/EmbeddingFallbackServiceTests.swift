@@ -6,7 +6,7 @@ import Testing
 /// * transient/network → advance,
 /// * permanent → rethrow,
 /// * exhausted chain → throw the last seen error.
-@Suite("EmbeddingFallbackService")
+@Suite("EmbeddingFallbackService", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct EmbeddingFallbackServiceTests {
     private final class ScriptedService: EmbeddingService, @unchecked Sendable {
         let label: String

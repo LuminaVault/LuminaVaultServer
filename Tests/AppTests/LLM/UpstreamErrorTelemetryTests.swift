@@ -4,7 +4,7 @@ import Foundation
 import Metrics
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct UpstreamErrorTelemetryTests {
     final class StubMetricsFactory: MetricsFactory, @unchecked Sendable {
         nonisolated(unsafe) var counterIncrements: [(label: String, dimensions: [(String, String)], by: Int64)] = []

@@ -9,7 +9,7 @@ import Testing
 /// HER-172 unit tests for the ContextRouter middleware + selector.
 /// No DB / no Hermes: catalog and selector are both stubbed so each test
 /// pins exactly one behavior.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ContextRouterTests {
     // MARK: - Stub selector
 

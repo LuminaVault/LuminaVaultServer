@@ -8,7 +8,7 @@ import Testing
 /// HER-118 — end-to-end tests for `GET /v1/health/daily`. Boots the full
 /// app so JWT auth, query parsing, SQL aggregation, and gap-fill all run.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HealthDailyAggregateTests {
     // MARK: - Helpers
 

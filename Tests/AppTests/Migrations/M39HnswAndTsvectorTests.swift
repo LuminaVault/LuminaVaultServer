@@ -10,7 +10,7 @@ import Testing
 ///   - `idx_memories_content_tsv` GIN index present
 ///   - `idx_memories_embedding_hnsw` HNSW index present
 ///   - the old IVFFlat `idx_memories_embedding` is gone
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct M39HnswAndTsvectorTests {
     private struct PgIndexRow: Codable {
         let indexname: String

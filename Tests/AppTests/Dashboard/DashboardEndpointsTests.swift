@@ -18,7 +18,7 @@ import Testing
 /// `LuminaVaultShared` DTO shape. Real data wiring for Tasks and
 /// Insights lands in their respective tickets; here we only enforce
 /// the contract.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct DashboardEndpointsTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

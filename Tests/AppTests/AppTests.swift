@@ -5,6 +5,7 @@ import HummingbirdTesting
 import Logging
 import Testing
 
+@Suite(.disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct AppTests {
     @Test
     func `hello route serves`() async throws {

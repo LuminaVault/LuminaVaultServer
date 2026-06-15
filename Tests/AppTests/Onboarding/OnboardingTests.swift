@@ -7,7 +7,7 @@ import Testing
 
 /// End-to-end tests for `GET /v1/onboarding` and `PATCH /v1/onboarding`
 /// (HER-93). Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct OnboardingTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

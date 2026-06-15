@@ -12,7 +12,7 @@ import Testing
 /// so the M37 migration, `User.vaultInitialized`, `VaultInitService`, and the
 /// SOUL bootstrap decouple are all exercised together. Run with
 /// `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct VaultInitTests {
     private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
         ByteBuffer(string: """

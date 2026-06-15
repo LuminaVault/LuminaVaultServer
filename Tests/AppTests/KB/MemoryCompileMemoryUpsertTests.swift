@@ -20,7 +20,7 @@ import Testing
 ///   * Response `memoriesIngested == 2`.
 ///   * Two new rows landed under the caller's tenant in `memories`.
 ///   * `vault_files.processed_at` flipped on the seeded row.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryCompileMemoryUpsertTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
 

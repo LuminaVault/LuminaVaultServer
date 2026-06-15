@@ -13,7 +13,7 @@ import Testing
 ///
 /// Run locally with:
 ///   NVIDIA_API_KEY=nvapi-... swift test --filter NvidiaNIMLiveTests
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct NvidiaNIMLiveTests {
     private static var apiKey: String? {
         guard let key = ProcessInfo.processInfo.environment["NVIDIA_API_KEY"],

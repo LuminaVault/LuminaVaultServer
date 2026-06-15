@@ -10,7 +10,7 @@ import Testing
 
 /// HER-147 DB-touching tests for `MemoryScoringService` + `MemoryPruningService`.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct MemoryPruningServiceTests {
     fileprivate struct Harness {
         let fluent: Fluent

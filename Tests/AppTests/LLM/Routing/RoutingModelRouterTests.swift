@@ -1,7 +1,7 @@
 @testable import App
 import Testing
 
-@Suite("RoutingModelRouterTests")
+@Suite("RoutingModelRouterTests", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RoutingModelRouterTests {
     @Test
     func `nil model defaults to hermesGateway`() async {

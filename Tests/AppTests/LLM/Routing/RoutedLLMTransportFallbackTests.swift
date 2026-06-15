@@ -9,7 +9,7 @@ import Testing
 /// candidates on a `.creditExhausted` failure. Companion to
 /// `RoutedLLMTransportTests` which already covers the success-path
 /// failover, but doesn't observe the notice.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct RoutedLLMTransportFallbackTests {
     actor StubAdapter: ProviderAdapter {
         enum Outcome {

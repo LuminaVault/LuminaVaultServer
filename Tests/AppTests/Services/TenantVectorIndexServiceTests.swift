@@ -9,7 +9,7 @@ import Testing
 /// HER-234 — verifies per-tenant partial HNSW index lifecycle. Each test
 /// uses a unique tenant UUID so parallel test execution can't collide on
 /// the deterministic index name.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct TenantVectorIndexServiceTests {
     private struct PgIndexRow: Codable {
         let indexname: String

@@ -4,7 +4,7 @@ import Testing
 /// Pure-logic unit tests for the "Feed Your Brain" import + compile helpers.
 /// No DB / no HTTP, so they run fast and don't hit the AsyncKit teardown
 /// SIGILL (HER-310) that the integration suites do.
-@Suite("Import logic")
+@Suite("Import logic", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ImportLogicTests {
     // MARK: - Bookmark HTML parsing
 
@@ -64,7 +64,7 @@ struct ImportLogicTests {
 }
 
 /// Pure-logic tests for the memory-compile extraction parser.
-@Suite("Compile extraction parse")
+@Suite("Compile extraction parse", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct CompileParseTests {
     @Test
     func `parses canonical {memories:[...]}`() {

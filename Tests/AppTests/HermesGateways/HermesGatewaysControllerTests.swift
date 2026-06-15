@@ -18,7 +18,7 @@ import Testing
 /// user's resolved Hermes upstream and would need a `URLSession`
 /// fixture. Probe behaviour is exercised in unit tests on the
 /// `HermesGatewayClient` itself in a follow-up commit.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HermesGatewaysControllerTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

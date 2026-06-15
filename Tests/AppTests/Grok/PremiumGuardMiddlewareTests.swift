@@ -6,7 +6,7 @@ import struct LuminaVaultShared.AuthResponse
 import Testing
 
 /// HER-240c — `PremiumGuardMiddleware` HTTP-level gate.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct PremiumGuardMiddlewareTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

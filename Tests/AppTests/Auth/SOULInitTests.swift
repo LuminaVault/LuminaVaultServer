@@ -10,7 +10,7 @@ import Testing
 /// HER-86 — verifies the default `SOUL.md` lands on disk for every fresh
 /// register (and OAuth net-new), and that the rollback path leaves no
 /// orphan user row if the SOUL write fails. Run with `docker compose up -d postgres`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct SOULInitTests {
     fileprivate struct Harness {
         let service: DefaultAuthService

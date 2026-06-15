@@ -5,7 +5,7 @@ import Logging
 import Testing
 
 /// HER-161 — `ProviderRegistry` env-loading + enablement gating.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ProviderRegistryTests {
     @Test
     func `all seven providers env loadable from config`() async {

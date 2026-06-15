@@ -9,7 +9,7 @@ import Testing
 /// Nous Subscription Integration — `NousOAuthService` orchestration. Uses a
 /// real `HermesContainerManager` with a stub DockerExec plus a stub backend
 /// so the device-code state machine is driven end-to-end without docker.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct NousOAuthServiceTests {
     private static let masterKeyBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 

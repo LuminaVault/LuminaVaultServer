@@ -7,7 +7,7 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct EnforcementTests {
     private static let password = "CorrectHorseBatteryStaple1!"
 

@@ -2,7 +2,7 @@
 import SQLKit
 import Testing
 
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct M00EnableExtensionsTests {
     private struct ExtensionRow: Decodable {
         let extname: String

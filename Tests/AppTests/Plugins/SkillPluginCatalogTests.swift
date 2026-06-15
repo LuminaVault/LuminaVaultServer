@@ -5,7 +5,7 @@ import Testing
 
 /// HER-43 Slice 3a — skills-as-plugins bridge. Pure-logic (no DB / no HTTP),
 /// avoiding the AsyncKit teardown SIGILL (HER-310).
-@Suite("Skill plugin catalog bridge")
+@Suite("Skill plugin catalog bridge", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct SkillPluginCatalogTests {
     @Test
     func `lv skill slug round-trips and rejects non-skill slugs`() {

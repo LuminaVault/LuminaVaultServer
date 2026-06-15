@@ -13,7 +13,7 @@ import Testing
 /// running in tests); the controller surface is checked end-to-end as
 /// 402 / 409 paths only. Upstream success path is covered by
 /// `HermesGrokProxy` unit tests in a follow-up commit.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct GrokControllerTests {
     private static func randomUser() -> (email: String, username: String) {
         let suffix = UUID().uuidString.prefix(8).lowercased()

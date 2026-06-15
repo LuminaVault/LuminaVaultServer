@@ -7,7 +7,7 @@ import Testing
 /// Pure-logic unit tests for the HER-43 plugin foundation. No DB / no real
 /// HTTP (the connector uses a stub client), so they run fast and avoid the
 /// AsyncKit teardown SIGILL (HER-310) that the integration suites hit.
-@Suite("Plugin catalog validation")
+@Suite("Plugin catalog validation", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct PluginCatalogTests {
     @Test
     func `readwise is in the catalog with a secret access_token field`() {
@@ -59,7 +59,7 @@ private actor StubConnectorHTTP: ConnectorHTTPClient {
     }
 }
 
-@Suite("Readwise connector")
+@Suite("Readwise connector", .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ReadwiseConnectorTests {
     private func connector(status: Int, json: String) -> (ReadwiseConnector, StubConnectorHTTP) {
         let stub = StubConnectorHTTP(status: status, body: Data(json.utf8))

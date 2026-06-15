@@ -14,7 +14,7 @@ import Testing
 /// `MemoryGraphControllerTests`.
 ///
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryGraphServiceTests {
     /// Embedding dimensionality matches the pgvector column (1536).
     private static let dim = 1536

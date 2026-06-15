@@ -9,7 +9,7 @@ import Testing
 /// HER-200 H3 integration tests for `SkillRunner.startEventSubscriptions`
 /// + `stopEventSubscriptions`. Exercises the detached-Task event loop
 /// lifecycle against a real `EventBus`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct SkillRunnerLifecycleTests {
     // MARK: - Harness
 

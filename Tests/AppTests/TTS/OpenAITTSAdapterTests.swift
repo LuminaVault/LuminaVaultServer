@@ -12,7 +12,7 @@ import Testing
 /// request shaping (URL, method, headers, JSON body, voice mapping) and
 /// response classification (`200` → audio bytes, `429` → transient,
 /// `400` → permanent) without hitting the real OpenAI network.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct OpenAITTSAdapterTests {
     // MARK: - URLProtocol stub
 

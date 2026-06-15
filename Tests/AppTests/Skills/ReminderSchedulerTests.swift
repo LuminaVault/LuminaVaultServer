@@ -11,7 +11,7 @@ import Testing
 /// one-shot fire + `firedAt` stamp, recurring advance, and that an
 /// already-fired reminder is left alone. Reuses `RecordingPushSender` from
 /// `APNSNotificationServiceTests`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ReminderSchedulerTests {
     private static func withFluent<T: Sendable>(
         _ body: @Sendable (Fluent) async throws -> T

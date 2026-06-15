@@ -10,7 +10,7 @@ import Testing
 /// HER-39 — request-level idempotency for mutating endpoints. Verifies
 /// replay, body-mismatch detection, cross-tenant isolation, header-absent
 /// bypass, and 5xx non-caching behavior.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct IdempotencyMiddlewareTests {
     /// Test-only auth stub: when `x-test-user: <uuid>` is present, attaches a
     /// synthetic `User` so `context.requireTenantID()` succeeds.

@@ -15,7 +15,7 @@ import Testing
 /// auth wiring. Mirrors the `HermesGatewayAdapterTests` URLProtocol-stub
 /// pattern; `.serialized` because `URLProtocol` registration is
 /// process-global.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct URLSessionHermesChatTransportTests {
     // MARK: - URLProtocol stub
 

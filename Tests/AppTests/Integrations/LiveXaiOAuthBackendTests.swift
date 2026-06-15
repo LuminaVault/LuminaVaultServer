@@ -6,7 +6,7 @@ import Testing
 /// HER-240c — `LiveXaiOAuthBackend` happy path + error branches. Docker is
 /// fully stubbed via `StubDockerExec` + `StubStreamingHandle`; no real
 /// `docker` binary or Hermes container is touched.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct LiveXaiOAuthBackendTests {
     private static func makeHandle() -> HermesContainerHandle {
         HermesContainerHandle(

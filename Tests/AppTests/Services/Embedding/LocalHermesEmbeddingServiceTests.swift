@@ -12,7 +12,7 @@ import Testing
 /// * HTTP 404 from the container surfaces `.endpointMissing` so the chain
 ///   can advance to the next provider,
 /// * a successful 200 with a 768-dim payload is zero-padded to 1536.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct LocalHermesEmbeddingServiceTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?

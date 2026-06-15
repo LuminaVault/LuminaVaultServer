@@ -9,7 +9,7 @@ import Testing
 /// directly against the test Postgres (via `dbTestReader`) so we cover
 /// the row-absent default path, the row-present override path, the
 /// SSRF-rejection error path, and the decrypt-failure path.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct HermesEndpointResolverTests {
     private static let testMasterKeyBase64 = Data((0 ..< 32).map { UInt8($0) }).base64EncodedString()
     private static let defaultURL = URL(string: "http://default.hermes.test")!

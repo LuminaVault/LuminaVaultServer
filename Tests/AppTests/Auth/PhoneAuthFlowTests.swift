@@ -13,7 +13,7 @@ import Testing
 /// `dbTestReader` pins `phone.fixedOtp = "424242"` so the verify step is
 /// deterministic; `sms.kind` defaults to `logging` so no real SMS is sent.
 /// Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct PhoneAuthFlowTests {
     private static let fixedOTP = "424242"
 

@@ -13,7 +13,7 @@ import Testing
 /// Drives the repository write path directly (bypassing the Hermes agent
 /// loop) so the tool-plumbing layer and the read endpoint can be exercised
 /// independently. Run with `docker compose up -d postgres`.
-@Suite(.serialized, .tags(.integration), .integrationDatabase)
+@Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryLineageTests {
     private static func decodeAuth(_ buf: ByteBuffer) throws -> AuthResponse {
         let d = testJSONDecoder()

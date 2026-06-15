@@ -24,7 +24,7 @@ import Testing
 /// is required because `URLProtocol` registration is process-global; the
 /// closure-reset pattern in `defer` prevents cross-test handler leaks
 /// even on throw. Matches `OpenAITTSAdapterTests`.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct HermesGatewayAdapterTests {
     // MARK: - URLProtocol stub
 

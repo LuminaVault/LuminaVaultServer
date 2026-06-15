@@ -16,7 +16,7 @@ import Testing
 /// `.serialized` orders tests within this suite. The dedicated
 /// `ResendStubURLProtocol` (own static handler) avoids races with
 /// `SMSSenderTests`, which also drives `StubURLProtocol` in parallel.
-@Suite(.serialized)
+@Suite(.serialized, .disabled(if: IntegrationTestEnv.runIntegrationOnly))
 struct ResendEmailOTPSenderTests {
     @Test
     func `posts JSON body with code, from, to, subject`() async throws {
