@@ -36,12 +36,12 @@ enum TestDatabaseIsolation {
     /// Stable, Postgres-safe database name for a suite (max 63 chars).
     /// FNV-1a — no CryptoKit (Apple-only, breaks Linux CI).
     static func databaseName(forSuite suiteName: String) -> String {
-        var hash: UInt64 = 0xcbf29ce484222325
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
         for byte in suiteName.utf8 {
             hash ^= UInt64(byte)
-            hash &*= 0x100000001b3
+            hash &*= 0x100_0000_01B3
         }
-        let suffix = String(format: "%012llx", hash % 0x000f_ffff_ffff_ffff)
+        let suffix = String(format: "%012llx", hash % 0x000F_FFFF_FFFF_FFFF)
         return "t_\(suffix)"
     }
 
