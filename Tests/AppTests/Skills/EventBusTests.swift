@@ -148,14 +148,13 @@ struct EventBusTests {
             for _ in 0 ..< 10 {
                 group.addTask {
                     let stream = bus.subscribe(eventType: .vaultFileCreated)
+                    // Publish from the same task after subscribe returns so
+                    // events cannot be emitted before registration under load.
+                    bus.publish(Self.sampleEvent(.vaultFileCreated))
                     var iter = stream.makeAsyncIterator()
-                    _ = await iter.next()
+                    let received = await iter.next()
+                    #expect(received != nil)
                 }
-            }
-            // Allow subscribers a moment to register before publishing.
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            for _ in 0 ..< 10 {
-                bus.publish(Self.sampleEvent(.vaultFileCreated))
             }
         }
     }

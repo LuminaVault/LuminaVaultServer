@@ -51,7 +51,7 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     container:
       image: swift:6.3-noble
@@ -64,10 +64,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: ${{ runner.os }}-swift-unit-${{ hashFiles('Package.resolved') }}
+          key: ${{ runner.os }}-swift-unit-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-swift-unit-
             ${{ runner.os }}-swift-test-
+
+      - name: Build test bundle
+        run: swift build --build-tests -c debug
 
       - name: Run unit tests (parallel)
         env:
@@ -75,7 +78,7 @@ jobs:
           # IntegrationDatabaseTrait skips test bodies when this is set,
           # replacing the unsupported `swift test --skip-tags` CLI flag.
           SKIP_INTEGRATION_TESTS: "1"
-        run: swift test --parallel
+        run: swift test -c debug --parallel --skip-build
 
   test-integration:
     name: Integration Tests

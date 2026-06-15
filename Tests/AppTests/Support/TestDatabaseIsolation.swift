@@ -87,6 +87,10 @@ struct IntegrationDatabaseTrait: SuiteTrait, TestTrait, TestScoping {
         testCase _: Test.Case?,
         performing function: @Sendable () async throws -> Void
     ) async throws {
+        guard !IntegrationTestEnv.skipIntegration else {
+            try await function()
+            return
+        }
         let suite = TestDatabaseIsolation.suiteName(from: test)
         _ = try await TestDatabaseIsolation.registerDatabase(forSuite: suite)
         try await TestDatabaseIsolation.$activeSuiteName.withValue(suite) {
