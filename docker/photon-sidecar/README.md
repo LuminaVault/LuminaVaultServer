@@ -38,7 +38,7 @@ All control calls must include the `X-Lumina-Sidecar-Token` header (or `Authoriz
   Body: `{ "projectId": "...", "spaceId": "...", "state": "start" | "stop" }`
 - `GET /healthz`
 
-Inbound from Photon is **not** served here — it is forwarded by the sidecar to the public Lumina webhook so the single ingress + tenant routing story stays in one place.
+Inbound from Photon is **not** served here — it is forwarded by the sidecar to the public Lumina webhook so the single ingress + tenant routing story stays in one place. Forwarded webhook calls include `X-Lumina-Sidecar-Token: $LUMINA_SIDECAR_TOKEN`; the Swift API rejects inbound Photon events without that shared token.
 
 ## Running locally (with the rest of the stack)
 
