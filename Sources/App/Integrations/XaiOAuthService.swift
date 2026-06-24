@@ -37,6 +37,10 @@ actor XaiOAuthService {
     private let fluent: Fluent
     private let logger: Logger
     private let now: @Sendable () -> Date
+    /// Optional so the oauth connect can also seed a Provider credential
+    /// marker (kind=oauth) enabling Grok (xAI) in the LLM "My API Keys" list
+    /// without a separate developer key.
+    private let userCredentialStore: UserCredentialStore?
 
     init(
         containerManager: HermesContainerManager,
@@ -44,7 +48,8 @@ actor XaiOAuthService {
         backend: any XaiOAuthBackend,
         fluent: Fluent,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        userCredentialStore: UserCredentialStore? = nil
     ) {
         self.containerManager = containerManager
         self.sessionStore = sessionStore
@@ -52,6 +57,7 @@ actor XaiOAuthService {
         self.fluent = fluent
         self.logger = logger
         self.now = now
+        self.userCredentialStore = userCredentialStore
     }
 
     func status(tenantID: UUID) async throws -> Status {
@@ -105,6 +111,28 @@ actor XaiOAuthService {
             user.tier = "pro"
             try await user.update(on: fluent.db())
         }
+
+        // HER-240 follow-up: seed (or overwrite) a marker credential for .xai
+        // using kind "oauth". This makes "Grok (xAI)" appear as configured
+        // (hasCredential=true) in the client LLM Providers / Intelligence
+        // panes. At runtime UserCredentialStore returns the container creds
+        // so grok-* models work via the linked SuperGrok session with no
+        // separate apiKey.
+        if let store = userCredentialStore {
+            do {
+                try await store.upsert(
+                    tenantID: session.tenantID,
+                    provider: .xai,
+                    credentialKind: "oauth",
+                    apiKey: nil,
+                    baseURL: nil,
+                    label: "SuperGrok (linked)"
+                )
+            } catch {
+                logger.warning("failed to seed xai oauth provider marker", metadata: ["error": "\(error)"])
+            }
+        }
+
         logger.info("xai oauth completed; user promoted to pro", metadata: [
             "tenantID": "\(session.tenantID)",
             "sessionID": "\(sessionID)",
@@ -123,6 +151,11 @@ actor XaiOAuthService {
             // free-equivalent tier.
             user.tier = "trial"
             try await user.update(on: fluent.db())
+        }
+        // Clean the oauth marker credential row so "Grok (xAI)" no longer
+        // reports as configured in the LLM model list.
+        if let store = userCredentialStore {
+            try? await store.delete(tenantID: tenantID, provider: .xai)
         }
         return try await status(tenantID: tenantID)
     }

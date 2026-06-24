@@ -40,16 +40,31 @@ actor UserCredentialStore {
     private let logger: Logger
     private let ttl: TimeInterval
 
+    /// Resolver for xAI OAuth-linked tenant containers. When the per-user
+    /// credential row for .xai uses kind "oauth" (SuperGrok / linked account
+    /// from the integrations/xai flow), we return the container's apiServerKey
+    /// + internal base URL instead of a user apiKey. This lets the normal
+    /// OpenAICompatibleAdapter hit the tenant Hermes gateway (which holds the
+    /// linked xAI session) for grok-* models.
+    private let xaiContainerResolver: (@Sendable (UUID) async -> HermesContainerHandle?)?
+
     private var cache: [CacheKey: CacheEntry] = [:]
     /// Per-(tenant,provider) round-robin cursor. Not persisted — rotation is
     /// best-effort and resets on restart, which is fine for load-spreading.
     private var rotation: [CacheKey: Int] = [:]
 
-    init(fluent: Fluent, secretBox: SecretBox, logger: Logger, ttl: TimeInterval = 600) {
+    init(
+        fluent: Fluent,
+        secretBox: SecretBox,
+        logger: Logger,
+        ttl: TimeInterval = 600,
+        xaiContainerResolver: (@Sendable (UUID) async -> HermesContainerHandle?)? = nil
+    ) {
         self.fluent = fluent
         self.secretBox = secretBox
         self.logger = logger
         self.ttl = ttl
+        self.xaiContainerResolver = xaiContainerResolver
     }
 
     /// Look up a credential. Returns `nil` (cached) when no row exists.
@@ -77,12 +92,34 @@ actor UserCredentialStore {
     /// Builds the ordered candidate list: the primary credential (if usable)
     /// followed by pool keys. Pool keys inherit the primary's `baseURL` so a
     /// custom endpoint still applies to every rotated key.
+    ///
+    /// Special case for ProviderKind.xai + credentialKind "oauth": if the
+    /// tenant has completed the xAI SuperGrok connect (container has
+    /// xaiConnectedAt), we return the container's apiServerKey + base URL.
+    /// This routes grok-* calls through the Hermes container (which holds the
+    /// linked session) using the normal OpenAI-compatible path. No per-user
+    /// apiKey is stored for the oauth marker row.
     private func loadCandidates(provider: ProviderKind, tenantID: UUID) async throws -> [ResolvedCredential] {
-        var candidates: [ResolvedCredential] = []
         let primaryRow = try await UserProviderCredential.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .filter(\.$provider == provider.rawValue)
             .first()
+
+        // xAI oauth (SuperGrok linked) marker path — return container creds
+        // so the adapter talks to the per-tenant Hermes gateway instead of
+        // raw api.x.ai. The container internally forwards using the connected
+        // xAI session.
+        if provider == .xai,
+           let row = primaryRow,
+           row.credentialKind == "oauth",
+           let resolver = xaiContainerResolver,
+           let handle = await resolver(tenantID),
+           handle.xaiConnectedAt != nil {
+            let base = URL(string: handle.baseURL)
+            return [ResolvedCredential(apiKey: handle.apiServerKey, baseURL: base, label: row.label)]
+        }
+
+        var candidates: [ResolvedCredential] = []
         let primaryBaseURL = primaryRow?.baseURL.flatMap { URL(string: $0) }
         if let primaryRow {
             let resolved = try decode(primaryRow, tenantID: tenantID)
@@ -123,7 +160,11 @@ actor UserCredentialStore {
         row.tenantID = tenantID
         row.provider = provider.rawValue
         row.credentialKind = credentialKind
-        if let apiKey, !apiKey.isEmpty {
+        if credentialKind == "oauth" {
+            // oauth marker (SuperGrok link) never carries a secret.
+            row.ciphertext = nil
+            row.nonce = nil
+        } else if let apiKey, !apiKey.isEmpty {
             let sealed = try secretBox.seal(apiKey, tenantID: tenantID)
             row.ciphertext = sealed.ciphertext
             row.nonce = sealed.nonce

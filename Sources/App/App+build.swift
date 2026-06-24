@@ -627,10 +627,26 @@ func buildRouter(
     // the BYO branch we leave the resolver no-op; LocalHermes then falls
     // through with `.endpointMissing` and the chain advances.
     var localHermesHandleResolver: LocalHermesEmbeddingService.HandleResolver = { _ in nil }
+    // Late-bound for xAI oauth marker seeding + LLM BYOK .xai oauth resolve.
+    // Filled after secret + containerManager are ready. Boxed to satisfy
+    // Sendable closure capture rules when wiring into UserCredentialStore.
+    final class XaiContainerResolverBox: @unchecked Sendable {
+        var resolver: (@Sendable (UUID) async -> HermesContainerHandle?)?
+    }
+    let xaiContainerResolverBox = XaiContainerResolverBox()
+    var userCredentialStore: UserCredentialStore? = nil
     if !secretMasterKey.isEmpty {
         do {
             let secretBox = try SecretBox(masterKeyBase64: secretMasterKey)
             secretBoxRef = secretBox
+            userCredentialStore = UserCredentialStore(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                logger: Logger(label: "lv.routing"),
+                xaiContainerResolver: { tid in
+                    await xaiContainerResolverBox.resolver?(tid) ?? nil
+                }
+            )
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: byoHermesAllowPrivate,
                 requireHTTPS: byoHermesRequireHttps
@@ -685,6 +701,11 @@ func buildRouter(
             localHermesHandleResolver = { tenantID in
                 try await containerManager.handle(tenantID: tenantID)
             }
+            // HER-240 follow-up — make xAI oauth-linked credentials resolvable
+            // for the LLM BYOK path (Grok models in the Intelligence picker).
+            xaiContainerResolverBox.resolver = { tenantID in
+                try? await containerManager.handle(tenantID: tenantID)
+            }
             // HER-43 Slice 3b — hub skill install/uninstall into the tenant's
             // container (CLI-only upstream → docker exec). Reuses the 3a
             // read-only HermesSkillsClient to return the refreshed list.
@@ -710,7 +731,8 @@ func buildRouter(
                     logger: xaiLogger
                 ),
                 fluent: services.fluent,
-                logger: xaiLogger
+                logger: xaiLogger,
+                userCredentialStore: userCredentialStore
             )
             xaiOAuthController = XaiOAuthController(
                 service: xaiService,
@@ -882,17 +904,6 @@ func buildRouter(
     // line each (HER-162..HER-164).
     let routingLogger = Logger(label: "lv.routing")
 
-    // HER-252 — per-user credential store + LLM preference repository +
-    // failover telemetry logger. UserCredentialStore depends on
-    // SecretBox; absent the master key (dev without LV_SECRET_MASTER_KEY)
-    // we leave it nil and adapters fall back to deployment env keys.
-    let userCredentialStore: UserCredentialStore? = secretBoxRef.map { secretBox in
-        UserCredentialStore(
-            fluent: services.fluent,
-            secretBox: secretBox,
-            logger: routingLogger
-        )
-    }
     let userLLMPreferenceRepo = UserLLMPreferenceRepository(
         fluent: services.fluent,
         logger: routingLogger
@@ -968,13 +979,15 @@ func buildRouter(
         let baseURL = rawBaseURL.isEmpty
             ? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             : (URL(string: rawBaseURL) ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind))
+        let xaiResolver: (@Sendable (UUID) async -> HermesContainerHandle?)? = (kind == .xai) ? xaiContainerResolverBox.resolver : nil
         providerAdapters.append(OpenAICompatibleAdapter(
             kind: kind,
             apiKey: envKey,
             baseURL: baseURL,
             session: .shared,
             logger: routingLogger,
-            userCredentials: userCredentialStore
+            userCredentials: userCredentialStore,
+            xaiOAuthContainerResolver: xaiResolver
         ))
     }
     let anthropicEnvKey = reader.string(forKey: ConfigKey("llm.provider.anthropic.apiKey"), isSecret: true, default: "")

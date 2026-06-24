@@ -115,10 +115,14 @@ struct ProvidersController {
         let dtos = ProviderID.allCases.map { providerID -> ProviderCredentialDTO in
             let providerKind = serverKind(for: providerID)
             let row = byProvider[providerKind.rawValue]
+            let kind = row.flatMap { ProviderCredentialKind(rawValue: $0.credentialKind) } ?? defaultKind(for: providerID)
+            // oauth marker rows (xAI SuperGrok linked account) have no ciphertext/base
+            // but count as "has credential" because the connection itself authorizes use.
+            let hasCredential = (row?.ciphertext != nil) || (row?.baseURL != nil) || (kind == .oauth)
             return ProviderCredentialDTO(
                 provider: providerID,
-                kind: row.flatMap { ProviderCredentialKind(rawValue: $0.credentialKind) } ?? defaultKind(for: providerID),
-                hasCredential: (row?.ciphertext != nil) || (row?.baseURL != nil),
+                kind: kind,
+                hasCredential: hasCredential,
                 baseUrl: row?.baseURL,
                 label: row?.label,
                 verifiedAt: row?.verifiedAt,
@@ -176,10 +180,11 @@ struct ProvidersController {
             .filter(\.$provider == kind.rawValue)
             .all()
         let row = rows.first
+        let hasCredential = (row?.ciphertext != nil) || (row?.baseURL != nil) || (body.kind == .oauth)
         return ProviderCredentialDTO(
             provider: providerID,
             kind: body.kind,
-            hasCredential: (row?.ciphertext != nil) || (row?.baseURL != nil),
+            hasCredential: hasCredential,
             baseUrl: row?.baseURL,
             label: row?.label,
             verifiedAt: row?.verifiedAt,

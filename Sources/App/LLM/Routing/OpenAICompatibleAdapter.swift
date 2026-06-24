@@ -28,13 +28,21 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     /// back to the construction-time deployment defaults.
     let userCredentials: UserCredentialStore?
 
+    /// Resolver used exclusively for ProviderKind.xai when the user's
+    /// credential row has kind "oauth" (SuperGrok linked account). Returns
+    /// the tenant Hermes container handle so we can proxy the request
+    /// (and models/test pings) through the container using its apiServerKey.
+    /// The container performs the actual xAI call using the linked session.
+    let xaiOAuthContainerResolver: (@Sendable (UUID) async -> HermesContainerHandle?)?
+
     init(
         kind: ProviderKind,
         apiKey: String,
         baseURL: URL,
         session: URLSession = .shared,
         logger: Logger,
-        userCredentials: UserCredentialStore? = nil
+        userCredentials: UserCredentialStore? = nil,
+        xaiOAuthContainerResolver: (@Sendable (UUID) async -> HermesContainerHandle?)? = nil
     ) {
         self.kind = kind
         self.apiKey = apiKey
@@ -42,6 +50,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         self.session = session
         self.logger = logger
         self.userCredentials = userCredentials
+        self.xaiOAuthContainerResolver = xaiOAuthContainerResolver
     }
 
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
@@ -117,6 +126,21 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID) else {
                 return (apiKey, baseURL)
             }
+
+            // xAI oauth (SuperGrok) special case: the UserCredentialStore
+            // (or this resolver) returns the container's key+base when the
+            // marker row exists and the tenant is linked. Proxy through the
+            // container exactly like the dedicated Grok features do.
+            if kind == .xai,
+               (creds.apiKey == nil || creds.apiKey?.isEmpty == true),
+               let resolver = xaiOAuthContainerResolver,
+               let handle = await resolver(tenantID),
+               handle.xaiConnectedAt != nil {
+                if let containerBase = URL(string: handle.baseURL) {
+                    return (key: handle.apiServerKey, baseURL: containerBase)
+                }
+            }
+
             let key = creds.apiKey ?? apiKey
             let url = creds.baseURL ?? baseURL
             return (key, url)
