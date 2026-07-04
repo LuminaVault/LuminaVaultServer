@@ -35,25 +35,10 @@ struct SOULInitTests {
 
     private static func makeHarness(fluent: Fluent) async throws -> Harness {
         let logger = Logger(label: "test.soul")
-        await fluent.migrations.add(M00_EnableExtensions())
-        await fluent.migrations.add(M01_CreateUser())
-        await fluent.migrations.add(M02_CreateRefreshToken())
-        await fluent.migrations.add(M03_CreatePasswordResetToken())
-        await fluent.migrations.add(M04_CreateMFAChallenge())
-        await fluent.migrations.add(M05_CreateOAuthIdentity())
-        await fluent.migrations.add(M06_CreateMemory())
-        await fluent.migrations.add(M07_AddMemoryEmbedding())
-        await fluent.migrations.add(M08_CreateHermesProfile())
-        await fluent.migrations.add(M09_AddUsernameToUser())
-        await fluent.migrations.add(M10_CreateDeviceToken())
-        await fluent.migrations.add(M11_CreateWebAuthnCredential())
-        await fluent.migrations.add(M12_CreateSpace())
-        await fluent.migrations.add(M13_CreateVaultFile())
-        await fluent.migrations.add(M14_CreateHealthEvent())
-        await fluent.migrations.add(M15_AddTierFields())
-        await fluent.migrations.add(M16_CreateEmailVerificationToken())
-        await fluent.migrations.add(M17_CreateOnboardingState())
-        await fluent.migrations.add(M18_AddMemoryTags())
+        // Full app migration list — a hand-maintained subset drifts as the
+        // User model grows columns (register INSERTs every field and PSQL
+        // errors on any missing column).
+        await registerMigrations(on: fluent)
         try await fluent.migrate()
 
         let jwtKeys = JWTKeyCollection()
@@ -104,7 +89,10 @@ struct SOULInitTests {
     }
 
     @Test
-    func `register writes default SOUL to vault`() async throws {
+    func `vault init writes default SOUL for fresh register`() async throws {
+        // HER-35 moved the SOUL bootstrap from register into the
+        // `POST /v1/vault/create` handshake (`VaultInitService` →
+        // `SOULService.initIfMissing`). Drive that step explicitly here.
         try await Self.withHarness { h in
             let username = Self.randomUsername()
             let response = try await h.service.register(
@@ -112,6 +100,16 @@ struct SOULInitTests {
                 username: username,
                 password: "CorrectHorseBatteryStaple1!"
             )
+
+            let user = try #require(
+                try await User.query(on: h.fluent.db()).filter(\.$username == username).first()
+            )
+            let soul = SOULService(
+                vaultPaths: VaultPathService(rootPath: h.vaultRoot.path),
+                hermesDataRoot: h.vaultRoot.appendingPathComponent("hermes").path,
+                logger: Logger(label: "test.soul.init")
+            )
+            #expect(try soul.initIfMissing(for: user) == true)
 
             let soulPath = h.vaultRoot
                 .appendingPathComponent("tenants")
@@ -124,9 +122,10 @@ struct SOULInitTests {
             let body = try String(contentsOf: soulPath, encoding: .utf8)
             #expect(body.contains("# SOUL.md"))
             #expect(body.contains("username: \(username)"))
-            #expect(body.contains("## Tone preferences"))
-            #expect(body.contains("## Priorities"))
-            #expect(body.contains("## Learning style"))
+            #expect(SOULCore.containsCanonicalCore(body))
+            #expect(body.contains("## Identity"))
+            #expect(body.contains("## Chat voice"))
+            #expect(body.contains("## What matters to me"))
         }
     }
 

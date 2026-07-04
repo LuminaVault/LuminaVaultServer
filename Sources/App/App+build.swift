@@ -219,6 +219,20 @@ func buildApplication(
         kbCompileTransportOverride: kbCompileTransportOverride
     )
     if fluentEnabled {
+        // Template v2: backfill the locked SOULCore covenant into every
+        // existing tenant's SOUL.md (vault copy + Hermes mirror) before the
+        // server takes traffic. Idempotent; per-tenant failures only warn.
+        try await SOULCoreMigrationJob(
+            fluent: fluent,
+            soulService: SOULService(
+                vaultPaths: VaultPathService(rootPath: services.vaultRootPath),
+                hermesDataRoot: services.hermesDataRoot,
+                logger: Logger(label: "lv.soul")
+            ),
+            logger: Logger(label: "lv.soul.migrate")
+        ).run()
+    }
+    if fluentEnabled {
         let lapseArchiver = LapseArchiverJob(
             fluent: fluent,
             vaultPaths: VaultPathService(rootPath: services.vaultRootPath),

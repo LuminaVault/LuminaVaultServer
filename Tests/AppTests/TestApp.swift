@@ -69,6 +69,10 @@ private let dbTestConfigValuesBase: [AbsoluteConfigKey: ConfigValue] = [
     // to satisfy the guard.
     "hermes.apiKey": "test-hermes-bearer-do-not-use",
     "lv.environment": "test",
+    // Audit S3 (2026-07-03) fail-closed guard: any non-dev environment must
+    // set an explicit CORS allowlist or `buildApplication` fatals at boot.
+    // Tests never exercise browser CORS; a loopback origin satisfies it.
+    "cors.allowedOrigins": "http://127.0.0.1",
     // HER-310: skip bundled skill scan during tests — hundreds of legacy
     // SKILL.md files log parse warnings on every `buildApplication` boot.
     "skills.builtinScan.enabled": "false",

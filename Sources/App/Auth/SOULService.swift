@@ -58,7 +58,7 @@ struct SOULService {
             return false
         }
         let body = SOULDefaultTemplate.render(username: user.username, now: now)
-        try writeBoth(body: body, tenantID: tenantID, username: user.username)
+        _ = try write(for: user, body: body)
         logger.info("soul.init tenant=\(tenantID.uuidString)")
         return true
     }
@@ -77,27 +77,43 @@ struct SOULService {
         return SOULDefaultTemplate.render(username: user.username, now: now)
     }
 
-    /// Writes the given body to BOTH the vault and Hermes profile paths.
-    /// Enforces 64 KiB cap. Atomic per file via tmp+rename.
-    func write(for user: User, body: String) throws {
-        let bodyBytes = body.lengthOfBytes(using: .utf8)
+    /// Writes the given body to BOTH the vault and Hermes profile paths,
+    /// after stripping any user-supplied core block and re-injecting the
+    /// canonical `SOULCore` covenant — no write path can persist a SOUL.md
+    /// without it. Enforces the 64 KiB cap on the ENFORCED document (the
+    /// core counts toward the budget). Atomic per file via tmp+rename.
+    /// Returns the enforced body so callers echo what was actually persisted.
+    @discardableResult
+    func write(for user: User, body: String) throws -> String {
+        let enforced = SOULCore.inject(into: body)
+        let bodyBytes = enforced.lengthOfBytes(using: .utf8)
         guard bodyBytes <= Self.maxSizeBytes else {
             throw SOULServiceError.tooLarge(bytes: bodyBytes, limit: Self.maxSizeBytes)
         }
         let tenantID = try user.requireID()
-        try writeBoth(body: body, tenantID: tenantID, username: user.username)
+        try writeBoth(body: enforced, tenantID: tenantID, username: user.username)
         logger.info("soul.write tenant=\(tenantID.uuidString) bytes=\(bodyBytes)")
+        return enforced
     }
 
     /// Resets SOUL.md to the shipped default template. Returns the rendered
     /// body so the controller can echo it back.
     @discardableResult
     func reset(for user: User, now: Date = Date()) throws -> String {
-        let tenantID = try user.requireID()
         let body = SOULDefaultTemplate.render(username: user.username, now: now)
-        try writeBoth(body: body, tenantID: tenantID, username: user.username)
-        logger.info("soul.reset tenant=\(tenantID.uuidString)")
-        return body
+        let enforced = try write(for: user, body: body)
+        logger.info("soul.reset tenant=\((try? user.requireID())?.uuidString ?? "?")")
+        return enforced
+    }
+
+    /// True when the persisted vault SOUL.md exists but lacks the canonical
+    /// core covenant (pre-v2 file, or tampered before enforcement shipped).
+    func needsCoreMigration(for user: User) -> Bool {
+        guard let tenantID = try? user.requireID() else { return false }
+        let target = vaultFilePath(for: tenantID)
+        guard let data = try? Data(contentsOf: target),
+              let body = String(data: data, encoding: .utf8) else { return false }
+        return !SOULCore.containsCanonicalCore(body)
     }
 
     /// Best-effort last-modified timestamp of the vault SOUL.md, surfaced via

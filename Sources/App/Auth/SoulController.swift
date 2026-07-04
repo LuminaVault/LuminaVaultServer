@@ -38,10 +38,17 @@ struct SoulController {
         let putRequest = try await req.decode(as: SoulPutRequest.self, context: ctx)
         let body = putRequest.markdown
         return try await telemetry.observe("soul.put") {
+            let enforced: String
             do {
-                try service.write(for: user, body: body)
+                // The service strips + re-injects the locked core covenant;
+                // echo the enforced document, not the raw client body. The
+                // 64 KiB cap applies to the enforced document (core included).
+                enforced = try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
-                throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
+                throw HTTPError(
+                    .contentTooLarge,
+                    message: "SOUL.md too large after core covenant injection: \(bytes) bytes > \(limit)"
+                )
             } catch let err as HermesDataError {
                 throw HTTPError(.serviceUnavailable, message: err.description)
             }
@@ -49,7 +56,7 @@ struct SoulController {
                 let tenantID = try user.requireID()
                 achievements.enqueue(tenantID: tenantID, event: .soulConfigured)
             }
-            return SoulResponse(markdown: body, updatedAt: service.updatedAt(for: user))
+            return SoulResponse(markdown: enforced, updatedAt: service.updatedAt(for: user))
         }
     }
 
@@ -61,9 +68,17 @@ struct SoulController {
         // comments). Persisted via the same path as `put`; 64 KiB cap applies.
         let composeRequest = try await req.decode(as: SoulComposeRequest.self, context: ctx)
         let body = SOULComposer.render(composeRequest, username: user.username)
+        // `dry_run: true` — onboarding preview: render only, no persistence,
+        // no achievement. The client edits the draft and saves via PUT.
+        if composeRequest.dryRun == true {
+            return try await telemetry.observe("soul.compose.dry") {
+                SoulResponse(markdown: body, updatedAt: nil)
+            }
+        }
         return try await telemetry.observe("soul.compose") {
+            let enforced: String
             do {
-                try service.write(for: user, body: body)
+                enforced = try service.write(for: user, body: body)
             } catch let SOULServiceError.tooLarge(bytes, limit) {
                 throw HTTPError(.contentTooLarge, message: "SOUL.md too large: \(bytes) bytes > \(limit)")
             } catch let err as HermesDataError {
@@ -73,7 +88,7 @@ struct SoulController {
                 let tenantID = try user.requireID()
                 achievements.enqueue(tenantID: tenantID, event: .soulConfigured)
             }
-            return SoulResponse(markdown: body, updatedAt: service.updatedAt(for: user))
+            return SoulResponse(markdown: enforced, updatedAt: service.updatedAt(for: user))
         }
     }
 

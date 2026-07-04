@@ -2718,6 +2718,11 @@ paths:
       tags: [Soul]
       operationId: composeSoul
       summary: Compose a SOUL.md from structured agent traits.
+      description: >-
+        Renders the onboarding quiz answers into the canonical template
+        (locked core covenant + editable sections) and persists it, unless
+        `dry_run: true` is set, in which case the composition is returned
+        without being written.
       requestBody:
         required: true
         content:
@@ -6476,18 +6481,46 @@ components:
 
     SoulComposeRequest:
       type: object
-      required: [agent_name, tone, role, autonomy]
+      description: >-
+        Template v2: every field is optional — absent fields get deterministic
+        server defaults, so legacy 4-field clients keep working. The composed
+        document always embeds the locked core covenant block
+        (`<!-- lv:core:vN:start -->` … `<!-- lv:core:vN:end -->`), which the
+        server strips and re-injects on every write.
       properties:
         agent_name: { type: string }
         tone:
           type: string
-          enum: [warm, concise_technical, playful, coach]
+          enum: [warm, concise_technical, playful, coach, formal, casual, dry]
         role:
           type: string
           enum: [assistant, coworker, coach, second_brain]
         autonomy:
           type: string
           enum: [ask_first, suggest, act]
+        priorities:
+          type: array
+          items:
+            type: string
+            enum: [focus, health, learning, family, money, creative, other]
+        other_priority: { type: string, maxLength: 256 }
+        format:
+          type: string
+          enum: [bullets, prose]
+        length:
+          type: string
+          enum: [short, long]
+        emojis: { type: boolean }
+        voice_samples:
+          type: array
+          maxItems: 3
+          items: { type: string }
+        dry_run:
+          type: boolean
+          description: >-
+            When true, returns the composed markdown without persisting it
+            (no SOUL.md write, no achievement) — used by onboarding to
+            preview the draft before the user edits and saves via PUT.
 
     # ── Achievements ──
 

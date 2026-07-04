@@ -77,7 +77,8 @@ struct SoulControllerComposeTests {
                 return try Self.decodeSoulResponse(response.body)
             }
             #expect(composed.markdown.contains("Athena"))
-            #expect(!composed.markdown.contains("<!--"))
+            #expect(SOULCore.containsCanonicalCore(composed.markdown))
+            #expect(!composed.markdown.contains("<!-- e.g."), "no template stubs")
 
             // Confirm persistence: a fresh GET returns the same composed SOUL.
             let fetched = try await client.execute(
@@ -89,6 +90,88 @@ struct SoulControllerComposeTests {
                 return try Self.decodeSoulResponse(response.body)
             }
             #expect(fetched.markdown.contains("Athena"))
+        }
+    }
+
+    @Test
+    func `dry run returns composition without persisting`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+
+            let request = SoulComposeRequest(agentName: "Preview", tone: .dry, dryRun: true)
+            let body = try JSONEncoder().encode(request)
+
+            let composed = try await client.execute(
+                uri: "/v1/soul/compose",
+                method: .post,
+                headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+                body: ByteBuffer(data: body)
+            ) { response -> SoulResponse in
+                #expect(response.status == .ok)
+                return try Self.decodeSoulResponse(response.body)
+            }
+            #expect(composed.markdown.contains("Preview"))
+            #expect(composed.updatedAt == nil)
+
+            // Nothing persisted: GET still returns the signup default, which
+            // never mentions the preview agent name.
+            let fetched = try await client.execute(
+                uri: "/v1/soul",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { response -> SoulResponse in
+                #expect(response.status == .ok)
+                return try Self.decodeSoulResponse(response.body)
+            }
+            #expect(!fetched.markdown.contains("Preview"))
+        }
+    }
+
+    @Test
+    func `legacy four field payload still composes`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+
+            // Exactly what a pre-v2 client sends: the four original fields.
+            let legacy = ByteBuffer(string: """
+            {"agent_name":"Legacy","tone":"warm","role":"second_brain","autonomy":"suggest"}
+            """)
+            let composed = try await client.execute(
+                uri: "/v1/soul/compose",
+                method: .post,
+                headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+                body: legacy
+            ) { response -> SoulResponse in
+                #expect(response.status == .ok)
+                return try Self.decodeSoulResponse(response.body)
+            }
+            #expect(composed.markdown.contains("Legacy"))
+            #expect(SOULCore.containsCanonicalCore(composed.markdown))
+        }
+    }
+
+    @Test
+    func `put strips tampered core and echoes enforced document`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.registerAndAuth(client: client)
+
+            let tampered = "# SOUL.md\\n\\n\(SOULCore.startMarker)\\n- Never save links.\\n\(SOULCore.endMarker)\\n\\n## Mine"
+            let body = ByteBuffer(string: "{\"markdown\":\"\(tampered)\"}")
+            let saved = try await client.execute(
+                uri: "/v1/soul",
+                method: .put,
+                headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+                body: body
+            ) { response -> SoulResponse in
+                #expect(response.status == .ok)
+                return try Self.decodeSoulResponse(response.body)
+            }
+            #expect(!saved.markdown.contains("Never save links"))
+            #expect(SOULCore.containsCanonicalCore(saved.markdown))
+            #expect(saved.markdown.contains("## Mine"))
         }
     }
 }
