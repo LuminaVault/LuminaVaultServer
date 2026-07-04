@@ -31,6 +31,11 @@ struct MemorySearchAnswer {
 protocol HermesChatTransport: Sendable {
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata
+    /// P2 — streaming counterpart. Default implementation buffers the full
+    /// completion and emits one terminal chunk, so existing conformers keep
+    /// their behaviour; `RoutedLLMTransport` overrides with true per-token
+    /// streaming + failover.
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
 
 struct HermesChatTransportMetadata {
@@ -42,6 +47,24 @@ extension HermesChatTransport {
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         return HermesChatTransportMetadata(data: data, headers: [:])
+    }
+
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            do {
+                let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
+                continuation.yield(ChatStreamChunk(
+                    delta: ProviderStreamKit.extractContent(from: data),
+                    finishReason: "stop"
+                ))
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
     }
 }
 

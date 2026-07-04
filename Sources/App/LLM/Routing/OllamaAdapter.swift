@@ -119,6 +119,65 @@ struct OllamaAdapter: ProviderAdapter {
         throw error
     }
 
+    // MARK: - Streaming (P2)
+
+    /// Native streaming via Ollama's NDJSON protocol: `POST /api/chat`
+    /// with `stream: true` emits one JSON object per line —
+    /// `{"message":{"content":…},"done":false}` deltas, then a terminal
+    /// `{"done":true,"done_reason":…}` object.
+    func chatStream(payload: Data, sessionKey _: String, sessionID _: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let kind = kind
+        return ProviderStreamKit.run(
+            kind: kind,
+            framing: .ndjson,
+            logger: logger,
+            makeRequest: {
+                guard
+                    let openAI = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                    let messages = openAI["messages"] as? [[String: Any]]
+                else {
+                    throw ProviderError.permanent(provider: kind, status: 400, body: "invalid OpenAI payload")
+                }
+                let model = (openAI["model"] as? String) ?? "llama3.1"
+                let body: [String: Any] = [
+                    "model": model,
+                    "messages": messages,
+                    "stream": true,
+                ]
+                let bodyData = try JSONSerialization.data(withJSONObject: body)
+                let baseURL = await self.resolveBaseURL()
+                return ProviderStreamRequest(
+                    url: baseURL.appendingPathComponent("api").appendingPathComponent("chat"),
+                    body: bodyData
+                )
+            },
+            process: { line, yield in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard
+                    !trimmed.isEmpty,
+                    let data = trimmed.data(using: .utf8),
+                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return false }
+                if let errorMessage = obj["error"] as? String {
+                    throw ProviderError.transient(provider: kind, status: 0, body: errorMessage)
+                }
+                let content = (obj["message"] as? [String: Any])?["content"] as? String ?? ""
+                let done = obj["done"] as? Bool ?? false
+                if done {
+                    yield(ChatStreamChunk(
+                        delta: content,
+                        finishReason: obj["done_reason"] as? String ?? "stop"
+                    ))
+                    return true
+                }
+                if !content.isEmpty {
+                    yield(ChatStreamChunk(delta: content))
+                }
+                return false
+            }
+        )
+    }
+
     private func resolveBaseURL() async -> URL {
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,

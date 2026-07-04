@@ -22,11 +22,39 @@ protocol ProviderAdapter: Sendable {
     ///   `X-Hermes-Session-Id` when non-nil. One-shot tool calls pass nil.
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata
+
+    /// P2 — per-token streaming counterpart to `chatCompletions`. Yields
+    /// deltas as the upstream produces them. Implementations MUST surface
+    /// pre-first-token failures as `ProviderError` thrown from the stream
+    /// so the dispatcher can fail over; after the first yielded chunk
+    /// errors terminate the stream without failover.
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
 
 extension ProviderAdapter {
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         return HermesChatTransportMetadata(data: data, headers: [:])
+    }
+
+    /// Default: buffer the full completion and emit it as one terminal
+    /// chunk. Preserves pre-P2 behaviour for adapters without native
+    /// streaming (e.g. `StubChatAdapter`).
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            do {
+                let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
+                continuation.yield(ChatStreamChunk(
+                    delta: ProviderStreamKit.extractContent(from: data),
+                    finishReason: "stop"
+                ))
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
     }
 }

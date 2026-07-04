@@ -107,6 +107,39 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         throw error
     }
 
+    // MARK: - Streaming (P2)
+
+    /// Native per-token SSE. Same endpoint + auth as the buffered path with
+    /// `"stream": true` set; every provider behind this adapter speaks the
+    /// standard OpenAI `chat.completion.chunk` framing.
+    func chatStream(payload: Data, sessionKey _: String, sessionID _: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let kind = kind
+        return ProviderStreamKit.run(
+            kind: kind,
+            framing: .sse,
+            logger: logger,
+            makeRequest: {
+                let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+                var headers: [(String, String)] = [("Accept", "text/event-stream")]
+                if !resolvedKey.isEmpty {
+                    headers.append(("Authorization", "Bearer \(resolvedKey)"))
+                }
+                if kind == .openRouter {
+                    headers.append(("HTTP-Referer", "https://luminavault.app"))
+                    headers.append(("X-Title", "LuminaVault"))
+                }
+                return ProviderStreamRequest(
+                    url: Self.endpoint(for: kind, baseURL: resolvedBaseURL),
+                    headers: headers,
+                    body: ProviderStreamKit.withStreamFlag(payload)
+                )
+            },
+            process: { record, yield in
+                try ProviderStreamKit.processOpenAIRecord(record, kind: kind, yield: yield)
+            }
+        )
+    }
+
     // MARK: - Credential resolution
 
     /// Resolve the credential + base URL for the current request. Pulls
@@ -221,6 +254,9 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         case .openai: URL(string: "https://api.openai.com")!
         case .openRouter: URL(string: "https://openrouter.ai/api")!
         case .nous: URL(string: "https://inference-api.nousresearch.com")!
+        // .custom has no default — the user's base URL is required and
+        // always resolved from `user_provider_credentials`. This sentinel
+        // only fires if a custom credential row lost its base URL.
         default: URL(string: "https://invalid.local")!
         }
     }

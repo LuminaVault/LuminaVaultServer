@@ -20,15 +20,39 @@ struct GeminiContentsAdapter: ProviderAdapter {
     private let apiKey: String
     private let session: URLSession
     private let logger: Logger
+    /// HER-252 / P2 — per-user credential resolver. Without it the adapter
+    /// only ever used the deployment env key, so a user's own Gemini BYOK
+    /// key was silently ignored.
+    private let userCredentials: UserCredentialStore?
 
     init(
         apiKey: String,
         session: URLSession = .shared,
-        logger: Logger
+        logger: Logger,
+        userCredentials: UserCredentialStore? = nil
     ) {
         self.apiKey = apiKey
         self.session = session
         self.logger = logger
+        self.userCredentials = userCredentials
+    }
+
+    /// Resolve the API key for the current request — the user's stored
+    /// Gemini credential when present, else the deployment env key.
+    private func resolveKey() async -> String {
+        guard let userCredentials,
+              let user = LLMRoutingContext.currentUser,
+              let tenantID = try? user.requireID()
+        else { return apiKey }
+        do {
+            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID),
+                  let key = creds.apiKey, !key.isEmpty
+            else { return apiKey }
+            return key
+        } catch {
+            logger.error("user credential lookup failed for gemini: \(error)")
+            return apiKey
+        }
     }
 
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
@@ -53,10 +77,11 @@ struct GeminiContentsAdapter: ProviderAdapter {
             )
         }
 
-        // 2. Extract model name and resolve Gemini endpoint
+        // 2. Extract model name and resolve Gemini endpoint (with the
+        // user's own key when they stored one — HER-252).
         let rawModel = openAI["model"] as? String ?? ""
         let geminiModel = resolveGeminiModel(from: rawModel)
-        let url = Self.makeURL(for: geminiModel, apiKey: apiKey)
+        let url = Self.makeURL(for: geminiModel, apiKey: await resolveKey())
 
         // 3. Translate messages → Gemini shape
         let translated = Self.translateToGemini(
@@ -215,6 +240,44 @@ struct GeminiContentsAdapter: ProviderAdapter {
         )
         let body = try JSONSerialization.data(withJSONObject: translated)
         return (makeStreamURL(for: model, apiKey: apiKey), body)
+    }
+
+    /// P2 — native per-token streaming. Reuses `makeStreamRequest` (same
+    /// translation pipeline as the buffered path) and `parseStreamObject`.
+    /// Gemini has no `[DONE]` sentinel; the terminal frame carries
+    /// `finishReason`, which we map to the OpenAI vocabulary.
+    func chatStream(payload: Data, sessionKey _: String, sessionID _: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        ProviderStreamKit.run(
+            kind: kind,
+            framing: .sse,
+            logger: logger,
+            makeRequest: {
+                let (url, body) = try Self.makeStreamRequest(payload: payload, apiKey: await self.resolveKey())
+                return ProviderStreamRequest(
+                    url: url,
+                    headers: [("Accept", "text/event-stream")],
+                    body: body
+                )
+            },
+            process: { record, yield in
+                for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
+                    let line = String(rawLine)
+                    guard line.hasPrefix("data:") else { continue }
+                    let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                    guard
+                        !payload.isEmpty,
+                        let data = payload.data(using: .utf8),
+                        let parsed = Self.parseStreamObject(data)
+                    else { continue }
+                    let finishReason = parsed.finishReason.map(Self.mapFinishReason)
+                    if !parsed.delta.isEmpty || finishReason != nil {
+                        yield(ChatStreamChunk(delta: parsed.delta, finishReason: finishReason))
+                    }
+                    if finishReason != nil { return true }
+                }
+                return false
+            }
+        )
     }
 
     /// Parse one Gemini SSE `data:` JSON object into a text delta +

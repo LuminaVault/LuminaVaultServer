@@ -146,6 +146,120 @@ struct RoutedLLMTransport: HermesChatTransport {
         )
     }
 
+    // MARK: - Streaming (P2)
+
+    /// Streaming counterpart to `chatCompletionsWithMetadata`. Walks the
+    /// same routing decision, but the failover window closes at the first
+    /// yielded chunk: before it, recoverable `ProviderError`s advance to
+    /// the next candidate exactly like the buffered path; after it, errors
+    /// terminate the stream (partial output already reached the client).
+    /// Usage metering is skipped — streamed responses don't reliably carry
+    /// usage blocks across providers.
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            let requestedModel = Self.extractModel(from: payload)
+            let user = await currentUser()
+            let decision = await router.pick(forModel: requestedModel, capability: capability, user: user)
+
+            var lastFailedCandidate: (route: ModelRoute, error: ProviderError)?
+            var sawUnclassifiedFailure = false
+            let userID: UUID? = (try? user?.requireID())
+            let source: ProviderFailoverNotice.TelemetrySource =
+                (LLMRoutingContext.currentResolution?.isUserOverride == true) ? .byo : .hosted
+
+            for candidate in decision.candidates {
+                guard let adapter = await registry.adapter(for: candidate.provider) else {
+                    logger.warning("router decision had unregistered provider: \(candidate.provider.rawValue)")
+                    continue
+                }
+                let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
+                var yieldedAny = false
+                do {
+                    for try await chunk in adapter.chatStream(
+                        payload: candidatePayload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID
+                    ) {
+                        if !yieldedAny {
+                            yieldedAny = true
+                            if let prior = lastFailedCandidate {
+                                publishFailover(
+                                    original: prior.route,
+                                    originalError: prior.error,
+                                    fallback: candidate,
+                                    tenantID: userID,
+                                    source: source
+                                )
+                            }
+                        }
+                        continuation.yield(chunk)
+                    }
+                    if yieldedAny {
+                        continuation.finish()
+                        return
+                    }
+                    // 2xx stream that produced zero chunks — treat like a
+                    // transient failure and try the next candidate.
+                    let empty = ProviderError.transient(provider: candidate.provider, status: 0, body: "empty stream")
+                    lastFailedCandidate = (candidate, empty)
+                    logger.warning("provider \(candidate.provider.rawValue) streamed no chunks; failing over")
+                    continue
+                } catch let providerError as ProviderError where providerError.isRecoverable && !yieldedAny {
+                    lastFailedCandidate = (candidate, providerError)
+                    logger.warning("provider \(candidate.provider.rawValue) stream failed (\(providerError.reasonCode)): \(providerError)")
+                    continue
+                } catch let providerError as ProviderError where !yieldedAny {
+                    logger.error("provider \(candidate.provider.rawValue) stream permanent: \(providerError)")
+                    UpstreamErrorTelemetry.record(reasonCode: providerError.reasonCode, provider: candidate.provider.rawValue)
+                    continuation.finish(throwing: UpstreamErrorResponse(
+                        reasonCode: providerError.reasonCode,
+                        userMessage: providerError.userMessage,
+                        retryAfterMs: Self.retryHint(for: providerError.reasonCode)
+                    ))
+                    return
+                } catch {
+                    if yieldedAny {
+                        // Mid-stream failure after partial output: no
+                        // failover — surface it so the client can retry.
+                        continuation.finish(throwing: error)
+                        return
+                    }
+                    sawUnclassifiedFailure = true
+                    logger.warning("provider \(candidate.provider.rawValue) stream unclassified error: \(error)")
+                    continue
+                }
+            }
+
+            logger.error("all providers exhausted for streaming decision \(decision.candidates)")
+            if let lastFailedCandidate {
+                UpstreamErrorTelemetry.record(
+                    reasonCode: lastFailedCandidate.error.reasonCode,
+                    provider: lastFailedCandidate.route.provider.rawValue
+                )
+                continuation.finish(throwing: UpstreamErrorResponse(
+                    reasonCode: lastFailedCandidate.error.reasonCode,
+                    userMessage: lastFailedCandidate.error.userMessage,
+                    retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode)
+                ))
+            } else if sawUnclassifiedFailure {
+                UpstreamErrorTelemetry.record(reasonCode: "upstream_error", provider: "unknown")
+                continuation.finish(throwing: UpstreamErrorResponse(
+                    reasonCode: "upstream_error",
+                    userMessage: "LLM upstream failed."
+                ))
+            } else {
+                UpstreamErrorTelemetry.record(reasonCode: "no_providers", provider: "n/a")
+                continuation.finish(throwing: UpstreamErrorResponse(
+                    reasonCode: "no_providers",
+                    userMessage: "No LLM provider available."
+                ))
+            }
+        }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
+    }
+
     /// HER-252 — publish a `ProviderFailoverNotice` to both the SSE sink
     /// (via task-local `FailoverNoticeContext`) and the persistent
     /// telemetry logger (if wired). Best-effort; never throws.

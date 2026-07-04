@@ -133,6 +133,57 @@ struct HermesGatewayAdapter: ProviderAdapter {
         throw error
     }
 
+    // MARK: - Streaming (P2)
+
+    /// Native per-token streaming against the gateway's OpenAI-compatible
+    /// `/v1/chat/completions` with `stream: true`. Honors the same
+    /// BYO-Hermes resolution override as the buffered path. No retry —
+    /// partial output may already have shipped.
+    func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let kind = kind
+        let baseURL = baseURL
+        let defaultAuthHeader = defaultAuthHeader
+        return ProviderStreamKit.run(
+            kind: kind,
+            framing: .sse,
+            logger: logger,
+            makeRequest: {
+                let resolution = LLMRoutingContext.currentResolution
+                let dispatchBaseURL: URL
+                let authHeader: String?
+                if let resolution, resolution.isUserOverride {
+                    dispatchBaseURL = resolution.baseURL
+                    authHeader = resolution.authHeader
+                } else {
+                    dispatchBaseURL = baseURL
+                    authHeader = defaultAuthHeader
+                }
+                let url = dispatchBaseURL
+                    .appendingPathComponent("v1")
+                    .appendingPathComponent("chat")
+                    .appendingPathComponent("completions")
+                var headers: [(String, String)] = [
+                    ("Accept", "text/event-stream"),
+                    ("X-Hermes-Session-Key", sessionKey),
+                ]
+                if let sessionID, !sessionID.isEmpty {
+                    headers.append(("X-Hermes-Session-Id", sessionID))
+                }
+                if let authHeader, !authHeader.isEmpty {
+                    headers.append(("Authorization", authHeader))
+                }
+                return ProviderStreamRequest(
+                    url: url,
+                    headers: headers,
+                    body: ProviderStreamKit.withStreamFlag(payload)
+                )
+            },
+            process: { record, yield in
+                try ProviderStreamKit.processOpenAIRecord(record, kind: kind, yield: yield)
+            }
+        )
+    }
+
     /// Cheap parse of the `stream` field from the chat-completions payload.
     /// Returns false (default) if unparseable.
     private static func isStreaming(payload: Data) -> Bool {

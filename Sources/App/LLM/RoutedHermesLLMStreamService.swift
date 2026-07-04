@@ -11,11 +11,11 @@ import NIOCore
 /// - **managed** → delegate to `fallback` (the central Hermes gateway,
 ///   `DefaultHermesLLMStreamService`). True token streaming + Hermes agentic
 ///   loop. Unchanged behaviour.
-/// - **byok** → call the non-streaming `RoutedLLMTransport`
-///   (`transport`) — which resolves the tenant's own provider key + model and
-///   fails over across their fallback chain — then emit the full reply as a
-///   single `ChatStreamChunk`. Reliable for every provider on day one; true
-///   per-token SSE per provider is a Phase 2 enhancement.
+/// - **byok** → `RoutedLLMTransport.chatStream` (P2) — resolves the
+///   tenant's own provider key + model, streams tokens natively per
+///   provider (OpenAI-compat SSE, Anthropic Messages SSE, Gemini
+///   `alt=sse`, Ollama NDJSON), and fails over across the fallback chain
+///   until the first token arrives.
 ///
 /// HER-37 left streaming on the gateway only, so the BYOK toggle changed only
 /// the non-streaming paths and chat silently used the managed model
@@ -48,13 +48,17 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     byokCounter.increment()
                     logger.info("chat stream routed to BYOK provider", metadata: ["model": .string(model)])
                     let payload = try Self.makeOpenAIPayload(model: model, request: request)
-                    let metadata = try await transport.chatCompletionsWithMetadata(
+                    // P2 — true per-token streaming. RoutedLLMTransport walks
+                    // the user's fallback chain and only fails over before
+                    // the first token; adapters without native streaming
+                    // fall back to a single terminal chunk (old behaviour).
+                    for try await chunk in transport.chatStream(
                         payload: payload,
                         sessionKey: sessionKey,
                         sessionID: sessionID
-                    )
-                    let text = Self.extractContent(from: metadata.data)
-                    continuation.yield(ChatStreamChunk(delta: text, finishReason: "stop"))
+                    ) {
+                        continuation.yield(chunk)
+                    }
                     continuation.finish()
                 } else {
                     for try await chunk in fallback.chatStream(

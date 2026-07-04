@@ -55,49 +55,8 @@ struct AnthropicAdapter: ProviderAdapter {
         sessionKey _: String,
         sessionID _: String?
     ) async throws -> HermesChatTransportMetadata {
-        // 1. Parse the inbound OpenAI payload.
-        guard
-            let openAI = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
-            let messages = openAI["messages"] as? [[String: Any]]
-        else {
-            throw ProviderError.permanent(
-                provider: kind,
-                status: 400,
-                body: "invalid OpenAI payload: cannot parse messages"
-            )
-        }
-
-        // 2. Translate to Anthropic shape.
-        var systemPrompt: String?
-        var anthropicMessages: [[String: Any]] = []
-        for message in messages {
-            let role = message["role"] as? String ?? "user"
-            let content = message["content"] as? String ?? ""
-            if role == "system" {
-                // Concatenate consecutive system messages on the boundary
-                // between OpenAI's permissive "system anywhere" model and
-                // Anthropic's single top-level `system` field.
-                systemPrompt = systemPrompt.map { "\($0)\n\n\(content)" } ?? content
-            } else {
-                anthropicMessages.append(["role": role, "content": content])
-            }
-        }
-
-        let model = (openAI["model"] as? String) ?? "claude-sonnet-4-6"
-        let temperature = (openAI["temperature"] as? Double) ?? 0.4
-        // Anthropic requires `max_tokens`; OpenAI treats it optional.
-        let maxTokens = (openAI["max_tokens"] as? Int) ?? 4096
-
-        var body: [String: Any] = [
-            "model": model,
-            "messages": anthropicMessages,
-            "max_tokens": maxTokens,
-            "temperature": temperature,
-        ]
-        if let systemPrompt {
-            body["system"] = systemPrompt
-        }
-
+        // 1–2. Translate the OpenAI payload to Anthropic Messages shape.
+        let (body, model) = try Self.translateRequest(payload: payload, stream: false)
         let bodyData: Data
         do {
             bodyData = try JSONSerialization.data(withJSONObject: body)
@@ -154,6 +113,130 @@ struct AnthropicAdapter: ProviderAdapter {
         let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
         logger.error("anthropic upstream \(error.reasonCode) status=\(status)")
         throw error
+    }
+
+    /// Translate an OpenAI chat-completions payload into an Anthropic
+    /// Messages v1 request body. Shared by the buffered and streaming
+    /// paths so request shaping stays in one place.
+    static func translateRequest(payload: Data, stream: Bool) throws -> (body: [String: Any], model: String) {
+        guard
+            let openAI = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+            let messages = openAI["messages"] as? [[String: Any]]
+        else {
+            throw ProviderError.permanent(
+                provider: .anthropic,
+                status: 400,
+                body: "invalid OpenAI payload: cannot parse messages"
+            )
+        }
+
+        var systemPrompt: String?
+        var anthropicMessages: [[String: Any]] = []
+        for message in messages {
+            let role = message["role"] as? String ?? "user"
+            let content = message["content"] as? String ?? ""
+            if role == "system" {
+                // Concatenate consecutive system messages on the boundary
+                // between OpenAI's permissive "system anywhere" model and
+                // Anthropic's single top-level `system` field.
+                systemPrompt = systemPrompt.map { "\($0)\n\n\(content)" } ?? content
+            } else {
+                anthropicMessages.append(["role": role, "content": content])
+            }
+        }
+
+        let model = (openAI["model"] as? String) ?? "claude-sonnet-4-6"
+        let temperature = (openAI["temperature"] as? Double) ?? 0.4
+        // Anthropic requires `max_tokens`; OpenAI treats it optional.
+        let maxTokens = (openAI["max_tokens"] as? Int) ?? 4096
+
+        var body: [String: Any] = [
+            "model": model,
+            "messages": anthropicMessages,
+            "max_tokens": maxTokens,
+            "temperature": temperature,
+        ]
+        if let systemPrompt {
+            body["system"] = systemPrompt
+        }
+        if stream {
+            body["stream"] = true
+        }
+        return (body, model)
+    }
+
+    // MARK: - Streaming (P2)
+
+    /// Native per-token streaming via the Anthropic Messages SSE protocol:
+    /// `content_block_delta` carries `delta.text`; `message_delta` carries
+    /// the terminal `stop_reason`; `message_stop` ends the stream.
+    func chatStream(payload: Data, sessionKey _: String, sessionID _: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        ProviderStreamKit.run(
+            kind: kind,
+            framing: .sse,
+            logger: logger,
+            makeRequest: {
+                let (body, _) = try Self.translateRequest(payload: payload, stream: true)
+                let bodyData = try JSONSerialization.data(withJSONObject: body)
+                let (resolvedKey, resolvedBaseURL) = await self.resolveCredentials()
+                return ProviderStreamRequest(
+                    url: resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages"),
+                    headers: [
+                        ("Accept", "text/event-stream"),
+                        ("x-api-key", resolvedKey),
+                        ("anthropic-version", Self.apiVersion),
+                    ],
+                    body: bodyData
+                )
+            },
+            process: { record, yield in
+                try Self.processStreamRecord(record, yield: yield)
+            }
+        )
+    }
+
+    /// Parse one Anthropic SSE record. Returns `true` on `message_stop`.
+    static func processStreamRecord(_ record: String, yield: (ChatStreamChunk) -> Void) throws -> Bool {
+        var eventName: String?
+        for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine)
+            if line.hasPrefix("event:") {
+                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard
+                !payload.isEmpty,
+                let data = payload.data(using: .utf8),
+                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            // The event type rides both the `event:` line and the JSON
+            // `type` field; prefer the line, fall back to the field.
+            switch eventName ?? (obj["type"] as? String ?? "") {
+            case "content_block_delta":
+                if let delta = obj["delta"] as? [String: Any],
+                   let text = delta["text"] as? String,
+                   !text.isEmpty {
+                    yield(ChatStreamChunk(delta: text))
+                }
+            case "message_delta":
+                // Terminal metadata frame; keep the raw stop_reason for
+                // consistency with the buffered path's translateResponse.
+                if let delta = obj["delta"] as? [String: Any],
+                   let stop = delta["stop_reason"] as? String {
+                    yield(ChatStreamChunk(delta: "", finishReason: stop))
+                }
+            case "message_stop":
+                return true
+            case "error":
+                let message = ((obj["error"] as? [String: Any])?["message"] as? String) ?? "anthropic stream error"
+                throw ProviderError.transient(provider: .anthropic, status: 0, body: message)
+            default:
+                break
+            }
+        }
+        return false
     }
 
     private func resolveCredentials() async -> (key: String, baseURL: URL) {
