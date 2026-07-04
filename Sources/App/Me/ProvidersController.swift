@@ -245,13 +245,13 @@ struct ProvidersController {
 
     // MARK: - GET /v1/me/providers/{provider}/models
 
-    /// Dynamic model listing. For OpenAI-compatible providers we fetch the
-    /// upstream `/v1/models` (using the user's stored key when present) so
-    /// the client picker stays current with rotating model lists (e.g. Nous
-    /// free models). Any failure — unsupported provider, no credential,
-    /// network, non-2xx, or unparseable body — falls back to the offline
-    /// `LLMModelCatalog` with `fetchedLive: false`. Never throws on the
-    /// fetch path: a stale upstream must not break the picker.
+    /// Dynamic model listing. OpenAI-compatible providers fetch the
+    /// upstream `/v1/models`; Anthropic and Gemini use their native
+    /// list-models endpoints (key required); Ollama lists `/api/tags` from
+    /// the user's configured host. Any failure — unsupported provider, no
+    /// credential, network, non-2xx, or unparseable body — falls back to
+    /// the offline `LLMModelCatalog` with `fetchedLive: false`. Never
+    /// throws on the fetch path: a stale upstream must not break the picker.
     @Sendable
     func models(_: Request, ctx: AppRequestContext) async throws -> ProviderModelsResponse {
         let tenantID = try ctx.requireTenantID()
@@ -266,35 +266,66 @@ struct ProvidersController {
             )
         }
 
-        // Only OpenAI-compatible providers expose a standard `/v1/models`.
-        // Anthropic / Gemini / Ollama keep the curated catalog.
-        guard [.xai, .nvidia, .openai, .openRouter, .nous].contains(kind) else {
-            return fallback()
-        }
+        // Providers with a standard OpenAI `/v1/models` listing.
+        let openAICompatible: Set<ProviderKind> = [.xai, .nvidia, .openai, .openRouter, .nous]
 
         // `try?` over a throwing `-> ResolvedCredential?` yields a double
         // optional; flatten with `?? nil`.
         let resolved = await (try? credentialStore.credential(for: kind, tenantID: tenantID)) ?? nil
         let key = resolved?.apiKey
-        let base = resolved?.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
-        let url = base.appendingPathComponent("v1").appendingPathComponent("models")
 
-        var req = URLRequest(url: url)
+        var req: URLRequest
+        let parse: @Sendable (Data) -> [LLMModelInfo]?
+        switch kind {
+        case _ where openAICompatible.contains(kind):
+            let base = resolved?.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
+            let url = base.appendingPathComponent("v1").appendingPathComponent("models")
+            req = URLRequest(url: url)
+            if let key, !key.isEmpty {
+                req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            if kind == .openRouter {
+                req.setValue("https://luminavault.app", forHTTPHeaderField: "HTTP-Referer")
+                req.setValue("LuminaVault", forHTTPHeaderField: "X-Title")
+            }
+            parse = Self.parseModels
+        case .anthropic:
+            // Anthropic's list endpoint rejects anonymous calls — without a
+            // stored key the curated catalog is the best we can do.
+            guard let key, !key.isEmpty,
+                  let url = URL(string: "https://api.anthropic.com/v1/models?limit=100")
+            else { return fallback() }
+            req = URLRequest(url: url)
+            req.setValue(key, forHTTPHeaderField: "x-api-key")
+            req.setValue(AnthropicAdapter.apiVersion, forHTTPHeaderField: "anthropic-version")
+            parse = Self.parseModels
+        case .gemini:
+            guard let key, !key.isEmpty else { return fallback() }
+            var comps = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models")!
+            comps.queryItems = [
+                URLQueryItem(name: "pageSize", value: "200"),
+                URLQueryItem(name: "key", value: key),
+            ]
+            guard let url = comps.url else { return fallback() }
+            req = URLRequest(url: url)
+            parse = Self.parseGeminiModels
+        case .ollama:
+            // Self-hosted: only list once the user configured a host URL.
+            // (Same server-side fetch surface the chat adapter already uses.)
+            guard let base = resolved?.baseURL else { return fallback() }
+            req = URLRequest(url: base.appendingPathComponent("api").appendingPathComponent("tags"))
+            parse = Self.parseOllamaModels
+        default:
+            return fallback()
+        }
         req.httpMethod = "GET"
         req.timeoutInterval = 8
-        if let key, !key.isEmpty {
-            req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        }
-        if kind == .openRouter {
-            req.setValue("https://luminavault.app", forHTTPHeaderField: "HTTP-Referer")
-            req.setValue("LuminaVault", forHTTPHeaderField: "X-Title")
-        }
 
         guard
             let (data, response) = try? await probeSession.data(for: req),
             let http = response as? HTTPURLResponse,
             (200 ..< 300).contains(http.statusCode),
-            let parsed = Self.parseModels(data)
+            let parsed = parse(data)
         else {
             return fallback()
         }
@@ -304,7 +335,8 @@ struct ProvidersController {
 
     /// Parse a standard OpenAI `/v1/models` body — `{ "data": [{ "id": …,
     /// "name": … }] }` — into `[LLMModelInfo]`. `name` is used for the label
-    /// when present (Nous supplies it), else the id is shown verbatim.
+    /// when present (Nous supplies it; Anthropic uses `display_name`), else
+    /// the id is shown verbatim.
     static func parseModels(_ data: Data) -> [LLMModelInfo]? {
         guard
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -312,10 +344,42 @@ struct ProvidersController {
         else { return nil }
         let models: [LLMModelInfo] = list.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-            let label = (entry["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id
+            let name = (entry["name"] as? String) ?? (entry["display_name"] as? String)
+            let label = name.flatMap { $0.isEmpty ? nil : $0 } ?? id
             return LLMModelInfo(id: id, displayName: label)
         }
         return models
+    }
+
+    /// Parse Gemini `ListModels` — `{ "models": [{ "name": "models/gemini-…",
+    /// "displayName": …, "supportedGenerationMethods": […] }] }`. Only chat
+    /// models (`generateContent`) are surfaced; the `models/` prefix is
+    /// stripped so ids match the offline catalog and the chat adapter.
+    static func parseGeminiModels(_ data: Data) -> [LLMModelInfo]? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let list = root["models"] as? [[String: Any]]
+        else { return nil }
+        return list.compactMap { entry in
+            guard var id = entry["name"] as? String, !id.isEmpty else { return nil }
+            if let methods = entry["supportedGenerationMethods"] as? [String],
+               !methods.contains("generateContent") { return nil }
+            if id.hasPrefix("models/") { id = String(id.dropFirst("models/".count)) }
+            let label = (entry["displayName"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id
+            return LLMModelInfo(id: id, displayName: label)
+        }
+    }
+
+    /// Parse Ollama `/api/tags` — `{ "models": [{ "name": "llama3:8b", … }] }`.
+    static func parseOllamaModels(_ data: Data) -> [LLMModelInfo]? {
+        guard
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let list = root["models"] as? [[String: Any]]
+        else { return nil }
+        return list.compactMap { entry in
+            guard let id = entry["name"] as? String, !id.isEmpty else { return nil }
+            return LLMModelInfo(id: id, displayName: id)
+        }
     }
 
     // MARK: - Helpers

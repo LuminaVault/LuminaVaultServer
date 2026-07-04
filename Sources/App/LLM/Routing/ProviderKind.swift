@@ -63,6 +63,6 @@ extension ProviderKind {
     /// default for free-tier users) and not exposed in the iOS providers
     /// pane / LLM preferences UI.
     static let userCredentialTargets: Set<ProviderKind> = [
-        .xai, .anthropic, .openai, .openRouter, .ollama, .nvidia, .nous,
+        .xai, .anthropic, .openai, .gemini, .openRouter, .ollama, .nvidia, .nous,
     ]
 }
