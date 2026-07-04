@@ -41,6 +41,13 @@ enum ProviderKind: String, Hashable, CaseIterable, Codable {
     /// the container-scoped Nous OAuth flow routed via `.hermesGateway`.
     case nous
 
+    /// P2 — generic OpenAI-compatible endpoint. User supplies base URL +
+    /// optional key; routed via the OpenAI-compatible adapter. Covers
+    /// Groq, Together, LM Studio, vLLM, LiteLLM, llama.cpp server. Because
+    /// self-hosted instances often live on private/LAN addresses, its
+    /// SSRF policy is opt-in per credential (see ProvidersController).
+    case custom
+
     /// HER-164 — hosting / weight-origin region tag used by the privacy
     /// filter to exclude `.cn` providers when `privacy_no_cn_origin=true`.
     /// `deepseek` (non-direct) and `deepseekDirect` are both Chinese-hosted
@@ -63,6 +70,6 @@ extension ProviderKind {
     /// default for free-tier users) and not exposed in the iOS providers
     /// pane / LLM preferences UI.
     static let userCredentialTargets: Set<ProviderKind> = [
-        .xai, .anthropic, .openai, .gemini, .openRouter, .ollama, .nvidia, .nous,
+        .xai, .anthropic, .openai, .gemini, .openRouter, .ollama, .nvidia, .nous, .custom,
     ]
 }

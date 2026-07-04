@@ -70,6 +70,7 @@ extension ProviderKind {
         case .ollama: .ollama
         case .gemini: .gemini
         case .nous: .nous
+        case .custom: .custom
         default: nil
         }
     }

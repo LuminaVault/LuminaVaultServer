@@ -214,6 +214,31 @@ struct ProvidersController {
             throw HTTPError(.badRequest, message: TestError.noCredential.rawValue)
         }
 
+        // Generic OpenAI-compatible endpoints have no known model to ping,
+        // so validate reachability + auth via GET <base>/v1/models. A
+        // non-empty parsed list (or any 2xx) proves the credential works.
+        if providerID == .custom {
+            guard let base = resolved.baseURL else {
+                throw HTTPError(.badRequest, message: TestError.noCredential.rawValue)
+            }
+            var req = URLRequest(url: base.appendingPathComponent("v1").appendingPathComponent("models"))
+            req.httpMethod = "GET"
+            req.timeoutInterval = 8
+            if let key = resolved.apiKey, !key.isEmpty {
+                req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            guard
+                let (_, response) = try? await probeSession.data(for: req),
+                let http = response as? HTTPURLResponse,
+                (200 ..< 300).contains(http.statusCode)
+            else {
+                try? await credentialStore.recordFailure(tenantID: tenantID, provider: kind, code: TestError.network.rawValue)
+                throw HTTPError(.badGateway, message: TestError.network.rawValue)
+            }
+            try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
+            return ProviderTestResponse(verifiedAt: Date(), model: nil)
+        }
+
         // Build a one-off adapter using the user's resolved creds and
         // send a `max_tokens: 1` ping. Reuses ProviderErrorClassifier so
         // mapping to a stable code is consistent with the runtime path.
@@ -267,7 +292,7 @@ struct ProvidersController {
         }
 
         // Providers with a standard OpenAI `/v1/models` listing.
-        let openAICompatible: Set<ProviderKind> = [.xai, .nvidia, .openai, .openRouter, .nous]
+        let openAICompatible: Set<ProviderKind> = [.xai, .nvidia, .openai, .openRouter, .nous, .custom]
 
         // `try?` over a throwing `-> ResolvedCredential?` yields a double
         // optional; flatten with `?? nil`.
@@ -405,13 +430,16 @@ struct ProvidersController {
         case .openRouter: .openRouter
         case .gemini: .gemini
         case .nous: .nous
+        case .custom: .custom
         }
     }
 
     private func defaultKind(for id: ProviderID) -> ProviderCredentialKind {
         switch id {
         case .xai, .nvidia, .anthropic, .openai, .openRouter, .gemini, .nous: .apiKey
-        case .ollama: .hostURL
+        // Both self-hosted: base URL required; key optional (custom may
+        // still carry one for gated proxies like Groq/Together).
+        case .ollama, .custom: .hostURL
         }
     }
 
@@ -424,7 +452,7 @@ struct ProvidersController {
         case .ollama:
             let base = resolved.baseURL ?? URL(string: "http://localhost:11434")!
             return OllamaAdapter(defaultBaseURL: base, session: probeSession, logger: logger)
-        case .xai, .nvidia, .openai, .openRouter, .nous:
+        case .xai, .nvidia, .openai, .openRouter, .nous, .custom:
             let base = resolved.baseURL ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             return OpenAICompatibleAdapter(kind: kind, apiKey: key, baseURL: base, session: probeSession, logger: logger)
         case .gemini:
@@ -456,6 +484,10 @@ struct ProvidersController {
         case .ollama: "llama3.1"
         case .gemini: "gemini-2.5-flash"
         case .nous: "stepfun/step-3.7-flash:free"
+        // Generic endpoint: model is user-specific and unknown here. The
+        // /test path validates custom via GET <base>/v1/models instead of
+        // a chat ping (see `test`), so this value is only a placeholder.
+        case .custom: ""
         }
         return [
             "model": model,

@@ -167,6 +167,7 @@ extension ProviderKind {
         case .xai: "Grok"
         case .nvidia: "NVIDIA NIM"
         case .nous: "Nous"
+        case .custom: "Custom"
         }
     }
 }
