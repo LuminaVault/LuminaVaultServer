@@ -44,9 +44,13 @@ jobs:
       - name: SwiftFormat
         run: swiftformat --lint . --reporter github-actions-log
       - name: Install SwiftLint (pinned 0.63.3)
-        run: brew install swiftlint
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/swiftlint.zip \
+            "https://github.com/realm/SwiftLint/releases/download/0.63.3/portable_swiftlint.zip"
+          unzip -o /tmp/swiftlint.zip -d /tmp/swiftlint
       - name: SwiftLint
-        run: swiftlint lint --reporter github-actions-logging
+        run: /tmp/swiftlint/swiftlint lint --reporter github-actions-logging
 
   test-unit:
     name: Unit Tests
@@ -78,7 +82,9 @@ jobs:
           # IntegrationDatabaseTrait skips test bodies when this is set,
           # replacing the unsupported `swift test --skip-tags` CLI flag.
           SKIP_INTEGRATION_TESTS: "1"
-        run: swift test -c debug --parallel --skip-build
+        # ci-test-wrapper tolerates the HER-310 teardown SIGILL only when the
+        # xunit report proves a clean run — real failures still fail the job.
+        run: bash scripts/ci-test-wrapper.sh .build/xunit-unit.xml -c debug --parallel --skip-build
 
   test-integration:
     name: Integration Tests
@@ -134,7 +140,7 @@ jobs:
           LOG_LEVEL: error
         # One serial migrate of `hermes_test`; per-suite clones use it as a
         # template so parallel integration boots skip redundant migration work.
-        run: swift test --filter M00EnableExtensionsTests --no-parallel
+        run: bash scripts/ci-test-wrapper.sh .build/xunit-prime.xml --filter M00EnableExtensionsTests --no-parallel
 
       - name: Run integration tests (parallel, per-suite DB)
         env:
@@ -149,7 +155,7 @@ jobs:
           # Non-integration suites carry `.skipInIntegrationJob` so this job
           # only executes Postgres-backed tests (already run in test-unit).
           RUN_INTEGRATION_ONLY: "1"
-        run: swift test --parallel --enable-code-coverage
+        run: bash scripts/ci-test-wrapper.sh .build/xunit-integration.xml --parallel --enable-code-coverage
 
       - name: Export coverage to lcov
         if: always()
