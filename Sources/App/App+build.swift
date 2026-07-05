@@ -464,6 +464,7 @@ func buildRouter(
     // is fine for single-process; Redis seam reserved for multi-replica.
     let rateLimitStorage = makeRateLimitStorage(
         kind: services.rateLimitStorageKind,
+        isProduction: reader.string(forKey: "lv.environment", default: "dev") != "dev",
         logger: Logger(label: "lv.ratelimit")
     )
     AuthController(
@@ -572,6 +573,16 @@ func buildRouter(
     // profile so a missing key cannot silently degrade prod to
     // unauthenticated traffic.
     let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
+    // Audit S3 — an empty `cors.allowedOrigins` falls back to `CORSMiddleware(.all)`
+    // (see the CORS block above), which is only safe for localhost dev. Refuse to
+    // boot a non-dev environment with no origin allowlist so a misconfigured deploy
+    // can't silently accept cross-origin requests from anywhere.
+    if lvEnvironment != "dev", services.corsAllowedOrigins.isEmpty {
+        fatalError(
+            "cors.allowedOrigins must be set when LV_ENVIRONMENT=\(lvEnvironment) "
+                + "(empty falls back to allow-all CORS). Set CORS_ALLOWEDORIGINS to your web origin(s)."
+        )
+    }
     if services.hermesAPIKey.isEmpty {
         if lvEnvironment != "dev" {
             fatalError(
@@ -594,12 +605,24 @@ func buildRouter(
     let secretMasterKey = reader.string(forKey: "lv.secretMasterKey", default: legacySecretMasterKey)
     let byoHermesAllowPrivate = reader.string(forKey: "byoHermes.allowPrivate", default: "false")
         .lowercased() == "true"
-    // BYO_HERMES_REQUIRE_HTTPS — default false. When false, self-hosters may
-    // point at a plain-http / bare-IP Hermes (plaintext auth header; the iOS
-    // client warns). Set true to force TLS. Private-range SSRF blocks apply
+    // BYO_HERMES_REQUIRE_HTTPS — audit S2: defaults to TRUE outside dev so a prod
+    // tenant can't silently send its bearer/auth header to a plain-http Hermes.
+    // Dev still defaults false for localhost/bare-IP convenience. Operators can
+    // override either way with the env var. Private-range SSRF blocks apply
     // regardless (see `byoHermesAllowPrivate`).
-    let byoHermesRequireHttps = reader.string(forKey: "byoHermes.requireHttps", default: "false")
-        .lowercased() == "true"
+    let byoHermesRequireHttps = reader.string(
+        forKey: "byoHermes.requireHttps",
+        default: lvEnvironment == "dev" ? "false" : "true"
+    ).lowercased() == "true"
+    // BYO_HERMES_ALLOW_TAILNET_HTTP — waives requireHttps for endpoints whose
+    // every resolved address is a Tailscale one (100.64.0.0/10 or
+    // fd7a:115c:a1e0::/48; WireGuard already encrypts the link) and exempts
+    // Tailscale IPv6 from the fc00::/7 block. Default true: a tailnet target
+    // is only reachable if this server was deliberately joined to it.
+    let byoHermesAllowTailnetHttp = reader.string(
+        forKey: "byoHermes.allowTailnetHttp",
+        default: "true"
+    ).lowercased() == "true"
     var byoHermesController: HermesConfigController?
     var byoHermesMiddleware: HermesResolutionMiddleware?
     // P3 — BYO-Hermes capabilities probe (feature-detect the remote box's
@@ -666,7 +689,8 @@ func buildRouter(
             )
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: byoHermesAllowPrivate,
-                requireHTTPS: byoHermesRequireHttps
+                requireHTTPS: byoHermesRequireHttps,
+                allowTailnetHTTP: byoHermesAllowTailnetHttp
             )
             byoHermesController = HermesConfigController(
                 fluent: services.fluent,
@@ -1542,6 +1566,7 @@ func buildRouter(
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
     let queryWithByo = byoHermesMiddleware.map { queryBase.add(middleware: $0) } ?? queryBase
     let queryGroup = queryWithByo
+        .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     queryController.addRoutes(to: queryGroup)
 
@@ -1580,6 +1605,7 @@ func buildRouter(
     // so the session-key prefix can pick up the resolved Hermes profile.
     let conversationsGroup = conversationsWithByo
         .add(middleware: hermesProfileMiddleware)
+        .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     conversationController.addRoutes(to: conversationsGroup)
 

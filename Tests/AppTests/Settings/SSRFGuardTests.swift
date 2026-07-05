@@ -267,6 +267,135 @@ struct SSRFGuardTests {
         #expect(url.host == "127.0.0.1")
     }
 
+    // MARK: - Tailnet carve-out
+
+    @Test
+    func `allows http to tailscale IPv4 despite requireHTTPS`() async throws {
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: StubResolver(answers: ["hermes-vps.tail562587.ts.net": ["100.102.137.69"]])
+        )
+        let url = try await guardian.validate(rawURL: "http://hermes-vps.tail562587.ts.net:8642")
+        #expect(url.host == "hermes-vps.tail562587.ts.net")
+    }
+
+    @Test
+    func `allows tailscale MagicDNS dual-stack answer over http and https`() async throws {
+        // MagicDNS returns both A (100.64/10) and AAAA (fd7a:115c:a1e0::/48).
+        // The AAAA sits inside fc00::/7 and must not trip the unique-local block.
+        let resolver = StubResolver(answers: [
+            "hermes-vps.tail562587.ts.net": ["100.102.137.69", "fd7a:115c:a1e0::6f01:89b5"],
+        ])
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: resolver
+        )
+        _ = try await guardian.validate(rawURL: "http://hermes-vps.tail562587.ts.net:8642")
+        _ = try await guardian.validate(rawURL: "https://hermes-vps.tail562587.ts.net:8642")
+    }
+
+    @Test
+    func `still rejects http to public host when requireHTTPS with carve-out on`() async {
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: StubResolver(answers: ["example.com": ["93.184.216.34"]])
+        )
+        await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
+            _ = try await guardian.validate(rawURL: "http://example.com")
+        }
+    }
+
+    @Test
+    func `rejects http when host resolves to mixed tailnet and public`() async {
+        // A rebinding name must not smuggle plain http out of the tunnel:
+        // EVERY resolved address has to be a Tailscale one.
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: StubResolver(answers: ["evil.com": ["100.102.137.69", "93.184.216.34"]])
+        )
+        await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
+            _ = try await guardian.validate(rawURL: "http://evil.com")
+        }
+    }
+
+    @Test
+    func `carve-out disabled restores strict requireHTTPS`() async {
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: false,
+            resolver: StubResolver(answers: ["hermes-vps.tail562587.ts.net": ["100.102.137.69"]])
+        )
+        await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
+            _ = try await guardian.validate(rawURL: "http://hermes-vps.tail562587.ts.net:8642")
+        }
+    }
+
+    @Test
+    func `carve-out disabled rejects tailscale IPv6 as unique-local`() async {
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: false,
+            allowTailnetHTTP: false,
+            resolver: StubResolver(answers: ["hermes-vps.tail562587.ts.net": ["fd7a:115c:a1e0::6f01:89b5"]])
+        )
+        await #expect(throws: SSRFGuard.Rejection.privateAddress("fd7a:115c:a1e0::6f01:89b5")) {
+            _ = try await guardian.validate(rawURL: "https://hermes-vps.tail562587.ts.net")
+        }
+    }
+
+    @Test
+    func `http to loopback literal stays rejected under requireHTTPS even with private ranges open`() async {
+        // Deferred http check: loopback is never a tailnet address, so the
+        // scheme rejection fires before the allowPrivateRanges early-return.
+        let guardian = SSRFGuard(
+            allowPrivateRanges: true,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: StubResolver(answers: ["127.0.0.1": ["127.0.0.1"]])
+        )
+        await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
+            _ = try await guardian.validate(rawURL: "http://127.0.0.1")
+        }
+    }
+
+    @Test
+    func `rebinding away from tailnet re-rejects http on next call`() async throws {
+        let resolver = StubResolver(answers: ["ts-name.ts.net": ["100.100.1.1"]])
+        let guardian = SSRFGuard(
+            allowPrivateRanges: false,
+            requireHTTPS: true,
+            allowTailnetHTTP: true,
+            resolver: resolver
+        )
+        _ = try await guardian.validate(rawURL: "http://ts-name.ts.net")
+
+        resolver.answers["ts-name.ts.net"] = ["93.184.216.34"]
+        await #expect(throws: SSRFGuard.Rejection.schemeNotAllowed("http")) {
+            _ = try await guardian.validate(rawURL: "http://ts-name.ts.net")
+        }
+    }
+
+    @Test
+    func `isTailscale classifies ranges correctly`() {
+        #expect(SSRFGuard.isTailscale("100.64.0.1"))
+        #expect(SSRFGuard.isTailscale("100.102.137.69"))
+        #expect(SSRFGuard.isTailscale("100.127.255.255"))
+        #expect(!SSRFGuard.isTailscale("100.63.255.255"))
+        #expect(!SSRFGuard.isTailscale("100.128.0.1"))
+        #expect(SSRFGuard.isTailscale("fd7a:115c:a1e0::6f01:89b5"))
+        #expect(!SSRFGuard.isTailscale("fd00::1"))
+        #expect(!SSRFGuard.isTailscale("93.184.216.34"))
+    }
+
     // MARK: - Static helper coverage
 
     @Test

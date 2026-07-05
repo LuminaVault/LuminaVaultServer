@@ -52,6 +52,20 @@ struct SSRFGuard {
     /// link-local/metadata targets stay blocked regardless of scheme.
     let requireHTTPS: Bool
 
+    /// Tailnet carve-out (`BYO_HERMES_ALLOW_TAILNET_HTTP`, default `true`).
+    /// Tailscale endpoints (IPv4 100.64.0.0/10, IPv6 fd7a:115c:a1e0::/48)
+    /// ride an authenticated WireGuard tunnel, so `http://` there is not
+    /// plaintext on the wire. When `true`:
+    ///   - `requireHTTPS` is waived for hosts whose *every* resolved
+    ///     address is a Tailscale address (mixed tailnet+public answers
+    ///     stay rejected — a rebinding name must not smuggle http out).
+    ///   - Tailscale IPv6 addresses are exempt from the fc00::/7
+    ///     unique-local block (they'd otherwise fail even over https).
+    /// A tailnet target is only reachable if the operator deliberately
+    /// joined this server to that tailnet; for everyone else it's
+    /// unroutable, so the default-open stance doesn't widen SSRF reach.
+    let allowTailnetHTTP: Bool
+
     /// Resolves hostnames to IP literals. Tests inject a stub; prod uses
     /// the default `getaddrinfo`-backed implementation.
     let resolver: any HostResolver
@@ -59,10 +73,12 @@ struct SSRFGuard {
     init(
         allowPrivateRanges: Bool,
         requireHTTPS: Bool,
+        allowTailnetHTTP: Bool = true,
         resolver: any HostResolver = SystemHostResolver()
     ) {
         self.allowPrivateRanges = allowPrivateRanges
         self.requireHTTPS = requireHTTPS
+        self.allowTailnetHTTP = allowTailnetHTTP
         self.resolver = resolver
     }
 
@@ -77,12 +93,19 @@ struct SSRFGuard {
         guard let scheme = url.scheme?.lowercased() else {
             throw Rejection.schemeNotAllowed("")
         }
+        // `http` under `requireHTTPS` isn't rejected here: the tailnet
+        // carve-out needs the resolved addresses first. Deferred to after
+        // resolution below.
+        var httpPendingTailnetCheck = false
         switch scheme {
         case "https":
             break
         case "http":
             if requireHTTPS {
-                throw Rejection.schemeNotAllowed(scheme)
+                guard allowTailnetHTTP else {
+                    throw Rejection.schemeNotAllowed(scheme)
+                }
+                httpPendingTailnetCheck = true
             }
         default:
             throw Rejection.schemeNotAllowed(scheme)
@@ -91,6 +114,9 @@ struct SSRFGuard {
             throw Rejection.hostMissing
         }
         if Self.isHostnameLoopbackLiteral(host) {
+            // Loopback is never a tailnet address, so the deferred http
+            // rejection fires even when private ranges are open.
+            if httpPendingTailnetCheck { throw Rejection.schemeNotAllowed(scheme) }
             if allowPrivateRanges { return url }
             throw Rejection.loopback(host)
         }
@@ -98,6 +124,9 @@ struct SSRFGuard {
         let addresses = try await resolver.resolve(host: host)
         guard !addresses.isEmpty else {
             throw Rejection.unresolvable(host)
+        }
+        if httpPendingTailnetCheck, !addresses.allSatisfy(Self.isTailscale) {
+            throw Rejection.schemeNotAllowed(scheme)
         }
         for ip in addresses {
             try classify(ip: ip)
@@ -115,6 +144,10 @@ struct SSRFGuard {
             if allowPrivateRanges { return }
             throw Rejection.linkLocal(ip)
         }
+        // Tailscale IPv6 sits inside fc00::/7, so this exemption must run
+        // before the unique-local block or MagicDNS AAAA answers fail
+        // validation even over https.
+        if Self.isTailscale(ip), allowTailnetHTTP { return }
         if Self.isPrivate(ip) {
             if allowPrivateRanges { return }
             throw Rejection.privateAddress(ip)
@@ -147,6 +180,16 @@ struct SSRFGuard {
         let lower = ip.lowercased()
         if lower.hasPrefix("fe80:") || lower.hasPrefix("fe80::") { return true }
         return false
+    }
+
+    /// Tailscale addresses: IPv4 CGNAT 100.64.0.0/10 (Tailscale assigns
+    /// every node from this block) and IPv6 fd7a:115c:a1e0::/48
+    /// (Tailscale's fixed ULA prefix).
+    static func isTailscale(_ ip: String) -> Bool {
+        if let v4 = parseIPv4(ip) {
+            return v4.0 == 100 && (64 ... 127).contains(v4.1)
+        }
+        return ip.lowercased().hasPrefix("fd7a:115c:a1e0:")
     }
 
     static func isPrivate(_ ip: String) -> Bool {

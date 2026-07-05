@@ -25,7 +25,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
-        .package(url: "https://github.com/swift-server/swift-webauthn.git", from: "1.0.0-alpha.2"),
+        // Audit S6 — pre-release dep in the auth path: pin EXACT so a future
+        // breaking pre-release can't drift in silently on resolve. Gated behind
+        // `webauthn.enabled` (default false); revisit when a stable 1.0 ships.
+        .package(url: "https://github.com/swift-server/swift-webauthn.git", exact: "1.0.0-beta.1"),
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
         .package(url: "https://github.com/slashmo/swift-otel.git", from: "0.10.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),

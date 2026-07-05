@@ -96,6 +96,13 @@ extension RateLimitPolicy {
     /// burn the shared per-IP bucket for everyone behind the same NAT, while
     /// still degrading gracefully if the route is ever called unauth'd.
     static let chatByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// Audit S9 — `/v1/query` runs the retrieval + agent loop (embedding lookup
+    /// + one-or-more Hermes/LLM calls) per request. Previously uncapped → a
+    /// single account could drive unbounded Mtok cost / DoS. Same budget as chat.
+    static let queryByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// Audit S9 — `/v1/conversations` is the multi-turn chat pipeline (same
+    /// retrieval + streaming cost as chat). Previously uncapped.
+    static let conversationByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
     static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
     /// HER-240 / spec ticket #2: identical policy to kbCompileByUser, exposed
     /// under the new memory-compile name. Both coexist until the legacy
