@@ -1,4 +1,4 @@
-.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-sync-context hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill deploy deploy-dispatch deploy-watch deploy-status deploy-logs
+.PHONY: setup migrate dev-up dev-down dev-logs test build-image setup-hermes hermes-bootstrap hermes-sync-context hermes-image hermes-reprovision clean lint help bruno-regen backup-image backup-now backup-restore backup-drill deploy deploy-dispatch deploy-bypass deploy-watch deploy-status deploy-logs
 
 # Variables
 DOCKER_COMPOSE = docker compose
@@ -129,9 +129,13 @@ REPO ?= LuminaVault/LuminaVaultServer
 
 deploy: deploy-dispatch deploy-watch ## Dispatch a production deploy and stream the run until it finishes
 
-deploy-dispatch: ## Trigger the production Deploy workflow (prod.yml) on main
+deploy-dispatch: ## Trigger the production Deploy workflow (prod.yml) on main (gated: main's check runs must be green)
 	gh workflow run prod.yml --repo $(REPO)
 	@echo "✓ deploy dispatched — run 'make deploy-watch' to follow"
+
+deploy-bypass: ## Deploy WITHOUT the CI gate (rollback/redeploy only — think twice)
+	gh workflow run prod.yml --repo $(REPO) -f confirm_ci_bypass=I-know-CI-did-not-run
+	@echo "⚠ deploy dispatched with CI gate bypassed — run 'make deploy-watch' to follow"
 
 deploy-watch: ## Watch the most recent Deploy workflow run live
 	@run_id=$$(gh run list --repo $(REPO) --workflow prod.yml --limit 1 --json databaseId --jq '.[0].databaseId'); \

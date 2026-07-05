@@ -3,23 +3,63 @@ name: Deploy
 # HER-272: deploy is gated on CI. It only runs after the `CI` workflow
 # completes successfully on `main` (via `workflow_run`), so a failing
 # `test` or `lint` job blocks the deploy. `workflow_dispatch` stays for
-# manual redeploys / rollbacks.
+# manual redeploys / rollbacks, but the `gate` job verifies the commit's
+# check runs unless the bypass phrase is typed explicitly.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm_ci_bypass:
+        description: >-
+          Leave empty to deploy only if this commit's CI checks passed.
+          Type "I-know-CI-did-not-run" to bypass (rollback/redeploy only).
+        required: false
+        default: ""
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  gate:
+    name: Verify CI gate
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Verify CI status for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONFIRM: ${{ inputs.confirm_ci_bypass }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" = "I-know-CI-did-not-run" ]; then
+            echo "::warning::CI gate explicitly bypassed for ${SHA} (rollback/redeploy path)"
+            exit 0
+          fi
+          runs=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" --paginate \
+            --jq '.check_runs[] | "\(.name)|\(.status)|\(.conclusion)"')
+          if [ -z "$runs" ]; then
+            echo "::error::No check runs found for ${SHA}. Wait for CI or type the bypass phrase."
+            exit 1
+          fi
+          echo "$runs"
+          bad=$(echo "$runs" | awk -F'|' '$2 != "completed" || ($3 != "success" && $3 != "skipped" && $3 != "neutral")' | wc -l)
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::CI checks for ${SHA} are not all green. Deploy blocked."
+            exit 1
+          fi
+          echo "All check runs green for ${SHA}."
+
   build:
     name: Build & Push Image
     runs-on: ubuntu-latest
-    # Only build/deploy when CI passed (or on a manual dispatch).
+    needs: gate
+    # Only build/deploy when CI passed (or on a verified/confirmed dispatch).
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
