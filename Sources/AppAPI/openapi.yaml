@@ -1066,6 +1066,29 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/me/hermes/capabilities:
+    get:
+      tags: [Settings]
+      operationId: hermesCapabilitiesGet
+      summary: What the tenant's connected Hermes exposes, per settings domain (P3).
+      description: |
+        Managed tenants report every domain as `managed`. BYO-Hermes tenants
+        get a cached probe of their remote `api_server` (`/v1/capabilities`
+        + `/api/jobs`), mapping each domain to `live` / `read_only` /
+        `unsupported` so clients can gate panes. Pass `?refresh=true` to
+        force a re-probe past the cache TTL.
+      parameters:
+        - name: refresh
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Capabilities view.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesCapabilitiesResponse' }
+
   # ─────────── Me — External LLM provider credentials (HER-252) ──────────
 
   /v1/me/providers:
@@ -5158,6 +5181,37 @@ components:
         projectID: { type: string, format: uuid }
 
     # ── BYO Hermes ──
+
+    HermesDomainAvailability:
+      type: string
+      enum: [live, read_only, unsupported, managed]
+      description: |
+        Availability of a settings domain against the connected Hermes.
+        `live` = read/write the remote box; `read_only` = display only;
+        `unsupported` = remote doesn't expose it; `managed` = owned by the
+        LuminaVault-managed container (tenant not on BYO Hermes).
+
+    HermesCapabilities:
+      type: object
+      required: [isUserOverride, chat, sessions, jobs, skills, soul, gateways, memory, providers]
+      properties:
+        isUserOverride: { type: boolean }
+        remoteVersion: { type: string }
+        chat: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        sessions: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        jobs: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        skills: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        soul: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        gateways: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        memory: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        providers: { $ref: '#/components/schemas/HermesDomainAvailability' }
+
+    HermesCapabilitiesResponse:
+      type: object
+      required: [capabilities]
+      properties:
+        capabilities: { $ref: '#/components/schemas/HermesCapabilities' }
+        checkedAt: { type: string, format: date-time }
 
     HermesConfigGetResponse:
       type: object

@@ -602,6 +602,9 @@ func buildRouter(
         .lowercased() == "true"
     var byoHermesController: HermesConfigController?
     var byoHermesMiddleware: HermesResolutionMiddleware?
+    // P3 — BYO-Hermes capabilities probe (feature-detect the remote box's
+    // /v1/capabilities so clients can gate panes live/read-only/unsupported).
+    var hermesCapabilitiesService: HermesRemoteCapabilitiesService?
     // HER-252 — captured from the same SecretBox the BYO Hermes flow
     // builds so the new per-user provider credential surface can reuse
     // the AES-GCM helper without a second master-key load.
@@ -681,6 +684,12 @@ func buildRouter(
             )
             byoHermesMiddleware = HermesResolutionMiddleware(
                 resolver: resolver,
+                logger: byoHermesLogger
+            )
+            hermesCapabilitiesService = HermesRemoteCapabilitiesService(
+                fluent: services.fluent,
+                resolver: resolver,
+                probeSession: BYOHTTP.session,
                 logger: byoHermesLogger
             )
             let xaiLogger = Logger(label: "lv.xai-oauth")
@@ -1816,7 +1825,12 @@ func buildRouter(
     }
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
-    let soulController = SoulController(service: soulService, telemetry: soulTelemetry, achievements: achievementsWorker)
+    let soulController = SoulController(
+        service: soulService,
+        telemetry: soulTelemetry,
+        achievements: achievementsWorker,
+        capabilities: hermesCapabilitiesService
+    )
     let soulGroup = router.group("/v1/soul")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .soulByUser, storage: rateLimitStorage))
@@ -2149,6 +2163,15 @@ func buildRouter(
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         byoHermesController.addRoutes(to: settingsHermesGroup)
+    }
+
+    // P3 — /v1/me/hermes/capabilities: feature-detect the connected Hermes
+    // so clients gate each settings pane (live / read-only / unsupported).
+    if let hermesCapabilitiesService {
+        let capabilitiesGroup = router.group("/v1/me/hermes/capabilities")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        HermesCapabilitiesController(service: hermesCapabilitiesService).addRoutes(to: capabilitiesGroup)
     }
 
     // HER-252 — /v1/me/providers (CRUD + test) and /v1/me/preferences/llm

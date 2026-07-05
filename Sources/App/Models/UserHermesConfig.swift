@@ -28,6 +28,11 @@ final class UserHermesConfig: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "cron_dashboard_url") var cronDashboardURL: String?
     @OptionalField(key: "cron_dashboard_token_ciphertext") var cronDashboardTokenCiphertext: Data?
     @OptionalField(key: "cron_dashboard_token_nonce") var cronDashboardTokenNonce: Data?
+    /// P3 — cached JSON-encoded `HermesCapabilities` from the last
+    /// `/v1/capabilities` probe + its timestamp (TTL freshness). Absent ⇒
+    /// never probed; the capabilities endpoint re-probes on demand.
+    @OptionalField(key: "capabilities") var capabilities: String?
+    @OptionalField(key: "capabilities_checked_at") var capabilitiesCheckedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
