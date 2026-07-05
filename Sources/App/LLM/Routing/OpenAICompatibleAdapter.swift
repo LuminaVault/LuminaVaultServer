@@ -120,7 +120,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             logger: logger,
             makeRequest: {
                 let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
-                var headers: [(String, String)] = [("Accept", "text/event-stream")]
+                var headers = [("Accept", "text/event-stream")]
                 if !resolvedKey.isEmpty {
                     headers.append(("Authorization", "Bearer \(resolvedKey)"))
                 }
@@ -165,10 +165,11 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             // marker row exists and the tenant is linked. Proxy through the
             // container exactly like the dedicated Grok features do.
             if kind == .xai,
-               (creds.apiKey == nil || creds.apiKey?.isEmpty == true),
+               creds.apiKey == nil || creds.apiKey?.isEmpty == true,
                let resolver = xaiOAuthContainerResolver,
                let handle = await resolver(tenantID),
-               handle.xaiConnectedAt != nil {
+               handle.xaiConnectedAt != nil
+            {
                 if let containerBase = URL(string: handle.baseURL) {
                     return (key: handle.apiServerKey, baseURL: containerBase)
                 }

@@ -178,7 +178,7 @@ struct AnthropicAdapter: ProviderAdapter {
             makeRequest: {
                 let (body, _) = try Self.translateRequest(payload: payload, stream: true)
                 let bodyData = try JSONSerialization.data(withJSONObject: body)
-                let (resolvedKey, resolvedBaseURL) = await self.resolveCredentials()
+                let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
                 return ProviderStreamRequest(
                     url: resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages"),
                     headers: [
@@ -217,14 +217,16 @@ struct AnthropicAdapter: ProviderAdapter {
             case "content_block_delta":
                 if let delta = obj["delta"] as? [String: Any],
                    let text = delta["text"] as? String,
-                   !text.isEmpty {
+                   !text.isEmpty
+                {
                     yield(ChatStreamChunk(delta: text))
                 }
             case "message_delta":
                 // Terminal metadata frame; keep the raw stop_reason for
                 // consistency with the buffered path's translateResponse.
                 if let delta = obj["delta"] as? [String: Any],
-                   let stop = delta["stop_reason"] as? String {
+                   let stop = delta["stop_reason"] as? String
+                {
                     yield(ChatStreamChunk(delta: "", finishReason: stop))
                 }
             case "message_stop":

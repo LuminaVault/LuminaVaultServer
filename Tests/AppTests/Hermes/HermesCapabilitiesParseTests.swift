@@ -35,8 +35,8 @@ struct HermesCapabilitiesParseTests {
     }
 
     @Test("unknown flags default to false")
-    func unknownFlagsFalse() {
-        let flags = HermesRemoteCapabilitiesService.parseCapabilities(#"{"features":{}}"#.data(using: .utf8)!)
+    func unknownFlagsFalse() throws {
+        let flags = try HermesRemoteCapabilitiesService.parseCapabilities(#require(#"{"features":{}}"#.data(using: .utf8)))
         #expect(flags == HermesRemoteCapabilitiesService.CapabilityFlags(sessions: false, jobs: false, skills: false))
     }
 

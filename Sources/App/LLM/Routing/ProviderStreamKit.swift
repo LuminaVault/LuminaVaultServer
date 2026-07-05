@@ -117,7 +117,7 @@ enum ProviderStreamKit {
                 // Flush a trailing record that arrived without its
                 // terminator (upstream closed mid-frame).
                 if !finished, !buffer.isEmpty {
-                    _ = try process(buffer, { continuation.yield($0) })
+                    _ = try process(buffer) { continuation.yield($0) }
                 }
                 continuation.finish()
             } catch {

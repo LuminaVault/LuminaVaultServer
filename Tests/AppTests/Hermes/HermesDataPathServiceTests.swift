@@ -22,7 +22,9 @@ struct HermesDataPathServiceTests {
         try "ok".write(to: probe.appendingPathComponent("SOUL.md"), atomically: true, encoding: .utf8)
     }
 
-    @Test
+    /// root ignores POSIX permission bits, so a chmod-based deny can never
+    /// trip in the CI container (which runs as root) — skip there.
+    @Test(.enabled(if: geteuid() != 0))
     func `ensure fails when profiles is not writable`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("lv-hermes-paths-deny-\(UUID().uuidString)", isDirectory: true)

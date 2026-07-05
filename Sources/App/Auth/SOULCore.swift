@@ -16,8 +16,13 @@ import Foundation
 enum SOULCore {
     static let version = 1
 
-    static var startMarker: String { "<!-- lv:core:v\(version):start -->" }
-    static var endMarker: String { "<!-- lv:core:v\(version):end -->" }
+    static var startMarker: String {
+        "<!-- lv:core:v\(version):start -->"
+    }
+
+    static var endMarker: String {
+        "<!-- lv:core:v\(version):end -->"
+    }
 
     /// Matches a whole marker-delimited core span, any version, non-greedy.
     private static let pairedPattern =
@@ -104,14 +109,14 @@ enum SOULCore {
         _ pattern: String, in doc: String, from start: String.Index
     ) -> Range<String.Index>? {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let searchRange = NSRange(start..<doc.endIndex, in: doc)
+        let searchRange = NSRange(start ..< doc.endIndex, in: doc)
         guard let match = regex.firstMatch(in: doc, range: searchRange) else { return nil }
         return Range(match.range, in: doc)
     }
 
     private static func replacing(pattern: String, in doc: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return doc }
-        let range = NSRange(doc.startIndex..<doc.endIndex, in: doc)
+        let range = NSRange(doc.startIndex ..< doc.endIndex, in: doc)
         return regex.stringByReplacingMatches(in: doc, range: range, withTemplate: "")
     }
 
