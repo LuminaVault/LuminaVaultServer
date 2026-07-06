@@ -27,7 +27,7 @@ iPhone ──(Layer B: BackendMode)──> LuminaVault server ──(Layer A: BY
 | Cloudflare Tunnel | ✅ done | Recommended; verified e2e 2026-06-06. No domain/ports needed, free HTTPS. |
 | Raw IP + token | ✅ done | Allowed; `http://` warned in-app. Operators can hard-block via `BYO_HERMES_REQUIRE_HTTPS=true`. |
 | Domain + Nginx/Caddy | ✅ done | Cleanest for production; prod itself runs Caddy. |
-| Tailscale | ⚠️ self-host only | Works only when the **LuminaVault server** is on the same tailnet. The **managed** cloud server can't reach a private tailnet, and `SSRFGuard` blocks private ranges — by design. |
+| Tailscale | ✅ self-host | Works when the **LuminaVault server** is joined to the same tailnet. `SSRFGuard` does **not** block Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48), and `BYO_HERMES_ALLOW_TAILNET_HTTP` (default `true`) waives `BYO_HERMES_REQUIRE_HTTPS` for hosts that resolve entirely into the tailnet — WireGuard already encrypts the link. Verified e2e 2026-07-05 against `hermes-vps.tail562587.ts.net:8642` (MagicDNS + Bearer, 200). The **managed** cloud server still can't use it: it isn't on your tailnet, so `100.x` is unroutable and `*.ts.net` doesn't resolve. |
 
 ## Layer B — `BackendMode` (iOS client → LuminaVault server)
 
@@ -51,7 +51,12 @@ old endpoint).
 
 ## Known caveats / out of scope
 
-- Managed-mode Tailscale for BYO Hermes is **not** supported (private-range
-  `SSRFGuard` block, by design) — self-host the LuminaVault server to use it.
+- Managed-mode Tailscale for BYO Hermes is **not** supported — the managed
+  server is not a member of your tailnet, so tailnet IPs are unroutable and
+  MagicDNS names are unresolvable from it. (Not an `SSRFGuard` block:
+  100.64.0.0/10 is deliberately not classified as private.)
+- A **Dockerized** self-hosted server may not resolve `*.ts.net` names through
+  the container's DNS. Use host networking, or enter the node's `100.x.y.z`
+  Tailscale IP instead of the MagicDNS name.
 - iOS does not expose tailnet state to apps, so the tailnet host is entered
   manually; there's no automatic reachability detection.

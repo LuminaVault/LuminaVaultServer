@@ -149,6 +149,7 @@ struct MemoryGraphService {
             uncapped: hubIDs
         )
 
+        let now = Date()
         let memoryNodes = memRows.map { row in
             MemoryGraphNodeDTO(
                 id: row.id,
@@ -157,7 +158,9 @@ struct MemoryGraphService {
                 createdAt: row.created_at ?? Date(timeIntervalSince1970: 0),
                 score: row.score,
                 kind: .memory,
-                spaceID: row.space_id
+                spaceID: row.space_id,
+                activity: Self.activity(score: row.score, lastAccessed: row.last_accessed_at ?? row.created_at, now: now),
+                position: Self.position(x: row.graph_x, y: row.graph_y, z: row.graph_z)
             )
         }
         let wikiNodes = wikiRows.map { row in
@@ -178,7 +181,8 @@ struct MemoryGraphService {
 
     private func fetchMemoryNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [MemoryNodeRow] {
         try await sql.raw("""
-        SELECT id, content, tags, created_at, score, space_id, source_vault_file_id
+        SELECT id, content, tags, created_at, score, space_id, source_vault_file_id,
+               last_accessed_at, graph_x, graph_y, graph_z
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
         ORDER BY score DESC, last_accessed_at DESC NULLS LAST, id ASC
@@ -434,6 +438,30 @@ struct MemoryGraphService {
         return String(firstLine[..<idx]) + "…"
     }
 
+    /// HER-235 3D viz — node activity/heat in `[0, 1]`. Blends recency of last
+    /// access (fresher → hotter, over a 90-day window) with a log-normalized
+    /// score, so both "recently touched" and "important" nodes read hot on the
+    /// cyan→amber ramp. Deterministic given `now`.
+    static func activity(score: Double, lastAccessed: Date?, now: Date) -> Double {
+        let scoreNorm = min(1.0, max(0.0, log1p(max(0, score)) / log1p(100.0)))
+        let recency: Double
+        if let lastAccessed {
+            let ageDays = now.timeIntervalSince(lastAccessed) / 86_400.0
+            recency = min(1.0, max(0.0, 1.0 - ageDays / 90.0))
+        } else {
+            recency = 0.0
+        }
+        return min(1.0, max(0.0, 0.6 * recency + 0.4 * scoreNorm))
+    }
+
+    /// HER-235 3D viz — assembles a `GraphPosition3D` only when all three
+    /// persisted coords are present; a partially-laid-out row returns `nil` so
+    /// the client force-directs it rather than snapping it to the origin.
+    static func position(x: Double?, y: Double?, z: Double?) -> GraphPosition3D? {
+        guard let x, let y, let z else { return nil }
+        return GraphPosition3D(x: x, y: y, z: z)
+    }
+
     /// Wiki-page title: prefer the metadata title, else the file's basename
     /// (sans extension), else the raw path.
     private static func titleFromWiki(title: String?, path: String) -> String {
@@ -491,6 +519,12 @@ struct MemoryNodeRow: Decodable {
     let score: Double
     let space_id: UUID?
     let source_vault_file_id: UUID?
+    // HER-235 3D viz — last access drives `activity`; graph_x/y/z are the
+    // persisted PCA layout coords (nil until the layout worker has run).
+    let last_accessed_at: Date?
+    let graph_x: Double?
+    let graph_y: Double?
+    let graph_z: Double?
 }
 
 private struct WikiNodeRow: Decodable {

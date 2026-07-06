@@ -5890,6 +5890,15 @@ components:
       enum: [memory, wikiPage, space]
       description: "Which store the node's id belongs to: memory, wikiPage (vault_files source page), or space (synthetic Space hub node, id = Space UUID)."
 
+    GraphPosition3D:
+      type: object
+      required: [x, y, z]
+      description: "Precomputed stable 3D layout coordinate (HER-235 3D viz), from note embeddings (PCA top-3), normalized to a bounded cube."
+      properties:
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        z: { type: number, format: double }
+
     MemoryGraphNodeDTO:
       type: object
       required: [id, title, tags, createdAt, score]
@@ -5908,6 +5917,15 @@ components:
           type: string
           format: uuid
           description: "Optional Space the node is filed under; powers space edges."
+        activity:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+          description: "HER-235 3D viz — activity/heat in [0,1] (last-access recency blended with score). Drives the cyan→amber color ramp. Omitted by pre-enrich servers."
+        position:
+          allOf: [{ $ref: '#/components/schemas/GraphPosition3D' }]
+          description: "HER-235 3D viz — precomputed stable 3D coordinate. Omitted until the layout worker has run for this node → client force-directed fallback."
 
     MemoryEdgeKindDTO:
       type: string

@@ -177,9 +177,22 @@ Then in the app: URL = the tunnel URL, Auth = **Bearer** `API_SERVER_KEY`.
 Put the VPS and — for self-hosted LuminaVault — the LuminaVault server on the
 same tailnet. Hermes is reachable at the VPS's Tailscale IP/name with no public
 port. Note: this only works when the **LuminaVault server** is on the tailnet
-(self-host); the managed cloud LuminaVault can't reach a private tailnet, and
-`SSRFGuard` blocks private ranges for the managed service. `tailscale up` on both,
-then app URL = `http://<vps-tailscale-name>:8642` + Bearer key.
+(self-host); the managed cloud LuminaVault can't use it because it isn't a
+member of your tailnet — `100.x` addresses are unroutable from it and
+`*.ts.net` MagicDNS names don't resolve. (`SSRFGuard` itself does **not**
+block Tailscale addresses: 100.64.0.0/10 and fd7a:115c:a1e0::/48 are exempt.)
+`tailscale up` on both, then app URL = `http://<vps-tailscale-name>:8642`
+(MagicDNS, e.g. `http://hermes-vps.tail562587.ts.net:8642`) or
+`http://100.x.y.z:8642` + Bearer key.
+
+Plain `http://` is fine here — WireGuard encrypts the link. This works even
+with `BYO_HERMES_REQUIRE_HTTPS=true`: `BYO_HERMES_ALLOW_TAILNET_HTTP`
+(default `true`) waives the HTTPS requirement for hosts whose every resolved
+address is a Tailscale one. Set it to `false` to force TLS on the tailnet too.
+
+Docker caveat: a containerized LuminaVault server may not resolve `*.ts.net`
+through the container's DNS. Use host networking, or enter the node's
+`100.x.y.z` IP instead of the MagicDNS name.
 
 ---
 

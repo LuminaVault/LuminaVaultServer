@@ -2026,6 +2026,15 @@ func buildRouter(
         routingLogger.info("synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)")
     }
 
+    // HER-235 3D viz — graph layout worker. Recomputes each tenant's persisted
+    // 3D PCA layout when new memories arrive. No external traffic (pure DB +
+    // in-process PCA), so on by default outside test. Toggle via
+    // `GRAPH_LAYOUT_WORKER_ENABLED=false`.
+    if fluentEnabled, lvEnvironment != "test",
+       reader.string(forKey: "graphLayout.workerEnabled", default: "true").lowercased() == "true" {
+        managedServices.append(GraphLayoutWorker(fluent: services.fluent))
+    }
+
     // HER-245 / HER-259 — Sessions list. Joins conversations + messages.
     let sessionsController = SessionsController(
         fluent: services.fluent,
