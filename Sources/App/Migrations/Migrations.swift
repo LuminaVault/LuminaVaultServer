@@ -90,4 +90,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M83_AddHermesCronDashboardConfig())
     await fluent.migrations.add(M84_AddHermesCapabilitiesCache())
     await fluent.migrations.add(M85_AddMemoryGraphLayout())
+    await fluent.migrations.add(M86_CreateUserChatPreferences())
+    await fluent.migrations.add(M87_CreateConnectionDiagnosticEvents())
 }

@@ -1609,6 +1609,21 @@ func buildRouter(
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     conversationController.addRoutes(to: conversationsGroup)
 
+    // Usability layer — primary Chats inbox over the same persisted
+    // conversation data plus backend-synced chat preferences.
+    let chatExperienceController = ChatExperienceController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.chat.experience")
+    )
+    let chatGroup = router.group("/v1/chat")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
+    chatExperienceController.addInboxRoutes(to: chatGroup)
+    let chatPreferencesGroup = router.group("/v1/me/chat-preferences")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    chatExperienceController.addPreferencesRoutes(to: chatPreferencesGroup)
+
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
         transport: routedTransport,
@@ -2255,6 +2270,17 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
     llmPrefsController.addRoutes(to: llmPrefsGroup)
+
+    // Usability layer — one task-based settings surface for connection
+    // statuses, test-all diagnostics, and recent diagnostic events.
+    let connectionsController = ConnectionsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.me.connections")
+    )
+    let connectionsGroup = router.group("/v1/me/connections")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    connectionsController.addRoutes(to: connectionsGroup)
 
     // HER-240a — /v1/integrations/xai routes. Mounted only when the master
     // secret is set (same gate as BYO Hermes); a missing secret means the

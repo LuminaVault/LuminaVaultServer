@@ -189,7 +189,8 @@ struct MemoryGraphServiceTests {
         func row(_ id: UUID, source: UUID?) -> MemoryNodeRow {
             MemoryNodeRow(
                 id: id, content: "c", tags: nil, created_at: Date(), score: 1,
-                space_id: nil, source_vault_file_id: source
+                space_id: nil, source_vault_file_id: source,
+                last_accessed_at: nil, graph_x: nil, graph_y: nil, graph_z: nil
             )
         }
         let rows = [row(mem, source: page), row(orphanSource, source: orphanSource)]

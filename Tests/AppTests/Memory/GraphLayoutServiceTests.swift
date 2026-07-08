@@ -8,8 +8,11 @@ import Testing
 struct GraphLayoutServiceTests {
     @Test
     func `projects to bounded cube`() {
-        let vectors = (0 ..< 50).map { i in
-            (0 ..< 16).map { j in Double((i * 7 + j * 3) % 11) - 5.0 }
+        let vectors: [[Double]] = (0 ..< 50).map { i in
+            let row: [Double] = (0 ..< 16).map { j in
+                Double((i * 7 + j * 3) % 11) - 5.0
+            }
+            return row
         }
         let coords = GraphLayoutService.projectTo3D(vectors)
         #expect(coords.count == vectors.count)
