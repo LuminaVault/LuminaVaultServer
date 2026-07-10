@@ -106,8 +106,7 @@ async function activateProject({ projectId, projectSecret, tenantId, options = {
             method: "POST",
             headers: {
               "content-type": "application/json",
-              // The main API will validate using the project secret or a tenant-scoped token
-              // we can also put in the body or a short-lived token we issued at setup time.
+              "x-lumina-sidecar-token": CONTROL_TOKEN,
               "x-photon-project-id": projectId,
             },
             body: JSON.stringify(event),

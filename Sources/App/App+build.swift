@@ -2240,10 +2240,11 @@ func buildRouter(
             .map { hermesGatewaysBase.add(middleware: $0) } ?? hermesGatewaysBase
         hermesGatewaysController.addRoutes(to: hermesGatewaysGroup)
 
-        // Public (sidecar-called) inbound webhook for Photon events.
-        // No JWT — the sidecar is internal/trusted and includes tenantId we passed at activate.
-        // Auth can be strengthened later with project secret in payload if exposing directly to Photon fusor.
+        // Sidecar-called inbound webhook for Photon events. This route cannot
+        // use user JWTs, so it is gated by the same shared token used for the
+        // Photon sidecar control plane.
         let photonWebhook = router.group("/v1/gateways/photon")
+            .add(middleware: SidecarTokenMiddleware<AppRequestContext>(expectedToken: services.photonSidecarToken))
         photonWebhook.post("inbound", use: hermesGatewaysController.handlePhotonInbound)
     }
     let llmPrefsController = LLMPreferencesController(
