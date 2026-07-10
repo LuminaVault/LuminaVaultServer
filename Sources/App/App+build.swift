@@ -1081,11 +1081,39 @@ func buildRouter(
     // so a user's primary (provider, model) + fallback chain take
     // precedence on every chat / query / kb-compile call. Absent any
     // user preference row, the table is consulted exactly as before.
-    let modelRouter: any ModelRouter = UserPreferenceModelRouter(
+    let legacyModelRouter: any ModelRouter = UserPreferenceModelRouter(
         preferences: userLLMPreferenceRepo,
         fallback: tableModelRouter,
         logger: routingLogger
     )
+    let routerTelemetry = RouterTelemetryService(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.cerberus.telemetry")
+    )
+    let routerProfileRepo = RouterProfileRepository(
+        fluent: services.fluent,
+        legacyPreferences: userLLMPreferenceRepo,
+        managedModel: services.hermesDefaultManagedModel,
+        logger: Logger(label: "lv.cerberus.profiles")
+    )
+    let cerberusExecutionMode = reader.string(
+        forKey: ConfigKey("cerberus.executionMode"),
+        default: "active"
+    ).lowercased()
+    let cerberusEnsemblesEnabled = reader.bool(
+        forKey: ConfigKey("cerberus.ensemblesEnabled"),
+        default: false
+    )
+    let cerberusRouter: any ModelRouter = CerberusModelRouter(
+        profiles: routerProfileRepo,
+        fallback: legacyModelRouter,
+        budget: routerTelemetry,
+        ensemblesEnabled: cerberusEnsemblesEnabled,
+        logger: routingLogger
+    )
+    let modelRouter: any ModelRouter = cerberusExecutionMode == "active"
+        ? cerberusRouter
+        : legacyModelRouter
     let usageMeterService = UsageMeterService(
         fluent: services.fluent,
         freeMtokDaily: services.usageFreeMtokDaily,
@@ -1099,7 +1127,8 @@ func buildRouter(
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
-        failoverLogger: providerFailoverLogger
+        failoverLogger: providerFailoverLogger,
+        routerTelemetry: routerTelemetry
     )
 
     // Cron bridge — assembled now that `routedTransport` exists (the NL→spec
@@ -1608,6 +1637,21 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
     conversationController.addRoutes(to: conversationsGroup)
+
+    // Usability layer — primary Chats inbox over the same persisted
+    // conversation data plus backend-synced chat preferences.
+    let chatExperienceController = ChatExperienceController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.chat.experience")
+    )
+    let chatGroup = router.group("/v1/chat")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
+    chatExperienceController.addInboxRoutes(to: chatGroup)
+    let chatPreferencesGroup = router.group("/v1/me/chat-preferences")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    chatExperienceController.addPreferencesRoutes(to: chatPreferencesGroup)
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
@@ -2256,6 +2300,28 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
     llmPrefsController.addRoutes(to: llmPrefsGroup)
+
+    // Cerberus Router profile/rule management, scoped assignments, model
+    // catalog, and prompt-free cost/performance analytics.
+    let cerberusGroup = router.group("/v1/router")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    RouterController(
+        repository: routerProfileRepo,
+        fluent: services.fluent,
+        ensemblesEnabled: cerberusEnsemblesEnabled
+    ).addRoutes(to: cerberusGroup)
+
+    // Usability layer — one task-based settings surface for connection
+    // statuses, test-all diagnostics, and recent diagnostic events.
+    let connectionsController = ConnectionsController(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.me.connections")
+    )
+    let connectionsGroup = router.group("/v1/me/connections")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    connectionsController.addRoutes(to: connectionsGroup)
 
     // HER-240a — /v1/integrations/xai routes. Mounted only when the master
     // secret is set (same gate as BYO Hermes); a missing secret means the

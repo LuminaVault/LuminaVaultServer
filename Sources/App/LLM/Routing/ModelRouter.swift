@@ -1,4 +1,5 @@
 import Foundation
+import LuminaVaultShared
 
 /// HER-161 capability tier requested by a service surface. Drives the
 /// routing table — high-stakes chat asks for `.high`, internal kb
@@ -12,7 +13,7 @@ enum LLMCapabilityLevel: String, Codable, CaseIterable {
 /// HER-161 routing primitive — a concrete `(provider, model)` pair the
 /// transport will try. The `modelID` is rewritten into the request payload
 /// before dispatch so the upstream sees the exact model the table picked.
-struct ModelRoute: Hashable, ModelIdentifying {
+struct ModelRoute: Hashable, ModelIdentifying, Sendable {
     let provider: ProviderKind
     let modelID: String
 }
@@ -23,6 +24,13 @@ struct ModelRoute: Hashable, ModelIdentifying {
 struct RouteDecision: Hashable {
     let primary: ModelRoute
     let fallbacks: [ModelRoute]
+    let cerberus: CerberusDecisionMetadata?
+
+    init(primary: ModelRoute, fallbacks: [ModelRoute], cerberus: CerberusDecisionMetadata? = nil) {
+        self.primary = primary
+        self.fallbacks = fallbacks
+        self.cerberus = cerberus
+    }
 
     var candidates: [ModelRoute] {
         [primary] + fallbacks
@@ -43,6 +51,8 @@ struct RouteDecision: Hashable {
 enum LLMRoutingContext {
     @TaskLocal static var currentUser: User?
     @TaskLocal static var currentResolution: HermesEndpointResolver.Resolution?
+    @TaskLocal static var cerberusScope: CerberusRequestScope?
+    @TaskLocal static var cerberusPrompt: String?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

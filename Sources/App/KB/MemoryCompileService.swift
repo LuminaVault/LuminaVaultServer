@@ -375,15 +375,20 @@ actor MemoryCompileService {
         for text in parsed {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
+
+            // Hardening: cap LLM-extracted memory length before embedding/persist
+            // (defends against overly long or noisy extracts from the provider
+            // while still allowing the pending review gate for user control).
+            let capped = String(trimmed.prefix(2000))
             // HER-290 — skip content the user previously rejected.
-            if rejectedHashes.contains(Self.contentHash(trimmed)) {
+            if rejectedHashes.contains(Self.contentHash(capped)) {
                 logger.info("kb-compile skipped rejected memory hash for tenant \(tenantID)")
                 continue
             }
-            let embedding = try await embeddings.embed(trimmed, tenantID: tenantID)
+            let embedding = try await embeddings.embed(capped, tenantID: tenantID)
             let saved = try await memories.create(
                 tenantID: tenantID,
-                content: trimmed,
+                content: capped,
                 embedding: embedding,
                 reviewState: "pending"
             )

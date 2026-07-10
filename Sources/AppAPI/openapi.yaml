@@ -1500,6 +1500,211 @@ paths:
             Validation error in `message`:
             `primary_model_required` / `fallback_model_required`.
 
+  # ─────────────── Cerberus Router ─────────────────
+
+  /v1/router:
+    get:
+      tags: [LLM]
+      operationId: routerProfilesList
+      summary: List routing profiles and the active user default.
+      responses:
+        '200':
+          description: Router profiles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfilesResponse' }
+    post:
+      tags: [LLM]
+      operationId: routerProfilesCreate
+      summary: Create a custom routing profile (Pro or Ultimate).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterProfileWriteRequest' }
+      responses:
+        '200':
+          description: Created profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+
+  /v1/router/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [LLM]
+      operationId: routerProfilesUpdate
+      summary: Replace a routing profile using optimistic revision checking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterProfileWriteRequest' }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '409': { description: Revision conflict or attempt to delete the default profile. }
+    delete:
+      tags: [LLM]
+      operationId: routerProfilesDelete
+      summary: Delete a non-default custom profile.
+      responses:
+        '204': { description: Deleted. }
+
+  /v1/router/catalog:
+    get:
+      tags: [LLM]
+      operationId: routerCatalog
+      summary: Versioned model/task catalog and caller entitlements.
+      responses:
+        '200':
+          description: Router catalog.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterCatalogResponse' }
+
+  /v1/router/bindings:
+    get:
+      tags: [LLM]
+      operationId: routerBindingsList
+      summary: List user, Space, and Job profile bindings.
+      responses:
+        '200':
+          description: Bindings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterBindingsResponse' }
+
+  /v1/router/bindings/{scope}/{scopeID}:
+    parameters:
+      - in: path
+        name: scope
+        required: true
+        schema: { $ref: '#/components/schemas/RouterBindingScope' }
+      - in: path
+        name: scopeID
+        required: true
+        schema: { type: string }
+    put:
+      tags: [LLM]
+      operationId: routerBindingPut
+      summary: Assign a profile to a Space or Job.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterBindingPutRequest' }
+      responses:
+        '200':
+          description: Binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterBindingDTO' }
+    delete:
+      tags: [LLM]
+      operationId: routerBindingDelete
+      summary: Remove a Space or Job profile override.
+      responses:
+        '204': { description: Removed. }
+
+  /v1/router/dashboard:
+    get:
+      tags: [LLM]
+      operationId: routerDashboard
+      summary: Month-to-date prompt-free routing, cost, and performance analytics.
+      responses:
+        '200':
+          description: Router analytics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterDashboardResponse' }
+
+  # ─────────────── Me — Chat preferences + connections UX ───────────────
+
+  /v1/me/chat-preferences:
+    get:
+      tags: [Me]
+      operationId: chatPreferencesGet
+      summary: Get cross-device chat behavior preferences.
+      responses:
+        '200':
+          description: Chat preference snapshot, defaulted when no row exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatPreferencesGetResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Me]
+      operationId: chatPreferencesPut
+      summary: Upsert cross-device chat behavior preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatPreferencesPutRequest' }
+      responses:
+        '200':
+          description: Updated chat preference snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatPreferencesGetResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/connections:
+    get:
+      tags: [Me]
+      operationId: connectionsSummary
+      summary: Unified Settings connections summary.
+      responses:
+        '200':
+          description: Provider, gateway, linked-account, calendar, plugin, and server connection statuses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionsSummaryResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/connections/test-all:
+    post:
+      tags: [Me]
+      operationId: connectionsTestAll
+      summary: Run the unified connection status check and record diagnostic events.
+      responses:
+        '200':
+          description: Per-connection test/status results.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionsTestAllResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/connections/events:
+    get:
+      tags: [Me]
+      operationId: connectionDiagnosticEvents
+      summary: Recent unified connection diagnostic events.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Recent diagnostic events, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionDiagnosticEventsResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ───────────────────────────── Onboarding ─────────────────────────────
 
   /v1/onboarding:
@@ -1941,6 +2146,27 @@ paths:
               schema: { $ref: '#/components/schemas/QueryStreamEvent' }
 
   # ─────────────────────────── Conversations ────────────────────────────
+
+  /v1/chat/inbox:
+    get:
+      tags: [Conversations]
+      operationId: chatInbox
+      summary: Primary Chats inbox summary list.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: workspace
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Chat inbox items with preview, count, source, and recency metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatInboxResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/conversations:
     post:
@@ -5579,6 +5805,12 @@ components:
         fallbackChain:
           type: array
           items: { $ref: '#/components/schemas/ModelRouteDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
 
     LLMPreferencesPutRequest:
       type: object
@@ -5593,6 +5825,331 @@ components:
         fallbackChain:
           type: array
           items: { $ref: '#/components/schemas/ModelRouteDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+
+    RouterTaskType:
+      type: string
+      enum: [general, reasoning, coding, search, summarization, extraction, creative, automation]
+
+    RouterSurface:
+      type: string
+      enum: [chat, query, knowledgeCompile, job, skill, memo, system]
+
+    RouterActionKind:
+      type: string
+      enum: [sequential, ensemble]
+
+    RouterRetryPolicy:
+      type: string
+      enum: [fast, resilient]
+
+    RouterObjectiveWeightsDTO:
+      type: object
+      required: [quality, cost, latency]
+      properties:
+        quality: { type: integer, minimum: 0, maximum: 100 }
+        cost: { type: integer, minimum: 0, maximum: 100 }
+        latency: { type: integer, minimum: 0, maximum: 100 }
+
+    RouterBudgetPolicyDTO:
+      type: object
+      properties:
+        softLimitUsdMicros: { type: integer, format: int64, minimum: 0 }
+        hardLimitUsdMicros: { type: integer, format: int64, minimum: 0 }
+
+    RouterModelRouteDTO:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        inputPerMillionUsdMicros: { type: integer, format: int64 }
+        outputPerMillionUsdMicros: { type: integer, format: int64 }
+
+    RouterActionDTO:
+      type: object
+      required: [kind, routes, retryPolicy]
+      properties:
+        kind: { $ref: '#/components/schemas/RouterActionKind' }
+        routes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        synthesisRoute: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        minimumSuccessfulResults: { type: integer, minimum: 2, maximum: 4 }
+        retryPolicy: { $ref: '#/components/schemas/RouterRetryPolicy' }
+
+    RouterRuleDTO:
+      type: object
+      required: [id, name, enabled, priority, taskTypes, surfaces, action]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer }
+        taskTypes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterTaskType' }
+        surfaces:
+          type: array
+          items: { $ref: '#/components/schemas/RouterSurface' }
+        action: { $ref: '#/components/schemas/RouterActionDTO' }
+
+    RouterProfileDTO:
+      type: object
+      required: [id, name, mode, isPreset, objective, budget, allowedProviders, blockedProviders, defaultAction, rules, revision]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        mode: { $ref: '#/components/schemas/LLMBrainMode' }
+        isPreset: { type: boolean }
+        objective: { $ref: '#/components/schemas/RouterObjectiveWeightsDTO' }
+        budget: { $ref: '#/components/schemas/RouterBudgetPolicyDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        defaultAction: { $ref: '#/components/schemas/RouterActionDTO' }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        revision: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RouterProfileWriteRequest:
+      type: object
+      required: [name, mode, objective, budget, allowedProviders, blockedProviders, defaultAction, rules]
+      properties:
+        name: { type: string }
+        mode: { $ref: '#/components/schemas/LLMBrainMode' }
+        objective: { $ref: '#/components/schemas/RouterObjectiveWeightsDTO' }
+        budget: { $ref: '#/components/schemas/RouterBudgetPolicyDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        defaultAction: { $ref: '#/components/schemas/RouterActionDTO' }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        expectedRevision: { type: integer }
+
+    RouterProfilesResponse:
+      type: object
+      required: [profiles, defaultProfileID]
+      properties:
+        profiles:
+          type: array
+          items: { $ref: '#/components/schemas/RouterProfileDTO' }
+        defaultProfileID: { type: string, format: uuid }
+
+    RouterBindingScope:
+      type: string
+      enum: [user, space, job]
+
+    RouterBindingDTO:
+      type: object
+      required: [id, scope, scopeID, profileID]
+      properties:
+        id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/RouterBindingScope' }
+        scopeID: { type: string }
+        profileID: { type: string, format: uuid }
+
+    RouterBindingPutRequest:
+      type: object
+      required: [profileID]
+      properties:
+        profileID: { type: string, format: uuid }
+
+    RouterBindingsResponse:
+      type: object
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/RouterBindingDTO' }
+
+    RouterModelCatalogEntryDTO:
+      type: object
+      required: [provider, model, displayName, taskQuality, defaultLatencyMs, capabilities]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        displayName: { type: string }
+        taskQuality:
+          type: object
+          additionalProperties: { type: integer }
+        inputPerMillionUsdMicros: { type: integer, format: int64 }
+        outputPerMillionUsdMicros: { type: integer, format: int64 }
+        defaultLatencyMs: { type: integer }
+        capabilities:
+          type: array
+          items: { type: string }
+
+    RouterCatalogResponse:
+      type: object
+      required: [models, taskTypes, surfaces, customProfilesAllowed, ensemblesAllowed]
+      properties:
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelCatalogEntryDTO' }
+        taskTypes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterTaskType' }
+        surfaces:
+          type: array
+          items: { $ref: '#/components/schemas/RouterSurface' }
+        customProfilesAllowed: { type: boolean }
+        ensemblesAllowed: { type: boolean }
+
+    RouterDashboardResponse:
+      type: object
+      required: [periodStart, periodEnd, requests, successfulRequests, fallbackCount, tokensIn, tokensOut, estimatedCostUsdMicros, averageLatencyMs]
+      properties:
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        requests: { type: integer }
+        successfulRequests: { type: integer }
+        fallbackCount: { type: integer }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        averageLatencyMs: { type: integer }
+        monthlySoftLimitUsdMicros: { type: integer, format: int64 }
+        monthlyHardLimitUsdMicros: { type: integer, format: int64 }
+
+    RouterEventPhase:
+      type: string
+      enum: [selected, attemptStarted, synthesisStarted, completed]
+
+    RouterRoutingEventDTO:
+      type: object
+      required: [executionID, phase, profileID, profileName, taskType, strategy, activeRoutes]
+      properties:
+        executionID: { type: string, format: uuid }
+        phase: { $ref: '#/components/schemas/RouterEventPhase' }
+        profileID: { type: string, format: uuid }
+        profileName: { type: string }
+        taskType: { $ref: '#/components/schemas/RouterTaskType' }
+        strategy: { $ref: '#/components/schemas/RouterActionKind' }
+        activeRoutes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+
+    RouterUsageDTO:
+      type: object
+      required: [executionID, tokensIn, tokensOut, estimatedCostUsdMicros, latencyMs, usageEstimated]
+      properties:
+        executionID: { type: string, format: uuid }
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        latencyMs: { type: integer }
+        usageEstimated: { type: boolean }
+
+    ConnectionKind:
+      type: string
+      enum: [llm_provider, hermes_server, hermes_gateway, linked_account, calendar, nous, plugin, server]
+
+    ConnectionHealth:
+      type: string
+      enum: [connected, needs_setup, degraded, error, unknown, testing]
+
+    ConnectionActionHint:
+      type: string
+      enum:
+        - configure_provider
+        - configure_hermes
+        - configure_gateway
+        - connect_account
+        - open_plugin
+        - open_server_settings
+        - view_diagnostics
+
+    ConnectionSummaryDTO:
+      type: object
+      required: [id, kind, title, health]
+      properties:
+        id: { type: string }
+        kind: { $ref: '#/components/schemas/ConnectionKind' }
+        title: { type: string }
+        subtitle: { type: string }
+        health: { $ref: '#/components/schemas/ConnectionHealth' }
+        providerID: { $ref: '#/components/schemas/ProviderID' }
+        gatewayID: { $ref: '#/components/schemas/HermesGatewayID' }
+        lastCheckedAt: { type: string, format: date-time }
+        statusDetail: { type: string }
+        actionHint: { $ref: '#/components/schemas/ConnectionActionHint' }
+
+    ConnectionsSummaryResponse:
+      type: object
+      required: [connections]
+      properties:
+        connections:
+          type: array
+          items: { $ref: '#/components/schemas/ConnectionSummaryDTO' }
+        checkedAt: { type: string, format: date-time }
+
+    ConnectionTestResultDTO:
+      type: object
+      required: [id, kind, title, health, ok, checkedAt]
+      properties:
+        id: { type: string }
+        kind: { $ref: '#/components/schemas/ConnectionKind' }
+        title: { type: string }
+        health: { $ref: '#/components/schemas/ConnectionHealth' }
+        ok: { type: boolean }
+        checkedAt: { type: string, format: date-time }
+        statusDetail: { type: string }
+        errorCode: { type: string }
+        errorMessage: { type: string }
+
+    ConnectionsTestAllResponse:
+      type: object
+      required: [results, checkedAt]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/ConnectionTestResultDTO' }
+        checkedAt: { type: string, format: date-time }
+
+    ConnectionDiagnosticSeverity:
+      type: string
+      enum: [info, warning, error]
+
+    ConnectionDiagnosticEventDTO:
+      type: object
+      required: [id, occurredAt, kind, severity, message]
+      properties:
+        id: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        kind: { $ref: '#/components/schemas/ConnectionKind' }
+        connectionID: { type: string }
+        connectionTitle: { type: string }
+        severity: { $ref: '#/components/schemas/ConnectionDiagnosticSeverity' }
+        message: { type: string }
+        code: { type: string }
+
+    ConnectionDiagnosticEventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/ConnectionDiagnosticEventDTO' }
+        nextCursor: { type: string }
 
     ProviderFallbackNoticeDTO:
       type: object
@@ -6035,11 +6592,13 @@ components:
         - `done` — no payload (stream terminator)
         - `error` — `string` (stream-level error; client surfaces and aborts)
         - `fallback` — `ProviderFallbackNoticeDTO` (HER-252 routing failover)
+        - `routing` — `RouterRoutingEventDTO` (Cerberus route/phase)
+        - `usage` — `RouterUsageDTO` (prompt-free terminal usage)
         - `link_saved` — `LinkSavedDTO` (HER-274 auto-saved chat link)
       properties:
         type:
           type: string
-          enum: [source, token, summary, follow_ups, done, error, fallback, link_saved]
+          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, link_saved]
         payload:
           description: Case-specific payload; absent for `done`.
 
@@ -6128,6 +6687,55 @@ components:
       required: [content]
       properties:
         content: { type: string }
+
+    ChatInboxItemDTO:
+      type: object
+      required: [id, title, preview, messageCount, lastMessageAt, pinned, archived]
+      description: Summary row for the primary Chats inbox.
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        preview: { type: string }
+        messageCount: { type: integer, minimum: 0 }
+        lastMessageAt: { type: string, format: date-time }
+        workspaceID: { type: string, format: uuid }
+        sourceLabel: { type: string }
+        providerID: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        pinned: { type: boolean }
+        archived: { type: boolean }
+
+    ChatInboxResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChatInboxItemDTO' }
+        nextCursor: { type: string }
+
+    ChatPreferencesDTO:
+      type: object
+      required: [autoExpandThinking, sendOnReturn]
+      properties:
+        autoExpandThinking:
+          type: boolean
+          default: true
+        sendOnReturn:
+          type: boolean
+          default: false
+
+    ChatPreferencesGetResponse:
+      type: object
+      required: [preferences]
+      properties:
+        preferences: { $ref: '#/components/schemas/ChatPreferencesDTO' }
+
+    ChatPreferencesPutRequest:
+      type: object
+      required: [preferences]
+      properties:
+        preferences: { $ref: '#/components/schemas/ChatPreferencesDTO' }
 
     # ── Memos ──
 

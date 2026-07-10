@@ -27,6 +27,8 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "last_error") var lastError: String?
     /// HER-247 — per-skill APNS category override ("digest" / "nudge" / "chat" / nil).
     @OptionalField(key: "apns_category") var apnsCategory: String?
+    @OptionalField(key: "domain") var domain: String?
+    @OptionalField(key: "space_id") var spaceID: UUID?
 
     init() {}
 
