@@ -221,6 +221,9 @@ struct ConversationController {
                 let fallbackSink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
                     continuation.yield(.fallback(notice.wireDTO()))
                 }
+                let cerberusSink: @Sendable (QueryStreamEvent) -> Void = { event in
+                    continuation.yield(event)
+                }
 
                 do {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
@@ -230,24 +233,30 @@ struct ConversationController {
                     // stream in one structured block. Creating the AsyncStream
                     // outside this Task and then pushing a second @TaskLocal
                     // here segfaults on Linux (swift_task_localValuePush).
-                    try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                        try await LLMRoutingContext.$currentUser.withValue(user) {
-                            try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                let chunks = streamService.chatStream(
-                                    sessionKey: sessionKey,
-                                    sessionID: sessionID,
-                                    request: chatRequest
-                                )
-                                for try await chunk in chunks {
-                                    if Task.isCancelled { break }
-                                    if !chunk.delta.isEmpty {
-                                        if firstTokenMs == nil {
-                                            firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                            logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                    try await CerberusStreamContext.$sink.withValue(cerberusSink) {
+                        try await LLMRoutingContext.$cerberusScope.withValue(
+                            CerberusRequestScope(surface: .chat, spaceID: conversation.spaceID)
+                        ) {
+                            try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                                try await LLMRoutingContext.$currentUser.withValue(user) {
+                                    try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                        let chunks = streamService.chatStream(
+                                            sessionKey: sessionKey,
+                                            sessionID: sessionID,
+                                            request: chatRequest
+                                        )
+                                        for try await chunk in chunks {
+                                            if Task.isCancelled { break }
+                                            if !chunk.delta.isEmpty {
+                                                if firstTokenMs == nil {
+                                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                                }
+                                                tokenCount += 1
+                                                assistantBuffer.append(chunk.delta)
+                                                continuation.yield(.token(chunk.delta))
+                                            }
                                         }
-                                        tokenCount += 1
-                                        assistantBuffer.append(chunk.delta)
-                                        continuation.yield(.token(chunk.delta))
                                     }
                                 }
                             }
@@ -259,6 +268,18 @@ struct ConversationController {
                         "duration_ms": .stringConvertible(Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)),
                         "ttft_ms": .stringConvertible(firstTokenMs ?? -1),
                     ])
+
+                    // Hardening: strip tool-error noise / bash leaks from the final
+                    // assistant transcript before persist and side effects. This mirrors
+                    // the non-stream path in LLMController and prevents raw Hermes
+                    // internals (tracebacks, "command not found") from entering durable
+                    // convo history or link-capture / follow-up prompts.
+                    let cleanedBuffer = HermesToolErrorClassifier.sanitize(content: assistantBuffer) ?? assistantBuffer
+                    if cleanedBuffer != assistantBuffer {
+                        logger.info("chat stream sanitized tool noise from assistant content")
+                    }
+                    assistantBuffer = cleanedBuffer
+
                     if let emptyEvent = ChatStreamCompletionPolicy.emptyCompletionEvent(
                         assistantBuffer: assistantBuffer,
                         tokenCount: tokenCount

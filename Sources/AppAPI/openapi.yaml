@@ -1500,6 +1500,132 @@ paths:
             Validation error in `message`:
             `primary_model_required` / `fallback_model_required`.
 
+  # ─────────────── Cerberus Router ─────────────────
+
+  /v1/router:
+    get:
+      tags: [LLM]
+      operationId: routerProfilesList
+      summary: List routing profiles and the active user default.
+      responses:
+        '200':
+          description: Router profiles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfilesResponse' }
+    post:
+      tags: [LLM]
+      operationId: routerProfilesCreate
+      summary: Create a custom routing profile (Pro or Ultimate).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterProfileWriteRequest' }
+      responses:
+        '200':
+          description: Created profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+
+  /v1/router/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [LLM]
+      operationId: routerProfilesUpdate
+      summary: Replace a routing profile using optimistic revision checking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterProfileWriteRequest' }
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '409': { description: Revision conflict or attempt to delete the default profile. }
+    delete:
+      tags: [LLM]
+      operationId: routerProfilesDelete
+      summary: Delete a non-default custom profile.
+      responses:
+        '204': { description: Deleted. }
+
+  /v1/router/catalog:
+    get:
+      tags: [LLM]
+      operationId: routerCatalog
+      summary: Versioned model/task catalog and caller entitlements.
+      responses:
+        '200':
+          description: Router catalog.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterCatalogResponse' }
+
+  /v1/router/bindings:
+    get:
+      tags: [LLM]
+      operationId: routerBindingsList
+      summary: List user, Space, and Job profile bindings.
+      responses:
+        '200':
+          description: Bindings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterBindingsResponse' }
+
+  /v1/router/bindings/{scope}/{scopeID}:
+    parameters:
+      - in: path
+        name: scope
+        required: true
+        schema: { $ref: '#/components/schemas/RouterBindingScope' }
+      - in: path
+        name: scopeID
+        required: true
+        schema: { type: string }
+    put:
+      tags: [LLM]
+      operationId: routerBindingPut
+      summary: Assign a profile to a Space or Job.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouterBindingPutRequest' }
+      responses:
+        '200':
+          description: Binding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterBindingDTO' }
+    delete:
+      tags: [LLM]
+      operationId: routerBindingDelete
+      summary: Remove a Space or Job profile override.
+      responses:
+        '204': { description: Removed. }
+
+  /v1/router/dashboard:
+    get:
+      tags: [LLM]
+      operationId: routerDashboard
+      summary: Month-to-date prompt-free routing, cost, and performance analytics.
+      responses:
+        '200':
+          description: Router analytics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouterDashboardResponse' }
+
   # ─────────────── Me — Chat preferences + connections UX ───────────────
 
   /v1/me/chat-preferences:
@@ -5679,6 +5805,12 @@ components:
         fallbackChain:
           type: array
           items: { $ref: '#/components/schemas/ModelRouteDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
 
     LLMPreferencesPutRequest:
       type: object
@@ -5693,6 +5825,239 @@ components:
         fallbackChain:
           type: array
           items: { $ref: '#/components/schemas/ModelRouteDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+
+    RouterTaskType:
+      type: string
+      enum: [general, reasoning, coding, search, summarization, extraction, creative, automation]
+
+    RouterSurface:
+      type: string
+      enum: [chat, query, knowledgeCompile, job, skill, memo, system]
+
+    RouterActionKind:
+      type: string
+      enum: [sequential, ensemble]
+
+    RouterRetryPolicy:
+      type: string
+      enum: [fast, resilient]
+
+    RouterObjectiveWeightsDTO:
+      type: object
+      required: [quality, cost, latency]
+      properties:
+        quality: { type: integer, minimum: 0, maximum: 100 }
+        cost: { type: integer, minimum: 0, maximum: 100 }
+        latency: { type: integer, minimum: 0, maximum: 100 }
+
+    RouterBudgetPolicyDTO:
+      type: object
+      properties:
+        softLimitUsdMicros: { type: integer, format: int64, minimum: 0 }
+        hardLimitUsdMicros: { type: integer, format: int64, minimum: 0 }
+
+    RouterModelRouteDTO:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        inputPerMillionUsdMicros: { type: integer, format: int64 }
+        outputPerMillionUsdMicros: { type: integer, format: int64 }
+
+    RouterActionDTO:
+      type: object
+      required: [kind, routes, retryPolicy]
+      properties:
+        kind: { $ref: '#/components/schemas/RouterActionKind' }
+        routes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        synthesisRoute: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        minimumSuccessfulResults: { type: integer, minimum: 2, maximum: 4 }
+        retryPolicy: { $ref: '#/components/schemas/RouterRetryPolicy' }
+
+    RouterRuleDTO:
+      type: object
+      required: [id, name, enabled, priority, taskTypes, surfaces, action]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer }
+        taskTypes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterTaskType' }
+        surfaces:
+          type: array
+          items: { $ref: '#/components/schemas/RouterSurface' }
+        action: { $ref: '#/components/schemas/RouterActionDTO' }
+
+    RouterProfileDTO:
+      type: object
+      required: [id, name, mode, isPreset, objective, budget, allowedProviders, blockedProviders, defaultAction, rules, revision]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        mode: { $ref: '#/components/schemas/LLMBrainMode' }
+        isPreset: { type: boolean }
+        objective: { $ref: '#/components/schemas/RouterObjectiveWeightsDTO' }
+        budget: { $ref: '#/components/schemas/RouterBudgetPolicyDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        defaultAction: { $ref: '#/components/schemas/RouterActionDTO' }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        revision: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RouterProfileWriteRequest:
+      type: object
+      required: [name, mode, objective, budget, allowedProviders, blockedProviders, defaultAction, rules]
+      properties:
+        name: { type: string }
+        mode: { $ref: '#/components/schemas/LLMBrainMode' }
+        objective: { $ref: '#/components/schemas/RouterObjectiveWeightsDTO' }
+        budget: { $ref: '#/components/schemas/RouterBudgetPolicyDTO' }
+        allowedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        blockedProviders:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderID' }
+        defaultAction: { $ref: '#/components/schemas/RouterActionDTO' }
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        expectedRevision: { type: integer }
+
+    RouterProfilesResponse:
+      type: object
+      required: [profiles, defaultProfileID]
+      properties:
+        profiles:
+          type: array
+          items: { $ref: '#/components/schemas/RouterProfileDTO' }
+        defaultProfileID: { type: string, format: uuid }
+
+    RouterBindingScope:
+      type: string
+      enum: [user, space, job]
+
+    RouterBindingDTO:
+      type: object
+      required: [id, scope, scopeID, profileID]
+      properties:
+        id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/RouterBindingScope' }
+        scopeID: { type: string }
+        profileID: { type: string, format: uuid }
+
+    RouterBindingPutRequest:
+      type: object
+      required: [profileID]
+      properties:
+        profileID: { type: string, format: uuid }
+
+    RouterBindingsResponse:
+      type: object
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          items: { $ref: '#/components/schemas/RouterBindingDTO' }
+
+    RouterModelCatalogEntryDTO:
+      type: object
+      required: [provider, model, displayName, taskQuality, defaultLatencyMs, capabilities]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        displayName: { type: string }
+        taskQuality:
+          type: object
+          additionalProperties: { type: integer }
+        inputPerMillionUsdMicros: { type: integer, format: int64 }
+        outputPerMillionUsdMicros: { type: integer, format: int64 }
+        defaultLatencyMs: { type: integer }
+        capabilities:
+          type: array
+          items: { type: string }
+
+    RouterCatalogResponse:
+      type: object
+      required: [models, taskTypes, surfaces, customProfilesAllowed, ensemblesAllowed]
+      properties:
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelCatalogEntryDTO' }
+        taskTypes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterTaskType' }
+        surfaces:
+          type: array
+          items: { $ref: '#/components/schemas/RouterSurface' }
+        customProfilesAllowed: { type: boolean }
+        ensemblesAllowed: { type: boolean }
+
+    RouterDashboardResponse:
+      type: object
+      required: [periodStart, periodEnd, requests, successfulRequests, fallbackCount, tokensIn, tokensOut, estimatedCostUsdMicros, averageLatencyMs]
+      properties:
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        requests: { type: integer }
+        successfulRequests: { type: integer }
+        fallbackCount: { type: integer }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        averageLatencyMs: { type: integer }
+        monthlySoftLimitUsdMicros: { type: integer, format: int64 }
+        monthlyHardLimitUsdMicros: { type: integer, format: int64 }
+
+    RouterEventPhase:
+      type: string
+      enum: [selected, attemptStarted, synthesisStarted, completed]
+
+    RouterRoutingEventDTO:
+      type: object
+      required: [executionID, phase, profileID, profileName, taskType, strategy, activeRoutes]
+      properties:
+        executionID: { type: string, format: uuid }
+        phase: { $ref: '#/components/schemas/RouterEventPhase' }
+        profileID: { type: string, format: uuid }
+        profileName: { type: string }
+        taskType: { $ref: '#/components/schemas/RouterTaskType' }
+        strategy: { $ref: '#/components/schemas/RouterActionKind' }
+        activeRoutes:
+          type: array
+          items: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+
+    RouterUsageDTO:
+      type: object
+      required: [executionID, tokensIn, tokensOut, estimatedCostUsdMicros, latencyMs, usageEstimated]
+      properties:
+        executionID: { type: string, format: uuid }
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        latencyMs: { type: integer }
+        usageEstimated: { type: boolean }
 
     ConnectionKind:
       type: string
@@ -6227,11 +6592,13 @@ components:
         - `done` — no payload (stream terminator)
         - `error` — `string` (stream-level error; client surfaces and aborts)
         - `fallback` — `ProviderFallbackNoticeDTO` (HER-252 routing failover)
+        - `routing` — `RouterRoutingEventDTO` (Cerberus route/phase)
+        - `usage` — `RouterUsageDTO` (prompt-free terminal usage)
         - `link_saved` — `LinkSavedDTO` (HER-274 auto-saved chat link)
       properties:
         type:
           type: string
-          enum: [source, token, summary, follow_ups, done, error, fallback, link_saved]
+          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, link_saved]
         payload:
           description: Case-specific payload; absent for `done`.
 

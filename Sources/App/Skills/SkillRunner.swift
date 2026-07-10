@@ -177,6 +177,17 @@ actor SkillRunner {
         var modelUsed: String?
         var mtokIn = 0
         var mtokOut = 0
+        let routingUser: User? = (try? await User.find(tenantID, on: fluent.db())) ?? nil
+        let routingState: SkillsState? = (try? await SkillsState.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$source == skill.source.rawValue)
+            .filter(\.$name == skill.name)
+            .first()) ?? nil
+        let routingScope = CerberusRequestScope(
+            surface: skill.name.hasPrefix("job-") ? .job : .skill,
+            spaceID: routingState?.spaceID,
+            jobID: skill.name.hasPrefix("job-") ? skill.name : nil
+        )
         do {
             let outcome = try await runAgent(
                 skill: skill,
@@ -187,7 +198,9 @@ actor SkillRunner {
                 arguments: arguments,
                 mtokIn: &mtokIn,
                 mtokOut: &mtokOut,
-                modelUsed: &modelUsed
+                modelUsed: &modelUsed,
+                routingUser: routingUser,
+                routingScope: routingScope
             )
             try await dispatchOutputs(
                 skill: skill,
@@ -427,7 +440,9 @@ actor SkillRunner {
         arguments: [String: String],
         mtokIn: inout Int,
         mtokOut: inout Int,
-        modelUsed: inout String?
+        modelUsed: inout String?,
+        routingUser: User?,
+        routingScope: CerberusRequestScope
     ) async throws -> AgentOutcome {
         let allowed = Set(skill.allowedTools)
         let tools = AvailableTool.allCases
@@ -472,7 +487,15 @@ actor SkillRunner {
                 stream: false
             )
             let payload = try JSONEncoder().encode(body)
-            let metadata = try await transport.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
+            let metadata = try await LLMRoutingContext.$currentUser.withValue(routingUser) {
+                try await LLMRoutingContext.$cerberusScope.withValue(routingScope) {
+                    try await transport.chatCompletionsWithMetadata(
+                        payload: payload,
+                        sessionKey: tenantID.uuidString,
+                        sessionID: nil
+                    )
+                }
+            }
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: metadata.data)
             modelUsed = response.model
             let mtokInBefore = mtokIn

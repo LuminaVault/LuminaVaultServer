@@ -141,6 +141,13 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 
+### Cerberus model router
+
+- `CERBERUS_EXECUTION_MODE`: `active` evaluates the resolved user, Space, or Job profile; any other value retains the legacy preference router for rollback.
+- `CERBERUS_ENSEMBLES_ENABLED`: enables profile actions that run models in parallel and synthesize their outputs. Defaults to `false` because an ensemble can multiply provider usage.
+
+Profiles, bindings, budgets, routing attempts, and monthly usage are stored in PostgreSQL. Provider prices in the router catalog are estimates used for routing and budget reservation; actual provider invoices remain authoritative.
+
 #### Managed Hermes output cap (`model.max_tokens`)
 
 `model.max_tokens` in `data/hermes/config.yaml` limits tokens generated PER

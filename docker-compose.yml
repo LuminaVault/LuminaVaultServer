@@ -134,6 +134,9 @@ services:
       HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required — run `make hermes-bootstrap` to generate}
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: hermes-3
+      # --- Cerberus model orchestration ---
+      CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
+      CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}
       # Must be VAULT_ROOT_PATH (swift-configuration maps `vault.rootPath` →
       # VAULT_ROOT_PATH). The old `VAULT_ROOTPATH` never matched, so the app
       # fell through to `.env`'s VAULT_ROOT_PATH=/var/lib/luminavault — an
