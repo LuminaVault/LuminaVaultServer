@@ -17,6 +17,8 @@ final class Space: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "category") var category: String?
     @Field(key: "note_count") var noteCount: Int
     @OptionalField(key: "last_compiled_at") var lastCompiledAt: Date?
+    @OptionalField(key: "created_by_user_id") var createdByUserID: UUID?
+    @OptionalField(key: "updated_by_user_id") var updatedByUserID: UUID?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

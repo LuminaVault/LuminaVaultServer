@@ -799,6 +799,15 @@ paths:
       responses:
         '200': { description: Tenant run history., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunsResponse' } } } }
 
+  /v1/workflows/runs/{runID}/cancel:
+    post:
+      tags: [Workflows]
+      operationId: workflowRunCancel
+      parameters: [{ in: path, name: runID, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '204': { description: Run cancelled or already terminal. }
+        '404': { description: Workflow run not found. }
+
   /v1/workflows/approvals:
     get:
       tags: [Workflows]

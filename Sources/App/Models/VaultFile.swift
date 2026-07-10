@@ -46,6 +46,8 @@ final class VaultFile: Model, TenantModel, @unchecked Sendable {
 
     @ID(key: .id) var id: UUID?
     @Field(key: "tenant_id") var tenantID: UUID
+    @OptionalField(key: "created_by_user_id") var createdByUserID: UUID?
+    @OptionalField(key: "updated_by_user_id") var updatedByUserID: UUID?
     @OptionalField(key: "space_id") var spaceID: UUID?
     @Field(key: "path") var path: String
     @Field(key: "content_type") var contentType: String

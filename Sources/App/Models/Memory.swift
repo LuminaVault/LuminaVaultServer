@@ -8,6 +8,8 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @ID(key: .id) var id: UUID?
     @Field(key: "tenant_id") var tenantID: UUID
     @Field(key: "content") var content: String
+    @OptionalField(key: "created_by_user_id") var createdByUserID: UUID?
+    @OptionalField(key: "updated_by_user_id") var updatedByUserID: UUID?
     @OptionalField(key: "tags") var tags: [String]?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
