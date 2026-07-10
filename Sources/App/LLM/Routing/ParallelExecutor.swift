@@ -302,26 +302,44 @@ struct ParallelExecutor: Sendable {
         ))
         var content = ""
         do {
-            for try await chunk in adapter.chatStream(
-                payload: workerPayload,
-                sessionKey: sessionKey,
-                sessionID: sessionID
-            ) {
-                try Task.checkCancellation()
-                guard !chunk.delta.isEmpty else { continue }
-                content.append(chunk.delta)
-                publish(.init(
-                    executionID: metadata.executionID,
-                    kind: .outputDelta,
-                    outputID: outputID,
-                    participantID: participant.id,
-                    role: participant.role,
-                    route: participant.route,
-                    stage: stage,
-                    round: round,
-                    delta: chunk.delta,
-                    status: .running
-                ))
+            let attemptLimit = metadata.retryPolicy == .resilient ? 2 : 1
+            var attempt = 0
+            while attempt < attemptLimit {
+                do {
+                    for try await chunk in adapter.chatStream(
+                        payload: workerPayload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID
+                    ) {
+                        try Task.checkCancellation()
+                        guard !chunk.delta.isEmpty else { continue }
+                        content.append(chunk.delta)
+                        publish(.init(
+                            executionID: metadata.executionID,
+                            kind: .outputDelta,
+                            outputID: outputID,
+                            participantID: participant.id,
+                            role: participant.role,
+                            route: participant.route,
+                            stage: stage,
+                            round: round,
+                            delta: chunk.delta,
+                            status: .running
+                        ))
+                    }
+                    break
+                } catch let error as ProviderError
+                    where error.isRecoverable && content.isEmpty && attempt + 1 < attemptLimit
+                {
+                    attempt += 1
+                    logger.info("retrying parallel participant", metadata: [
+                        "provider": .string(provider.rawValue),
+                        "attempt": .stringConvertible(attempt + 1),
+                    ])
+                    continue
+                } catch {
+                    throw error
+                }
             }
             content = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !content.isEmpty else { throw ParallelExecutorError.emptyOutput }
