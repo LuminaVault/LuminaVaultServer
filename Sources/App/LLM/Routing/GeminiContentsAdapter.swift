@@ -81,7 +81,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
         // user's own key when they stored one — HER-252).
         let rawModel = openAI["model"] as? String ?? ""
         let geminiModel = resolveGeminiModel(from: rawModel)
-        let url = Self.makeURL(for: geminiModel, apiKey: await resolveKey())
+        let url = await Self.makeURL(for: geminiModel, apiKey: resolveKey())
 
         // 3. Translate messages → Gemini shape
         let translated = Self.translateToGemini(
@@ -252,7 +252,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
             framing: .sse,
             logger: logger,
             makeRequest: {
-                let (url, body) = try Self.makeStreamRequest(payload: payload, apiKey: await self.resolveKey())
+                let (url, body) = try await Self.makeStreamRequest(payload: payload, apiKey: resolveKey())
                 return ProviderStreamRequest(
                     url: url,
                     headers: [("Accept", "text/event-stream")],

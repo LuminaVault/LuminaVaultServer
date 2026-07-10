@@ -24,7 +24,7 @@ import LuminaVaultShared
 ///
 /// Results are cached on the row (`capabilities` JSON + `capabilities_checked_at`)
 /// with a TTL so pane loads don't round-trip to the remote box every time.
-struct HermesRemoteCapabilitiesService: Sendable {
+struct HermesRemoteCapabilitiesService {
     let fluent: Fluent
     let resolver: HermesEndpointResolver
     let probeSession: URLSession
@@ -75,7 +75,8 @@ struct HermesRemoteCapabilitiesService: Sendable {
            let checkedAt = row.capabilitiesCheckedAt,
            now.timeIntervalSince(checkedAt) < ttl,
            let data = cached.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(HermesCapabilities.self, from: data) {
+           let decoded = try? JSONDecoder().decode(HermesCapabilities.self, from: data)
+        {
             return HermesCapabilitiesResponse(capabilities: decoded, checkedAt: checkedAt)
         }
 
@@ -83,7 +84,8 @@ struct HermesRemoteCapabilitiesService: Sendable {
         // Persist the fresh probe (best-effort — a failed cache write just
         // means the next call re-probes).
         if let row, let encoded = try? JSONEncoder().encode(probed),
-           let json = String(data: encoded, encoding: .utf8) {
+           let json = String(data: encoded, encoding: .utf8)
+        {
             row.capabilities = json
             row.capabilitiesCheckedAt = now
             try? await row.save(on: fluent.db())
@@ -97,7 +99,7 @@ struct HermesRemoteCapabilitiesService: Sendable {
     /// Returns false on any resolver error — the write path surfaces the
     /// real routing error separately.
     func isUserOverride(tenantID: UUID) async -> Bool {
-        (try? await resolver.resolve(tenantID: tenantID))?.isUserOverride ?? false
+        await (try? resolver.resolve(tenantID: tenantID))?.isUserOverride ?? false
     }
 
     // MARK: - Probe
@@ -110,12 +112,14 @@ struct HermesRemoteCapabilitiesService: Sendable {
         let flags = await fetchCapabilityFlags(base: base, auth: auth)
         let jobsReachable = await probeJobs(base: base, auth: auth)
 
-        // Map the remote contract onto our per-domain availability. hermes-agent
-        // keeps SOUL/config/gateways/memory file-on-disk, so those are
-        // structurally unsupported for a live proxy regardless of flags
-        // (see docs/hermes-api-server-surface.md). Chat is always live once the
-        // box is reachable (the resolver already routes it).
-        func avail(_ flag: Bool) -> HermesDomainAvailability { flag ? .live : .unsupported }
+        /// Map the remote contract onto our per-domain availability. hermes-agent
+        /// keeps SOUL/config/gateways/memory file-on-disk, so those are
+        /// structurally unsupported for a live proxy regardless of flags
+        /// (see docs/hermes-api-server-surface.md). Chat is always live once the
+        /// box is reachable (the resolver already routes it).
+        func avail(_ flag: Bool) -> HermesDomainAvailability {
+            flag ? .live : .unsupported
+        }
 
         return HermesCapabilities(
             isUserOverride: true,
@@ -169,7 +173,9 @@ struct HermesRemoteCapabilitiesService: Sendable {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let features = (obj["features"] as? [String: Any]) ?? obj
         func flag(_ keys: [String]) -> Bool {
-            for key in keys where (features[key] as? Bool) == true { return true }
+            for key in keys where (features[key] as? Bool) == true {
+                return true
+            }
             return false
         }
         return CapabilityFlags(

@@ -171,7 +171,8 @@ struct SOULServiceTests {
         let vaultPaths = VaultPathService(rootPath: h.vaultRoot.path)
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let target = h.service.vaultFilePath(for: tenantID)
-        try "# Legacy SOUL\n".data(using: .utf8)!.write(to: target)
+        let legacyBody = try #require("# Legacy SOUL\n".data(using: .utf8))
+        try legacyBody.write(to: target)
         #expect(h.service.needsCoreMigration(for: h.user) == true)
 
         // Migrating = read + enforcing write.

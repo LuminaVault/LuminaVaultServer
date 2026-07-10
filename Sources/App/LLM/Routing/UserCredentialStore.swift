@@ -114,7 +114,8 @@ actor UserCredentialStore {
            row.credentialKind == "oauth",
            let resolver = xaiContainerResolver,
            let handle = await resolver(tenantID),
-           handle.xaiConnectedAt != nil {
+           handle.xaiConnectedAt != nil
+        {
             let base = URL(string: handle.baseURL)
             return [ResolvedCredential(apiKey: handle.apiServerKey, baseURL: base, label: row.label)]
         }

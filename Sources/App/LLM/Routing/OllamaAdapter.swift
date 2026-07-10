@@ -145,7 +145,7 @@ struct OllamaAdapter: ProviderAdapter {
                     "stream": true,
                 ]
                 let bodyData = try JSONSerialization.data(withJSONObject: body)
-                let baseURL = await self.resolveBaseURL()
+                let baseURL = await resolveBaseURL()
                 return ProviderStreamRequest(
                     url: baseURL.appendingPathComponent("api").appendingPathComponent("chat"),
                     body: bodyData

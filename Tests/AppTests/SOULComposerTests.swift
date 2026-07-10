@@ -126,7 +126,7 @@ final class SOULComposerTests: XCTestCase {
         XCTAssertTrue(out.contains("> hey what's up"))
         XCTAssertFalse(out.contains("FOURTH-DROPPED"), "max 3 samples")
 
-        let huge = SoulComposeRequest(voiceSamples: [String(repeating: "a", count: 10_000)])
+        let huge = SoulComposeRequest(voiceSamples: [String(repeating: "a", count: 10000)])
         let hugeOut = SOULComposer.render(huge, username: "u")
         XCTAssertLessThan(hugeOut.utf8.count, 16 * 1024)
     }
