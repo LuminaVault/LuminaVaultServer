@@ -10,6 +10,8 @@ enum VaultPermission: Sendable {
 
 struct ResolvedVaultAccess: Sendable {
     let vaultID: UUID
+    let teamID: UUID?
+    let billingSponsorUserID: UUID
     let role: String
     let canUseAI: Bool
     let isPersonal: Bool
@@ -56,14 +58,21 @@ struct VaultAccessService: Sendable {
 
         let access: ResolvedVaultAccess
         if vault.personalOwnerUserID == userID {
-            access = .init(vaultID: requestedID, role: "admin", canUseAI: true, isPersonal: true)
+            access = .init(vaultID: requestedID, teamID: nil, billingSponsorUserID: userID,
+                           role: "admin", canUseAI: true, isPersonal: true)
         } else if let membership = try await VaultMembership.query(on: fluent.db())
             .filter(\.$vaultID == requestedID)
             .filter(\.$userID == userID)
             .first()
         {
-            access = .init(vaultID: requestedID, role: membership.role,
-                           canUseAI: membership.canUseAI, isPersonal: false)
+            guard let teamID = vault.teamID,
+                  let team = try await Team.find(teamID, on: fluent.db()), team.archivedAt == nil
+            else {
+                throw HTTPError(.notFound, message: "team vault not found")
+            }
+            access = .init(vaultID: requestedID, teamID: teamID,
+                           billingSponsorUserID: team.billingSponsorUserID,
+                           role: membership.role, canUseAI: membership.canUseAI, isPersonal: false)
         } else {
             throw HTTPError(.forbidden, message: "vault access denied")
         }
@@ -77,6 +86,12 @@ struct VaultAccessService: Sendable {
             throw HTTPError(.forbidden, message: "vault admin permission required")
         case .ai where !access.canUseAI:
             throw HTTPError(.forbidden, message: "vault AI access required")
+        case .ai:
+            guard let sponsor = try await User.find(access.billingSponsorUserID, on: fluent.db()),
+                  sponsor.entitled(for: .chat)
+            else {
+                throw HTTPError(.paymentRequired, message: "team owner subscription does not include AI access")
+            }
         default:
             break
         }
