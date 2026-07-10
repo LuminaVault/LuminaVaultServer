@@ -33,6 +33,7 @@ struct ConversationController {
     /// which case `streamReply` skips URL extraction entirely.
     let linkCapture: LinkCaptureService?
     let urlExtractor: URLExtractionService
+    let parallelEnabled: Bool
     let defaultModel: String
     let logger: Logger
 
@@ -44,6 +45,7 @@ struct ConversationController {
         followUpGenerator: FollowUpGenerator? = nil,
         linkCapture: LinkCaptureService? = nil,
         urlExtractor: URLExtractionService = URLExtractionService(),
+        parallelEnabled: Bool = false,
         defaultModel: String,
         logger: Logger
     ) {
@@ -54,6 +56,7 @@ struct ConversationController {
         self.followUpGenerator = followUpGenerator
         self.linkCapture = linkCapture
         self.urlExtractor = urlExtractor
+        self.parallelEnabled = parallelEnabled
         self.defaultModel = defaultModel
         self.logger = logger
     }
@@ -72,10 +75,26 @@ struct ConversationController {
     func create(_ req: Request, ctx: AppRequestContext) async throws -> ConversationDTO {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: ConversationCreateRequest.self, context: ctx)
+        let tenantID = try user.requireID()
+        let pinnedMemoryIDs = Array(body.pinnedMemoryIDs.prefix(5))
+        for memoryID in pinnedMemoryIDs {
+            guard try await memories.find(tenantID: tenantID, id: memoryID) != nil else {
+                throw HTTPError(.badRequest, message: "pinned memory does not belong to the caller")
+            }
+        }
+        if let route = body.routeOverride {
+            guard ProviderKind(shared: route.provider) != nil,
+                  RouterModelCatalog.entry(provider: route.provider, model: route.model) != nil
+            else {
+                throw HTTPError(.unprocessableContent, message: "selected model is unavailable")
+            }
+        }
         let conversation = try Conversation(
-            tenantID: user.requireID(),
+            tenantID: tenantID,
             title: (body.title?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "New conversation",
-            spaceID: body.spaceId
+            spaceID: body.spaceId,
+            pinnedMemoryIDs: pinnedMemoryIDs,
+            routeOverride: body.routeOverride
         )
         try await conversation.save(on: fluent.db())
         return try conversation.toDTO()
@@ -135,6 +154,12 @@ struct ConversationController {
         guard !content.isEmpty else {
             throw HTTPError(.badRequest, message: "content required")
         }
+        if body.multiModel?.enabled == true {
+            let tier = EntitlementChecker.effectiveTier(tier: user.tierEnum, override: user.tierOverrideEnum)
+            guard parallelEnabled, tier == .ultimate else {
+                throw HTTPError(.forbidden, message: "router_parallel_requires_ultimate")
+            }
+        }
 
         // Request-scoped logger: ctx.logger carries the Hummingbird request
         // id, so every stage below correlates with the access-log line.
@@ -164,13 +189,32 @@ struct ConversationController {
         let queryEmbedding = try await loggedStage("chat.embed", logger: log) {
             try await embeddings.embed(content, tenantID: tenantID)
         }
-        let hits = try await loggedStage("chat.search", logger: log) {
+        let semanticHits = try await loggedStage("chat.search", logger: log) {
             try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
                 limit: 5
             )
         }
+        let pinnedHits = try await conversation.pinnedMemoryIDs.asyncCompactMap { id in
+            try await memories.find(tenantID: tenantID, id: id).map {
+                MemorySearchResult(
+                    id: $0.savedID,
+                    tenantID: tenantID,
+                    content: $0.content,
+                    createdAt: $0.createdAt,
+                    distance: 0,
+                    source: MemorySourceKindDTO(rawValue: $0.originKind) ?? .legacy,
+                    provider: $0.originProvider,
+                    model: $0.originModel
+                )
+            }
+        }
+        let pinnedIDs = Set(pinnedHits.map(\.id))
+        let semanticRemainder = semanticHits
+            .filter { !pinnedIDs.contains($0.id) }
+            .prefix(5 - min(5, pinnedHits.count))
+        let hits = pinnedHits + Array(semanticRemainder)
         log.info("chat grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         // HER-340 — inject lightweight schedule awareness (today + next).
@@ -205,6 +249,11 @@ struct ConversationController {
         let urlExtractor = urlExtractor
         let userContent = content
         let conversationIDValue = conversationID
+        let requestedParallelStrategy = body.multiModel?.enabled == true ? body.multiModel?.strategy : nil
+        let parallelExecutionID = ParallelExecutionIDBox()
+        let routeOutcome = RouteOutcomeBox()
+        let forcedRoute = conversation.routeOverride
+        let provenanceRepository = MemoryProvenanceRepository(fluent: fluent)
 
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
@@ -222,7 +271,13 @@ struct ConversationController {
                     continuation.yield(.fallback(notice.wireDTO()))
                 }
                 let cerberusSink: @Sendable (QueryStreamEvent) -> Void = { event in
+                    if case .parallel(let progress) = event, progress.kind == .executionStarted {
+                        parallelExecutionID.set(progress.executionID)
+                    }
                     continuation.yield(event)
+                }
+                let routeSink: @Sendable (ModelProvenanceDTO) -> Void = { route in
+                    routeOutcome.set(route)
                 }
 
                 do {
@@ -233,10 +288,17 @@ struct ConversationController {
                     // stream in one structured block. Creating the AsyncStream
                     // outside this Task and then pushing a second @TaskLocal
                     // here segfaults on Linux (swift_task_localValuePush).
+                    try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
+                    try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
                     try await CerberusStreamContext.$sink.withValue(cerberusSink) {
-                        try await LLMRoutingContext.$cerberusScope.withValue(
-                            CerberusRequestScope(surface: .chat, spaceID: conversation.spaceID)
-                        ) {
+                        try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
+                            try await LLMRoutingContext.$cerberusScope.withValue(
+                                CerberusRequestScope(
+                                    surface: .chat,
+                                    spaceID: conversation.spaceID,
+                                    conversationID: conversationID
+                                )
+                            ) {
                             try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
                                 try await LLMRoutingContext.$currentUser.withValue(user) {
                                     try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
@@ -261,6 +323,9 @@ struct ConversationController {
                                 }
                             }
                         }
+                        }
+                    }
+                    }
                     }
                     logger.info("chat stream complete", metadata: [
                         "tokens": .stringConvertible(tokenCount),
@@ -311,9 +376,21 @@ struct ConversationController {
                         conversationID: conversationID,
                         role: .assistant,
                         content: assistantBuffer,
-                        sourceMemoryIDs: sourceIDs
+                        sourceMemoryIDs: sourceIDs,
+                        parallelExecutionID: parallelExecutionID.value
                     )
                     try await assistantMessage.save(on: fluent.db())
+                    let messageID = try assistantMessage.requireID()
+                    let route = routeOutcome.value
+                    try await provenanceRepository.enqueueOutput(
+                        tenantID: tenantID,
+                        source: .chat,
+                        sourceID: messageID.uuidString,
+                        conversationMessageID: messageID,
+                        content: assistantBuffer,
+                        provider: route?.provider,
+                        model: route?.model
+                    )
                     conversation.updatedAt = Date()
                     try await conversation.save(on: fluent.db())
                 } catch {
@@ -415,7 +492,12 @@ struct ConversationController {
             "(no relevant memories were found)"
         } else {
             hits.enumerated().map { offset, hit in
-                "[\(offset + 1)] \(hit.content)"
+                let provenance = if let provider = hit.provider, let model = hit.model {
+                    "prior model output from \(provider)/\(model)"
+                } else {
+                    hit.source.rawValue
+                }
+                return "[\(offset + 1)] [\(provenance)] \(hit.content)"
             }.joined(separator: "\n\n")
         }
         // HER-340 — lightweight schedule awareness (today + next event only).
@@ -430,6 +512,9 @@ struct ConversationController {
 
         Retrieved memories:
         \(context)\(scheduleSection)
+
+        Prior model outputs are drafts, not authoritative user facts. Prefer
+        direct user memories when sources disagree and state uncertainty.
         """)
         let turns = history.map { ChatMessage(role: $0.role, content: $0.content) }
         return [system] + turns
@@ -478,5 +563,37 @@ struct ConversationController {
             lines.append("- Next: \"\(next.title)\" \(dayFmt.string(from: next.startsAt))")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+private final class ParallelExecutionIDBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: UUID?
+
+    var value: UUID? {
+        lock.withLock { storage }
+    }
+
+    func set(_ value: UUID) {
+        lock.withLock { storage = value }
+    }
+}
+
+private final class RouteOutcomeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: ModelProvenanceDTO?
+
+    var value: ModelProvenanceDTO? { lock.withLock { storage } }
+    func set(_ value: ModelProvenanceDTO) { lock.withLock { storage = value } }
+}
+
+private extension Array {
+    func asyncCompactMap<T>(_ transform: (Element) async throws -> T?) async rethrows -> [T] {
+        var result: [T] = []
+        result.reserveCapacity(count)
+        for element in self {
+            if let value = try await transform(element) { result.append(value) }
+        }
+        return result
     }
 }

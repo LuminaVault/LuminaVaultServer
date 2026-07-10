@@ -729,6 +729,92 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SkillDTO' }
 
+  /v1/workflows:
+    get:
+      tags: [Workflows]
+      operationId: workflowsList
+      summary: List the tenant's visual workflows.
+      responses:
+        '200':
+          description: Workflow summaries.
+          content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowListResponse' } } }
+    post:
+      tags: [Workflows]
+      operationId: workflowsCreate
+      summary: Create a workflow draft.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowCreateRequest' } } }
+      responses:
+        '200':
+          description: Created workflow.
+          content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } }
+        '402': { description: Workflow creation requires Pro or Ultimate. }
+
+  /v1/workflows/{id}:
+    get:
+      tags: [Workflows]
+      operationId: workflowsGet
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Workflow draft., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
+
+  /v1/workflows/{id}/draft:
+    put:
+      tags: [Workflows]
+      operationId: workflowsUpdateDraft
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDraftUpdateRequest' } } } }
+      responses:
+        '200': { description: Updated draft., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
+        '409': { description: Draft revision conflict. }
+
+  /v1/workflows/{id}/publish:
+    post:
+      tags: [Workflows]
+      operationId: workflowsPublish
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Published immutable version., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
+
+  /v1/workflows/{id}/runs:
+    get:
+      tags: [Workflows]
+      operationId: workflowRunsList
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Workflow run history., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunsResponse' } } } }
+    post:
+      tags: [Workflows]
+      operationId: workflowRunCreate
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunRequest' } } } }
+      responses:
+        '200': { description: Queued run., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
+
+  /v1/workflows/runs:
+    get:
+      tags: [Workflows]
+      operationId: workflowRunsAll
+      responses:
+        '200': { description: Tenant run history., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunsResponse' } } } }
+
+  /v1/workflows/approvals:
+    get:
+      tags: [Workflows]
+      operationId: workflowApprovalsList
+      responses:
+        '200': { description: Pending approvals., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowApprovalsResponse' } } } }
+
+  /v1/workflows/approvals/{approvalID}/decision:
+    post:
+      tags: [Workflows]
+      operationId: workflowApprovalDecide
+      parameters: [{ in: path, name: approvalID, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowApprovalDecisionRequest' } } } }
+      responses:
+        '204': { description: Decision accepted. }
+
   /v1/skills/{name}:
     patch:
       tags: [Skills]
@@ -1626,6 +1712,109 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RouterDashboardResponse' }
 
+  /v1/router/parallel/executions/stream:
+    post:
+      tags: [LLM]
+      operationId: parallelExecutionStream
+      summary: Run an Ultimate-tier multi-model execution and stream progress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParallelExecutionRequestDTO' }
+      responses:
+        '200':
+          description: Server-Sent Events stream of `QueryStreamEvent`.
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/QueryStreamEvent' }
+
+  /v1/router/parallel/executions:
+    get:
+      tags: [LLM]
+      operationId: parallelExecutionsList
+      summary: List the caller's recent multi-model executions.
+      responses:
+        '200':
+          description: Execution history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParallelExecutionsResponse' }
+
+  /v1/router/parallel/executions/{executionID}:
+    parameters:
+      - in: path
+        name: executionID
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [LLM]
+      operationId: parallelExecutionDetail
+      summary: Fetch candidates, revisions, and synthesis for one execution.
+      responses:
+        '200':
+          description: Execution detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParallelExecutionDetailDTO' }
+    delete:
+      tags: [LLM]
+      operationId: parallelExecutionDelete
+      summary: Delete an execution and all persisted outputs.
+      responses:
+        '204': { description: Deleted. }
+
+  /v1/router/synthesis-presets:
+    get:
+      tags: [LLM]
+      operationId: synthesisPresetsList
+      responses:
+        '200':
+          description: Saved synthesis prompts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SynthesisPresetsResponse' }
+    post:
+      tags: [LLM]
+      operationId: synthesisPresetCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SynthesisPresetWriteRequest' }
+      responses:
+        '200':
+          description: Created preset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SynthesisPresetDTO' }
+
+  /v1/router/synthesis-presets/{presetID}:
+    parameters:
+      - in: path
+        name: presetID
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [LLM]
+      operationId: synthesisPresetUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SynthesisPresetWriteRequest' }
+      responses:
+        '200':
+          description: Updated preset.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SynthesisPresetDTO' }
+    delete:
+      tags: [LLM]
+      operationId: synthesisPresetDelete
+      responses:
+        '204': { description: Deleted. }
+
   # ─────────────── Me — Chat preferences + connections UX ───────────────
 
   /v1/me/chat-preferences:
@@ -2030,6 +2219,32 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryLineageResponse' }
 
+  /v1/memory/{id}/provenance:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    get:
+      tags: [Memory]
+      operationId: memoryProvenance
+      summary: Append-only creator and updater history for a memory.
+      responses:
+        '200':
+          description: Contribution timeline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryProvenanceResponse' }
+
+  /v1/memory/facets:
+    get:
+      tags: [Memory]
+      operationId: memoryFacets
+      summary: Provider, model, source, and date filter options.
+      responses:
+        '200':
+          description: Available memory facets for the current tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryFacetsResponse' }
+
   /v1/memory/graph:
     get:
       tags: [Memory]
@@ -2068,6 +2283,11 @@ paths:
             Absent or empty computes every kind.
           schema: { type: string }
           example: wikilink,space,semantic
+        - { in: query, name: providers, schema: { type: string }, description: "CSV provider identifiers." }
+        - { in: query, name: models, schema: { type: string }, description: "CSV model identifiers." }
+        - { in: query, name: sources, schema: { type: string }, description: "CSV memory source kinds." }
+        - { in: query, name: createdAfter, schema: { type: string, format: date-time } }
+        - { in: query, name: createdBefore, schema: { type: string, format: date-time } }
       responses:
         '200':
           description: Derived graph for the current tenant.
@@ -5000,6 +5220,153 @@ components:
         spec: { type: string }
         spaceId: { type: string, format: uuid }
 
+    WorkflowTriggerKind:
+      type: string
+      enum: [manual, chat, schedule, webhook]
+    WorkflowNodeKind:
+      type: string
+      enum: [trigger, llm, skill, memorySearch, memoryWrite, template, condition, approval, output]
+    WorkflowRunStatus:
+      type: string
+      enum: [queued, running, waitingForApproval, succeeded, failed, cancelled, timedOut]
+    WorkflowNodeRunStatus:
+      type: string
+      enum: [pending, running, waitingForApproval, succeeded, failed, skipped, cancelled]
+    StringMap:
+      type: object
+      additionalProperties: { type: string }
+    WorkflowNodeDTO:
+      type: object
+      required: [id, kind, name, x, y, configuration]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/WorkflowNodeKind' }
+        name: { type: string }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        configuration: { $ref: '#/components/schemas/StringMap' }
+    WorkflowEdgeDTO:
+      type: object
+      required: [id, sourceNodeID, sourcePort, targetNodeID, targetPort]
+      properties:
+        id: { type: string, format: uuid }
+        sourceNodeID: { type: string, format: uuid }
+        sourcePort: { type: string }
+        targetNodeID: { type: string, format: uuid }
+        targetPort: { type: string }
+    WorkflowDefinitionDTO:
+      type: object
+      required: [trigger, triggerConfiguration, nodes, edges]
+      properties:
+        trigger: { $ref: '#/components/schemas/WorkflowTriggerKind' }
+        triggerConfiguration: { $ref: '#/components/schemas/StringMap' }
+        nodes: { type: array, items: { $ref: '#/components/schemas/WorkflowNodeDTO' } }
+        edges: { type: array, items: { $ref: '#/components/schemas/WorkflowEdgeDTO' } }
+    WorkflowSummaryDTO:
+      type: object
+      required: [id, name, enabled, trigger, draftRevision, pendingApprovalCount, isLegacyJob, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        descriptionText: { type: string }
+        enabled: { type: boolean }
+        trigger: { $ref: '#/components/schemas/WorkflowTriggerKind' }
+        draftRevision: { type: integer }
+        publishedVersion: { type: integer }
+        lastRunStatus: { $ref: '#/components/schemas/WorkflowRunStatus' }
+        lastRunAt: { type: string, format: date-time }
+        pendingApprovalCount: { type: integer }
+        isLegacyJob: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    WorkflowDetailDTO:
+      type: object
+      required: [workflow, definition]
+      properties:
+        workflow: { $ref: '#/components/schemas/WorkflowSummaryDTO' }
+        definition: { $ref: '#/components/schemas/WorkflowDefinitionDTO' }
+    WorkflowListResponse:
+      type: object
+      required: [workflows]
+      properties: { workflows: { type: array, items: { $ref: '#/components/schemas/WorkflowSummaryDTO' } } }
+    WorkflowCreateRequest:
+      type: object
+      required: [name, definition]
+      properties:
+        name: { type: string }
+        descriptionText: { type: string }
+        definition: { $ref: '#/components/schemas/WorkflowDefinitionDTO' }
+    WorkflowDraftUpdateRequest:
+      type: object
+      required: [expectedRevision, definition]
+      properties:
+        name: { type: string }
+        descriptionText: { type: string }
+        enabled: { type: boolean }
+        expectedRevision: { type: integer }
+        definition: { $ref: '#/components/schemas/WorkflowDefinitionDTO' }
+    WorkflowRunRequest:
+      type: object
+      required: [input]
+      properties:
+        input: { $ref: '#/components/schemas/StringMap' }
+        conversationID: { type: string, format: uuid }
+    WorkflowNodeRunDTO:
+      type: object
+      required: [id, nodeID, nodeName, status, attempt]
+      properties:
+        id: { type: string, format: uuid }
+        nodeID: { type: string, format: uuid }
+        nodeName: { type: string }
+        status: { $ref: '#/components/schemas/WorkflowNodeRunStatus' }
+        attempt: { type: integer }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        outputPreview: { type: string }
+        error: { type: string }
+    WorkflowRunDTO:
+      type: object
+      required: [id, workflowID, workflowName, version, status, trigger, createdAt, nodeRuns]
+      properties:
+        id: { type: string, format: uuid }
+        workflowID: { type: string, format: uuid }
+        workflowName: { type: string }
+        version: { type: integer }
+        status: { $ref: '#/components/schemas/WorkflowRunStatus' }
+        trigger: { $ref: '#/components/schemas/WorkflowTriggerKind' }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        error: { type: string }
+        nodeRuns: { type: array, items: { $ref: '#/components/schemas/WorkflowNodeRunDTO' } }
+    WorkflowRunsResponse:
+      type: object
+      required: [runs]
+      properties: { runs: { type: array, items: { $ref: '#/components/schemas/WorkflowRunDTO' } } }
+    WorkflowApprovalDTO:
+      type: object
+      required: [id, runID, workflowID, workflowName, nodeID, title, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        runID: { type: string, format: uuid }
+        workflowID: { type: string, format: uuid }
+        workflowName: { type: string }
+        nodeID: { type: string, format: uuid }
+        title: { type: string }
+        message: { type: string }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    WorkflowApprovalsResponse:
+      type: object
+      required: [approvals]
+      properties: { approvals: { type: array, items: { $ref: '#/components/schemas/WorkflowApprovalDTO' } } }
+    WorkflowApprovalDecisionRequest:
+      type: object
+      required: [approved]
+      properties:
+        approved: { type: boolean }
+        note: { type: string }
+
     SkillSparklinePoint:
       type: object
       required: [day, count]
@@ -5848,6 +6215,22 @@ components:
       type: string
       enum: [fast, resilient]
 
+    ParallelStrategyDTO:
+      type: string
+      enum: [auto, bestOfN, debate, consensus, specialist]
+
+    ParallelExecutionStatusDTO:
+      type: string
+      enum: [running, completed, degraded, failed, cancelled]
+
+    ParallelOutputStageDTO:
+      type: string
+      enum: [answer, revision, synthesis]
+
+    ParallelStreamEventKindDTO:
+      type: string
+      enum: [executionStarted, outputStarted, outputDelta, outputCompleted, outputFailed, synthesisStarted, executionCompleted]
+
     RouterObjectiveWeightsDTO:
       type: object
       required: [quality, cost, latency]
@@ -5871,6 +6254,22 @@ components:
         inputPerMillionUsdMicros: { type: integer, format: int64 }
         outputPerMillionUsdMicros: { type: integer, format: int64 }
 
+    ParallelParticipantDTO:
+      type: object
+      required: [id, role, route]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string }
+        instructions: { type: string }
+        route: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+
+    ChatMultiModelOptionsDTO:
+      type: object
+      required: [enabled, strategy]
+      properties:
+        enabled: { type: boolean }
+        strategy: { $ref: '#/components/schemas/ParallelStrategyDTO' }
+
     RouterActionDTO:
       type: object
       required: [kind, routes, retryPolicy]
@@ -5882,6 +6281,117 @@ components:
         synthesisRoute: { $ref: '#/components/schemas/RouterModelRouteDTO' }
         minimumSuccessfulResults: { type: integer, minimum: 2, maximum: 4 }
         retryPolicy: { $ref: '#/components/schemas/RouterRetryPolicy' }
+        parallelStrategy: { $ref: '#/components/schemas/ParallelStrategyDTO' }
+        participants:
+          type: array
+          items: { $ref: '#/components/schemas/ParallelParticipantDTO' }
+
+    ParallelExecutionRequestDTO:
+      type: object
+      required: [prompt, strategy]
+      properties:
+        prompt: { type: string }
+        strategy: { $ref: '#/components/schemas/ParallelStrategyDTO' }
+        participants:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items: { $ref: '#/components/schemas/ParallelParticipantDTO' }
+        synthesisRoute: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        synthesisPrompt: { type: string, maxLength: 4000 }
+        synthesisPresetID: { type: string, format: uuid }
+        spaceID: { type: string, format: uuid }
+
+    ParallelStreamEventDTO:
+      type: object
+      required: [executionID, kind]
+      properties:
+        executionID: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ParallelStreamEventKindDTO' }
+        strategy: { $ref: '#/components/schemas/ParallelStrategyDTO' }
+        outputID: { type: string, format: uuid }
+        participantID: { type: string, format: uuid }
+        role: { type: string }
+        route: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        stage: { $ref: '#/components/schemas/ParallelOutputStageDTO' }
+        round: { type: integer }
+        delta: { type: string }
+        errorCode: { type: string }
+        status: { $ref: '#/components/schemas/ParallelExecutionStatusDTO' }
+
+    ParallelOutputDTO:
+      type: object
+      required: [id, role, route, stage, round, content, status, tokensIn, tokensOut, estimatedCostUsdMicros, latencyMs]
+      properties:
+        id: { type: string, format: uuid }
+        participantID: { type: string, format: uuid }
+        role: { type: string }
+        route: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        stage: { $ref: '#/components/schemas/ParallelOutputStageDTO' }
+        round: { type: integer }
+        content: { type: string }
+        status: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        latencyMs: { type: integer }
+
+    ParallelExecutionSummaryDTO:
+      type: object
+      required: [id, strategy, status, promptPreview, participantCount, estimatedCostUsdMicros, latencyMs, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        strategy: { $ref: '#/components/schemas/ParallelStrategyDTO' }
+        status: { $ref: '#/components/schemas/ParallelExecutionStatusDTO' }
+        promptPreview: { type: string }
+        participantCount: { type: integer }
+        estimatedCostUsdMicros: { type: integer, format: int64 }
+        latencyMs: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    ParallelExecutionDetailDTO:
+      type: object
+      required: [summary, prompt, outputs]
+      properties:
+        summary: { $ref: '#/components/schemas/ParallelExecutionSummaryDTO' }
+        prompt: { type: string }
+        outputs:
+          type: array
+          items: { $ref: '#/components/schemas/ParallelOutputDTO' }
+        synthesizedAnswer: { type: string }
+
+    ParallelExecutionsResponse:
+      type: object
+      required: [executions]
+      properties:
+        executions:
+          type: array
+          items: { $ref: '#/components/schemas/ParallelExecutionSummaryDTO' }
+
+    SynthesisPresetDTO:
+      type: object
+      required: [id, name, prompt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prompt: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SynthesisPresetWriteRequest:
+      type: object
+      required: [name, prompt]
+      properties:
+        name: { type: string, maxLength: 80 }
+        prompt: { type: string, maxLength: 4000 }
+
+    SynthesisPresetsResponse:
+      type: object
+      required: [presets]
+      properties:
+        presets:
+          type: array
+          items: { $ref: '#/components/schemas/SynthesisPresetDTO' }
 
     RouterRuleDTO:
       type: object
@@ -6369,6 +6879,74 @@ components:
             `approved` / `rejected` after the user acts. Reject also lands the
             content hash on the per-tenant `kb_compile_reject_list` so future
             compile runs skip the same content.
+        provenance: { $ref: '#/components/schemas/MemoryProvenanceSummaryDTO' }
+
+    MemoryActorKindDTO:
+      type: string
+      enum: [user, model, system]
+
+    MemoryContributionOperationDTO:
+      type: string
+      enum: [create, update]
+
+    MemorySourceKindDTO:
+      type: string
+      enum: [manual, chat, query, knowledge_compile, skill, vault, import, link, legacy]
+
+    ModelProvenanceDTO:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { type: string }
+        model: { type: string }
+
+    MemoryContributionDTO:
+      type: object
+      required: [id, operation, actor, source, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        operation: { $ref: '#/components/schemas/MemoryContributionOperationDTO' }
+        actor: { $ref: '#/components/schemas/MemoryActorKindDTO' }
+        source: { $ref: '#/components/schemas/MemorySourceKindDTO' }
+        model: { $ref: '#/components/schemas/ModelProvenanceDTO' }
+        sourceReference: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    MemoryProvenanceSummaryDTO:
+      type: object
+      required: [contributors]
+      properties:
+        createdBy: { $ref: '#/components/schemas/MemoryContributionDTO' }
+        lastUpdatedBy: { $ref: '#/components/schemas/MemoryContributionDTO' }
+        contributors:
+          type: array
+          items: { $ref: '#/components/schemas/ModelProvenanceDTO' }
+
+    MemoryProvenanceResponse:
+      type: object
+      required: [memoryID, contributions]
+      properties:
+        memoryID: { type: string, format: uuid }
+        contributions:
+          type: array
+          items: { $ref: '#/components/schemas/MemoryContributionDTO' }
+
+    MemoryFacetDTO:
+      type: object
+      required: [value, count]
+      properties:
+        value: { type: string }
+        count: { type: integer }
+
+    MemoryFacetsResponse:
+      type: object
+      required: [providers, models, sources]
+      properties:
+        providers: { type: array, items: { $ref: '#/components/schemas/MemoryFacetDTO' } }
+        models: { type: array, items: { $ref: '#/components/schemas/MemoryFacetDTO' } }
+        sources: { type: array, items: { $ref: '#/components/schemas/MemoryFacetDTO' } }
+        oldestAt: { type: string, format: date-time }
+        newestAt: { type: string, format: date-time }
 
     MemoryListResponse:
       type: object
@@ -6483,6 +7061,7 @@ components:
         position:
           allOf: [{ $ref: '#/components/schemas/GraphPosition3D' }]
           description: "HER-235 3D viz — precomputed stable 3D coordinate. Omitted until the layout worker has run for this node → client force-directed fallback."
+        provenance: { $ref: '#/components/schemas/MemoryProvenanceSummaryDTO' }
 
     MemoryEdgeKindDTO:
       type: string
@@ -6594,11 +7173,12 @@ components:
         - `fallback` — `ProviderFallbackNoticeDTO` (HER-252 routing failover)
         - `routing` — `RouterRoutingEventDTO` (Cerberus route/phase)
         - `usage` — `RouterUsageDTO` (prompt-free terminal usage)
+        - `parallel` — `ParallelStreamEventDTO` (multi-model candidate progress)
         - `link_saved` — `LinkSavedDTO` (HER-274 auto-saved chat link)
       properties:
         type:
           type: string
-          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, link_saved]
+          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, parallel, link_saved]
         payload:
           description: Case-specific payload; absent for `done`.
 
@@ -6640,6 +7220,10 @@ components:
         spaceId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        pinnedMemoryIDs:
+          type: array
+          items: { type: string, format: uuid }
+        routeOverride: { $ref: '#/components/schemas/RouterModelRouteDTO' }
 
     ConversationMessageDTO:
       type: object
@@ -6656,6 +7240,7 @@ components:
         sourceMemoryIDs:
           type: array
           items: { type: string, format: uuid }
+        parallelExecutionID: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
 
     ConversationCreateRequest:
@@ -6663,6 +7248,11 @@ components:
       properties:
         title: { type: string }
         spaceId: { type: string, format: uuid }
+        pinnedMemoryIDs:
+          type: array
+          maxItems: 5
+          items: { type: string, format: uuid }
+        routeOverride: { $ref: '#/components/schemas/RouterModelRouteDTO' }
 
     ConversationListResponse:
       type: object
@@ -6687,6 +7277,7 @@ components:
       required: [content]
       properties:
         content: { type: string }
+        multiModel: { $ref: '#/components/schemas/ChatMultiModelOptionsDTO' }
 
     ChatInboxItemDTO:
       type: object

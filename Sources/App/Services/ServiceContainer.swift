@@ -140,6 +140,8 @@ struct ServiceContainer {
     let emailFromAddress: String
     /// HER-33: Optional Reply-To header. Empty omits the field.
     let emailReplyTo: String
+    /// Public web origin used to build single-use team invitation links.
+    let teamInviteBaseURL: String
     /// HER-240a: Image used for per-tenant Hermes containers spawned by
     /// `HermesContainerManager`. Distinct from the shared `hermesGatewayURL`
     /// instance (which still serves KB compile and other non-Grok routes).

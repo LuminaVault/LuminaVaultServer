@@ -82,7 +82,9 @@ actor CronScheduler: Service {
             // guards a same-tick re-fire before the disable lands.
             if let runAt = pair.runAt {
                 guard now >= runAt else { continue }
-                if let last = pair.lastRunAt, last >= runAt { continue }
+                if let last = pair.lastRunAt, last >= runAt {
+                    continue
+                }
                 due.append(pair)
                 continue
             }
@@ -231,6 +233,12 @@ actor CronScheduler: Service {
             for manifest in manifests {
                 let key = "\(manifest.source.rawValue):\(manifest.name)"
                 let state = stateByKey[key]
+                // Legacy Jobs linked to an Automation 2.0 workflow are
+                // dispatched by WorkflowScheduler. Keeping the state row
+                // preserves old APIs without firing the job twice.
+                if state?.workflowID != nil {
+                    continue
+                }
                 // No row at all → treat as enabled with manifest defaults
                 // (user hasn't customized; the catalog says it's available).
                 let enabled = state?.enabled ?? true

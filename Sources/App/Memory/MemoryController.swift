@@ -14,6 +14,8 @@ extension MemoryLineageResponse: @retroactive ResponseEncodable {}
 extension MemoryLineageSourceDTO: @retroactive ResponseEncodable {}
 extension MemoryDTO: @retroactive ResponseEncodable {}
 extension MemoryGraphResponse: @retroactive ResponseEncodable {}
+extension MemoryProvenanceResponse: @retroactive ResponseEncodable {}
+extension MemoryFacetsResponse: @retroactive ResponseEncodable {}
 
 // HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
 // four optional geo fields. The server-local definition has been removed.
@@ -46,7 +48,10 @@ extension MemoryDTO {
     /// Non-throwing converter for any Memory fetched from the DB. Uses
     /// `savedID` rather than `requireID()` so the call-site no longer has
     /// to wrap every DTO mapping in `try`.
-    static func fromMemory(_ memory: Memory) -> MemoryDTO {
+    static func fromMemory(
+        _ memory: Memory,
+        provenance: MemoryProvenanceSummaryDTO? = nil
+    ) -> MemoryDTO {
         MemoryDTO(
             id: memory.savedID,
             content: memory.content,
@@ -56,7 +61,31 @@ extension MemoryDTO {
             lng: memory.lng,
             accuracyM: memory.accuracyM,
             placeName: memory.placeName,
-            reviewState: memory.reviewState
+            reviewState: memory.reviewState,
+            provenance: provenance ?? memory.originSummary
+        )
+    }
+}
+
+extension Memory {
+    var originSummary: MemoryProvenanceSummaryDTO? {
+        let source = MemorySourceKindDTO(rawValue: originKind) ?? .legacy
+        let actor: MemoryActorKindDTO = originProvider == nil ? (source == .manual ? .user : .system) : .model
+        let model = originProvider.flatMap { provider in
+            originModel.map { ModelProvenanceDTO(provider: provider, model: $0) }
+        }
+        let contribution = MemoryContributionDTO(
+            id: savedID,
+            operation: .create,
+            actor: actor,
+            source: source,
+            model: model,
+            sourceReference: originSourceID,
+            createdAt: createdAt ?? .distantPast
+        )
+        return MemoryProvenanceSummaryDTO(
+            createdBy: contribution,
+            contributors: model.map { [$0] } ?? []
         )
     }
 }
@@ -69,6 +98,7 @@ extension MemoryDTO {
 /// `DELETE /v1/memory/{id}`, `PATCH /v1/memory/{id}`) that bypasses the
 /// agent loop and talks directly to the repository.
 struct MemoryController {
+    let vaultAccess: VaultAccessService
     let service: HermesMemoryService
     let repository: MemoryRepository
     let embeddings: any EmbeddingService
@@ -78,6 +108,10 @@ struct MemoryController {
     /// HER-290 — durable `(tenant_id, content_hash)` reject list used to dedup
     /// memories the user has already rejected.
     let rejectListRepository: KBCompileRejectListRepository
+    var provenanceRepository: MemoryProvenanceRepository {
+        MemoryProvenanceRepository(fluent: repository.fluent)
+    }
+
     /// HER-171 — fires `SkillEvent.memoryUpserted` so the skills runtime can
     /// react to a freshly-saved memory. Optional: test wirings can omit it.
     var eventBus: EventBus?
@@ -109,21 +143,23 @@ struct MemoryController {
         // `/graph` is registered before `/:id` so Hummingbird's router takes
         // the static segment in preference to the UUID parameter match (HER-235).
         router.get("/graph", use: graph)
+        router.get("/facets", use: facets)
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)
+        router.get("/:id/provenance", use: provenance)
         router.delete("/:id", use: delete)
         router.patch("/:id", use: patch)
     }
 
     @Sendable
     func upsert(_ req: Request, ctx: AppRequestContext) async throws -> MemoryUpsertResponse {
-        let user = try ctx.requireIdentity()
+        _ = try ctx.requireIdentity()
         let body = try await req.decode(as: MemoryUpsertRequest.self, context: ctx)
         let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else {
             throw HTTPError(.badRequest, message: "content required")
         }
-        let tenantID = try user.requireID()
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
 
         // HER-105 — optional Space target via `?space_id=` query param (mirrors
         // `POST /v1/vault/files`). The shared `MemoryUpsertRequest` DTO is a
@@ -147,7 +183,8 @@ struct MemoryController {
             tenantID: tenantID,
             content: content,
             embedding: embedding,
-            spaceID: spaceID
+            spaceID: spaceID,
+            contribution: .user(.create)
         )
 
         // HER-207 — geo passthrough. All four fields are independently
@@ -204,12 +241,11 @@ struct MemoryController {
 
     @Sendable
     func search(_ req: Request, ctx: AppRequestContext) async throws -> MemorySearchResponse {
-        let user = try ctx.requireIdentity()
         let body = try await req.decode(as: MemorySearchRequest.self, context: ctx)
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
-        let tenantID = try user.requireID()
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai).vaultID
         let answer = try await service.search(
             tenantID: tenantID,
             sessionKey: tenantID.uuidString,
@@ -224,8 +260,7 @@ struct MemoryController {
 
     @Sendable
     func list(_ req: Request, ctx: AppRequestContext) async throws -> MemoryListResponse {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
 
         if let space = req.uri.queryParameters["space"], !space.isEmpty {
             // Memory <-> Space binding lands with HER-105 (vault browser).
@@ -264,37 +299,47 @@ struct MemoryController {
             limit: limit,
             offset: offset
         )
+        let summaries = try await provenanceRepository.summaries(
+            tenantID: tenantID,
+            memoryIDs: rows.map(\.savedID)
+        )
         return MemoryListResponse(
-            memories: rows.map(MemoryDTO.fromMemory),
+            memories: rows.map { MemoryDTO.fromMemory($0, provenance: summaries[$0.savedID]) },
             limit: limit,
             offset: offset
         )
     }
 
     @Sendable
-    func getOne(_: Request, ctx: AppRequestContext) async throws -> MemoryDTO {
-        let user = try ctx.requireIdentity()
+    func getOne(_ req: Request, ctx: AppRequestContext) async throws -> MemoryDTO {
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
         let id = try Self.parseID(ctx)
-        guard let row = try await repository.find(tenantID: user.requireID(), id: id) else {
+        guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return MemoryDTO.fromMemory(row)
+        let summary = try await provenanceRepository.summaries(
+            tenantID: tenantID,
+            memoryIDs: [row.savedID]
+        )[row.savedID]
+        return MemoryDTO.fromMemory(row, provenance: summary)
     }
 
     @Sendable
-    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
-        let user = try ctx.requireIdentity()
+    func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let id = try Self.parseID(ctx)
-        let deleted = try await repository.delete(tenantID: user.requireID(), id: id)
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
+        if let memory = try await repository.find(tenantID: tenantID, id: id) {
+            try await provenanceRepository.suppressJob(tenantID: tenantID, memory: memory)
+        }
+        let deleted = try await repository.delete(tenantID: tenantID, id: id)
         guard deleted else { throw HTTPError(.notFound, message: "memory not found") }
         return Response(status: .noContent)
     }
 
     @Sendable
     func patch(_ req: Request, ctx: AppRequestContext) async throws -> MemoryDTO {
-        let user = try ctx.requireIdentity()
         let id = try Self.parseID(ctx)
-        let tenantID = try user.requireID()
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
         let body = try await req.decode(as: MemoryPatchRequest.self, context: ctx)
 
         guard body.content != nil || body.tags != nil || body.reviewState != nil else {
@@ -307,13 +352,22 @@ struct MemoryController {
             }
             let embedding = try await embeddings.embed(content, tenantID: tenantID)
             let updated = try await repository.updateContent(
-                tenantID: tenantID, id: id, content: content, embedding: embedding
+                tenantID: tenantID,
+                id: id,
+                content: content,
+                embedding: embedding,
+                contribution: .user(.update)
             )
             guard updated else { throw HTTPError(.notFound, message: "memory not found") }
         }
 
         if let tags = body.tags {
-            let updated = try await repository.updateTags(tenantID: tenantID, id: id, tags: tags)
+            let updated = try await repository.updateTags(
+                tenantID: tenantID,
+                id: id,
+                tags: tags,
+                contribution: body.content == nil ? .user(.update) : nil
+            )
             guard updated else { throw HTTPError(.notFound, message: "memory not found") }
         }
 
@@ -337,6 +391,13 @@ struct MemoryController {
                 id: id,
                 reviewState: target
             )
+            if body.content == nil, body.tags == nil {
+                try await provenanceRepository.record(
+                    tenantID: tenantID,
+                    memoryID: id,
+                    input: .user(.update)
+                )
+            }
             if target == MemoryReviewState.rejected {
                 // Append `(tenant_id, content_hash)` so the next kb-compile
                 // run skips re-learning the same content.
@@ -351,18 +412,41 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return MemoryDTO.fromMemory(row)
+        let summary = try await provenanceRepository.summaries(
+            tenantID: tenantID,
+            memoryIDs: [row.savedID]
+        )[row.savedID]
+        return MemoryDTO.fromMemory(row, provenance: summary)
+    }
+
+    @Sendable
+    func provenance(_ req: Request, ctx: AppRequestContext) async throws -> MemoryProvenanceResponse {
+        let memoryID = try Self.parseID(ctx)
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
+        guard let response = try await provenanceRepository.timeline(
+            tenantID: tenantID,
+            memoryID: memoryID
+        ) else {
+            throw HTTPError(.notFound, message: "memory not found")
+        }
+        return response
+    }
+
+    @Sendable
+    func facets(_ req: Request, ctx: AppRequestContext) async throws -> MemoryFacetsResponse {
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
+        return try await provenanceRepository.facets(tenantID: tenantID)
     }
 
     /// HER-150: Returns the source vault file (when known) the memory was
     /// derived from, plus a human-readable trace string. 404 when the
     /// memory doesn't exist or isn't owned by the caller.
     @Sendable
-    func lineage(_: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
-        let user = try ctx.requireIdentity()
+    func lineage(_ req: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
         let id = try Self.parseID(ctx)
         guard let row = try await repository.findLineage(
-            tenantID: user.requireID(),
+            tenantID: tenantID,
             memoryID: id
         ) else {
             throw HTTPError(.notFound, message: "memory not found")
@@ -389,8 +473,7 @@ struct MemoryController {
     /// from shared tags + pgvector cosine similarity. No persistence in v1.
     @Sendable
     func graph(_ req: Request, ctx: AppRequestContext) async throws -> MemoryGraphResponse {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
 
         let limit = Self.clamp(
             req.uri.queryParameters["limit"].flatMap { Int($0) } ?? MemoryGraphService.defaultLimit,
@@ -411,6 +494,7 @@ struct MemoryController {
         let includeWikiPages = req.uri.queryParameters["includeWikiPages"]
             .map { $0 == "true" || $0 == "1" } ?? true
         let kinds = Self.parseEdgeKinds(req.uri.queryParameters["kinds"].map(String.init))
+        let filter = try Self.parseGraphFilter(req)
 
         return try await graphService.graph(
             tenantID: tenantID,
@@ -418,8 +502,37 @@ struct MemoryController {
             similarity: similarity,
             maxEdgesPerNode: maxEdges,
             includeWikiPages: includeWikiPages,
-            kinds: kinds
+            kinds: kinds,
+            filter: filter
         )
+    }
+
+    private static func parseGraphFilter(_ request: Request) throws -> MemoryGraphFilter {
+        let query = request.uri.queryParameters
+        let sources = Set(csv(query["sources"]).compactMap(MemorySourceKindDTO.init(rawValue:)))
+        if let raw = query["sources"], !raw.isEmpty, sources.isEmpty {
+            throw HTTPError(.badRequest, message: "sources contains no recognized values")
+        }
+        return MemoryGraphFilter(
+            providers: Set(csv(query["providers"])),
+            models: Set(csv(query["models"])),
+            sources: sources,
+            createdAfter: try parseDate(query["createdAfter"], name: "createdAfter"),
+            createdBefore: try parseDate(query["createdBefore"], name: "createdBefore")
+        )
+    }
+
+    private static func csv(_ value: Substring?) -> [String] {
+        guard let value else { return [] }
+        return value.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+    }
+
+    private static func parseDate(_ value: Substring?, name: String) throws -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        guard let date = ISO8601DateFormatter().date(from: String(value)) else {
+            throw HTTPError(.badRequest, message: "\(name) must be ISO-8601")
+        }
+        return date
     }
 
     /// Renders a source date as "YYYY-MM-DD" UTC. Keeps the trace string

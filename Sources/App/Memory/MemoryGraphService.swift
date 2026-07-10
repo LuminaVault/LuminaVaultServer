@@ -73,16 +73,19 @@ struct MemoryGraphService {
         similarity: Double,
         maxEdgesPerNode: Int,
         includeWikiPages: Bool = true,
-        kinds: Set<MemoryEdgeKindDTO> = MemoryGraphService.allEdgeKinds
+        kinds: Set<MemoryEdgeKindDTO> = MemoryGraphService.allEdgeKinds,
+        filter: MemoryGraphFilter = .init()
     ) async throws -> MemoryGraphResponse {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for graph query")
         }
 
-        let memRows = try await fetchMemoryNodes(sql: sql, tenantID: tenantID, limit: limit)
-        let wikiRows = includeWikiPages
-            ? try await fetchWikiNodes(sql: sql, tenantID: tenantID, limit: limit)
+        let allMemoryRows = try await fetchMemoryNodes(sql: sql, tenantID: tenantID, limit: Self.maxLimit)
+        let memRows = Array(allMemoryRows.filter { filter.matches($0) }.prefix(limit))
+        let allWikiRows = includeWikiPages
+            ? try await fetchWikiNodes(sql: sql, tenantID: tenantID, limit: Self.maxLimit)
             : []
+        let wikiRows = Array(allWikiRows.filter { filter.matches($0) }.prefix(limit))
         guard !memRows.isEmpty || !wikiRows.isEmpty else {
             return MemoryGraphResponse(nodes: [], edges: [], generatedAt: Date())
         }
@@ -160,7 +163,8 @@ struct MemoryGraphService {
                 kind: .memory,
                 spaceID: row.space_id,
                 activity: Self.activity(score: row.score, lastAccessed: row.last_accessed_at ?? row.created_at, now: now),
-                position: Self.position(x: row.graph_x, y: row.graph_y, z: row.graph_z)
+                position: Self.position(x: row.graph_x, y: row.graph_y, z: row.graph_z),
+                provenance: row.provenance
             )
         }
         let wikiNodes = wikiRows.map { row in
@@ -182,7 +186,8 @@ struct MemoryGraphService {
     private func fetchMemoryNodes(sql: any SQLDatabase, tenantID: UUID, limit: Int) async throws -> [MemoryNodeRow] {
         try await sql.raw("""
         SELECT id, content, tags, created_at, score, space_id, source_vault_file_id,
-               last_accessed_at, graph_x, graph_y, graph_z
+               last_accessed_at, graph_x, graph_y, graph_z,
+               origin_kind, origin_source_id, origin_provider, origin_model
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
         ORDER BY score DESC, last_accessed_at DESC NULLS LAST, id ASC
@@ -525,6 +530,31 @@ struct MemoryNodeRow: Decodable {
     let graph_x: Double?
     let graph_y: Double?
     let graph_z: Double?
+    let origin_kind: String
+    let origin_source_id: String?
+    let origin_provider: String?
+    let origin_model: String?
+
+    var provenance: MemoryProvenanceSummaryDTO {
+        let source = MemorySourceKindDTO(rawValue: origin_kind) ?? .legacy
+        let actor: MemoryActorKindDTO = origin_provider == nil ? (source == .manual ? .user : .system) : .model
+        let model = origin_provider.flatMap { provider in
+            origin_model.map { ModelProvenanceDTO(provider: provider, model: $0) }
+        }
+        let contribution = MemoryContributionDTO(
+            id: id,
+            operation: .create,
+            actor: actor,
+            source: source,
+            model: model,
+            sourceReference: origin_source_id,
+            createdAt: created_at ?? .distantPast
+        )
+        return MemoryProvenanceSummaryDTO(
+            createdBy: contribution,
+            contributors: model.map { [$0] } ?? []
+        )
+    }
 }
 
 private struct WikiNodeRow: Decodable {
@@ -533,6 +563,35 @@ private struct WikiNodeRow: Decodable {
     let title: String?
     let space_id: UUID?
     let created_at: Date?
+}
+
+struct MemoryGraphFilter: Sendable {
+    var providers: Set<String> = []
+    var models: Set<String> = []
+    var sources: Set<MemorySourceKindDTO> = []
+    var createdAfter: Date?
+    var createdBefore: Date?
+
+    func matches(_ row: MemoryNodeRow) -> Bool {
+        if !providers.isEmpty, !providers.contains(row.origin_provider ?? "") { return false }
+        if !models.isEmpty, !models.contains(row.origin_model ?? "") { return false }
+        if !sources.isEmpty,
+           !sources.contains(MemorySourceKindDTO(rawValue: row.origin_kind) ?? .legacy) { return false }
+        return matches(date: row.created_at)
+    }
+
+    fileprivate func matches(_ row: WikiNodeRow) -> Bool {
+        if !providers.isEmpty || !models.isEmpty { return false }
+        if !sources.isEmpty, !sources.contains(.vault) { return false }
+        return matches(date: row.created_at)
+    }
+
+    private func matches(date: Date?) -> Bool {
+        guard let date else { return createdAfter == nil && createdBefore == nil }
+        if let createdAfter, date < createdAfter { return false }
+        if let createdBefore, date > createdBefore { return false }
+        return true
+    }
 }
 
 private struct TagEdgeRow: Decodable {

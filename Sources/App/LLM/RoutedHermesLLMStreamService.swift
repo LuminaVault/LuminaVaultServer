@@ -44,7 +44,21 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
             do {
-                if let model = await byokModel(sessionKey: sessionKey) {
+                if let strategy = LLMRoutingContext.parallelStrategy {
+                    logger.info("chat stream routed to multi-model executor", metadata: ["strategy": .string(strategy.rawValue)])
+                    let payload = try Self.makeOpenAIPayload(
+                        model: request.model ?? "router-auto",
+                        request: request
+                    )
+                    for try await chunk in transport.chatStream(
+                        payload: payload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID
+                    ) {
+                        continuation.yield(chunk)
+                    }
+                    continuation.finish()
+                } else if let model = await byokModel(sessionKey: sessionKey) {
                     byokCounter.increment()
                     logger.info("chat stream routed to BYOK provider", metadata: ["model": .string(model)])
                     let payload = try Self.makeOpenAIPayload(model: model, request: request)

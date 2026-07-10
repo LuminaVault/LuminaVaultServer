@@ -37,6 +37,7 @@ enum Capability: String, CaseIterable {
     case privacyBYOKey
     case privacyContextRouter
     case mlxOnDevice
+    case workflowAutomation
 }
 
 // MARK: - Checker
@@ -100,6 +101,9 @@ enum EntitlementChecker {
             case .trial, .pro, .ultimate: true
             case .lapsed, .archived: false
             }
+
+        case .workflowAutomation:
+            effective == .pro || effective == .ultimate
 
         case .skillVaultRun, .privacyBYOKey, .privacyContextRouter, .mlxOnDevice:
             effective == .ultimate

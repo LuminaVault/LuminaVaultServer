@@ -34,6 +34,7 @@ extension SpaceDTO {
 
 struct SpacesController {
     let service: SpacesService
+    let vaultAccess: VaultAccessService
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
@@ -44,18 +45,18 @@ struct SpacesController {
     }
 
     @Sendable
-    func list(_: Request, ctx: AppRequestContext) async throws -> SpaceListResponse {
-        let user = try ctx.requireIdentity()
-        let spaces = try await service.list(tenantID: user.requireID())
+    func list(_ req: Request, ctx: AppRequestContext) async throws -> SpaceListResponse {
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read)
+        let spaces = try await service.list(tenantID: access.vaultID)
         return try SpaceListResponse(spaces: spaces.map(SpaceDTO.fromSpace))
     }
 
     @Sendable
     func create(_ req: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
-        let user = try ctx.requireIdentity()
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let body = try await req.decode(as: CreateSpaceRequest.self, context: ctx)
         let space = try await service.create(
-            tenantID: user.requireID(),
+            tenantID: access.vaultID,
             name: body.name,
             slugRaw: body.slug ?? "",
             description: body.description,
@@ -67,20 +68,20 @@ struct SpacesController {
     }
 
     @Sendable
-    func getOne(_: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
-        let user = try ctx.requireIdentity()
+    func getOne(_ req: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read)
         let id = try Self.parseID(ctx)
-        let space = try await service.get(tenantID: user.requireID(), id: id)
+        let space = try await service.get(tenantID: access.vaultID, id: id)
         return try SpaceDTO.fromSpace(space)
     }
 
     @Sendable
     func update(_ req: Request, ctx: AppRequestContext) async throws -> SpaceDTO {
-        let user = try ctx.requireIdentity()
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let id = try Self.parseID(ctx)
         let body = try await req.decode(as: UpdateSpaceRequest.self, context: ctx)
         let space = try await service.update(
-            tenantID: user.requireID(),
+            tenantID: access.vaultID,
             id: id,
             name: body.name,
             description: body.description,
@@ -92,10 +93,10 @@ struct SpacesController {
     }
 
     @Sendable
-    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
-        let user = try ctx.requireIdentity()
+    func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let id = try Self.parseID(ctx)
-        try await service.delete(tenantID: user.requireID(), id: id)
+        try await service.delete(tenantID: access.vaultID, id: id)
         return Response(status: .noContent)
     }
 

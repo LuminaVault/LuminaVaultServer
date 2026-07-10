@@ -145,6 +145,7 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 
 - `CERBERUS_EXECUTION_MODE`: `active` evaluates the resolved user, Space, or Job profile; any other value retains the legacy preference router for rollback.
 - `CERBERUS_ENSEMBLES_ENABLED`: enables profile actions that run models in parallel and synthesize their outputs. Defaults to `false` because an ensemble can multiply provider usage.
+- `CERBERUS_PARALLEL_ENABLED`: master gate for Ultimate-tier Best-of-N, Consensus, Debate, Specialist, playground, and chat multi-model execution. Defaults to `false`; when absent the server falls back to `CERBERUS_ENSEMBLES_ENABLED` for one-release compatibility.
 
 Profiles, bindings, budgets, routing attempts, and monthly usage are stored in PostgreSQL. Provider prices in the router catalog are estimates used for routing and budget reservation; actual provider invoices remain authoritative.
 
@@ -198,8 +199,10 @@ The signup verification, password-reset, MFA, and magic-link sign-in flows all s
 - `EMAIL_RESEND_APIKEY=re_...` (Resend dashboard → API Keys)
 - `EMAIL_FROM_ADDRESS="LuminaVault <auth@yourdomain.com>"` — sender domain MUST be verified in Resend
 - `EMAIL_REPLY_TO=support@yourdomain.com` (optional)
+- `TEAM_INVITE_BASE_URL=https://app.yourdomain.com` — public web origin used to build seven-day, single-use team invitation links
 
 When `EMAIL_KIND` is unset or `logging`, the server writes OTPs to stderr instead of sending email. That is the dev/CI default; iOS clients hitting a production deploy with `EMAIL_KIND=logging` will appear to send OTPs successfully but no email ever arrives.
+Team invitations use the same email transport. Production must set `TEAM_INVITE_BASE_URL` to the web app origin; local development defaults to `http://localhost:5173`.
 
 ### JWT key rotation (HER-33)
 

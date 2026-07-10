@@ -64,6 +64,7 @@ struct VaultController {
     /// cascades that memory. Optional so non-note deployments/tests skip it.
     let memories: MemoryRepository?
     let embeddings: (any EmbeddingService)?
+    let vaultAccess: VaultAccessService?
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
@@ -85,7 +86,8 @@ struct VaultController {
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
         memories: MemoryRepository? = nil,
-        embeddings: (any EmbeddingService)? = nil
+        embeddings: (any EmbeddingService)? = nil,
+        vaultAccess: VaultAccessService? = nil
     ) {
         self.vaultPaths = vaultPaths
         self.fluent = fluent
@@ -96,6 +98,7 @@ struct VaultController {
         self.maxFileSize = maxFileSize
         self.memories = memories
         self.embeddings = embeddings
+        self.vaultAccess = vaultAccess
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -145,7 +148,7 @@ struct VaultController {
     @Sendable
     func upload(_ request: Request, ctx: AppRequestContext) async throws -> VaultUploadResponse {
         let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+        let tenantID = try await resolvedVaultID(request, ctx: ctx, permission: .write)
 
         guard let rawPath = request.uri.queryParameters["path"].map(String.init), !rawPath.isEmpty else {
             throw HTTPError(.badRequest, message: "missing required query parameter `path`")
@@ -289,8 +292,7 @@ struct VaultController {
 
     @Sendable
     func list(_ request: Request, ctx: AppRequestContext) async throws -> VaultFileListResponse {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+        let tenantID = try await resolvedVaultID(request, ctx: ctx, permission: .read)
 
         let limit = Self.clamp(
             request.uri.queryParameters["limit"].flatMap { Int($0) } ?? Self.defaultLimit,
@@ -364,9 +366,8 @@ struct VaultController {
     /// disk (covers the soft-deleted state where the row is gone but the
     /// `_deleted_*` mirror still exists).
     @Sendable
-    func read(_: Request, ctx: AppRequestContext) async throws -> Response {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+    func read(_ request: Request, ctx: AppRequestContext) async throws -> Response {
+        let tenantID = try await resolvedVaultID(request, ctx: ctx, permission: .read)
 
         guard let rawPath: String = ctx.parameters.getCatchAll().joined(separator: "/").nonEmpty else {
             throw HTTPError(.badRequest, message: "missing path")
@@ -401,9 +402,8 @@ struct VaultController {
     // MARK: - Delete (soft)
 
     @Sendable
-    func delete(_: Request, ctx: AppRequestContext) async throws -> Response {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+    func delete(_ request: Request, ctx: AppRequestContext) async throws -> Response {
+        let tenantID = try await resolvedVaultID(request, ctx: ctx, permission: .write)
 
         // Hummingbird's `**` glob lands in `parameters["catchall"]` as the
         // remaining path slash-joined. Re-sanitize before doing anything.
@@ -452,8 +452,7 @@ struct VaultController {
 
     @Sendable
     func move(_ request: Request, ctx: AppRequestContext) async throws -> VaultFileDTO {
-        let user = try ctx.requireIdentity()
-        let tenantID = try user.requireID()
+        let tenantID = try await resolvedVaultID(request, ctx: ctx, permission: .write)
 
         let body = try await request.decode(as: VaultMoveRequest.self, context: ctx)
         let from = try Self.sanitizePath(body.path)
@@ -525,6 +524,17 @@ struct VaultController {
     }
 
     // MARK: - DB helpers
+
+    private func resolvedVaultID(
+        _ request: Request,
+        ctx: AppRequestContext,
+        permission: VaultPermission
+    ) async throws -> UUID {
+        if let vaultAccess {
+            return try await vaultAccess.resolve(request: request, context: ctx, requiring: permission).vaultID
+        }
+        return try ctx.requireTenantID()
+    }
 
     /// Returns the row id of the upserted vault file so the upload handler
     /// can include it in the `vault_file_created` event payload (HER-171).

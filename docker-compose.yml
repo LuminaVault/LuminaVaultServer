@@ -128,6 +128,7 @@ services:
       # set SMS_KIND=twilio / EMAIL_KIND=resend + creds for real delivery.
       SMS_KIND: ${SMS_KIND:-logging}
       EMAIL_KIND: ${EMAIL_KIND:-logging}
+      TEAM_INVITE_BASE_URL: ${TEAM_INVITE_BASE_URL:-http://localhost:5173}
       # --- Hermes profile + chat ---
       HERMES_GATEWAYKIND: filesystem
       HERMES_GATEWAYURL: http://hermes:8642
@@ -137,6 +138,7 @@ services:
       # --- Cerberus model orchestration ---
       CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
       CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}
+      CERBERUS_PARALLEL_ENABLED: ${CERBERUS_PARALLEL_ENABLED:-false}
       # Must be VAULT_ROOT_PATH (swift-configuration maps `vault.rootPath` →
       # VAULT_ROOT_PATH). The old `VAULT_ROOTPATH` never matched, so the app
       # fell through to `.env`'s VAULT_ROOT_PATH=/var/lib/luminavault — an

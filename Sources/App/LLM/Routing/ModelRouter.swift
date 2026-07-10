@@ -53,6 +53,14 @@ enum LLMRoutingContext {
     @TaskLocal static var currentResolution: HermesEndpointResolver.Resolution?
     @TaskLocal static var cerberusScope: CerberusRequestScope?
     @TaskLocal static var cerberusPrompt: String?
+    /// Explicit per-turn multi-model override. `nil` preserves the active
+    /// Router profile's normal sequential/ensemble behavior.
+    @TaskLocal static var parallelStrategy: ParallelStrategyDTO?
+    @TaskLocal static var parallelRequest: ParallelExecutionRequestDTO?
+    /// Exact per-conversation route selected by “Ask another model”. Unlike
+    /// ordinary routing this has no silent fallback.
+    @TaskLocal static var forcedRoute: RouterModelRouteDTO?
+    @TaskLocal static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

@@ -29,6 +29,10 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "apns_category") var apnsCategory: String?
     @OptionalField(key: "domain") var domain: String?
     @OptionalField(key: "space_id") var spaceID: UUID?
+    /// Set once this legacy scheduled skill has been represented by an
+    /// Automation 2.0 workflow. CronScheduler then leaves delivery to the
+    /// workflow scheduler, preventing double execution during migration.
+    @OptionalField(key: "workflow_id") var workflowID: UUID?
 
     init() {}
 

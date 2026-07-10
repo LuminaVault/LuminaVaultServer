@@ -112,7 +112,16 @@ actor RouterTelemetryService {
                  \(bind: result.model), \(bind: Int64(result.tokensIn)), \(bind: Int64(result.tokensOut)),
                  \(bind: result.estimatedCostUsdMicros), \(bind: Int64(result.latencyMs)),
                  \(bind: result.usageEstimated), \(bind: result.fallbackCount))
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                status = EXCLUDED.status,
+                selected_provider = EXCLUDED.selected_provider,
+                selected_model = EXCLUDED.selected_model,
+                tokens_in = EXCLUDED.tokens_in,
+                tokens_out = EXCLUDED.tokens_out,
+                estimated_cost_usd_micros = EXCLUDED.estimated_cost_usd_micros,
+                latency_ms = EXCLUDED.latency_ms,
+                usage_estimated = EXCLUDED.usage_estimated,
+                fallback_count = EXCLUDED.fallback_count
             """).run()
 
             try await sql.raw("""

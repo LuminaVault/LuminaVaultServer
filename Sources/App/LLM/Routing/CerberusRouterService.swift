@@ -6,11 +6,13 @@ struct CerberusRequestScope: Sendable, Hashable {
     let surface: RouterSurface
     let spaceID: UUID?
     let jobID: String?
+    let conversationID: UUID?
 
-    init(surface: RouterSurface, spaceID: UUID? = nil, jobID: String? = nil) {
+    init(surface: RouterSurface, spaceID: UUID? = nil, jobID: String? = nil, conversationID: UUID? = nil) {
         self.surface = surface
         self.spaceID = spaceID
         self.jobID = jobID
+        self.conversationID = conversationID
     }
 }
 
@@ -22,7 +24,11 @@ struct CerberusDecisionMetadata: Hashable, Sendable {
     let ruleID: UUID?
     let taskType: RouterTaskType
     let surface: RouterSurface
+    let spaceID: UUID?
+    let conversationID: UUID?
     let strategy: RouterActionKind
+    let parallelStrategy: ParallelStrategyDTO?
+    let participants: [ParallelParticipantDTO]?
     let routes: [RouterModelRouteDTO]
     let synthesisRoute: RouterModelRouteDTO?
     let minimumSuccessfulResults: Int
@@ -97,6 +103,26 @@ struct CerberusModelRouter: ModelRouter {
                 tier: user.tierEnum,
                 override: user.tierOverrideEnum
             )
+            let parallelRequest = LLMRoutingContext.parallelRequest
+            let requestedParallelStrategy = parallelRequest?.strategy ?? LLMRoutingContext.parallelStrategy
+            if requestedParallelStrategy != nil, ensemblesEnabled, effectiveTier == .ultimate {
+                var routes = parallelRequest?.participants?.map(\.route) ?? action.routes
+                for candidate in table.candidates {
+                    guard let provider = candidate.provider.toShared() else { continue }
+                    let route = RouterModelRouteDTO(provider: provider, model: candidate.modelID)
+                    if !routes.contains(where: { $0.id == route.id }) { routes.append(route) }
+                }
+                routes = Array(routes.prefix(3))
+                if routes.count >= 2 {
+                    action = RouterActionDTO(
+                        kind: .ensemble,
+                        routes: routes,
+                        synthesisRoute: parallelRequest?.synthesisRoute ?? action.synthesisRoute ?? routes.first,
+                        minimumSuccessfulResults: requestedParallelStrategy == .bestOfN ? 1 : 2,
+                        retryPolicy: action.retryPolicy
+                    )
+                }
+            }
             if action.kind == .ensemble, (!ensemblesEnabled || effectiveTier != .ultimate) {
                 action = profile.defaultAction.kind == .sequential
                     ? profile.defaultAction
@@ -109,7 +135,13 @@ struct CerberusModelRouter: ModelRouter {
             guard !filtered.isEmpty else { return table }
 
             let promptTokens = max(1, (LLMRoutingContext.cerberusPrompt?.count ?? 0) / 4)
-            let predicted = predictedCost(routes: filtered, synthesis: action.synthesisRoute, promptTokens: promptTokens)
+            let effectiveParallelStrategy = requestedParallelStrategy ?? action.parallelStrategy
+            let predicted = predictedCost(
+                routes: filtered,
+                synthesis: action.synthesisRoute,
+                promptTokens: promptTokens,
+                workerRounds: effectiveParallelStrategy == .debate ? 2 : 1
+            )
             let budgetState = await budget.reserve(
                 tenantID: tenantID,
                 predictedUsdMicros: predicted,
@@ -136,7 +168,13 @@ struct CerberusModelRouter: ModelRouter {
                 ruleID: rule?.id,
                 taskType: task,
                 surface: scope.surface,
+                spaceID: scope.spaceID,
+                conversationID: scope.conversationID,
                 strategy: action.kind,
+                parallelStrategy: action.kind == .ensemble
+                    ? (requestedParallelStrategy ?? action.parallelStrategy ?? .consensus)
+                    : nil,
+                participants: parallelRequest?.participants ?? action.participants,
                 routes: ordered,
                 synthesisRoute: action.synthesisRoute,
                 minimumSuccessfulResults: action.minimumSuccessfulResults ?? 2,
@@ -188,16 +226,27 @@ struct CerberusModelRouter: ModelRouter {
     private func predictedCost(
         routes: [RouterModelRouteDTO],
         synthesis: RouterModelRouteDTO?,
-        promptTokens: Int
+        promptTokens: Int,
+        workerRounds: Int = 1
     ) -> Int64 {
-        (routes + [synthesis].compactMap { $0 }).reduce(0) { partial, route in
+        let workers = routes.reduce(Int64(0)) { partial, route in
             let catalog = RouterModelCatalog.entry(provider: route.provider, model: route.model)
             let inputRate = route.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
             let outputRate = route.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
-            return partial
-                + Int64(promptTokens) * inputRate / 1_000_000
-                + 1_024 * outputRate / 1_000_000
+            let inputCost = Int64(promptTokens) * inputRate / 1_000_000
+            let outputCost = Int64(1_024) * outputRate / 1_000_000
+            return partial + inputCost + outputCost
         }
+        let synthesisCost: Int64 = synthesis.map { route in
+            let catalog = RouterModelCatalog.entry(provider: route.provider, model: route.model)
+            let inputRate = route.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
+            let outputRate = route.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
+            let inputTokens = Int64(promptTokens * max(2, routes.count))
+            let inputCost = inputTokens * inputRate / 1_000_000
+            let outputCost = Int64(1_024) * outputRate / 1_000_000
+            return inputCost + outputCost
+        } ?? 0
+        return workers * Int64(max(1, workerRounds)) + synthesisCost
     }
 
     private static func toModelRoute(_ route: RouterModelRouteDTO) -> ModelRoute? {

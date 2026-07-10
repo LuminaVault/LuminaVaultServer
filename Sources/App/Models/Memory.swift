@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 final class Memory: Model, TenantModel, @unchecked Sendable {
     static let schema = "memories"
@@ -41,11 +42,18 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     /// kb-compile-produced rows default to "pending" via the service path.
     @Field(key: "review_state") var reviewState: String
 
+    @Field(key: "origin_kind") var originKind: String
+    @OptionalField(key: "origin_source_id") var originSourceID: String?
+    @OptionalField(key: "origin_provider") var originProvider: String?
+    @OptionalField(key: "origin_model") var originModel: String?
+    @OptionalField(key: "origin_conversation_message_id") var originConversationMessageID: UUID?
+
     init() {
         score = 0
         accessCount = 0
         queryHitCount = 0
         reviewState = "auto"
+        originKind = MemorySourceKindDTO.legacy.rawValue
     }
 
     init(
@@ -59,7 +67,12 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         lng: Double? = nil,
         accuracyM: Double? = nil,
         placeName: String? = nil,
-        reviewState: String = "auto"
+        reviewState: String = "auto",
+        originKind: String = MemorySourceKindDTO.legacy.rawValue,
+        originSourceID: String? = nil,
+        originProvider: String? = nil,
+        originModel: String? = nil,
+        originConversationMessageID: UUID? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -72,6 +85,11 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         self.accuracyM = accuracyM
         self.placeName = placeName
         self.reviewState = reviewState
+        self.originKind = originKind
+        self.originSourceID = originSourceID
+        self.originProvider = originProvider
+        self.originModel = originModel
+        self.originConversationMessageID = originConversationMessageID
         score = 0
         accessCount = 0
         queryHitCount = 0

@@ -145,6 +145,9 @@ struct QueryController {
         let hitDTOs = hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }
+        let outputID = UUID()
+        let routeOutcome = QueryRouteOutcomeBox()
+        let provenanceRepository = MemoryProvenanceRepository(fluent: memories.fluent)
 
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
@@ -162,10 +165,14 @@ struct QueryController {
                 let fallbackSink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
                     continuation.yield(.fallback(notice.wireDTO()))
                 }
+                let routeSink: @Sendable (ModelProvenanceDTO) -> Void = { route in
+                    routeOutcome.set(route)
+                }
                 do {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
+                    try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
                     try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
                         try await LLMRoutingContext.$currentUser.withValue(user) {
                             try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
@@ -189,6 +196,7 @@ struct QueryController {
                             }
                         }
                     }
+                    }
                     logger.info("query stream complete", metadata: [
                         "tokens": .stringConvertible(tokenCount),
                         "chars": .stringConvertible(assistantBuffer.count),
@@ -211,6 +219,23 @@ struct QueryController {
                     continuation.yield(.error("upstream failure"))
                     continuation.finish()
                     return
+                }
+
+                do {
+                    let route = routeOutcome.value
+                    try await provenanceRepository.enqueueOutput(
+                        tenantID: tenantID,
+                        source: .query,
+                        sourceID: outputID.uuidString,
+                        conversationMessageID: nil,
+                        content: assistantBuffer,
+                        provider: route?.provider,
+                        model: route?.model
+                    )
+                } catch {
+                    logger.warning("query output indexing enqueue failed", metadata: [
+                        "error": .string(Logger.redact(String(describing: error))),
+                    ])
                 }
 
                 // 3. Server-generated follow-ups (HER-37 Slice C).
@@ -248,7 +273,12 @@ struct QueryController {
             "(no relevant memories were found)"
         } else {
             hits.enumerated().map { offset, hit in
-                "[\(offset + 1)] \(hit.content)"
+                let provenance = if let provider = hit.provider, let model = hit.model {
+                    "prior model output from \(provider)/\(model)"
+                } else {
+                    hit.source.rawValue
+                }
+                return "[\(offset + 1)] [\(provenance)] \(hit.content)"
             }.joined(separator: "\n\n")
         }
         let system = """
@@ -260,10 +290,21 @@ struct QueryController {
 
         Retrieved memories:
         \(context)
+
+        Prior model outputs are drafts, not authoritative user facts. Prefer
+        direct user memories when sources disagree and state uncertainty.
         """
         return [
             ChatMessage(role: "system", content: system),
             ChatMessage(role: "user", content: query),
         ]
     }
+}
+
+private final class QueryRouteOutcomeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: ModelProvenanceDTO?
+
+    var value: ModelProvenanceDTO? { lock.withLock { storage } }
+    func set(_ value: ModelProvenanceDTO) { lock.withLock { storage = value } }
 }

@@ -37,6 +37,7 @@ services:
       EMAIL_RESEND_API_KEY: ${EMAIL_RESEND_APIKEY:-}
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
       EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+      TEAM_INVITE_BASE_URL: ${TEAM_INVITE_BASE_URL:?TEAM_INVITE_BASE_URL required}
       # --- OAuth providers (empty = provider disabled) ---
       # These are PUBLIC client identifiers (shipped in the iOS app), not
       # secrets. The server only verifies the id_token's `aud` against them
@@ -132,6 +133,7 @@ services:
       # --- Cerberus model orchestration ---
       CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
       CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}
+      CERBERUS_PARALLEL_ENABLED: ${CERBERUS_PARALLEL_ENABLED:-false}
       # --- Gemini (vision / multimodal fallback) ---
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # --- TTS ---

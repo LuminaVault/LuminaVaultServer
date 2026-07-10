@@ -187,6 +187,7 @@ func buildApplication(
         jinaAPIKey: reader.string(forKey: "jina.apiKey", isSecret: true, default: ""),
         emailFromAddress: reader.string(forKey: "email.fromAddress", default: ""),
         emailReplyTo: reader.string(forKey: "email.replyTo", default: ""),
+        teamInviteBaseURL: reader.string(forKey: "team.invite.base.url", default: "http://localhost:5173"),
         // HER-XXX — default to the Mnemosyne-baked image so new tenant
         // containers ship persistent memory. Override via `hermes.perTenant.image`
         // (env HERMES_PER_TENANT_IMAGE) to pin a registry digest in prod.
@@ -1104,11 +1105,17 @@ func buildRouter(
         forKey: ConfigKey("cerberus.ensemblesEnabled"),
         default: false
     )
+    // New name reflects all supported parallel strategies. The legacy flag
+    // remains a one-release fallback for existing deployments.
+    let cerberusParallelEnabled = reader.bool(
+        forKey: ConfigKey("cerberus.parallelEnabled"),
+        default: cerberusEnsemblesEnabled
+    )
     let cerberusRouter: any ModelRouter = CerberusModelRouter(
         profiles: routerProfileRepo,
         fallback: legacyModelRouter,
         budget: routerTelemetry,
-        ensemblesEnabled: cerberusEnsemblesEnabled,
+        ensemblesEnabled: cerberusParallelEnabled,
         logger: routingLogger
     )
     let modelRouter: any ModelRouter = cerberusExecutionMode == "active"
@@ -1122,13 +1129,23 @@ func buildRouter(
         logger: Logger(label: "lv.usage-meter")
     )
 
+    let parallelStore = ParallelExecutionStore(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.cerberus.parallel.store")
+    )
+    let parallelExecutor = ParallelExecutor(
+        registry: providerRegistry,
+        logger: Logger(label: "lv.cerberus.parallel"),
+        store: parallelStore
+    )
     let routedTransport = RoutedLLMTransport(
         registry: providerRegistry,
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
         failoverLogger: providerFailoverLogger,
-        routerTelemetry: routerTelemetry
+        routerTelemetry: routerTelemetry,
+        parallelExecutor: parallelExecutor
     )
 
     // Cron bridge — assembled now that `routedTransport` exists (the NL→spec
@@ -1474,6 +1491,7 @@ func buildRouter(
     }
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
+    let vaultAccessService = VaultAccessService(fluent: services.fluent)
     let memoryService = HermesMemoryService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
@@ -1483,6 +1501,7 @@ func buildRouter(
         logger: Logger(label: "lv.memory")
     )
     let memoryController = MemoryController(
+        vaultAccess: vaultAccessService,
         service: memoryService,
         repository: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
@@ -1605,15 +1624,12 @@ func buildRouter(
     // Hermes gateway (`queryStreamService`). Only built when the SecretBox
     // exists (same gate as the credential store) — without it BYOK keys
     // can't be decrypted, so we keep the unchanged managed behaviour.
-    let conversationStreamService: any HermesLLMStreamService = {
-        guard userCredentialStore != nil else { return queryStreamService }
-        return RoutedHermesLLMStreamService(
-            fallback: queryStreamService,
-            transport: routedTransport,
-            preferences: userLLMPreferenceRepo,
-            logger: Logger(label: "lv.chat.stream.routed")
-        )
-    }()
+    let conversationStreamService: any HermesLLMStreamService = RoutedHermesLLMStreamService(
+        fallback: queryStreamService,
+        transport: routedTransport,
+        preferences: userLLMPreferenceRepo,
+        logger: Logger(label: "lv.chat.stream.routed")
+    )
 
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
     // retrieval pipeline as /v1/query/stream. BYO Hermes middleware is in
@@ -1625,6 +1641,7 @@ func buildRouter(
         streamService: conversationStreamService,
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
+        parallelEnabled: cerberusParallelEnabled,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations")
     )
@@ -1710,7 +1727,8 @@ func buildRouter(
         achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
         memories: MemoryRepository(fluent: services.fluent),
-        embeddings: embeddingService
+        embeddings: embeddingService,
+        vaultAccess: vaultAccessService
     )
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
@@ -1798,9 +1816,39 @@ func buildRouter(
 
     // Spaces routes — service is constructed alongside `vaultInitService`
     // above so first-run vault create can seed defaults.
-    let spacesController = SpacesController(service: spacesService)
+    let spacesController = SpacesController(service: spacesService, vaultAccess: vaultAccessService)
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
+
+    // Team/shared-vault control plane. Resource endpoints remain backwards
+    // compatible: no X-Vault-ID means the caller's personal vault.
+    let vaultActivityPublisher = VaultActivityPublisher()
+    let teamController = TeamController(
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        access: vaultAccessService,
+        invitationSender: makeTeamInvitationSender(
+            kind: services.emailKind,
+            apiKey: services.emailResendAPIKey,
+            fromAddress: services.emailFromAddress,
+            replyTo: services.emailReplyTo,
+            baseURL: URL(string: services.teamInviteBaseURL) ?? URL(string: "http://localhost:5173")!,
+            logger: Logger(label: "lv.team-invitations")
+        ),
+        activityPublisher: vaultActivityPublisher
+    )
+    let teamsGroup = router.group("/v1/teams")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    teamController.addRoutes(to: teamsGroup)
+    let sharedVaultsGroup = router.group("/v1/vaults")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    teamController.addVaultRoutes(to: sharedVaultsGroup)
+    let invitationsGroup = router.group("/v1/team-invitations")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    teamController.addInvitationRoutes(to: invitationsGroup)
 
     // "Feed Your Brain" — bulk import: stage links into the `imported` inbox,
     // Smart-Import categorize into Spaces, approve → file + scoped compile.
@@ -2079,6 +2127,15 @@ func buildRouter(
         managedServices.append(GraphLayoutWorker(fluent: services.fluent))
     }
 
+    // Cross-model context: final grounded answers are persisted first, then
+    // embedded by a durable outbox worker. Fresh-chat answers never enqueue.
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(MemoryIndexWorker(
+            fluent: services.fluent,
+            embeddings: embeddingService
+        ))
+    }
+
     // HER-245 / HER-259 — Sessions list. Joins conversations + messages.
     let sessionsController = SessionsController(
         fluent: services.fluent,
@@ -2309,7 +2366,15 @@ func buildRouter(
     RouterController(
         repository: routerProfileRepo,
         fluent: services.fluent,
-        ensemblesEnabled: cerberusEnsemblesEnabled
+        ensemblesEnabled: cerberusParallelEnabled
+    ).addRoutes(to: cerberusGroup)
+    ParallelController(
+        transport: routedTransport,
+        store: parallelStore,
+        fluent: services.fluent,
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: embeddingService,
+        enabled: cerberusParallelEnabled
     ).addRoutes(to: cerberusGroup)
 
     // Usability layer — one task-based settings surface for connection
@@ -2453,6 +2518,36 @@ func buildRouter(
         logger: Logger(label: "lv.jobs")
     ).addRoutes(to: jobsGroup)
 
+    // Automation 2.0 — durable, versioned visual workflows. Execution is
+    // claimed from Postgres so the API can scale beyond one replica safely.
+    let workflowService = WorkflowService(fluent: services.fluent)
+    let workflowsGroup = router.group("/v1/workflows")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(
+            requires: .workflowAutomation,
+            enforcementEnabled: services.billingEnforcementEnabled
+        ))
+    WorkflowController(service: workflowService).addRoutes(to: workflowsGroup)
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(WorkflowEngine(
+            fluent: services.fluent,
+            transport: routedTransport,
+            defaultModel: services.hermesDefaultModel,
+            skillRunner: skillRunner,
+            skillCatalog: skillCatalog,
+            embeddings: embeddingService,
+            logger: Logger(label: "lv.workflows.worker")
+        ))
+        managedServices.append(WorkflowScheduler(
+            fluent: services.fluent,
+            logger: Logger(label: "lv.workflows.scheduler")
+        ))
+        managedServices.append(WorkflowMaintenanceService(
+            fluent: services.fluent,
+            logger: Logger(label: "lv.workflows.maintenance")
+        ))
+    }
+
     // Apple Ecosystem Integration P0 — per-domain data-access consent.
     let appleGroup = router.group("/v1/apple").add(middleware: jwtAuthenticator)
     AppleConsentController(
@@ -2536,7 +2631,8 @@ func buildRouter(
 
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
     let kanbanController = KanbanController(
-        service: KanbanService(fluent: services.fluent, authoring: jobAuthoring)
+        service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
+        vaultAccess: vaultAccessService
     )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)

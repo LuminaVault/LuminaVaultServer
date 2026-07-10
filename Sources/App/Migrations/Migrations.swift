@@ -93,4 +93,9 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M86_CreateUserChatPreferences())
     await fluent.migrations.add(M87_CreateConnectionDiagnosticEvents())
     await fluent.migrations.add(M88_CreateCerberusRouter())
+    await fluent.migrations.add(M89_CreateParallelExecutions())
+    await fluent.migrations.add(M90_CreateTeamVaults())
+    await fluent.migrations.add(M91_CrossModelMemory())
+    await fluent.migrations.add(M92_CreateWorkflows())
+    await fluent.migrations.add(M93_HardenWorkflowAutomation())
 }

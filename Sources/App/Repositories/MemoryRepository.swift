@@ -56,21 +56,24 @@ struct MemoryRepository {
         }
         let vec = MemoryRepository.formatVector(queryEmbedding)
         let rows = try await sql.raw("""
-        SELECT id, tenant_id, content, created_at,
+        SELECT id, tenant_id, content, created_at, origin_kind, origin_provider, origin_model,
                embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
           AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
-        LIMIT \(bind: limit)
+        LIMIT \(bind: max(limit, limit * 3))
         """).all(decoding: MemorySearchRow.self)
-        return rows.map {
+        return Self.balanced(rows, limit: limit).map {
             MemorySearchResult(
                 id: $0.id,
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance
+                distance: $0.distance,
+                source: MemorySourceKindDTO(rawValue: $0.origin_kind) ?? .legacy,
+                provider: $0.origin_provider,
+                model: $0.origin_model
             )
         }
     }
@@ -88,7 +91,9 @@ struct MemoryRepository {
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
         spaceID: UUID? = nil,
-        reviewState: String = "auto"
+        reviewState: String = "auto",
+        contribution: MemoryContributionInput = .legacy,
+        originConversationMessageID: UUID? = nil
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
@@ -103,29 +108,52 @@ struct MemoryRepository {
             // parameterised. SQLKit binds `nil` UUIDs as SQL NULL, so the
             // optional FKs are safe to thread through unconditionally.
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, tags, source_vault_file_id, space_id, review_state, created_at)
+            INSERT INTO memories (
+                id, tenant_id, content, embedding, tags, source_vault_file_id,
+                space_id, review_state, origin_kind, origin_source_id,
+                origin_provider, origin_model, origin_conversation_message_id, created_at
+            )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
                     \(bind: sourceVaultFileID),
                     \(bind: spaceID),
                     \(bind: reviewState),
+                    \(bind: contribution.source.rawValue),
+                    \(bind: contribution.sourceReference),
+                    \(bind: contribution.provider),
+                    \(bind: contribution.model),
+                    \(bind: originConversationMessageID),
                     NOW())
             """).run()
         } else {
             try await sql.raw("""
-            INSERT INTO memories (id, tenant_id, content, embedding, source_vault_file_id, space_id, review_state, created_at)
+            INSERT INTO memories (
+                id, tenant_id, content, embedding, source_vault_file_id,
+                space_id, review_state, origin_kind, origin_source_id,
+                origin_provider, origin_model, origin_conversation_message_id, created_at
+            )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
                     \(bind: sourceVaultFileID),
                     \(bind: spaceID),
                     \(bind: reviewState),
+                    \(bind: contribution.source.rawValue),
+                    \(bind: contribution.sourceReference),
+                    \(bind: contribution.provider),
+                    \(bind: contribution.model),
+                    \(bind: originConversationMessageID),
                     NOW())
             """).run()
         }
         guard let m = try await Memory.find(id, on: fluent.db()) else {
             throw HTTPError(.internalServerError, message: "memory vanished after insert")
         }
+        try await MemoryProvenanceRepository(fluent: fluent).record(
+            tenantID: tenantID,
+            memoryID: id,
+            input: contribution
+        )
         return m
     }
 
@@ -148,7 +176,8 @@ struct MemoryRepository {
     func semanticSearch(
         tenantID: UUID,
         queryEmbedding: [Float],
-        limit: Int
+        limit: Int,
+        spaceID: UUID? = nil
     ) async throws -> [MemorySearchResult] {
         // HER-234 — wrap the SQL hop in `RouteTelemetry.observe` when wired
         // (request counter + duration timer + tracing span). Falls through
@@ -156,32 +185,35 @@ struct MemoryRepository {
         // the migration CLI keep compiling against `MemoryRepository(fluent:)`.
         if let telemetry {
             return try await telemetry.observe("memory.semanticSearch") {
-                try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
+                try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID)
             }
         }
-        return try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit)
+        return try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID)
     }
 
     private func semanticSearchRaw(
         tenantID: UUID,
         queryEmbedding: [Float],
-        limit: Int
+        limit: Int,
+        spaceID: UUID?
     ) async throws -> [MemorySearchResult] {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector query")
         }
         let vec = MemoryRepository.formatVector(queryEmbedding)
         let rows = try await sql.raw("""
-        SELECT id, tenant_id, content, created_at,
+        SELECT id, tenant_id, content, created_at, origin_kind, origin_provider, origin_model,
                embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
+          AND (\(bind: spaceID) IS NULL OR space_id = \(bind: spaceID))
           AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
-        LIMIT \(bind: limit)
+        LIMIT \(bind: max(limit, limit * 3))
         """).all(decoding: MemorySearchRow.self)
 
-        let hitIDs = rows.map(\.id)
+        let selected = Self.balanced(rows, limit: limit)
+        let hitIDs = selected.map(\.id)
         if !hitIDs.isEmpty {
             let fluent = fluent
             Task.detached { [hitIDs] in
@@ -189,13 +221,16 @@ struct MemoryRepository {
             }
         }
 
-        return rows.map {
+        return selected.map {
             MemorySearchResult(
                 id: $0.id,
                 tenantID: $0.tenant_id,
                 content: $0.content,
                 createdAt: $0.created_at,
-                distance: $0.distance
+                distance: $0.distance,
+                source: MemorySourceKindDTO(rawValue: $0.origin_kind) ?? .legacy,
+                provider: $0.origin_provider,
+                model: $0.origin_model
             )
         }
     }
@@ -300,7 +335,13 @@ struct MemoryRepository {
 
     /// Updates content + embedding atomically. Used when a user edits a memory
     /// — content drift invalidates the existing vector, so we re-embed.
-    func updateContent(tenantID: UUID, id: UUID, content: String, embedding: [Float]) async throws -> Bool {
+    func updateContent(
+        tenantID: UUID,
+        id: UUID,
+        content: String,
+        embedding: [Float],
+        contribution: MemoryContributionInput? = nil
+    ) async throws -> Bool {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector update")
         }
@@ -312,6 +353,13 @@ struct MemoryRepository {
         WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
         RETURNING id
         """).all(decoding: DeletedIDRow.self)
+        if !rows.isEmpty, let contribution {
+            try await MemoryProvenanceRepository(fluent: fluent).record(
+                tenantID: tenantID,
+                memoryID: id,
+                input: contribution
+            )
+        }
         return !rows.isEmpty
     }
 
@@ -341,18 +389,45 @@ struct MemoryRepository {
     }
 
     /// Updates tags only. `nil` clears all tags; empty array clears too.
-    func updateTags(tenantID: UUID, id: UUID, tags: [String]?) async throws -> Bool {
+    func updateTags(
+        tenantID: UUID,
+        id: UUID,
+        tags: [String]?,
+        contribution: MemoryContributionInput? = nil
+    ) async throws -> Bool {
         let row = try await Memory.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$id == id)
             .first()
         guard let row else { return false }
         row.tags = (tags?.isEmpty == true) ? nil : tags
         try await row.save(on: fluent.db())
+        if let contribution {
+            try await MemoryProvenanceRepository(fluent: fluent).record(
+                tenantID: tenantID,
+                memoryID: id,
+                input: contribution
+            )
+        }
         return true
     }
 
     static func formatVector(_ v: [Float]) -> String {
         "[" + v.map { String($0) }.joined(separator: ",") + "]"
+    }
+
+    /// Prefer direct memories while still admitting relevant prior model
+    /// answers. The 40% model-output quota is soft: unused fact slots are
+    /// backfilled from outputs so sparse vaults still benefit from continuity.
+    private static func balanced(_ rows: [MemorySearchRow], limit: Int) -> [MemorySearchRow] {
+        let outputKinds = Set([MemorySourceKindDTO.chat.rawValue, MemorySourceKindDTO.query.rawValue])
+        let outputLimit = max(1, Int(Double(limit) * 0.4))
+        let facts = rows.filter { !outputKinds.contains($0.origin_kind) }
+        let outputs = rows.filter { outputKinds.contains($0.origin_kind) }
+        var selected = Array(facts.prefix(max(0, limit - outputLimit)))
+            + Array(outputs.prefix(outputLimit))
+        let selectedIDs = Set(selected.map(\.id))
+        selected.append(contentsOf: rows.filter { !selectedIDs.contains($0.id) }.prefix(limit - selected.count))
+        return selected.sorted { $0.distance < $1.distance }
     }
 
     // MARK: - HER-150 Lineage
@@ -433,6 +508,29 @@ struct MemorySearchResult {
     let content: String
     let createdAt: Date?
     let distance: Float
+    let source: MemorySourceKindDTO
+    let provider: String?
+    let model: String?
+
+    init(
+        id: UUID,
+        tenantID: UUID,
+        content: String,
+        createdAt: Date?,
+        distance: Float,
+        source: MemorySourceKindDTO = .legacy,
+        provider: String? = nil,
+        model: String? = nil
+    ) {
+        self.id = id
+        self.tenantID = tenantID
+        self.content = content
+        self.createdAt = createdAt
+        self.distance = distance
+        self.source = source
+        self.provider = provider
+        self.model = model
+    }
 }
 
 private struct MemorySearchRow: Decodable {
@@ -441,4 +539,7 @@ private struct MemorySearchRow: Decodable {
     let content: String
     let created_at: Date?
     let distance: Float
+    let origin_kind: String
+    let origin_provider: String?
+    let origin_model: String?
 }
