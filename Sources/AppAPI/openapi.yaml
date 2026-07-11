@@ -3277,6 +3277,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
 
+  /v1/ingestions/{batchID}/items/{itemID}:
+    delete:
+      tags: [Ingestion]
+      operationId: ingestionCancelItem
+      summary: Cancel an unfinished ingestion item and discard temporary chunks.
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: itemID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Updated batch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+
   /v1/plugins/catalog:
     get:
       tags: [Plugins]
