@@ -10,6 +10,7 @@ extension WorkflowApprovalsResponse: @retroactive ResponseEncodable {}
 
 struct WorkflowController {
     let service: WorkflowService
+    let webhookController: WorkflowWebhookController
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list); router.post("", use: create)
@@ -18,7 +19,14 @@ struct WorkflowController {
         router.post("/approvals/:approvalID/decision", use: decide)
         router.get("/:id", use: detail); router.put("/:id/draft", use: update)
         router.post("/:id/publish", use: publish); router.post("/:id/runs", use: run)
+        router.post("/:id/webhook/rotate", use: rotateWebhook)
         router.get("/:id/runs", use: workflowRuns)
+    }
+
+    @Sendable func rotateWebhook(_: Request, ctx: AppRequestContext) async throws -> WorkflowWebhookCredentialDTO {
+        try await mapErrors {
+            try await webhookController.rotate(tenantID: ctx.requireTenantID(), workflowID: pathID(ctx, "id"))
+        }
     }
 
     @Sendable func list(_: Request, ctx: AppRequestContext) async throws -> WorkflowListResponse {

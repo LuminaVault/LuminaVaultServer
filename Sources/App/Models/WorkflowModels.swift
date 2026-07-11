@@ -92,3 +92,15 @@ final class WorkflowApproval: Model, TenantModel, @unchecked Sendable {
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
     init() {}
 }
+
+final class WorkflowWebhook: Model, TenantModel, @unchecked Sendable {
+    static let schema = "workflow_webhooks"
+    @ID(key: .id) var id: UUID?
+    @Field(key: "tenant_id") var tenantID: UUID
+    @Field(key: "workflow_id") var workflowID: UUID
+    @Field(key: "secret_ciphertext") var secretCiphertext: Data
+    @Field(key: "secret_nonce") var secretNonce: Data
+    @Timestamp(key: "created_at", on: .create) var createdAt: Date?
+    @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
+    init() {}
+}

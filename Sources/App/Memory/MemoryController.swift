@@ -150,7 +150,9 @@ struct MemoryController {
         // the static segment in preference to the UUID parameter match (HER-235).
         router.get("/graph", use: graph)
         router.get("/facets", use: facets)
-        if hybridExecutionEnabled { router.get("/local-sync", use: localSync) }
+        if hybridExecutionEnabled {
+            router.get("/local-sync", use: localSync)
+        }
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)
         router.get("/:id/provenance", use: provenance)
@@ -366,22 +368,31 @@ struct MemoryController {
         let limit = max(1, min(requested, 500))
         let cursor = req.uri.queryParameters["cursor"].flatMap { ISO8601DateFormatter().date(from: String($0)) }
         var query = Memory.query(on: repository.fluent.db(), tenantID: tenantID)
-        if let cursor { query = query.filter(\.$createdAt > cursor) }
-        let rows = try await query.sort(\.$createdAt, .ascending).limit(limit).all()
+        if let cursor {
+            query = query.filter(\.$updatedAt > cursor)
+        }
+        let rows = try await query
+            .sort(\.$updatedAt, .ascending)
+            .sort(\.$id, .ascending)
+            .limit(limit)
+            .all()
         let items = rows.map { row in
-            let timestamp = row.createdAt ?? .distantPast
+            let createdAt = row.createdAt ?? .distantPast
+            let updatedAt = row.updatedAt ?? createdAt
             return LocalMemorySyncItemDTO(
                 id: row.savedID,
                 content: row.content,
                 source: MemorySourceKindDTO(rawValue: row.originKind) ?? .legacy,
-                createdAt: timestamp,
-                updatedAt: timestamp
+                createdAt: createdAt,
+                updatedAt: updatedAt
             )
         }
         var tombstones = MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
-        if let cursor { tombstones = tombstones.filter(\.$deletedAt > cursor) }
+        if let cursor {
+            tombstones = tombstones.filter(\.$deletedAt > cursor)
+        }
         let deleted = try await tombstones.sort(\.$deletedAt, .ascending).limit(limit).all()
-        let nextDate = [rows.last?.createdAt, deleted.last?.deletedAt].compactMap { $0 }.max()
+        let nextDate = [rows.last?.updatedAt, deleted.last?.deletedAt].compactMap(\.self).max()
         return LocalMemorySyncResponse(
             memories: items,
             deletedIDs: deleted.map(\.memoryID),
@@ -398,8 +409,9 @@ struct MemoryController {
         }
         let deleted = try await repository.delete(tenantID: tenantID, id: id)
         guard deleted else { throw HTTPError(.notFound, message: "memory not found") }
-        if (try? await MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
-            .filter(\.$memoryID == id).first()) == nil {
+        if await (try? MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
+            .filter(\.$memoryID == id).first()) == nil
+        {
             try? await MemorySyncTombstone(tenantID: tenantID, memoryID: id).save(on: repository.fluent.db())
         }
         return Response(status: .noContent)

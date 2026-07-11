@@ -62,7 +62,36 @@ struct KnowledgeGraphController {
         let work = Task {
             do {
                 let response = try await service.reason(tenantID: tenantID, request: body)
-                continuation.yield(ReasoningStreamEventDTO(type: "result", response: response))
+                continuation.yield(ReasoningStreamEventDTO(
+                    type: "context",
+                    response: ReasoningQueryResponse(
+                        answer: "",
+                        paths: response.paths,
+                        evidence: response.evidence,
+                        confidence: response.confidence,
+                        caveats: response.caveats,
+                        suggestions: []
+                    )
+                ))
+                let words = response.answer.split(separator: " ", omittingEmptySubsequences: false)
+                for (index, word) in words.enumerated() {
+                    guard Task.isCancelled == false else { throw CancellationError() }
+                    continuation.yield(ReasoningStreamEventDTO(
+                        type: "token",
+                        message: index == words.startIndex ? String(word) : " \(word)"
+                    ))
+                }
+                continuation.yield(ReasoningStreamEventDTO(
+                    type: "suggestions",
+                    response: ReasoningQueryResponse(
+                        answer: response.answer,
+                        paths: response.paths,
+                        evidence: response.evidence,
+                        confidence: response.confidence,
+                        caveats: response.caveats,
+                        suggestions: response.suggestions
+                    )
+                ))
                 continuation.yield(ReasoningStreamEventDTO(type: "done"))
                 continuation.finish()
             } catch {

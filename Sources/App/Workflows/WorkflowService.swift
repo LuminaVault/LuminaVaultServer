@@ -68,13 +68,20 @@ actor WorkflowService {
         return try await WorkflowDetailDTO(workflow: summary(row), definition: row.draftDefinition)
     }
 
-    func enqueue(tenantID: UUID, workflowID: UUID, trigger: WorkflowTriggerKind, request: WorkflowRunRequest) async throws -> WorkflowRunDTO {
+    func enqueue(tenantID: UUID, workflowID: UUID, trigger: WorkflowTriggerKind, request: WorkflowRunRequest, dedupeKey: String? = nil) async throws -> WorkflowRunDTO {
         let workflow = try await require(tenantID: tenantID, id: workflowID)
         guard workflow.enabled, let versionID = workflow.publishedVersionID else { throw WorkflowServiceError.unpublished }
+        if let dedupeKey,
+           let existing = try await WorkflowRun.query(on: fluent.db(), tenantID: tenantID)
+           .filter(\.$workflowID == workflowID).filter(\.$dedupeKey == dedupeKey).first()
+        {
+            return try await runDTO(existing, workflow: workflow)
+        }
         let run = WorkflowRun()
         run.id = UUID(); run.tenantID = tenantID; run.workflowID = workflowID; run.versionID = versionID
         run.status = WorkflowRunStatus.queued.rawValue; run.triggerKind = trigger.rawValue
         run.input = request.input; run.conversationID = request.conversationID
+        run.dedupeKey = dedupeKey
         try await run.create(on: fluent.db())
         return try await runDTO(run, workflow: workflow)
     }

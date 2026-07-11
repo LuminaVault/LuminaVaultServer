@@ -54,7 +54,8 @@ watch queue depth and extraction failures, then expand the rollout.
 The runner must remain non-root with a read-only root filesystem, all Linux
 capabilities dropped, `no-new-privileges`, PID/memory/CPU limits, and no host
 port. Guest modules receive no WASI environment, filesystem, socket, clock, or
-process imports. Rotate `PLUGIN_RUNNER_TOKEN` by restarting the API and runner
+process imports. Only reviewed `luminavault.*_allowed` grant checks are linked;
+unknown imports fail closed. Rotate `PLUGIN_RUNNER_TOKEN` by restarting the API and runner
 in the same deployment.
 
 ### Hermes gateway authentication
@@ -274,6 +275,6 @@ diff /tmp/env-keys /tmp/code-keys
 Any code-only key needs an `.env.example` entry. Any env-only key may be safe to delete.
 # Hybrid local execution
 
-- `HYBRID_EXECUTION_ENABLED` gates hybrid preferences, conversation prepare/commit, and local memory synchronization; default `false` during staged rollout.
+- `HYBRID_EXECUTION_ENABLED` gates hybrid preferences, conversation prepare/commit, and local memory synchronization; default `true`.
 - `LOCAL_EXECUTION_TOOL_BROKER_ENABLED` gates the allow-listed server tool broker; default `false`.
 - Device-local Ollama, LM Studio, and MLX server URLs are never server environment variables. Existing Ollama/custom credentials remain for endpoints reachable from the backend itself.

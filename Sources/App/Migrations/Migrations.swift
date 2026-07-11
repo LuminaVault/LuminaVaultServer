@@ -103,4 +103,7 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M96_CreateKnowledgeGraph())
     await fluent.migrations.add(M97_CreateHybridExecution())
     await fluent.migrations.add(M98_CreateMultimodalIngestion())
+    await fluent.migrations.add(M99_HardenHybridExecution())
+    await fluent.migrations.add(M100_CreateWorkflowWebhooks())
+    await fluent.migrations.add(M102_HardenMultimodalIngestion())
 }

@@ -5,6 +5,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 struct HermesIngestionResult: Sendable {
     let title: String
@@ -104,6 +105,9 @@ struct MultimodalIngestionService {
     static let maxItems = 50
     static let maxFileBytes: Int64 = 2 * 1024 * 1024 * 1024
     static let maxBatchBytes: Int64 = 5 * 1024 * 1024 * 1024
+    static let processingLeaseSeconds = 60 * 60
+    static let maximumAutomaticAttempts = 3
+    static let abandonedUploadHours = 24
 
     let fluent: Fluent
     let vaultPaths: VaultPathService
@@ -186,14 +190,17 @@ struct MultimodalIngestionService {
     }
 
     func retry(tenantID: UUID, batchID: UUID, itemID: UUID) async throws -> IngestionBatchDTO {
-        let batch = try await requireBatch(tenantID: tenantID, batchID: batchID)
+        _ = try await requireBatch(tenantID: tenantID, batchID: batchID)
         let item = try await requireItem(tenantID: tenantID, batchID: batchID, itemID: itemID)
         guard [IngestionItemStateDTO.failed.rawValue, IngestionItemStateDTO.blockedCapability.rawValue].contains(item.state) else {
             throw HTTPError(.conflict, message: "only failed or capability-blocked items can retry")
         }
         item.state = IngestionItemStateDTO.queued.rawValue
         item.errorMessage = nil
+        item.nextAttemptAt = nil
+        item.leaseExpiresAt = nil
         try await item.save(on: fluent.db())
+        try await refreshBatch(tenantID: tenantID, batchID: batchID)
         return try await detail(tenantID: tenantID, batchID: batchID)
     }
 
@@ -204,6 +211,8 @@ struct MultimodalIngestionService {
         }
         item.state = IngestionItemStateDTO.cancelled.rawValue
         item.errorMessage = nil
+        item.nextAttemptAt = nil
+        item.leaseExpiresAt = nil
         try await item.save(on: fluent.db())
         try? FileManager.default.removeItem(at: chunkDirectory(tenantID: tenantID, itemID: itemID))
         try await refreshBatch(tenantID: tenantID, batchID: batchID)
@@ -212,10 +221,27 @@ struct MultimodalIngestionService {
 
     @discardableResult
     func processNext() async throws -> Bool {
-        guard let item = try await IngestionItem.query(on: fluent.db())
-            .filter(\.$state == IngestionItemStateDTO.queued.rawValue)
-            .sort(\.$createdAt, .ascending)
-            .first()
+        guard let sql = fluent.db() as? any SQLDatabase else { return false }
+        try await recoverExpiredWork(sql: sql)
+        try await expireAbandonedUploads(sql: sql)
+        struct ClaimedItem: Decodable { let id: UUID }
+        guard let claim = try await sql.raw("""
+        WITH candidate AS (
+            SELECT id FROM ingestion_items
+            WHERE state = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+            ORDER BY created_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE ingestion_items item
+        SET state = 'extracting', attempts = attempts + 1,
+            lease_expires_at = NOW() + (\(bind: Self.processingLeaseSeconds) * INTERVAL '1 second'),
+            updated_at = NOW()
+        FROM candidate
+        WHERE item.id = candidate.id
+        RETURNING item.id
+        """).first(decoding: ClaimedItem.self),
+              let item = try await IngestionItem.query(on: fluent.db()).filter(\.$id == claim.id).first()
         else { return false }
         let batch = try await requireBatch(tenantID: item.tenantID, batchID: item.batchID)
         try await process(item: item, tenantID: item.tenantID, spaceID: batch.spaceID)
@@ -257,15 +283,13 @@ struct MultimodalIngestionService {
             }
         } catch {
             item.state = IngestionItemStateDTO.failed.rawValue
+            item.leaseExpiresAt = nil
             item.errorMessage = "Could not prepare source: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
             return
         }
 
-        item.state = IngestionItemStateDTO.extracting.rawValue
-        item.attempts += 1
-        try await item.save(on: fluent.db())
         let result: HermesIngestionResult
         do {
             result = try await processor.process(
@@ -274,8 +298,13 @@ struct MultimodalIngestionService {
                 contentType: item.contentType ?? (item.kind == "url" ? "text/html" : "application/octet-stream")
             )
         } catch {
-            item.state = IngestionItemStateDTO.blockedCapability.rawValue
-            item.errorMessage = "Hermes multimodal ingestion unavailable: \(String(describing: error).prefix(400))"
+            let shouldRetry = item.attempts < Self.maximumAutomaticAttempts
+            item.state = shouldRetry ? IngestionItemStateDTO.queued.rawValue : IngestionItemStateDTO.blockedCapability.rawValue
+            item.nextAttemptAt = shouldRetry ? Date().addingTimeInterval(Self.retryDelay(for: item.attempts)) : nil
+            item.leaseExpiresAt = nil
+            item.errorMessage = shouldRetry
+                ? "Hermes processing deferred: \(String(describing: error).prefix(400))"
+                : "Hermes multimodal ingestion unavailable after \(item.attempts) attempts: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             logger.warning("ingestion blocked tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
             try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
@@ -283,7 +312,7 @@ struct MultimodalIngestionService {
         }
 
         if let current = try await IngestionItem.query(on: fluent.db(), tenantID: tenantID)
-            .filter(\.$id == item.id).first(), current.state == IngestionItemStateDTO.cancelled.rawValue
+            .filter(\.$id == item.requireID()).first(), current.state == IngestionItemStateDTO.cancelled.rawValue
         {
             return
         }
@@ -302,9 +331,12 @@ struct MultimodalIngestionService {
             item.credibility = result.credibility
             item.state = IngestionItemStateDTO.completed.rawValue
             item.errorMessage = nil
+            item.nextAttemptAt = nil
+            item.leaseExpiresAt = nil
             try await item.save(on: fluent.db())
         } catch {
             item.state = IngestionItemStateDTO.failed.rawValue
+            item.leaseExpiresAt = nil
             item.errorMessage = "Could not save derived memory: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             logger.warning("ingestion save failed tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
@@ -426,6 +458,37 @@ struct MultimodalIngestionService {
 
     private func chunkDirectory(tenantID: UUID, itemID: UUID) -> URL {
         vaultPaths.tenantRoot(for: tenantID).appendingPathComponent("tmp/ingestion/\(itemID.uuidString)")
+    }
+
+    private func recoverExpiredWork(sql: any SQLDatabase) async throws {
+        try await sql.raw("""
+        UPDATE ingestion_items
+        SET state = 'queued', next_attempt_at = NOW(), lease_expires_at = NULL,
+            error_message = 'Recovered after an interrupted worker lease', updated_at = NOW()
+        WHERE state IN ('extracting', 'analyzing', 'saving')
+          AND lease_expires_at IS NOT NULL AND lease_expires_at <= NOW()
+        """).run()
+    }
+
+    private func expireAbandonedUploads(sql: any SQLDatabase) async throws {
+        struct StaleUpload: Decodable { let id: UUID; let tenant_id: UUID; let batch_id: UUID }
+        let stale = try await sql.raw("""
+        UPDATE ingestion_items
+        SET state = 'failed', error_message = 'Upload expired after 24 hours', updated_at = NOW()
+        WHERE state = 'awaiting_upload'
+          AND updated_at < NOW() - (\(bind: Self.abandonedUploadHours) * INTERVAL '1 hour')
+        RETURNING id, tenant_id, batch_id
+        """).all(decoding: StaleUpload.self)
+        for item in stale {
+            try? FileManager.default.removeItem(at: chunkDirectory(tenantID: item.tenant_id, itemID: item.id))
+        }
+        for item in Dictionary(grouping: stale, by: \.batch_id).values.compactMap(\.first) {
+            try await refreshBatch(tenantID: item.tenant_id, batchID: item.batch_id)
+        }
+    }
+
+    private static func retryDelay(for attempt: Int) -> TimeInterval {
+        TimeInterval(min(300, 1 << min(max(0, attempt), 8)))
     }
 
     private static func safeFileName(_ value: String) -> String {

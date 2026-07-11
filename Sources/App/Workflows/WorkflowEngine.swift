@@ -76,34 +76,43 @@ actor WorkflowEngine: Service {
             var activated: Set<UUID> = [triggerNode.id]
             activateOutgoing(from: triggerNode, definition: definition, context: context, activated: &activated)
 
-            for node in order where node.kind != .trigger {
-                try Task.checkCancellation()
-                try await ensureRunIsActive(runID)
-                guard activated.contains(node.id) else { continue }
-                if completed.contains(where: { $0.nodeID == node.id && $0.status == WorkflowNodeRunStatus.succeeded.rawValue }) {
-                    activateOutgoing(from: node, definition: definition, context: context, activated: &activated)
-                    continue
-                }
-                if node.kind == .approval {
-                    try await pauseForApproval(run: run, node: node)
-                    return
-                }
-                let nodeRun = WorkflowNodeRun()
-                nodeRun.id = UUID(); nodeRun.runID = runID; nodeRun.nodeID = node.id; nodeRun.nodeName = node.name
-                nodeRun.status = WorkflowNodeRunStatus.running.rawValue; nodeRun.attempt = 1
-                nodeRun.startedAt = Date(); nodeRun.inputSnapshot = redact(context)
-                try await nodeRun.create(on: fluent.db())
-                do {
-                    let output = try await executeNode(node, run: run, context: context)
-                    nodeRun.outputSnapshot = redact(output); nodeRun.status = WorkflowNodeRunStatus.succeeded.rawValue; nodeRun.endedAt = Date()
-                    try await nodeRun.save(on: fluent.db())
-                    for (key, value) in output {
-                        context["nodes.\(node.id.uuidString).\(key)"] = value
+            let depths = nodeDepths(definition)
+            let grouped = Dictionary(grouping: order.filter { $0.kind != .trigger }) { depths[$0.id, default: 0] }
+            for depth in grouped.keys.sorted() {
+                try Task.checkCancellation(); try await ensureRunIsActive(runID)
+                let wave = grouped[depth, default: []].filter { activated.contains($0.id) }
+                var runnable: [WorkflowNodeDTO] = []
+                for node in wave {
+                    if completed.contains(where: { $0.nodeID == node.id && $0.status == WorkflowNodeRunStatus.succeeded.rawValue }) {
+                        activateOutgoing(from: node, definition: definition, context: context, activated: &activated)
+                    } else if node.kind == .approval {
+                        try await pauseForApproval(run: run, node: node)
+                        return
+                    } else {
+                        runnable.append(node)
                     }
-                    activateOutgoing(from: node, definition: definition, context: context, activated: &activated)
-                } catch {
-                    nodeRun.status = WorkflowNodeRunStatus.failed.rawValue; nodeRun.errorMessage = String(describing: error); nodeRun.endedAt = Date()
-                    try await nodeRun.save(on: fluent.db()); throw error
+                }
+                let snapshot = context
+                let results = try await withThrowingTaskGroup(of: WorkflowNodeExecution.self) { group in
+                    var iterator = runnable.makeIterator()
+                    func submit(_ node: WorkflowNodeDTO) {
+                        group.addTask { [self] in try await executePersistedNode(node, run: run, runID: runID, context: snapshot) }
+                    }
+                    for _ in 0 ..< min(WorkflowExecutionBounds.maxParallelNodes, runnable.count) {
+                        if let node = iterator.next() { submit(node) }
+                    }
+                    var values: [WorkflowNodeExecution] = []
+                    while let value = try await group.next() {
+                        values.append(value)
+                        if let node = iterator.next() { submit(node) }
+                    }
+                    return values
+                }
+                for result in results.sorted(by: { $0.node.id.uuidString < $1.node.id.uuidString }) {
+                    for (key, value) in result.output {
+                        context["nodes.\(result.node.id.uuidString).\(key)"] = value
+                    }
+                    activateOutgoing(from: result.node, definition: definition, context: context, activated: &activated)
                 }
             }
             try await ensureRunIsActive(runID)
@@ -118,6 +127,23 @@ actor WorkflowEngine: Service {
             run.status = WorkflowRunStatus.failed.rawValue; run.errorMessage = String(describing: error)
             run.endedAt = Date(); run.leaseOwner = nil; run.leaseExpiresAt = nil
             try? await run.save(on: fluent.db())
+        }
+    }
+
+    private func executePersistedNode(_ node: WorkflowNodeDTO, run: WorkflowRun, runID: UUID, context: [String: String]) async throws -> WorkflowNodeExecution {
+        let nodeRun = WorkflowNodeRun()
+        nodeRun.id = UUID(); nodeRun.runID = runID; nodeRun.nodeID = node.id; nodeRun.nodeName = node.name
+        nodeRun.status = WorkflowNodeRunStatus.running.rawValue; nodeRun.attempt = 1
+        nodeRun.startedAt = Date(); nodeRun.inputSnapshot = redact(context)
+        try await nodeRun.create(on: fluent.db())
+        do {
+            let output = try await executeNode(node, run: run, context: context)
+            nodeRun.outputSnapshot = redact(output); nodeRun.status = WorkflowNodeRunStatus.succeeded.rawValue; nodeRun.endedAt = Date()
+            try await nodeRun.save(on: fluent.db())
+            return WorkflowNodeExecution(node: node, output: output)
+        } catch {
+            nodeRun.status = WorkflowNodeRunStatus.failed.rawValue; nodeRun.errorMessage = String(describing: error); nodeRun.endedAt = Date()
+            try await nodeRun.save(on: fluent.db()); throw error
         }
     }
 
@@ -185,12 +211,75 @@ actor WorkflowEngine: Service {
             let vector = try await embeddings.embed(text, tenantID: run.tenantID)
             let memory = try await memories.create(tenantID: run.tenantID, content: text, embedding: vector)
             return try ["text": text, "memoryID": (memory.requireID()).uuidString]
+        case .parallel:
+            return [:]
+        case .forEach:
+            return try await executeForEach(node, run: run, context: context)
+        case .whileLoop:
+            return try await executeWhile(node, run: run, context: context)
         case .trigger, .approval:
             return [:]
         }
     }
 
-    private func interpolate(_ value: String, context: [String: String]) -> String {
+    private func executeForEach(_ node: WorkflowNodeDTO, run _: WorkflowRun, context: [String: String]) async throws -> [String: String] {
+        let raw = interpolate(node.configuration["items"] ?? "", context: context)
+        let items = parseItems(raw)
+        let limit = boundedIterations(node.configuration["maxIterations"])
+        guard items.count <= limit else { throw WorkflowEngineError.iterationLimitExceeded(limit) }
+        let concurrency = min(max(Int(node.configuration["concurrency"] ?? "4") ?? 4, 1), WorkflowExecutionBounds.maxParallelNodes)
+        var outputs = Array(repeating: "", count: items.count)
+        try await withThrowingTaskGroup(of: (Int, String).self) { group in
+            var next = 0
+            func submit(_ index: Int) {
+                group.addTask { [self] in
+                    try Task.checkCancellation()
+                    var iterationContext = context
+                    iterationContext["item"] = items[index]; iterationContext["index"] = String(index)
+                    return (index, interpolate(node.configuration["template"] ?? "{{item}}", context: iterationContext))
+                }
+            }
+            while next < min(concurrency, items.count) {
+                submit(next); next += 1
+            }
+            while let (index, value) = try await group.next() {
+                outputs[index] = value
+                if next < items.count {
+                    submit(next); next += 1
+                }
+            }
+        }
+        return ["text": outputs.joined(separator: node.configuration["separator"] ?? "\n"), "count": String(outputs.count)]
+    }
+
+    private func executeWhile(_ node: WorkflowNodeDTO, run _: WorkflowRun, context: [String: String]) async throws -> [String: String] {
+        let limit = boundedIterations(node.configuration["maxIterations"])
+        let target = node.configuration["equals"] ?? "true"
+        var previous = ""; var outputs: [String] = []
+        for index in 0 ..< limit {
+            try Task.checkCancellation()
+            var iterationContext = context
+            iterationContext["iteration"] = String(index); iterationContext["previous"] = previous
+            let condition = interpolate(node.configuration["condition"] ?? "false", context: iterationContext)
+            guard condition == target else { return ["text": outputs.joined(separator: "\n"), "count": String(outputs.count)] }
+            previous = interpolate(node.configuration["template"] ?? "{{previous}}", context: iterationContext)
+            outputs.append(previous)
+        }
+        throw WorkflowEngineError.iterationLimitExceeded(limit)
+    }
+
+    private func parseItems(_ raw: String) -> [String] {
+        if let data = raw.data(using: .utf8), let values = try? JSONDecoder().decode([String].self, from: data) {
+            return values
+        }
+        return raw.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.isEmpty == false }
+    }
+
+    private func boundedIterations(_ raw: String?) -> Int {
+        min(max(Int(raw ?? "20") ?? 20, 1), WorkflowExecutionBounds.maxIterations)
+    }
+
+    nonisolated private func interpolate(_ value: String, context: [String: String]) -> String {
         context.reduce(value) { result, pair in result.replacingOccurrences(of: "{{\(pair.key)}}", with: pair.value) }
     }
 
@@ -230,6 +319,17 @@ actor WorkflowEngine: Service {
         guard result.count == definition.nodes.count else { throw WorkflowEngineError.invalidGraph }
         return result
     }
+
+    private func nodeDepths(_ definition: WorkflowDefinitionDTO) -> [UUID: Int] {
+        var depths: [UUID: Int] = [:]
+        for node in (try? topologicalOrder(definition)) ?? [] {
+            let parents = definition.edges.filter { $0.targetNodeID == node.id }.map(\.sourceNodeID)
+            depths[node.id] = (parents.compactMap { depths[$0] }.max() ?? -1) + 1
+        }
+        return depths
+    }
 }
 
-private enum WorkflowEngineError: Error { case missingVersion, invalidGraph, invalidLLMResponse, executorUnavailable(String), cancelled }
+private struct WorkflowNodeExecution: Sendable { let node: WorkflowNodeDTO; let output: [String: String] }
+enum WorkflowExecutionBounds { static let maxIterations = 20; static let maxParallelNodes = 8 }
+private enum WorkflowEngineError: Error { case missingVersion, invalidGraph, invalidLLMResponse, executorUnavailable(String), iterationLimitExceeded(Int), cancelled }

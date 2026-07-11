@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 /// Cross-device chat behavior preferences. Device-local behavior, such as
 /// iOS haptics, intentionally stays client-side.

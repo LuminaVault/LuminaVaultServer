@@ -8,6 +8,7 @@ extension MarketplacePluginDTO: @retroactive ResponseEncodable {}
 extension MarketplaceReviewsResponse: @retroactive ResponseEncodable {}
 extension MarketplaceReviewDTO: @retroactive ResponseEncodable {}
 extension MarketplacePublisherDTO: @retroactive ResponseEncodable {}
+extension MarketplacePublishersResponse: @retroactive ResponseEncodable {}
 extension MarketplaceVersionDTO: @retroactive ResponseEncodable {}
 extension MarketplaceSubmissionDTO: @retroactive ResponseEncodable {}
 extension MarketplaceSubmissionsResponse: ResponseEncodable {}
@@ -35,8 +36,10 @@ struct MarketplaceController {
         router.get("publisher/submissions", use: publisherSubmissions)
 
         router.get("admin/submissions", use: adminSubmissions)
+        router.get("admin/publishers", use: adminPublishers)
         router.post("admin/submissions/:submissionID/decision", use: moderate)
-        router.post("admin/publishers/:userID/decision", use: moderatePublisher)
+        router.post("admin/publishers/:publisherID/decision", use: moderatePublisher)
+        router.post("admin/versions/:versionID/revoke", use: revokeVersion)
     }
 
     @Sendable private func list(_ req: Request, ctx: AppRequestContext) async throws -> MarketplaceListResponse {
@@ -122,6 +125,10 @@ struct MarketplaceController {
         return try await marketplace.submissions(userID: userID, admin: true)
     }
 
+    @Sendable private func adminPublishers(_: Request, ctx: AppRequestContext) async throws -> MarketplacePublishersResponse {
+        try await marketplace.publisherApplications(adminUserID: ctx.requireTenantID())
+    }
+
     @Sendable private func moderate(_ req: Request, ctx: AppRequestContext) async throws -> MarketplaceSubmissionDTO {
         let body = try await req.decode(as: MarketplaceModerationRequest.self, context: ctx)
         return try await marketplace.moderate(
@@ -133,7 +140,14 @@ struct MarketplaceController {
     @Sendable private func moderatePublisher(_ req: Request, ctx: AppRequestContext) async throws -> MarketplacePublisherDTO {
         let body = try await req.decode(as: MarketplaceModerationRequest.self, context: ctx)
         return try await marketplace.approvePublisher(
-            ownerUserID: Self.uuidPath(ctx, "userID"), adminUserID: ctx.requireTenantID(), approved: body.approved
+            publisherID: Self.uuidPath(ctx, "publisherID"), adminUserID: ctx.requireTenantID(), approved: body.approved
+        )
+    }
+
+    @Sendable private func revokeVersion(_ req: Request, ctx: AppRequestContext) async throws -> MarketplaceVersionDTO {
+        let body = try await req.decode(as: MarketplaceRevokeVersionRequest.self, context: ctx)
+        return try await marketplace.revokeVersion(
+            versionID: Self.uuidPath(ctx, "versionID"), adminUserID: ctx.requireTenantID(), reason: body.reason
         )
     }
 

@@ -781,6 +781,31 @@ paths:
       responses:
         '200': { description: Published immutable version., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
 
+  /v1/workflows/{id}/webhook/rotate:
+    post:
+      tags: [Workflows]
+      operationId: workflowWebhookRotate
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: New write-only webhook credential., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowWebhookCredentialDTO' } } } }
+
+  /v1/workflow-hooks/{hookID}:
+    post:
+      tags: [Workflows]
+      operationId: workflowWebhookIngest
+      security: []
+      parameters:
+        - { in: path, name: hookID, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: X-Lumina-Timestamp, required: true, schema: { type: string } }
+        - { in: header, name: X-Lumina-Signature, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, maxLength: 200 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '200': { description: Queued or previously queued run., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
+        '401': { description: Invalid signature or replay window. }
+
   /v1/workflows/{id}/runs:
     get:
       tags: [Workflows]
@@ -3617,6 +3642,14 @@ paths:
         '200': { description: Moderation queue., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionsResponse' } } } }
         '403': { description: Admin required. }
 
+  /v1/marketplace/admin/publishers:
+    get:
+      tags: [Marketplace]
+      operationId: marketplaceAdminPublishers
+      responses:
+        '200': { description: Pending publisher applications., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePublishersResponse' } } } }
+        '403': { description: Admin required. }
+
   /v1/marketplace/admin/submissions/{submissionID}/decision:
     post:
       tags: [Marketplace]
@@ -3629,17 +3662,29 @@ paths:
       responses:
         '200': { description: Reviewed submission., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionDTO' } } } }
 
-  /v1/marketplace/admin/publishers/{userID}/decision:
+  /v1/marketplace/admin/publishers/{publisherID}/decision:
     post:
       tags: [Marketplace]
       operationId: marketplaceAdminPublisherDecision
       parameters:
-        - { name: userID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: publisherID, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceModerationRequest' } } }
       responses:
         '200': { description: Reviewed publisher., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePublisherDTO' } } } }
+
+  /v1/marketplace/admin/versions/{versionID}/revoke:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceAdminRevokeVersion
+      parameters:
+        - { name: versionID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceRevokeVersionRequest' } } }
+      responses:
+        '200': { description: Revoked version., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceVersionDTO' } } } }
 
   /v1/kb-compile:
     post:
@@ -5824,7 +5869,7 @@ components:
       enum: [manual, chat, schedule, webhook]
     WorkflowNodeKind:
       type: string
-      enum: [trigger, llm, skill, memorySearch, memoryWrite, template, condition, approval, output]
+      enum: [trigger, llm, skill, memorySearch, memoryWrite, template, condition, approval, parallel, forEach, whileLoop, output]
     WorkflowRunStatus:
       type: string
       enum: [queued, running, waitingForApproval, succeeded, failed, cancelled, timedOut]
@@ -5965,6 +6010,13 @@ components:
       properties:
         approved: { type: boolean }
         note: { type: string }
+    WorkflowWebhookCredentialDTO:
+      type: object
+      required: [hookID, path, secret]
+      properties:
+        hookID: { type: string, format: uuid }
+        path: { type: string }
+        secret: { type: string, description: Write-only secret returned once. }
 
     SkillSparklinePoint:
       type: object
@@ -7980,7 +8032,7 @@ components:
       type: object
       required: [type]
       properties:
-        type: { type: string, enum: [result, done, error] }
+        type: { type: string, enum: [context, token, suggestions, result, done, error] }
         response: { $ref: '#/components/schemas/ReasoningQueryResponse' }
         message: { type: string }
 
@@ -8705,6 +8757,18 @@ components:
         bio: { type: string }
         websiteURL: { type: string, format: uri }
         verified: { type: boolean }
+        status: { type: string, enum: [pending, approved, rejected] }
+    MarketplacePublishersResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MarketplacePublisherDTO' } }
+    MarketplaceToolManifest:
+      type: object
+      required: [name, description]
+      properties:
+        name: { type: string, pattern: '^[a-z][a-z0-9_-]{1,63}$' }
+        description: { type: string }
     MarketplaceVersionDTO:
       type: object
       required: [id, version, status, runtimeKind, permissions, networkHosts]
@@ -8717,6 +8781,7 @@ components:
         networkHosts: { type: array, items: { type: string } }
         changelog: { type: string }
         publishedAt: { type: string, format: date-time }
+        tools: { type: array, items: { $ref: '#/components/schemas/MarketplaceToolManifest' } }
     MarketplacePluginDTO:
       type: object
       required: [slug, name, summary, description, category, screenshots, publisher, latestVersion, featured, ratingAverage, ratingCount, installCount, configFields]
@@ -8825,6 +8890,11 @@ components:
       properties:
         approved: { type: boolean }
         note: { type: string }
+    MarketplaceRevokeVersionRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5 }
     PluginToolRunRequest:
       type: object
       required: [input]

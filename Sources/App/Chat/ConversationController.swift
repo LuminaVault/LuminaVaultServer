@@ -159,9 +159,11 @@ struct ConversationController {
         let body = try await req.decode(as: ConversationPrepareRequest.self, context: ctx)
         let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else { throw HTTPError(.badRequest, message: "content required") }
+        try await removeExpiredLocalExecutions(tenantID: tenantID)
 
         let userMessage = ConversationMessage(conversationID: conversationID, role: .user, content: content)
         try await userMessage.save(on: fluent.db())
+        let userMessageID = try userMessage.requireID()
         let history = try await ConversationMessage.query(on: fluent.db())
             .filter(\.$conversationID == conversationID)
             .sort(\.$createdAt, .ascending)
@@ -185,11 +187,12 @@ struct ConversationController {
         let pinnedIDs = Set(pinnedHits.map(\.id))
         let hits = pinnedHits + semanticHits.filter { !pinnedIDs.contains($0.id) }.prefix(max(0, 5 - pinnedHits.count))
         let timezone = TimeZone(identifier: user.timezone) ?? .gmt
-        let prompt = Self.buildPrompt(history: history, hits: Array(hits), schedule: await scheduleContext(tenantID: tenantID, timezone: timezone))
+        let prompt = await Self.buildPrompt(history: history, hits: Array(hits), schedule: scheduleContext(tenantID: tenantID, timezone: timezone))
         let expiresAt = Date().addingTimeInterval(15 * 60)
         let execution = PreparedLocalExecution(
             tenantID: tenantID,
             conversationID: conversationID,
+            userMessageID: userMessageID,
             messages: prompt,
             sourceIDs: hits.map(\.id),
             expiresAt: expiresAt
@@ -216,7 +219,8 @@ struct ConversationController {
             .first()
         else { throw HTTPError(.notFound, message: "local execution not found") }
         if let messageID = execution.committedMessageID,
-           let existing = try await ConversationMessage.find(messageID, on: fluent.db()) {
+           let existing = try await ConversationMessage.find(messageID, on: fluent.db())
+        {
             return try ConversationCommitResponse(message: existing.toDTO())
         }
         guard execution.expiresAt > Date() else { throw HTTPError(.gone, message: "local execution expired") }
@@ -225,9 +229,22 @@ struct ConversationController {
             conversationID: conversationID,
             role: .assistant,
             content: content,
-            sourceMemoryIDs: execution.sourceIDs
+            sourceMemoryIDs: execution.sourceIDs,
+            localExecutionID: body.executionID
         )
-        try await assistant.save(on: fluent.db())
+        do {
+            try await assistant.save(on: fluent.db())
+        } catch {
+            if let existing = try await ConversationMessage.query(on: fluent.db())
+                .filter(\.$localExecutionID == body.executionID)
+                .first()
+            {
+                execution.committedMessageID = try existing.requireID()
+                try? await execution.save(on: fluent.db())
+                return try ConversationCommitResponse(message: existing.toDTO())
+            }
+            throw error
+        }
         let messageID = try assistant.requireID()
         execution.committedMessageID = messageID
         try await execution.save(on: fluent.db())
@@ -258,8 +275,30 @@ struct ConversationController {
         guard execution.committedMessageID == nil else {
             throw HTTPError(.conflict, message: "local execution already committed")
         }
-        try await execution.delete(on: fluent.db())
+        if let userMessageID = execution.userMessageID,
+           let userMessage = try await ConversationMessage.find(userMessageID, on: fluent.db())
+        {
+            try await userMessage.delete(on: fluent.db())
+        } else {
+            try await execution.delete(on: fluent.db())
+        }
         return Response(status: .noContent)
+    }
+
+    private func removeExpiredLocalExecutions(tenantID: UUID) async throws {
+        let expired = try await PreparedLocalExecution.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$expiresAt < Date())
+            .filter(\.$committedMessageID == nil)
+            .all()
+        for execution in expired {
+            if let userMessageID = execution.userMessageID,
+               let message = try await ConversationMessage.find(userMessageID, on: fluent.db())
+            {
+                try await message.delete(on: fluent.db())
+            } else {
+                try await execution.delete(on: fluent.db())
+            }
+        }
     }
 
     /// Persists the user's message immediately, then opens an SSE stream
@@ -433,7 +472,9 @@ struct ConversationController {
                                                         request: chatRequest
                                                     )
                                                     for try await chunk in chunks {
-                                                        if Task.isCancelled { break }
+                                                        if Task.isCancelled {
+                                                            break
+                                                        }
                                                         if !chunk.delta.isEmpty {
                                                             if firstTokenMs == nil {
                                                                 firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
@@ -722,7 +763,9 @@ private extension Array {
         var result: [T] = []
         result.reserveCapacity(count)
         for element in self {
-            if let value = try await transform(element) { result.append(value) }
+            if let value = try await transform(element) {
+                result.append(value)
+            }
         }
         return result
     }

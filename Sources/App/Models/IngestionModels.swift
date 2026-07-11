@@ -49,6 +49,8 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "error_message") var errorMessage: String?
     @OptionalField(key: "credibility") var credibility: IngestionCredibilityRecord?
     @Field(key: "attempts") var attempts: Int
+    @OptionalField(key: "next_attempt_at") var nextAttemptAt: Date?
+    @OptionalField(key: "lease_expires_at") var leaseExpiresAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -76,5 +78,7 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
         self.expectedSHA256 = expectedSHA256
         self.url = url
         attempts = 0
+        nextAttemptAt = nil
+        leaseExpiresAt = nil
     }
 }

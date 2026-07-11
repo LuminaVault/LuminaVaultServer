@@ -16,6 +16,7 @@ final class ConversationMessage: Model, @unchecked Sendable {
     @Field(key: "content") var content: String
     @Field(key: "source_memory_ids") var sourceMemoryIDs: [UUID]
     @OptionalField(key: "parallel_execution_id") var parallelExecutionID: UUID?
+    @OptionalField(key: "local_execution_id") var localExecutionID: UUID?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
     init() {
@@ -28,7 +29,8 @@ final class ConversationMessage: Model, @unchecked Sendable {
         role: ConversationMessageRole,
         content: String,
         sourceMemoryIDs: [UUID] = [],
-        parallelExecutionID: UUID? = nil
+        parallelExecutionID: UUID? = nil,
+        localExecutionID: UUID? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -36,6 +38,7 @@ final class ConversationMessage: Model, @unchecked Sendable {
         self.content = content
         self.sourceMemoryIDs = sourceMemoryIDs
         self.parallelExecutionID = parallelExecutionID
+        self.localExecutionID = localExecutionID
     }
 
     /// Convert to the wire DTO. Defaults `role` to `.user` if the row

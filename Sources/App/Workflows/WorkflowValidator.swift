@@ -7,6 +7,10 @@ enum WorkflowValidationError: Error, Equatable {
     case unknownEdgeNode
     case cycle
     case unreachableNode
+    case invalidIterationBound
+    case parallelGroupTooLarge
+    case expandedExecutionTooLarge
+    case invalidParallelConfiguration
 }
 
 enum WorkflowValidator {
@@ -17,6 +21,15 @@ enum WorkflowValidator {
         guard definition.edges.allSatisfy({ ids.contains($0.sourceNodeID) && ids.contains($0.targetNodeID) }) else {
             throw WorkflowValidationError.unknownEdgeNode
         }
+        let iterations = definition.nodes.map { Int($0.configuration["maxIterations"] ?? "1") ?? 0 }
+        guard iterations.allSatisfy({ 1 ... 20 ~= $0 }) else { throw WorkflowValidationError.invalidIterationBound }
+        guard zip(definition.nodes, iterations).reduce(0, { $0 + ($1.0.kind == .trigger ? 1 : $1.1) }) <= 100 else {
+            throw WorkflowValidationError.expandedExecutionTooLarge
+        }
+        let parallelGroups = Dictionary(grouping: definition.nodes.compactMap { node in
+            node.configuration["parallelGroup"].map { ($0, node.id) }
+        }, by: \.0)
+        guard parallelGroups.values.allSatisfy({ $0.count <= 8 }) else { throw WorkflowValidationError.parallelGroupTooLarge }
         let trigger = definition.nodes.first { $0.kind == .trigger }!.id
         var reachable: Set<UUID> = [trigger]
         var frontier = [trigger]
@@ -43,5 +56,10 @@ enum WorkflowValidator {
             }
         }
         guard visited == definition.nodes.count else { throw WorkflowValidationError.cycle }
+        for node in definition.nodes where node.kind == .parallel {
+            guard definition.edges.count(where: { $0.sourceNodeID == node.id }) >= 2 else {
+                throw WorkflowValidationError.invalidParallelConfiguration
+            }
+        }
     }
 }

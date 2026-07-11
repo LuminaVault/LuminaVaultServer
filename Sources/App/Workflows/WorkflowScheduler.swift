@@ -35,11 +35,21 @@ actor WorkflowScheduler: Service {
             .filter(\.$publishedVersionID != nil)
             .all()
         var enqueued = 0
-        for workflow in workflows where workflow.draftDefinition.trigger == .schedule {
-            let config = workflow.draftDefinition.triggerConfiguration
-            guard let rawCron = config["cron"], let cron = try? CronExpression(rawCron) else { continue }
-            let timezone = TimeZone(identifier: config["timezone"] ?? "UTC") ?? .gmt
-            guard cron.matches(now, in: timezone), let versionID = workflow.publishedVersionID else { continue }
+        for workflow in workflows {
+            guard let versionID = workflow.publishedVersionID,
+                  let version = try await WorkflowVersion.find(versionID, on: fluent.db()),
+                  version.definition.trigger == .schedule
+            else { continue }
+            let config = version.definition.triggerConfiguration
+            let isOneShotDue = config["runAt"].flatMap(ISO8601DateFormatter().date(from:)).map { now >= $0 } ?? false
+            let isCronDue: Bool
+            if let rawCron = config["cron"], let cron = try? CronExpression(rawCron) {
+                let timezone = TimeZone(identifier: config["timezone"] ?? "UTC") ?? .gmt
+                isCronDue = cron.matches(now, in: timezone)
+            } else {
+                isCronDue = false
+            }
+            guard isOneShotDue || isCronDue else { continue }
             let workflowID = try workflow.requireID()
             let key = dedupeKey(workflowID: workflowID, date: now)
             let existing = try await WorkflowRun.query(on: fluent.db())
@@ -57,6 +67,10 @@ actor WorkflowScheduler: Service {
             do {
                 try await run.create(on: fluent.db())
                 enqueued += 1
+                if isOneShotDue {
+                    workflow.enabled = false
+                    try await workflow.save(on: fluent.db())
+                }
             } catch {
                 // A competing replica may have won the unique key race.
                 logger.debug("workflow.schedule duplicate suppressed: \(key)")

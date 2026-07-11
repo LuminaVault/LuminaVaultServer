@@ -12,6 +12,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "updated_by_user_id") var updatedByUserID: UUID?
     @OptionalField(key: "tags") var tags: [String]?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
+    @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     // HER-147 scoring + access tracking.
     @Field(key: "score") var score: Double

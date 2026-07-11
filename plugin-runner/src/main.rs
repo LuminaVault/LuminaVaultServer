@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use axum::{
@@ -12,7 +12,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tokio::time::timeout;
-use wasmtime::{Config, Engine, Instance, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
+use wasmtime::{Caller, Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
 
 const MAX_MODULE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
@@ -28,12 +28,15 @@ struct AppState {
 
 struct StoreState {
     limits: StoreLimits,
+    permissions: HashSet<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExecuteRequest {
     module_base64: String,
+    tool_name: String,
+    permissions: Vec<String>,
     input: serde_json::Value,
     fuel: Option<u64>,
 }
@@ -112,14 +115,20 @@ async fn execute(State(state): State<AppState>, headers: HeaderMap, Json(request
 fn execute_sync(state: AppState, request: ExecuteRequest) -> Result<ExecuteResponse> {
     let module_bytes = STANDARD.decode(request.module_base64).context("invalid module base64")?;
     if module_bytes.len() > MAX_MODULE_BYTES { bail!("module_too_large"); }
-    let input = serde_json::to_vec(&request.input)?;
+    let mut input_value = request.input;
+    if let Some(object) = input_value.as_object_mut() {
+        object.insert("_tool".into(), serde_json::Value::String(request.tool_name));
+    }
+    let input = serde_json::to_vec(&input_value)?;
     if input.len() > MAX_INPUT_BYTES { bail!("input_too_large"); }
 
     wasmtime_result(Module::validate(&state.engine, &module_bytes))?;
     let module = wasmtime_result(Module::new(&state.engine, module_bytes))?;
-    if module.imports().next().is_some() {
-        // v1 is deliberately import-free. Capability host calls are added as
-        // individually reviewed ABI functions rather than exposing WASI.
+    let allowed_imports = HashSet::from([
+        "memory_read_allowed", "memory_write_allowed", "vault_read_allowed",
+        "vault_write_allowed", "network_fetch_allowed", "output_emit_allowed",
+    ]);
+    if module.imports().any(|import| import.module() != "luminavault" || !allowed_imports.contains(import.name())) {
         bail!("module_imports_forbidden");
     }
     let limits = StoreLimitsBuilder::new()
@@ -129,12 +138,20 @@ fn execute_sync(state: AppState, request: ExecuteRequest) -> Result<ExecuteRespo
         .tables(1)
         .trap_on_grow_failure(true)
         .build();
-    let mut store = Store::new(&state.engine, StoreState { limits });
+    let permissions = request.permissions.into_iter().collect();
+    let mut store = Store::new(&state.engine, StoreState { limits, permissions });
     store.limiter(|state| &mut state.limits);
     let fuel = request.fuel.unwrap_or(DEFAULT_FUEL).min(DEFAULT_FUEL);
     wasmtime_result(store.set_fuel(fuel))?;
     store.set_epoch_deadline(300);
-    let instance = wasmtime_result(Instance::new(&mut store, &module, &[]))?;
+    let mut linker = Linker::new(&state.engine);
+    define_capability(&mut linker, "memory_read_allowed", "memory.read")?;
+    define_capability(&mut linker, "memory_write_allowed", "memory.write")?;
+    define_capability(&mut linker, "vault_read_allowed", "vault.read")?;
+    define_capability(&mut linker, "vault_write_allowed", "vault.write")?;
+    define_capability(&mut linker, "network_fetch_allowed", "network.fetch")?;
+    define_capability(&mut linker, "output_emit_allowed", "output.emit")?;
+    let instance = wasmtime_result(linker.instantiate(&mut store, &module))?;
     let memory = instance.get_memory(&mut store, "memory").context("memory export required")?;
     let alloc: TypedFunc<i32, i32> = wasmtime_result(instance.get_typed_func(&mut store, "alloc"))
         .context("alloc export required")?;
@@ -155,6 +172,13 @@ fn execute_sync(state: AppState, request: ExecuteRequest) -> Result<ExecuteRespo
 
 fn wasmtime_result<T>(result: std::result::Result<T, wasmtime::Error>) -> Result<T> {
     result.map_err(|error| anyhow!(error.to_string()))
+}
+
+fn define_capability(linker: &mut Linker<StoreState>, name: &'static str, permission: &'static str) -> Result<()> {
+    wasmtime_result(linker.func_wrap("luminavault", name, move |caller: Caller<'_, StoreState>| -> i32 {
+        i32::from(caller.data().permissions.contains(permission))
+    }))?;
+    Ok(())
 }
 
 fn authorized(headers: &HeaderMap, expected: &str) -> bool {

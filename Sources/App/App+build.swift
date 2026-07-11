@@ -424,7 +424,9 @@ func buildRouter(
         service: achievementsService,
         logger: Logger(label: "lv.achievements.worker")
     )
-    if fluentEnabled { managedServices.append(achievementsWorker) }
+    if fluentEnabled {
+        managedServices.append(achievementsWorker)
+    }
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
@@ -1511,7 +1513,7 @@ func buildRouter(
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
-        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true",
+        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
         eventBus: eventBus
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
@@ -1657,7 +1659,7 @@ func buildRouter(
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         parallelEnabled: cerberusParallelEnabled,
-        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true",
+        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations")
     )
@@ -1685,7 +1687,7 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
     chatExperienceController.addPreferencesRoutes(to: chatPreferencesGroup)
-    if reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true" {
+    if reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true" {
         let hybridPreferencesGroup = router.group("/v1/me/preferences/hybrid-execution")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
@@ -2203,7 +2205,8 @@ func buildRouter(
     // Durable claim/entity/event extraction. The worker is feature-gated for
     // a measured backfill rollout; graph reads remain available while off.
     if fluentEnabled, lvEnvironment != "test",
-       reader.string(forKey: "knowledgeGraph.workerEnabled", default: "true").lowercased() == "true" {
+       reader.string(forKey: "knowledgeGraph.workerEnabled", default: "true").lowercased() == "true"
+    {
         managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent))
     } else {
         routingLogger.info("knowledge graph worker disabled (set KNOWLEDGE_GRAPH_WORKER_ENABLED=true to enable)")
@@ -2554,7 +2557,9 @@ func buildRouter(
     // HER-200 M4 — surface CronScheduler to ServiceGroup so `run()` is
     // invoked for the application's lifetime. No-op today (catalog empty);
     // becomes load-bearing once HER-169 lands skill dispatch.
-    if fluentEnabled, lvEnvironment != "test" { managedServices.append(cronScheduler) }
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(cronScheduler)
+    }
     // HER-Reminders — per-minute reminder firing. Same single-replica gate
     // as CronScheduler; shares the APNS push service.
     let reminderScheduler = ReminderScheduler(
@@ -2562,7 +2567,9 @@ func buildRouter(
         push: pushService,
         logger: Logger(label: "lv.reminders.scheduler")
     )
-    if fluentEnabled, lvEnvironment != "test" { managedServices.append(reminderScheduler) }
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(reminderScheduler)
+    }
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))
@@ -2594,13 +2601,15 @@ func buildRouter(
     // Automation 2.0 — durable, versioned visual workflows. Execution is
     // claimed from Postgres so the API can scale beyond one replica safely.
     let workflowService = WorkflowService(fluent: services.fluent)
+    let workflowWebhookController = WorkflowWebhookController(fluent: services.fluent, secretBox: secretBoxRef)
+    workflowWebhookController.addPublicRoutes(to: router)
     let workflowsGroup = router.group("/v1/workflows")
         .add(middleware: jwtAuthenticator)
         .add(middleware: EntitlementMiddleware(
             requires: .workflowAutomation,
             enforcementEnabled: services.billingEnforcementEnabled
         ))
-    WorkflowController(service: workflowService).addRoutes(to: workflowsGroup)
+    WorkflowController(service: workflowService, webhookController: workflowWebhookController).addRoutes(to: workflowsGroup)
     if fluentEnabled, lvEnvironment != "test" {
         managedServices.append(WorkflowEngine(
             fluent: services.fluent,
@@ -2618,6 +2627,11 @@ func buildRouter(
         managedServices.append(WorkflowMaintenanceService(
             fluent: services.fluent,
             logger: Logger(label: "lv.workflows.maintenance")
+        ))
+        managedServices.append(LegacyJobWorkflowMigrator(
+            fluent: services.fluent,
+            catalog: skillCatalog,
+            logger: Logger(label: "lv.workflows.legacy-migrator")
         ))
     }
 
@@ -2748,7 +2762,9 @@ private actor OTelLatch {
     private var services: OTelServices?
 
     func bootstrap(serviceName: String, logLevel: Logger.Level) async throws -> OTelServices {
-        if let services { return services }
+        if let services {
+            return services
+        }
 
         let environment = OTelEnvironment.detected()
         let resourceDetection = OTelResourceDetection(detectors: [

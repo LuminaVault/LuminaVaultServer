@@ -330,17 +330,47 @@ struct MarketplaceService {
         return try Self.submissionDTO(submission, slug: listing.slug)
     }
 
-    func approvePublisher(ownerUserID: UUID, adminUserID: UUID, approved: Bool) async throws -> MarketplacePublisherDTO {
+    func approvePublisher(publisherID: UUID, adminUserID: UUID, approved: Bool) async throws -> MarketplacePublisherDTO {
         guard let admin = try await User.find(adminUserID, on: db), admin.isAdmin else {
             throw HTTPError(.forbidden, message: "admin_required")
         }
-        guard let row = try await MarketplacePublisher.query(on: db).filter(\.$ownerUserID == ownerUserID).first() else {
+        guard let row = try await MarketplacePublisher.find(publisherID, on: db) else {
             throw HTTPError(.notFound, message: "publisher_application_not_found")
         }
         row.status = approved ? "approved" : "rejected"
         row.verified = approved
         try await row.save(on: db)
         return try Self.publisherDTO(row)
+    }
+
+    func publisherApplications(adminUserID: UUID) async throws -> MarketplacePublishersResponse {
+        guard let admin = try await User.find(adminUserID, on: db), admin.isAdmin else {
+            throw HTTPError(.forbidden, message: "admin_required")
+        }
+        let rows = try await MarketplacePublisher.query(on: db)
+            .filter(\.$status == "pending").sort(\.$createdAt, .ascending).all()
+        return try MarketplacePublishersResponse(items: rows.map(Self.publisherDTO))
+    }
+
+    func revokeVersion(versionID: UUID, adminUserID: UUID, reason: String) async throws -> MarketplaceVersionDTO {
+        guard let admin = try await User.find(adminUserID, on: db), admin.isAdmin else {
+            throw HTTPError(.forbidden, message: "admin_required")
+        }
+        guard reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 5 else {
+            throw HTTPError(.unprocessableContent, message: "revocation_reason_required")
+        }
+        guard let version = try await MarketplaceVersion.find(versionID, on: db) else {
+            throw HTTPError(.notFound, message: "marketplace_version_not_found")
+        }
+        version.status = MarketplaceVersionStatus.revoked.rawValue
+        try await version.save(on: db)
+        let installs = try await PluginInstall.query(on: db).filter(\.$marketplaceVersionID == versionID).all()
+        for install in installs {
+            install.status = PluginInstallState.disabled
+            try await install.save(on: db)
+        }
+        logger.warning("marketplace version revoked", metadata: ["version_id": "\(versionID)", "reason": "\(reason)"])
+        return try Self.versionDTO(version)
     }
 
     func runTool(slug: String, toolName: String, tenantID: UUID, input: [String: String]) async throws -> PluginToolRunResponse {
@@ -368,6 +398,12 @@ struct MarketplaceService {
               SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == expected
         else { throw HTTPError(.unprocessableContent, message: "plugin_artifact_digest_mismatch") }
 
+        let manifest = try Self.manifest(version)
+        guard manifest.tools.contains(where: { $0.name == toolName }) else {
+            throw HTTPError(.notFound, message: "plugin_tool_not_found")
+        }
+        let granted = install.grantedPermissions.compactMap(PluginPermission.init(rawValue:))
+
         let row = MarketplaceExecution()
         row.id = UUID()
         row.tenantID = tenantID
@@ -378,7 +414,7 @@ struct MarketplaceService {
         try await row.create(on: db)
         let started = ContinuousClock.now
         do {
-            let result = try await runner.execute(module: data, input: input)
+            let result = try await runner.execute(module: data, toolName: toolName, permissions: granted, input: input)
             row.status = "succeeded"
             row.durationMS = Int(started.duration(to: .now).components.seconds * 1000)
             try await row.save(on: db)
@@ -503,7 +539,7 @@ struct MarketplaceService {
     }
 
     private static func publisherDTO(_ row: MarketplacePublisher) throws -> MarketplacePublisherDTO {
-        try MarketplacePublisherDTO(id: row.requireID(), handle: row.handle, displayName: row.displayName, bio: row.bio, websiteURL: row.websiteURL, verified: row.verified)
+        try MarketplacePublisherDTO(id: row.requireID(), handle: row.handle, displayName: row.displayName, bio: row.bio, websiteURL: row.websiteURL, verified: row.verified, status: row.status)
     }
 
     private static func versionDTO(_ row: MarketplaceVersion) throws -> MarketplaceVersionDTO {
@@ -512,8 +548,17 @@ struct MarketplaceService {
             status: MarketplaceVersionStatus(rawValue: row.status) ?? .draft,
             runtimeKind: MarketplaceRuntimeKind(rawValue: row.runtimeKind) ?? .declarative,
             permissions: row.permissions.compactMap(PluginPermission.init(rawValue:)),
-            networkHosts: row.networkHosts, changelog: row.changelog, publishedAt: row.publishedAt
+            networkHosts: row.networkHosts, changelog: row.changelog, publishedAt: row.publishedAt,
+            tools: (try? manifest(row).tools) ?? []
         )
+    }
+
+    static func manifest(_ version: MarketplaceVersion) throws -> MarketplacePluginManifest {
+        guard let data = version.manifestJSON else {
+            throw HTTPError(.unprocessableContent, message: "plugin_manifest_required")
+        }
+        do { return try JSONDecoder().decode(MarketplacePluginManifest.self, from: data) }
+        catch { throw HTTPError(.unprocessableContent, message: "invalid_plugin_manifest") }
     }
 
     private static func submissionDTO(_ row: MarketplaceSubmission, slug: String) throws -> MarketplaceSubmissionDTO {
@@ -558,7 +603,7 @@ struct MarketplaceService {
         return value
     }
 
-    private static func validate(version: MarketplaceVersion) -> [String] {
+    static func validate(version: MarketplaceVersion) -> [String] {
         var errors: [String] = []
         if !isSemver(version.version) {
             errors.append("invalid_semver")
@@ -567,6 +612,20 @@ struct MarketplaceService {
            version.artifactKey == nil || version.artifactSHA256 == nil
         {
             errors.append("wasm_artifact_required")
+        }
+        if version.runtimeKind == MarketplaceRuntimeKind.wasm.rawValue {
+            do {
+                let manifest = try manifest(version)
+                if manifest.schemaVersion != 1 || manifest.tools.isEmpty {
+                    errors.append("plugin_tools_required")
+                }
+                if Set(manifest.tools.map(\.name)).count != manifest.tools.count {
+                    errors.append("duplicate_plugin_tools")
+                }
+                if manifest.tools.contains(where: { $0.name.range(of: "^[a-z][a-z0-9_-]{1,63}$", options: .regularExpression) == nil }) {
+                    errors.append("invalid_plugin_tool_name")
+                }
+            } catch { errors.append("invalid_plugin_manifest") }
         }
         if !version.networkHosts.isEmpty, !version.permissions.contains(PluginPermission.networkFetch.rawValue) {
             errors.append("network_hosts_require_network_fetch")

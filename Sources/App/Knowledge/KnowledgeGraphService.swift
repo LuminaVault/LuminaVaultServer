@@ -175,13 +175,24 @@ struct KnowledgeGraphService: Sendable {
             )
         }
         let summary = selected.map(\.label).joined(separator: "; ")
+        let paths = Self.reasoningPaths(
+            graph: graph,
+            seedIDs: selectedIDs,
+            maxDepth: min(max(1, request.maxDepth ?? Self.maxDepth), Self.maxDepth),
+            limit: 5
+        )
+        let pathEvidence = paths.flatMap { path in
+            path.nodes.flatMap(\.evidence) + path.edges.flatMap(\.evidence)
+        }
+        let groundedEvidence = Self.uniqueEvidence(evidence + pathEvidence)
         let totalConfidence = selected.reduce(into: 0.0) { total, node in
             total += node.confidence
         }
+        let pathConfidence = paths.first?.confidence ?? totalConfidence / Double(selected.count)
         return ReasoningQueryResponse(
             answer: "The strongest graph evidence points to: \(summary).",
-            paths: [], evidence: evidence,
-            confidence: totalConfidence / Double(selected.count),
+            paths: paths, evidence: groundedEvidence,
+            confidence: pathConfidence,
             caveats: suggestions.isEmpty ? [] : ["Some matching connections are inferred and await review."],
             suggestions: suggestions
         )
@@ -246,6 +257,67 @@ struct KnowledgeGraphService: Sendable {
     private static func uniqueEvidence(_ values: [KnowledgeEvidenceDTO]) -> [KnowledgeEvidenceDTO] {
         var seen: Set<UUID> = []
         return values.filter { seen.insert($0.id).inserted }
+    }
+
+    static func reasoningPaths(
+        graph: KnowledgeGraphResponse,
+        seedIDs: Set<UUID>,
+        maxDepth: Int,
+        limit: Int
+    ) -> [KnowledgePathDTO] {
+        guard seedIDs.count > 1, maxDepth > 0, limit > 0 else { return [] }
+        let nodesByID = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
+        var adjacency: [UUID: [(next: UUID, edge: KnowledgeEdgeDTO)]] = [:]
+        for edge in graph.edges where edge.state != .dismissed && edge.state != .stale {
+            adjacency[edge.from, default: []].append((edge.to, edge))
+            adjacency[edge.to, default: []].append((edge.from, edge))
+        }
+        struct Candidate {
+            let nodeIDs: [UUID]
+            let edges: [KnowledgeEdgeDTO]
+            let confidence: Double
+        }
+        var results: [Candidate] = []
+        for start in seedIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+            var queue = [Candidate(nodeIDs: [start], edges: [], confidence: 1)]
+            var cursor = 0
+            while cursor < queue.count, results.count < limit * 4 {
+                let candidate = queue[cursor]
+                cursor += 1
+                guard candidate.edges.count < maxDepth, let current = candidate.nodeIDs.last else { continue }
+                for next in adjacency[current, default: []] {
+                    guard candidate.nodeIDs.contains(next.next) == false else { continue }
+                    let expanded = Candidate(
+                        nodeIDs: candidate.nodeIDs + [next.next],
+                        edges: candidate.edges + [next.edge],
+                        confidence: candidate.confidence * next.edge.confidence
+                    )
+                    if seedIDs.contains(next.next), next.next != start {
+                        results.append(expanded)
+                    } else {
+                        queue.append(expanded)
+                    }
+                }
+            }
+        }
+        var fingerprints: Set<String> = []
+        return results
+            .sorted {
+                $0.confidence == $1.confidence
+                    ? $0.edges.count < $1.edges.count
+                    : $0.confidence > $1.confidence
+            }
+            .filter { candidate in
+                let forward = candidate.nodeIDs.map(\.uuidString).joined(separator: ":")
+                let reverse = candidate.nodeIDs.reversed().map(\.uuidString).joined(separator: ":")
+                return fingerprints.insert(min(forward, reverse)).inserted
+            }
+            .prefix(limit)
+            .compactMap { candidate in
+                let nodes = candidate.nodeIDs.compactMap { nodesByID[$0] }
+                guard nodes.count == candidate.nodeIDs.count else { return nil }
+                return KnowledgePathDTO(nodes: nodes, edges: candidate.edges, confidence: candidate.confidence)
+            }
     }
 }
 

@@ -7,7 +7,7 @@ import Logging
 import LuminaVaultShared
 
 protocol PluginRunnerClienting: Sendable {
-    func execute(module: Data, input: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int)
+    func execute(module: Data, toolName: String, permissions: [PluginPermission], input: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int)
 }
 
 struct PluginRunnerClient: PluginRunnerClienting {
@@ -15,7 +15,7 @@ struct PluginRunnerClient: PluginRunnerClienting {
     let token: String
     let logger: Logger
 
-    func execute(module: Data, input: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int) {
+    func execute(module: Data, toolName: String, permissions: [PluginPermission], input: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int) {
         guard !token.isEmpty else { throw HTTPError(.serviceUnavailable, message: "plugin_runner_disabled") }
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/execute"))
         request.httpMethod = "POST"
@@ -23,7 +23,8 @@ struct PluginRunnerClient: PluginRunnerClienting {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 32
         request.httpBody = try JSONEncoder().encode(RunnerRequest(
-            moduleBase64: module.base64EncodedString(), input: input, fuel: 10_000_000
+            moduleBase64: module.base64EncodedString(), toolName: toolName,
+            permissions: permissions.map(\.rawValue), input: input, fuel: 10_000_000
         ))
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -36,6 +37,8 @@ struct PluginRunnerClient: PluginRunnerClienting {
 
     private struct RunnerRequest: Encodable {
         let moduleBase64: String
+        let toolName: String
+        let permissions: [String]
         let input: [String: String]
         let fuel: Int
     }
@@ -47,7 +50,7 @@ struct PluginRunnerClient: PluginRunnerClienting {
 }
 
 struct DisabledPluginRunnerClient: PluginRunnerClienting {
-    func execute(module _: Data, input _: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int) {
+    func execute(module _: Data, toolName _: String, permissions _: [PluginPermission], input _: [String: String]) async throws -> (output: [String: String], fuelConsumed: Int) {
         throw HTTPError(.serviceUnavailable, message: "plugin_runner_disabled")
     }
 }

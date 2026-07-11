@@ -70,6 +70,9 @@ struct TeamController {
         router.get("/:teamID/vaults", use: listTeamVaults)
         router.post("/:teamID/vaults", use: createVault)
         router.post("/:teamID/invitations", use: invite)
+        router.get("/:teamID/invitations", use: listInvitations)
+        router.post("/:teamID/invitations/:invitationID/resend", use: resendInvitation)
+        router.delete("/:teamID/invitations/:invitationID", use: revokeInvitation)
         router.put("/:teamID/owner", use: transferOwnership)
         router.post("/:teamID/archive", use: archiveTeam)
         router.post("/:teamID/restore", use: restoreTeam)
@@ -336,6 +339,16 @@ struct TeamController {
         guard email.contains("@"), !body.vaultGrants.isEmpty else {
             throw HTTPError(.unprocessableContent, message: "email and at least one vault grant are required")
         }
+        if try await TeamInvitation.query(on: fluent.db())
+            .filter(\.$teamID == teamID)
+            .filter(\.$email == email)
+            .filter(\.$acceptedAt == nil)
+            .filter(\.$revokedAt == nil)
+            .filter(\.$expiresAt > Date())
+            .first() != nil
+        {
+            throw HTTPError(.conflict, message: "a pending invitation already exists for this email")
+        }
         for (rawID, grant) in body.vaultGrants {
             guard let vaultID = UUID(uuidString: rawID),
                   let vault = try await Vault.find(vaultID, on: fluent.db()), vault.teamID == teamID,
@@ -363,6 +376,66 @@ struct TeamController {
         }
         return try .init(id: invitation.requireID(), teamID: teamID, email: email,
                          expiresAt: invitation.expiresAt, token: nil)
+    }
+
+    @Sendable func listInvitations(_: Request, ctx: AppRequestContext) async throws -> [InvitationResponse] {
+        let teamID = try uuidParameter(ctx, "teamID")
+        _ = try await requireTeamRole(teamID: teamID, context: ctx, admin: true)
+        return try await TeamInvitation.query(on: fluent.db())
+            .filter(\.$teamID == teamID)
+            .filter(\.$acceptedAt == nil)
+            .filter(\.$revokedAt == nil)
+            .sort(\.$expiresAt, .descending)
+            .all()
+            .map { invitation in
+                try .init(id: invitation.requireID(), teamID: teamID, email: invitation.email,
+                          expiresAt: invitation.expiresAt, token: nil)
+            }
+    }
+
+    @Sendable func resendInvitation(_: Request, ctx: AppRequestContext) async throws -> InvitationResponse {
+        let teamID = try uuidParameter(ctx, "teamID")
+        _ = try await requireTeamRole(teamID: teamID, context: ctx, admin: true)
+        let invitationID = try uuidParameter(ctx, "invitationID")
+        guard let invitation = try await TeamInvitation.find(invitationID, on: fluent.db()),
+              invitation.teamID == teamID, invitation.acceptedAt == nil, invitation.revokedAt == nil,
+              let team = try await Team.find(teamID, on: fluent.db()), team.archivedAt == nil
+        else {
+            throw HTTPError(.notFound, message: "pending invitation not found")
+        }
+        let actor = try ctx.requireIdentity()
+        let token = UUID().uuidString + UUID().uuidString
+        let previousHash = invitation.tokenHash
+        let previousExpiry = invitation.expiresAt
+        invitation.tokenHash = hash(token)
+        invitation.expiresAt = Date().addingTimeInterval(7 * 24 * 60 * 60)
+        try await invitation.update(on: fluent.db())
+        do {
+            try await invitationSender.send(to: invitation.email, teamName: team.name,
+                                            inviterName: actor.username, token: token,
+                                            expiresAt: invitation.expiresAt)
+        } catch {
+            invitation.tokenHash = previousHash
+            invitation.expiresAt = previousExpiry
+            try? await invitation.update(on: fluent.db())
+            throw HTTPError(.serviceUnavailable, message: "invitation could not be resent")
+        }
+        return try .init(id: invitation.requireID(), teamID: teamID, email: invitation.email,
+                         expiresAt: invitation.expiresAt, token: nil)
+    }
+
+    @Sendable func revokeInvitation(_: Request, ctx: AppRequestContext) async throws -> Response {
+        let teamID = try uuidParameter(ctx, "teamID")
+        _ = try await requireTeamRole(teamID: teamID, context: ctx, admin: true)
+        let invitationID = try uuidParameter(ctx, "invitationID")
+        guard let invitation = try await TeamInvitation.find(invitationID, on: fluent.db()),
+              invitation.teamID == teamID, invitation.acceptedAt == nil, invitation.revokedAt == nil
+        else {
+            throw HTTPError(.notFound, message: "pending invitation not found")
+        }
+        invitation.revokedAt = Date()
+        try await invitation.update(on: fluent.db())
+        return Response(status: .noContent)
     }
 
     @Sendable func acceptInvitation(_: Request, ctx: AppRequestContext) async throws -> TeamResponse {
