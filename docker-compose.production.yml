@@ -11,6 +11,7 @@ services:
       - luminavault-data:/app/data/luminavault   # tenant raw vault root (named volume; seeds hummingbird ownership from image)
       - ./data/hermes:/app/data/hermes           # hermes filesystem gateway target
       - ./secrets:/app/secrets:ro                # APNS .p8 etc
+      - plugin-artifacts:/app/data/plugin-artifacts
     environment:
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 8080
@@ -85,6 +86,9 @@ services:
       DOCKER_BINARY_PATH: ${DOCKER_BINARY_PATH:-/usr/bin/docker}
       LV_SECRET_MASTER_KEY: ${LV_SECRET_MASTER_KEY:-}
       LV_ENVIRONMENT: ${LV_ENVIRONMENT:-production}
+      PLUGIN_RUNNER_URL: http://plugin-runner:8090
+      PLUGIN_RUNNER_TOKEN: ${PLUGIN_RUNNER_TOKEN:?PLUGIN_RUNNER_TOKEN required}
+      PLUGIN_ARTIFACT_ROOT: /app/data/plugin-artifacts
       BYO_HERMES_ALLOW_PRIVATE: ${BYO_HERMES_ALLOW_PRIVATE:-false}
       # Must be VAULT_ROOT_PATH (swift-configuration maps `vault.rootPath` →
       # VAULT_ROOT_PATH). The old `VAULT_ROOTPATH` never matched, so the app
@@ -176,8 +180,43 @@ services:
         condition: service_healthy
       hermes:
         condition: service_started
+      plugin-runner:
+        condition: service_healthy
       otel-collector:
         condition: service_started
+
+  plugin-runner:
+    build:
+      context: .
+      dockerfile: docker/plugin-runner.Dockerfile
+    image: luminavault-plugin-runner:local
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      PLUGIN_RUNNER_TOKEN: ${PLUGIN_RUNNER_TOKEN:?PLUGIN_RUNNER_TOKEN required}
+      RUST_LOG: ${PLUGIN_RUNNER_LOG_LEVEL:-info}
+    expose:
+      - "8090"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/plugin-runner", "--healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   # TLS termination + HTTP/2 (and HTTP/3 over :443/udp) front door. Caddy
   # auto-provisions a Let's Encrypt cert for the domain in ./Caddyfile once
@@ -305,6 +344,7 @@ services:
     profiles: ["backup"]
     volumes:
       - luminavault-data:/backup/src/luminavault:ro # tenant raw vault (named volume, read-only)
+      - plugin-artifacts:/backup/src/plugin-artifacts:ro
       - ./data/hermes:/backup/src/hermes:ro           # hermes skills + memory (read-only)
       - ./secrets/rclone.conf:/root/.config/rclone/rclone.conf:ro
       - ./data/backup-logs:/var/log/backup
@@ -346,6 +386,7 @@ volumes:
   caddy-config:
   luminavault-data: # tenant raw vault root; ownership seeded from image's
                     # hummingbird-owned /app/data/luminavault (see Dockerfile)
+  plugin-artifacts: # immutable reviewed marketplace packages and WASM modules
 
 networks:
   default:

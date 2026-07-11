@@ -34,6 +34,20 @@ The prod compose declares these as `${VAR:?required}` — container start fails 
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
 
+### Plugin marketplace and WASM runner
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `PLUGIN_RUNNER_URL` | When WASM execution is enabled | `http://plugin-runner:8090` | Internal runner base URL. Never expose it publicly. |
+| `PLUGIN_RUNNER_TOKEN` | Production | none | Random API-to-runner bearer secret, minimum 32 characters. |
+| `PLUGIN_ARTIFACT_ROOT` | When publishing WASM | `/app/data/plugin-artifacts` | Persistent reviewed-artifact cache mounted only into the API. |
+
+The runner must remain non-root with a read-only root filesystem, all Linux
+capabilities dropped, `no-new-privileges`, PID/memory/CPU limits, and no host
+port. Guest modules receive no WASI environment, filesystem, socket, clock, or
+process imports. Rotate `PLUGIN_RUNNER_TOKEN` by restarting the API and runner
+in the same deployment.
+
 ### Hermes gateway authentication
 
 `HERMES_API_KEY` (32+ bytes; `openssl rand -hex 32`) is shared between two containers:

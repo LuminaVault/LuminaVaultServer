@@ -108,6 +108,57 @@ struct PluginService {
         return try Self.dto(row)
     }
 
+    /// Installs an approved immutable marketplace version. Permission grants
+    /// must exactly match the reviewed version so a client cannot silently
+    /// omit consent or grant capabilities the package never declared.
+    func installMarketplace(
+        tenantID: UUID,
+        slug: String,
+        versionID: UUID,
+        grantedPermissions: [PluginPermission],
+        config: [String: String]
+    ) async throws -> PluginInstallDTO {
+        guard let listing = try await MarketplaceListing.query(on: fluent.db())
+            .filter(\.$slug == slug)
+            .filter(\.$status == MarketplacePluginStatus.published.rawValue)
+            .first(),
+            let version = try await MarketplaceVersion.query(on: fluent.db())
+            .filter(\.$id == versionID)
+            .filter(\.$listingID == listing.requireID())
+            .filter(\.$status == MarketplaceVersionStatus.approved.rawValue)
+            .first()
+        else { throw HTTPError(.notFound, message: "marketplace_version_not_found") }
+
+        let declared = Set(version.permissions)
+        let granted = Set(grantedPermissions.map(\.rawValue))
+        guard declared == granted else {
+            throw HTTPError(.unprocessableContent, message: "permission_consent_mismatch")
+        }
+        let allowed = Set(version.configFields.map(\.key))
+        guard config.keys.allSatisfy(allowed.contains) else {
+            throw HTTPError(.badRequest, message: ErrorCode.unknownField.rawValue)
+        }
+        for field in version.configFields where field.isRequired {
+            guard let value = config[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                throw HTTPError(.badRequest, message: "\(ErrorCode.missingField.rawValue):\(field.key)")
+            }
+        }
+
+        let sealed = try seal(config, tenantID: tenantID)
+        let row = try await loadInstall(tenantID: tenantID, slug: slug) ?? PluginInstall(
+            tenantID: tenantID, pluginSlug: slug,
+            configCiphertext: sealed.ciphertext, configNonce: sealed.nonce
+        )
+        row.configCiphertext = sealed.ciphertext
+        row.configNonce = sealed.nonce
+        row.status = PluginInstallState.enabled
+        row.marketplaceVersionID = versionID
+        row.grantedPermissions = granted.sorted()
+        try await row.save(on: fluent.db())
+        logger.info("marketplace plugin installed tenant=\(tenantID) slug=\(slug) version=\(version.version)")
+        return try Self.dto(row)
+    }
+
     func update(
         tenantID: UUID,
         installID: UUID,
@@ -302,7 +353,9 @@ struct PluginService {
             status: PluginInstallStatus(rawValue: row.status) ?? .enabled,
             hasConfig: !row.configCiphertext.isEmpty,
             createdAt: row.createdAt,
-            lastSyncAt: row.lastSyncAt
+            lastSyncAt: row.lastSyncAt,
+            marketplaceVersionId: row.marketplaceVersionID,
+            grantedPermissions: row.grantedPermissions.compactMap(PluginPermission.init(rawValue:))
         )
     }
 }

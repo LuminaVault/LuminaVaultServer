@@ -19,6 +19,8 @@ final class PluginInstall: Model, TenantModel, @unchecked Sendable {
     @Field(key: "config_ciphertext") var configCiphertext: Data
     @Field(key: "config_nonce") var configNonce: Data
     @OptionalField(key: "last_sync_at") var lastSyncAt: Date?
+    @OptionalField(key: "marketplace_version_id") var marketplaceVersionID: UUID?
+    @Field(key: "granted_permissions") var grantedPermissions: [String]
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -38,6 +40,7 @@ final class PluginInstall: Model, TenantModel, @unchecked Sendable {
         self.status = status
         self.configCiphertext = configCiphertext
         self.configNonce = configNonce
+        grantedPermissions = []
     }
 }
 

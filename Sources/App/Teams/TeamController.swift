@@ -438,14 +438,14 @@ struct TeamController {
     private func record(vaultID: UUID, actor: User, action: String, targetType: String,
                         targetID: UUID?, targetTitle: String?) async throws
     {
-        let row = VaultActivityEvent(vaultID: vaultID, actorUserID: try actor.requireID(),
-                                     actorName: actor.username, action: action, targetType: targetType,
-                                     targetID: targetID, targetTitle: targetTitle)
+        let row = try VaultActivityEvent(vaultID: vaultID, actorUserID: actor.requireID(),
+                                         actorName: actor.username, action: action, targetType: targetType,
+                                         targetID: targetID, targetTitle: targetTitle)
         try await row.save(on: fluent.db())
-        let response = ActivityResponse(id: try row.requireID(), vaultID: vaultID,
-                                        actorUserID: row.actorUserID, actorName: row.actorName,
-                                        action: action, targetType: targetType, targetID: targetID,
-                                        targetTitle: targetTitle, createdAt: row.createdAt ?? Date())
+        let response = try ActivityResponse(id: row.requireID(), vaultID: vaultID,
+                                            actorUserID: row.actorUserID, actorName: row.actorName,
+                                            action: action, targetType: targetType, targetID: targetID,
+                                            targetTitle: targetTitle, createdAt: row.createdAt ?? Date())
         await activityPublisher.publish(response)
     }
 

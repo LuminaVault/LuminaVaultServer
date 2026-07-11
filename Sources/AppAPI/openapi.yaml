@@ -53,6 +53,8 @@ tags:
     description: Feed Your Brain bulk import (links, bookmarks, files into Spaces).
   - name: Plugins
     description: Declarative plugin foundation — catalog, per-tenant installs, connector sync (HER-43).
+  - name: Marketplace
+    description: Public plugin discovery, publishing, moderation, ratings, and version-pinned installs.
   - name: Spaces
   - name: Soul
     description: SOUL.md CRUD (HER-85).
@@ -3052,6 +3054,182 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PluginSyncResponse' }
 
+  /v1/marketplace/plugins:
+    get:
+      tags: [Marketplace]
+      operationId: marketplaceList
+      summary: Browse published marketplace plugins.
+      parameters:
+        - { name: query, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/PluginCategory' } }
+        - { name: featured, in: query, schema: { type: boolean } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 24 } }
+      responses:
+        '200': { description: Published plugins., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceListResponse' } } } }
+
+  /v1/marketplace/plugins/{slug}:
+    get:
+      tags: [Marketplace]
+      operationId: marketplaceDetail
+      summary: Get a published marketplace listing.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Marketplace plugin., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePluginDTO' } } } }
+        '404': { description: Listing or approved version not found. }
+
+  /v1/marketplace/plugins/{slug}/reviews:
+    get:
+      tags: [Marketplace]
+      operationId: marketplaceReviews
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Published reviews., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceReviewsResponse' } } } }
+
+  /v1/marketplace/plugins/{slug}/rating:
+    put:
+      tags: [Marketplace]
+      operationId: marketplaceRate
+      summary: Create or replace the caller's verified-install rating.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceRatingRequest' } } }
+      responses:
+        '200': { description: Saved review., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceReviewDTO' } } } }
+        '403': { description: A verified install is required; publishers cannot rate their own plugin. }
+
+  /v1/marketplace/plugins/{slug}/install:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceInstall
+      summary: Install an approved immutable version with explicit permission grants.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceInstallRequest' } } }
+      responses:
+        '200': { description: Installed., content: { application/json: { schema: { $ref: '#/components/schemas/PluginInstallDTO' } } } }
+
+  /v1/marketplace/plugins/{slug}/tools/{toolName}/run:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceRunTool
+      summary: Execute an installed approved WASM tool in the isolated runner.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: toolName, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PluginToolRunRequest' } } }
+      responses:
+        '200': { description: Sandboxed tool output., content: { application/json: { schema: { $ref: '#/components/schemas/PluginToolRunResponse' } } } }
+
+  /v1/marketplace/publisher/apply:
+    post:
+      tags: [Marketplace]
+      operationId: marketplacePublisherApply
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PublisherApplicationRequest' } } }
+      responses:
+        '200': { description: Publisher application., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePublisherDTO' } } } }
+
+  /v1/marketplace/publisher:
+    get:
+      tags: [Marketplace]
+      operationId: marketplacePublisherGet
+      responses:
+        '200': { description: Caller publisher profile., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePublisherDTO' } } } }
+
+  /v1/marketplace/publisher/plugins:
+    post:
+      tags: [Marketplace]
+      operationId: marketplacePublisherCreatePlugin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceListingCreateRequest' } } }
+      responses:
+        '200': { description: Draft listing., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePluginDTO' } } } }
+
+  /v1/marketplace/publisher/plugins/{slug}/versions:
+    post:
+      tags: [Marketplace]
+      operationId: marketplacePublisherCreateVersion
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceVersionCreateRequest' } } }
+      responses:
+        '200': { description: Draft immutable version., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceVersionDTO' } } } }
+
+  /v1/marketplace/publisher/plugins/{slug}/artifacts:
+    post:
+      tags: [Marketplace]
+      operationId: marketplacePublisherUploadArtifact
+      summary: Upload a WASM module into the immutable content-addressed artifact store.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceArtifactUploadRequest' } } }
+      responses:
+        '200': { description: Stored artifact reference., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceArtifactUploadResponse' } } } }
+
+  /v1/marketplace/publisher/plugins/{slug}/versions/{versionID}/submit:
+    post:
+      tags: [Marketplace]
+      operationId: marketplacePublisherSubmitVersion
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: versionID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Validation/submission result., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionDTO' } } } }
+
+  /v1/marketplace/publisher/submissions:
+    get:
+      tags: [Marketplace]
+      operationId: marketplacePublisherSubmissions
+      responses:
+        '200': { description: Caller submissions., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionsResponse' } } } }
+
+  /v1/marketplace/admin/submissions:
+    get:
+      tags: [Marketplace]
+      operationId: marketplaceAdminSubmissions
+      responses:
+        '200': { description: Moderation queue., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionsResponse' } } } }
+        '403': { description: Admin required. }
+
+  /v1/marketplace/admin/submissions/{submissionID}/decision:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceAdminDecision
+      parameters:
+        - { name: submissionID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceModerationRequest' } } }
+      responses:
+        '200': { description: Reviewed submission., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceSubmissionDTO' } } } }
+
+  /v1/marketplace/admin/publishers/{userID}/decision:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceAdminPublisherDecision
+      parameters:
+        - { name: userID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceModerationRequest' } } }
+      responses:
+        '200': { description: Reviewed publisher., content: { application/json: { schema: { $ref: '#/components/schemas/MarketplacePublisherDTO' } } } }
+
   /v1/kb-compile:
     post:
       tags: [KB]
@@ -4952,12 +5130,13 @@ components:
 
     MeResponse:
       type: object
-      required: [userId, email, username, isVerified]
+      required: [userId, email, username, isVerified, isAdmin]
       properties:
         userId: { type: string, format: uuid }
         email: { type: string, format: email }
         username: { type: string }
         isVerified: { type: boolean }
+        isAdmin: { type: boolean, description: Enables authenticated marketplace moderation UI. }
         privacyNoCNOrigin: { type: boolean }
         contextRouting: { type: boolean }
         autoSaveLinks:
@@ -7527,6 +7706,9 @@ components:
         filed: { type: integer }
         memoriesIngested: { type: integer }
 
+    PluginCategory:
+      type: string
+      enum: [connector, skill, memory, export, ui, theme, capture]
     PluginConfigField:
       type: object
       required: [key, label, kind, isRequired]
@@ -7544,8 +7726,8 @@ components:
         name: { type: string }
         summary: { type: string }
         description: { type: string }
-        category: { type: string, enum: [connector, skill, memory, export, ui, theme] }
-        capabilityKind: { type: string, enum: [connector, skill, memory] }
+        category: { $ref: '#/components/schemas/PluginCategory' }
+        capabilityKind: { type: string, enum: [connector, skill, memory, captureHook] }
         iconSlug: { type: string }
         version: { type: string }
         publisher: { type: string }
@@ -7570,6 +7752,10 @@ components:
         hasConfig: { type: boolean }
         createdAt: { type: string, format: date-time, nullable: true }
         lastSyncAt: { type: string, format: date-time, nullable: true }
+        marketplaceVersionId: { type: string, format: uuid }
+        grantedPermissions:
+          type: array
+          items: { $ref: '#/components/schemas/PluginPermission' }
     PluginInstallsListResponse:
       type: object
       required: [items]
@@ -7604,6 +7790,174 @@ components:
         total: { type: integer }
         staged: { type: integer }
         skipped: { type: integer }
+
+    MarketplacePluginStatus:
+      type: string
+      enum: [draft, in_review, published, suspended]
+    MarketplaceVersionStatus:
+      type: string
+      enum: [draft, validating, in_review, approved, rejected, revoked]
+    MarketplaceRuntimeKind:
+      type: string
+      enum: [native, declarative, wasm]
+    PluginPermission:
+      type: string
+      enum: [memory.read, memory.write, vault.read, vault.write, network.fetch, output.emit]
+    MarketplacePublisherDTO:
+      type: object
+      required: [id, handle, displayName, verified]
+      properties:
+        id: { type: string, format: uuid }
+        handle: { type: string }
+        displayName: { type: string }
+        bio: { type: string }
+        websiteURL: { type: string, format: uri }
+        verified: { type: boolean }
+    MarketplaceVersionDTO:
+      type: object
+      required: [id, version, status, runtimeKind, permissions, networkHosts]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: string }
+        status: { $ref: '#/components/schemas/MarketplaceVersionStatus' }
+        runtimeKind: { $ref: '#/components/schemas/MarketplaceRuntimeKind' }
+        permissions: { type: array, items: { $ref: '#/components/schemas/PluginPermission' } }
+        networkHosts: { type: array, items: { type: string } }
+        changelog: { type: string }
+        publishedAt: { type: string, format: date-time }
+    MarketplacePluginDTO:
+      type: object
+      required: [slug, name, summary, description, category, screenshots, publisher, latestVersion, featured, ratingAverage, ratingCount, installCount, configFields]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        category: { $ref: '#/components/schemas/PluginCategory' }
+        iconURL: { type: string, format: uri }
+        screenshots: { type: array, items: { type: string, format: uri } }
+        publisher: { $ref: '#/components/schemas/MarketplacePublisherDTO' }
+        latestVersion: { $ref: '#/components/schemas/MarketplaceVersionDTO' }
+        featured: { type: boolean }
+        ratingAverage: { type: number, format: double, minimum: 0, maximum: 5 }
+        ratingCount: { type: integer, minimum: 0 }
+        installCount: { type: integer, minimum: 0 }
+        configFields: { type: array, items: { $ref: '#/components/schemas/PluginConfigField' } }
+    MarketplaceListResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MarketplacePluginDTO' } }
+        nextCursor: { type: string }
+    MarketplaceReviewDTO:
+      type: object
+      required: [id, rating, authorUsername, verifiedInstall]
+      properties:
+        id: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        body: { type: string, maxLength: 2000 }
+        authorUsername: { type: string }
+        verifiedInstall: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    MarketplaceReviewsResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MarketplaceReviewDTO' } }
+    MarketplaceRatingRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        body: { type: string, maxLength: 2000 }
+    MarketplaceInstallRequest:
+      type: object
+      required: [versionId, grantedPermissions, config]
+      properties:
+        versionId: { type: string, format: uuid }
+        grantedPermissions: { type: array, items: { $ref: '#/components/schemas/PluginPermission' } }
+        config: { type: object, additionalProperties: { type: string } }
+    PublisherApplicationRequest:
+      type: object
+      required: [handle, displayName]
+      properties:
+        handle: { type: string }
+        displayName: { type: string }
+        bio: { type: string }
+        websiteURL: { type: string, format: uri }
+    MarketplaceListingCreateRequest:
+      type: object
+      required: [slug, name, summary, description, category]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        category: { $ref: '#/components/schemas/PluginCategory' }
+        iconURL: { type: string, format: uri }
+        screenshots: { type: array, items: { type: string, format: uri }, maxItems: 5 }
+    MarketplaceVersionCreateRequest:
+      type: object
+      required: [version, runtimeKind, permissions]
+      properties:
+        version: { type: string }
+        runtimeKind: { $ref: '#/components/schemas/MarketplaceRuntimeKind' }
+        permissions: { type: array, items: { $ref: '#/components/schemas/PluginPermission' } }
+        networkHosts: { type: array, items: { type: string } }
+        configFields: { type: array, items: { $ref: '#/components/schemas/PluginConfigField' } }
+        changelog: { type: string }
+        artifactKey: { type: string }
+        artifactSHA256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        manifestJSON: { type: string }
+    MarketplaceSubmissionDTO:
+      type: object
+      required: [id, pluginSlug, versionId, status, validationErrors]
+      properties:
+        id: { type: string, format: uuid }
+        pluginSlug: { type: string }
+        versionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/MarketplaceVersionStatus' }
+        validationErrors: { type: array, items: { type: string } }
+        reviewNote: { type: string }
+        submittedAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+    MarketplaceSubmissionsResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MarketplaceSubmissionDTO' } }
+    MarketplaceModerationRequest:
+      type: object
+      required: [approved]
+      properties:
+        approved: { type: boolean }
+        note: { type: string }
+    PluginToolRunRequest:
+      type: object
+      required: [input]
+      properties:
+        input: { type: object, additionalProperties: { type: string } }
+    PluginToolRunResponse:
+      type: object
+      required: [runId, output, fuelConsumed]
+      properties:
+        runId: { type: string, format: uuid }
+        output: { type: object, additionalProperties: { type: string } }
+        fuelConsumed: { type: integer, minimum: 0 }
+    MarketplaceArtifactUploadRequest:
+      type: object
+      required: [fileName, bytesBase64]
+      properties:
+        fileName: { type: string }
+        bytesBase64: { type: string, format: byte }
+    MarketplaceArtifactUploadResponse:
+      type: object
+      required: [artifactKey, sha256, sizeBytes]
+      properties:
+        artifactKey: { type: string }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        sizeBytes: { type: integer, minimum: 1, maximum: 10485760 }
 
     KBCompileStartedDTO:
       type: object

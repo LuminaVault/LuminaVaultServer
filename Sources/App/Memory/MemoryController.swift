@@ -62,7 +62,9 @@ extension MemoryDTO {
             accuracyM: memory.accuracyM,
             placeName: memory.placeName,
             reviewState: memory.reviewState,
-            provenance: provenance ?? memory.originSummary
+            provenance: provenance ?? memory.originSummary,
+            createdByUserId: memory.createdByUserID,
+            updatedByUserId: memory.updatedByUserID
         )
     }
 }
@@ -186,6 +188,10 @@ struct MemoryController {
             spaceID: spaceID,
             contribution: .user(.create)
         )
+        let actorID = try ctx.requireTenantID()
+        memory.createdByUserID = actorID
+        memory.updatedByUserID = actorID
+        try await memory.update(on: repository.fluent.db())
 
         // HER-207 — geo passthrough. All four fields are independently
         // optional; only those actually supplied are set, so a partial body
@@ -317,6 +323,8 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
+        row.updatedByUserID = try ctx.requireTenantID()
+        try await row.update(on: repository.fluent.db())
         let summary = try await provenanceRepository.summaries(
             tenantID: tenantID,
             memoryIDs: [row.savedID]

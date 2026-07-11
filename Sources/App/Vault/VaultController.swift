@@ -39,7 +39,9 @@ extension VaultFileDTO {
                     done: $0.done,
                     dueAt: $0.dueAt
                 )
-            }
+            },
+            createdByUserId: row.createdByUserID,
+            updatedByUserId: row.updatedByUserID
         )
     }
 }
@@ -225,6 +227,12 @@ struct VaultController {
             processed: processed,
             metadata: noteMetadata
         )
+        if let row = try await VaultFile.find(savedID, on: fluent.db()) {
+            let actorID = try user.requireID()
+            row.createdByUserID = row.createdByUserID ?? actorID
+            row.updatedByUserID = actorID
+            try await row.update(on: fluent.db())
+        }
         logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
 
         if let achievements {

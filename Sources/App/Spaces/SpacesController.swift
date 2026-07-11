@@ -64,6 +64,10 @@ struct SpacesController {
             icon: body.icon,
             category: body.category
         )
+        let actorID = try ctx.requireTenantID()
+        space.createdByUserID = actorID
+        space.updatedByUserID = actorID
+        try await space.save(on: service.fluent.db())
         return try SpaceDTO.fromSpace(space)
     }
 
@@ -89,6 +93,8 @@ struct SpacesController {
             icon: body.icon,
             category: body.category
         )
+        space.updatedByUserID = try ctx.requireTenantID()
+        try await space.save(on: service.fluent.db())
         return try SpaceDTO.fromSpace(space)
     }
 

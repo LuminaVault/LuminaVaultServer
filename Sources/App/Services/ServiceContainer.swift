@@ -192,4 +192,9 @@ struct ServiceContainer {
     let photonSidecarURL: String
     /// Shared token for authenticating control calls to the sidecar.
     let photonSidecarToken: String
+
+    /// Sandboxed third-party WebAssembly execution. Empty token disables runs.
+    let pluginRunnerURL: String
+    let pluginRunnerToken: String
+    let pluginArtifactRoot: String
 }

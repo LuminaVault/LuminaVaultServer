@@ -52,7 +52,10 @@ struct KanbanService {
     func defaultBoard(tenantID: UUID) async throws -> KanbanBoard {
         if let existing = try await KanbanBoard.query(on: db)
             .filter(\.$tenantID == tenantID).filter(\.$archivedAt == nil)
-            .sort(\.$createdAt).first() { return existing }
+            .sort(\.$createdAt).first()
+        {
+            return existing
+        }
         let b = try await createBoard(tenantID: tenantID, title: "My Board")
         for t in ["Todo", "Doing", "Done"] {
             _ = try await createColumn(tenantID: tenantID, boardID: b.requireID(), title: t)
@@ -62,8 +65,12 @@ struct KanbanService {
 
     func patchBoard(tenantID: UUID, boardID: UUID, req: BoardPatchRequest) async throws -> BoardDTO {
         let b = try await requireBoard(tenantID: tenantID, boardID: boardID)
-        if let t = req.title { b.title = t }
-        if req.archived == true { b.archivedAt = Date() }
+        if let t = req.title {
+            b.title = t
+        }
+        if req.archived == true {
+            b.archivedAt = Date()
+        }
         try await bump(b); return try await snapshot(tenantID: tenantID, boardID: boardID)
     }
 
@@ -133,10 +140,18 @@ struct KanbanService {
 
     func patchCard(tenantID: UUID, cardID: UUID, req: CardPatchRequest) async throws -> CardDTO {
         let card = try await requireCard(tenantID: tenantID, cardID: cardID)
-        if let t = req.title { card.title = t }
-        if let b = req.body { card.body = b }
-        if let p = req.priority { card.priority = p.rawValue }
-        if let d = req.dueAt { card.dueAt = d }
+        if let t = req.title {
+            card.title = t
+        }
+        if let b = req.body {
+            card.body = b
+        }
+        if let p = req.priority {
+            card.priority = p.rawValue
+        }
+        if let d = req.dueAt {
+            card.dueAt = d
+        }
         try await card.save(on: db)
         try await bumpBoard(tenantID: tenantID, boardID: card.boardID)
         return Self.cardDTO(card)
@@ -185,11 +200,21 @@ struct KanbanService {
         // card can be promoted in a single call (request fields win).
         var job = extra.job ?? CardJobConfig()
         if let request {
-            if let v = request.cron { job.cron = v }
-            if let v = request.runAt { job.runAt = v }
-            if let v = request.domain { job.domain = v }
-            if let v = request.prompt { job.prompt = v }
-            if let v = request.spaceID { job.spaceID = v }
+            if let v = request.cron {
+                job.cron = v
+            }
+            if let v = request.runAt {
+                job.runAt = v
+            }
+            if let v = request.domain {
+                job.domain = v
+            }
+            if let v = request.prompt {
+                job.prompt = v
+            }
+            if let v = request.spaceID {
+                job.spaceID = v
+            }
         }
         // Exactly one of cron (recurring) or run_at (one-shot, #10).
         let cron = job.cron?.trimmingCharacters(in: .whitespaces)
@@ -246,11 +271,17 @@ struct KanbanService {
                                      cards: cards.map(Self.cardDTO)))
         }
         return try BoardDTO(id: board.requireID(), title: board.title,
-                            version: board.version, columns: colDTOs)
+                            version: board.version, columns: colDTOs,
+                            createdByUserId: board.createdByUserID,
+                            updatedByUserId: board.updatedByUserID)
     }
 
     func version(tenantID: UUID, boardID: UUID) async throws -> Int64 {
         try await requireBoard(tenantID: tenantID, boardID: boardID).version
+    }
+
+    func boardID(tenantID: UUID, cardID: UUID) async throws -> UUID {
+        try await requireCard(tenantID: tenantID, cardID: cardID).boardID
     }
 
     // MARK: - Helpers
@@ -269,7 +300,8 @@ struct KanbanService {
         }
         return CardDTO(id: c.id ?? UUID(), columnID: c.columnID, title: c.title, body: c.body,
                        priority: priority,
-                       dueAt: c.dueAt, rank: c.rank, updatedAt: c.updatedAt, jobConfig: jobConfig)
+                       dueAt: c.dueAt, rank: c.rank, updatedAt: c.updatedAt, jobConfig: jobConfig,
+                       createdByUserId: c.createdByUserID, updatedByUserId: c.updatedByUserID)
     }
 
     private func requireBoard(tenantID: UUID, boardID: UUID) async throws -> KanbanBoard {

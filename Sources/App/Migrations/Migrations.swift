@@ -98,4 +98,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M91_CrossModelMemory())
     await fluent.migrations.add(M92_CreateWorkflows())
     await fluent.migrations.add(M93_HardenWorkflowAutomation())
+    await fluent.migrations.add(M94_CreateMarketplace())
 }

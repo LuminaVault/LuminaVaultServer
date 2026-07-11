@@ -209,7 +209,10 @@ func buildApplication(
         hermesCentralPort: reader.int(forKey: "hermes.central.port", default: 8642),
         hermesCentralTempPort: reader.int(forKey: "hermes.central.tempPort", default: 8643),
         photonSidecarURL: reader.string(forKey: "photon.sidecarUrl", default: "http://photon-sidecar:8789"),
-        photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: "")
+        photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: ""),
+        pluginRunnerURL: reader.string(forKey: "plugin.runnerUrl", default: "http://plugin-runner:8090"),
+        pluginRunnerToken: reader.string(forKey: "plugin.runnerToken", isSecret: true, default: ""),
+        pluginArtifactRoot: reader.string(forKey: "plugin.artifactRoot", default: "/app/data/plugin-artifacts")
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -1931,6 +1934,22 @@ func buildRouter(
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         let pluginsGroup = byoHermesMiddleware.map { pluginsBase.add(middleware: $0) } ?? pluginsBase
         PluginController(service: pluginService).addRoutes(to: pluginsGroup)
+        let pluginRunner: any PluginRunnerClienting = if let url = URL(string: services.pluginRunnerURL) {
+            PluginRunnerClient(baseURL: url, token: services.pluginRunnerToken, logger: Logger(label: "lv.plugin-runner"))
+        } else {
+            DisabledPluginRunnerClient()
+        }
+        let marketplaceService = MarketplaceService(
+            fluent: services.fluent,
+            logger: Logger(label: "lv.marketplace"),
+            runner: pluginRunner,
+            artifactRoot: services.pluginArtifactRoot
+        )
+        let marketplaceGroup = router.group("/v1/marketplace")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        MarketplaceController(marketplace: marketplaceService, plugins: pluginService)
+            .addRoutes(to: marketplaceGroup)
         // HER-43 Slice 3b — hub skill install/uninstall, mounted on the same
         // tenant-JWT group. Only when a per-tenant container manager exists.
         if let hubSkillsService {
@@ -2788,7 +2807,8 @@ private func meHandler(_: Request, ctx: AppRequestContext) async throws -> MeRes
         privacyNoCNOrigin: user.privacyNoCNOrigin,
         contextRouting: user.contextRouting,
         autoSaveLinks: user.autoSaveLinks,
-        mnemosyneEnabled: user.mnemosyneEnabled
+        mnemosyneEnabled: user.mnemosyneEnabled,
+        isAdmin: user.isAdmin
     )
 }
 
@@ -2824,7 +2844,8 @@ private func updatePrivacyHandler(
             privacyNoCNOrigin: user.privacyNoCNOrigin,
             contextRouting: user.contextRouting,
             autoSaveLinks: user.autoSaveLinks,
-            mnemosyneEnabled: user.mnemosyneEnabled
+            mnemosyneEnabled: user.mnemosyneEnabled,
+            isAdmin: user.isAdmin
         )
     }
 }
