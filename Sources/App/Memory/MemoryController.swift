@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 // MARK: - Server-side conformances + convenience
 
@@ -16,6 +17,8 @@ extension MemoryDTO: @retroactive ResponseEncodable {}
 extension MemoryGraphResponse: @retroactive ResponseEncodable {}
 extension MemoryProvenanceResponse: @retroactive ResponseEncodable {}
 extension MemoryFacetsResponse: @retroactive ResponseEncodable {}
+extension LocalMemorySyncResponse: @retroactive ResponseEncodable {}
+extension MemoryReviewResponse: @retroactive ResponseEncodable {}
 
 // HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
 // four optional geo fields. The server-local definition has been removed.
@@ -110,6 +113,7 @@ struct MemoryController {
     /// HER-290 — durable `(tenant_id, content_hash)` reject list used to dedup
     /// memories the user has already rejected.
     let rejectListRepository: KBCompileRejectListRepository
+    let hybridExecutionEnabled: Bool
     var provenanceRepository: MemoryProvenanceRepository {
         MemoryProvenanceRepository(fluent: repository.fluent)
     }
@@ -146,9 +150,11 @@ struct MemoryController {
         // the static segment in preference to the UUID parameter match (HER-235).
         router.get("/graph", use: graph)
         router.get("/facets", use: facets)
+        if hybridExecutionEnabled { router.get("/local-sync", use: localSync) }
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)
         router.get("/:id/provenance", use: provenance)
+        router.post("/:id/review", use: markReviewed)
         router.delete("/:id", use: delete)
         router.patch("/:id", use: patch)
     }
@@ -206,6 +212,15 @@ struct MemoryController {
         }
 
         let memoryID = try memory.requireID()
+        if let sql = repository.fluent.db() as? any SQLDatabase {
+            try? await sql.raw("""
+            INSERT INTO analytics_events
+                (vault_id, actor_user_id, event_name, source, dimensions, idempotency_key)
+            VALUES (\(bind: tenantID), \(bind: actorID), 'memory_created', 'server', '{}'::jsonb,
+                    \(bind: "memory-created:\(memoryID.uuidString)"))
+            ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+            """).run()
+        }
 
         // HER-171 — notify the skills runtime a memory landed (best-effort;
         // never blocks or fails the save).
@@ -260,6 +275,16 @@ struct MemoryController {
         )
         let hits = answer.hits.map {
             MemorySearchHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
+        }
+        if let sql = repository.fluent.db() as? any SQLDatabase, !hits.isEmpty {
+            let actorID = try ctx.requireTenantID()
+            for _ in hits {
+                try? await sql.raw("""
+                INSERT INTO analytics_events
+                    (vault_id, actor_user_id, event_name, source, dimensions)
+                VALUES (\(bind: tenantID), \(bind: actorID), 'memory_retrieved', 'server', '{}'::jsonb)
+                """).run()
+            }
         }
         return MemorySearchResponse(hits: hits, summary: answer.summary)
     }
@@ -333,6 +358,36 @@ struct MemoryController {
     }
 
     @Sendable
+    func localSync(_ req: Request, ctx: AppRequestContext) async throws -> LocalMemorySyncResponse {
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
+        let requested = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 200
+        let limit = max(1, min(requested, 500))
+        let cursor = req.uri.queryParameters["cursor"].flatMap { ISO8601DateFormatter().date(from: String($0)) }
+        var query = Memory.query(on: repository.fluent.db(), tenantID: tenantID)
+        if let cursor { query = query.filter(\.$createdAt > cursor) }
+        let rows = try await query.sort(\.$createdAt, .ascending).limit(limit).all()
+        let items = rows.map { row in
+            let timestamp = row.createdAt ?? .distantPast
+            return LocalMemorySyncItemDTO(
+                id: row.savedID,
+                content: row.content,
+                source: MemorySourceKindDTO(rawValue: row.originKind) ?? .legacy,
+                createdAt: timestamp,
+                updatedAt: timestamp
+            )
+        }
+        var tombstones = MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
+        if let cursor { tombstones = tombstones.filter(\.$deletedAt > cursor) }
+        let deleted = try await tombstones.sort(\.$deletedAt, .ascending).limit(limit).all()
+        let nextDate = [rows.last?.createdAt, deleted.last?.deletedAt].compactMap { $0 }.max()
+        return LocalMemorySyncResponse(
+            memories: items,
+            deletedIDs: deleted.map(\.memoryID),
+            nextCursor: nextDate.map { ISO8601DateFormatter().string(from: $0) }
+        )
+    }
+
+    @Sendable
     func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let id = try Self.parseID(ctx)
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
@@ -341,7 +396,33 @@ struct MemoryController {
         }
         let deleted = try await repository.delete(tenantID: tenantID, id: id)
         guard deleted else { throw HTTPError(.notFound, message: "memory not found") }
+        if (try? await MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
+            .filter(\.$memoryID == id).first()) == nil {
+            try? await MemorySyncTombstone(tenantID: tenantID, memoryID: id).save(on: repository.fluent.db())
+        }
         return Response(status: .noContent)
+    }
+
+    @Sendable
+    func markReviewed(_ req: Request, ctx: AppRequestContext) async throws -> MemoryReviewResponse {
+        let id = try Self.parseID(ctx)
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
+        guard let row = try await repository.find(tenantID: tenantID, id: id) else {
+            throw HTTPError(.notFound, message: "memory not found")
+        }
+        let now = Date()
+        row.lastReviewedAt = now
+        row.reviewCount += 1
+        row.updatedByUserID = try ctx.requireTenantID()
+        try await row.update(on: repository.fluent.db())
+        if let sql = repository.fluent.db() as? any SQLDatabase {
+            try? await sql.raw("""
+            INSERT INTO analytics_events
+                (vault_id, actor_user_id, event_name, source, dimensions)
+            VALUES (\(bind: tenantID), \(bind: row.updatedByUserID), 'memory_reviewed', 'server', '{}'::jsonb)
+            """).run()
+        }
+        return MemoryReviewResponse(memoryId: id, reviewedAt: now, reviewCount: Int(row.reviewCount))
     }
 
     @Sendable

@@ -74,6 +74,8 @@ struct ParallelExecutorTests {
         return CerberusDecisionMetadata(
             executionID: UUID(),
             tenantID: UUID(),
+            vaultID: UUID(),
+            actorUserID: UUID(),
             profileID: UUID(),
             profileName: "Test",
             ruleID: nil,

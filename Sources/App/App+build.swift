@@ -1511,6 +1511,7 @@ func buildRouter(
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
+        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true",
         eventBus: eventBus
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
@@ -1533,6 +1534,17 @@ func buildRouter(
     let memoryReadGroup = router.group("/v1/memory")
         .add(middleware: jwtAuthenticator)
     memoryController.addReadRoutes(to: memoryReadGroup)
+
+    // Evidence-backed claim/entity/event graph. Kept on a separate contract
+    // so older clients continue decoding the legacy memory graph unchanged.
+    let knowledgeController = KnowledgeGraphController(
+        service: KnowledgeGraphService(fluent: services.fluent)
+    )
+    let knowledgeGroup = router.group("/v1/knowledge")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
+    knowledgeController.addRoutes(to: knowledgeGroup)
 
     // HER-149: URL capture with async enrichment (YouTube oEmbed, X scraper, GenericOG).
     // Note: `urlEnrichmentService` + `jinaEnricher` are constructed earlier
@@ -1645,6 +1657,7 @@ func buildRouter(
         followUpGenerator: followUpGenerator,
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         parallelEnabled: cerberusParallelEnabled,
+        hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true",
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations")
     )
@@ -1672,6 +1685,12 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
     chatExperienceController.addPreferencesRoutes(to: chatPreferencesGroup)
+    if reader.string(forKey: "hybridExecution.enabled", default: "false").lowercased() == "true" {
+        let hybridPreferencesGroup = router.group("/v1/me/preferences/hybrid-execution")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        chatExperienceController.addHybridPreferencesRoutes(to: hybridPreferencesGroup)
+    }
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
@@ -1876,6 +1895,30 @@ func buildRouter(
     let importGroup = router.group("/v1/import").add(middleware: jwtAuthenticator)
     importController.addRoutes(to: importGroup)
 
+    // Durable multimodal ingestion. The original is written to the same vault
+    // Hermes sees; Hermes returns structured analysis and the server owns the
+    // resulting source-linked memory and processing status.
+    let multimodalIngestionService = MultimodalIngestionService(
+        fluent: services.fluent,
+        vaultPaths: vaultPaths,
+        linkCapture: linkCaptureService,
+        processor: HermesMultimodalProcessor(
+            transport: routedTransport,
+            model: services.hermesDefaultModel
+        ),
+        memories: MemoryRepository(fluent: services.fluent),
+        embeddings: embeddingService,
+        logger: Logger(label: "lv.ingestion")
+    )
+    let ingestionController = MultimodalIngestionController(service: multimodalIngestionService)
+    let ingestionGroup = router.group("/v1/ingestions")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
+    ingestionController.addRoutes(to: ingestionGroup)
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(MultimodalIngestionWorker(service: multimodalIngestionService))
+    }
+
     // Vault import bridge — bulk-ingest a user's Hermes/Obsidian markdown vault
     // into LuminaVault (vault_files + memories + embeddings + Space) so chat
     // grounding + the Brain graph use it. Mounted on the same JWT group.
@@ -1998,7 +2041,8 @@ func buildRouter(
     // HER-Insights — per-tenant usage analytics (the Home "Insights" card).
     let analyticsController = AnalyticsController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.analytics")
+        logger: Logger(label: "lv.analytics"),
+        vaultAccess: VaultAccessService(fluent: services.fluent)
     )
     let analyticsGroup = router.group("/v1/analytics").add(middleware: jwtAuthenticator)
     analyticsController.addRoutes(to: analyticsGroup)
@@ -2153,6 +2197,15 @@ func buildRouter(
             fluent: services.fluent,
             embeddings: embeddingService
         ))
+    }
+
+    // Durable claim/entity/event extraction. The worker is feature-gated for
+    // a measured backfill rollout; graph reads remain available while off.
+    if fluentEnabled, lvEnvironment != "test",
+       reader.string(forKey: "knowledgeGraph.workerEnabled", default: "false").lowercased() == "true" {
+        managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent))
+    } else {
+        routingLogger.info("knowledge graph worker disabled (set KNOWLEDGE_GRAPH_WORKER_ENABLED=true to enable)")
     }
 
     // HER-245 / HER-259 — Sessions list. Joins conversations + messages.

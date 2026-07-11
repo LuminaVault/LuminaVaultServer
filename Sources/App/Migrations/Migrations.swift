@@ -99,4 +99,8 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M92_CreateWorkflows())
     await fluent.migrations.add(M93_HardenWorkflowAutomation())
     await fluent.migrations.add(M94_CreateMarketplace())
+    await fluent.migrations.add(M95_CreateUsageAnalytics())
+    await fluent.migrations.add(M96_CreateKnowledgeGraph())
+    await fluent.migrations.add(M97_CreateHybridExecution())
+    await fluent.migrations.add(M98_CreateMultimodalIngestion())
 }

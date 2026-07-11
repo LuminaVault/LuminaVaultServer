@@ -61,6 +61,9 @@ enum LLMRoutingContext {
     /// ordinary routing this has no silent fallback.
     @TaskLocal static var forcedRoute: RouterModelRouteDTO?
     @TaskLocal static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)?
+    /// Validated vault attribution for analytics. Callers that do not set it
+    /// intentionally fall back to the actor's personal vault.
+    @TaskLocal static var analyticsVaultID: UUID?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

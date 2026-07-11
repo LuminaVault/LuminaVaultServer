@@ -8,6 +8,7 @@ import SQLKit
 
 extension ChatInboxResponse: @retroactive ResponseEncodable {}
 extension ChatPreferencesGetResponse: @retroactive ResponseEncodable {}
+extension HybridRoutingPreferencesDTO: @retroactive ResponseEncodable {}
 
 /// Task-based chat surface: primary inbox summaries plus cross-device chat
 /// preferences. Conversation CRUD remains owned by `ConversationController`.
@@ -25,6 +26,11 @@ struct ChatExperienceController {
     func addPreferencesRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: getPreferences)
         router.put(use: putPreferences)
+    }
+
+    func addHybridPreferencesRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get(use: getHybridPreferences)
+        router.put(use: putHybridPreferences)
     }
 
     // MARK: - GET /v1/chat/inbox
@@ -142,6 +148,30 @@ struct ChatExperienceController {
             .first()
     }
 
+    @Sendable
+    func getHybridPreferences(_: Request, ctx: AppRequestContext) async throws -> HybridRoutingPreferencesDTO {
+        let tenantID = try ctx.requireTenantID()
+        guard let row = try await loadPreferences(tenantID: tenantID) else { return .init() }
+        return row.hybridPreferencesDTO
+    }
+
+    @Sendable
+    func putHybridPreferences(_ req: Request, ctx: AppRequestContext) async throws -> HybridRoutingPreferencesDTO {
+        let tenantID = try ctx.requireTenantID()
+        let body = try await req.decode(as: HybridRoutingPreferencesDTO.self, context: ctx)
+        guard body.profile != .private || !body.cloudFallbackEnabled else {
+            throw HTTPError(.badRequest, message: "private_profile_cannot_fallback_to_cloud")
+        }
+        let row = try await loadPreferences(tenantID: tenantID) ?? UserChatPreference()
+        row.tenantID = tenantID
+        row.hybridProfile = body.profile.rawValue
+        row.localFallbackEnabled = body.localFallbackEnabled
+        row.cloudFallbackEnabled = body.cloudFallbackEnabled
+        row.syncLocalConversations = body.profile == .private ? false : body.syncLocalConversations
+        try await row.save(on: fluent.db())
+        return row.hybridPreferencesDTO
+    }
+
     private static func parseLimit(_ req: Request) -> Int {
         guard let raw = req.uri.queryParameters["limit"].flatMap({ Int(String($0)) }) else {
             return defaultLimit
@@ -160,6 +190,15 @@ private extension UserChatPreference {
         ChatPreferencesDTO(
             autoExpandThinking: autoExpandThinking,
             sendOnReturn: sendOnReturn
+        )
+    }
+
+    var hybridPreferencesDTO: HybridRoutingPreferencesDTO {
+        HybridRoutingPreferencesDTO(
+            profile: HybridExecutionProfile(rawValue: hybridProfile) ?? .balanced,
+            localFallbackEnabled: localFallbackEnabled,
+            cloudFallbackEnabled: cloudFallbackEnabled,
+            syncLocalConversations: syncLocalConversations
         )
     }
 }

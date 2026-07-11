@@ -18,6 +18,8 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @Field(key: "access_count") var accessCount: Int64
     @Field(key: "query_hit_count") var queryHitCount: Int64
     @OptionalField(key: "last_accessed_at") var lastAccessedAt: Date?
+    @OptionalField(key: "last_reviewed_at") var lastReviewedAt: Date?
+    @Field(key: "review_count") var reviewCount: Int64
 
     /// HER-150 lineage. NULL when the upsert path didn't declare a source
     /// (older rows, direct API writes without context). FK is ON DELETE SET
@@ -54,6 +56,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         score = 0
         accessCount = 0
         queryHitCount = 0
+        reviewCount = 0
         reviewState = "auto"
         originKind = MemorySourceKindDTO.legacy.rawValue
     }
@@ -95,5 +98,6 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         score = 0
         accessCount = 0
         queryHitCount = 0
+        reviewCount = 0
     }
 }

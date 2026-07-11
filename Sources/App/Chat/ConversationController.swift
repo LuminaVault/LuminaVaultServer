@@ -10,6 +10,8 @@ import LuminaVaultShared
 extension ConversationDTO: @retroactive ResponseEncodable {}
 extension ConversationListResponse: @retroactive ResponseEncodable {}
 extension ConversationDetailResponse: @retroactive ResponseEncodable {}
+extension ConversationPrepareResponse: @retroactive ResponseEncodable {}
+extension ConversationCommitResponse: @retroactive ResponseEncodable {}
 
 /// HER-37 — multi-turn chat persistence + streaming assistant turns.
 /// Owns `/v1/conversations` (CRUD) and
@@ -34,6 +36,7 @@ struct ConversationController {
     let linkCapture: LinkCaptureService?
     let urlExtractor: URLExtractionService
     let parallelEnabled: Bool
+    let hybridExecutionEnabled: Bool
     let defaultModel: String
     let logger: Logger
 
@@ -46,6 +49,7 @@ struct ConversationController {
         linkCapture: LinkCaptureService? = nil,
         urlExtractor: URLExtractionService = URLExtractionService(),
         parallelEnabled: Bool = false,
+        hybridExecutionEnabled: Bool = false,
         defaultModel: String,
         logger: Logger
     ) {
@@ -57,6 +61,7 @@ struct ConversationController {
         self.linkCapture = linkCapture
         self.urlExtractor = urlExtractor
         self.parallelEnabled = parallelEnabled
+        self.hybridExecutionEnabled = hybridExecutionEnabled
         self.defaultModel = defaultModel
         self.logger = logger
     }
@@ -70,6 +75,11 @@ struct ConversationController {
         router.get("/:id", use: getOne)
         router.delete("/:id", use: delete)
         (streamRouter ?? router).post("/:id/messages/stream", use: streamReply)
+        if hybridExecutionEnabled {
+            router.post("/:id/messages/prepare", use: prepareLocalReply)
+            router.post("/:id/messages/commit", use: commitLocalReply)
+            router.delete("/:id/local-executions/:executionID", use: cancelLocalReply)
+        }
     }
 
     // MARK: - CRUD
@@ -139,6 +149,118 @@ struct ConversationController {
     }
 
     // MARK: - Streaming reply
+
+    @Sendable
+    func prepareLocalReply(_ req: Request, ctx: AppRequestContext) async throws -> ConversationPrepareResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+        let conversationID = try Self.parseID(ctx)
+        let conversation = try await fetch(tenantID: tenantID, id: conversationID)
+        let body = try await req.decode(as: ConversationPrepareRequest.self, context: ctx)
+        let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { throw HTTPError(.badRequest, message: "content required") }
+
+        let userMessage = ConversationMessage(conversationID: conversationID, role: .user, content: content)
+        try await userMessage.save(on: fluent.db())
+        let history = try await ConversationMessage.query(on: fluent.db())
+            .filter(\.$conversationID == conversationID)
+            .sort(\.$createdAt, .ascending)
+            .all()
+        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let semanticHits = try await memories.semanticSearch(tenantID: tenantID, queryEmbedding: embedding, limit: 5)
+        let pinnedHits = try await conversation.pinnedMemoryIDs.asyncCompactMap { id in
+            try await memories.find(tenantID: tenantID, id: id).map {
+                MemorySearchResult(
+                    id: $0.savedID,
+                    tenantID: tenantID,
+                    content: $0.content,
+                    createdAt: $0.createdAt,
+                    distance: 0,
+                    source: MemorySourceKindDTO(rawValue: $0.originKind) ?? .legacy,
+                    provider: $0.originProvider,
+                    model: $0.originModel
+                )
+            }
+        }
+        let pinnedIDs = Set(pinnedHits.map(\.id))
+        let hits = pinnedHits + semanticHits.filter { !pinnedIDs.contains($0.id) }.prefix(max(0, 5 - pinnedHits.count))
+        let timezone = TimeZone(identifier: user.timezone) ?? .gmt
+        let prompt = Self.buildPrompt(history: history, hits: Array(hits), schedule: await scheduleContext(tenantID: tenantID, timezone: timezone))
+        let expiresAt = Date().addingTimeInterval(15 * 60)
+        let execution = PreparedLocalExecution(
+            tenantID: tenantID,
+            conversationID: conversationID,
+            messages: prompt,
+            sourceIDs: hits.map(\.id),
+            expiresAt: expiresAt
+        )
+        try await execution.save(on: fluent.db())
+        return try ConversationPrepareResponse(
+            executionID: execution.requireID(),
+            messages: prompt,
+            sources: hits.map { QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt) },
+            expiresAt: expiresAt
+        )
+    }
+
+    @Sendable
+    func commitLocalReply(_ req: Request, ctx: AppRequestContext) async throws -> ConversationCommitResponse {
+        let tenantID = try ctx.requireTenantID()
+        let conversationID = try Self.parseID(ctx)
+        let body = try await req.decode(as: ConversationCommitRequest.self, context: ctx)
+        let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { throw HTTPError(.badRequest, message: "content required") }
+        guard let execution = try await PreparedLocalExecution.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == body.executionID)
+            .filter(\.$conversationID == conversationID)
+            .first()
+        else { throw HTTPError(.notFound, message: "local execution not found") }
+        if let messageID = execution.committedMessageID,
+           let existing = try await ConversationMessage.find(messageID, on: fluent.db()) {
+            return try ConversationCommitResponse(message: existing.toDTO())
+        }
+        guard execution.expiresAt > Date() else { throw HTTPError(.gone, message: "local execution expired") }
+        let conversation = try await fetch(tenantID: tenantID, id: conversationID)
+        let assistant = ConversationMessage(
+            conversationID: conversationID,
+            role: .assistant,
+            content: content,
+            sourceMemoryIDs: execution.sourceIDs
+        )
+        try await assistant.save(on: fluent.db())
+        let messageID = try assistant.requireID()
+        execution.committedMessageID = messageID
+        try await execution.save(on: fluent.db())
+        conversation.updatedAt = Date()
+        try await conversation.save(on: fluent.db())
+        try await MemoryProvenanceRepository(fluent: fluent).enqueueOutput(
+            tenantID: tenantID,
+            source: .chat,
+            sourceID: messageID.uuidString,
+            conversationMessageID: messageID,
+            content: content,
+            provider: "\(body.location.rawValue):\(body.provider)",
+            model: body.model
+        )
+        return try ConversationCommitResponse(message: assistant.toDTO())
+    }
+
+    @Sendable
+    func cancelLocalReply(_: Request, ctx: AppRequestContext) async throws -> Response {
+        let tenantID = try ctx.requireTenantID()
+        let conversationID = try Self.parseID(ctx)
+        guard let raw = ctx.parameters.get("executionID"), let executionID = UUID(uuidString: raw),
+              let execution = try await PreparedLocalExecution.query(on: fluent.db(), tenantID: tenantID)
+              .filter(\.$id == executionID)
+              .filter(\.$conversationID == conversationID)
+              .first()
+        else { throw HTTPError(.notFound, message: "local execution not found") }
+        guard execution.committedMessageID == nil else {
+            throw HTTPError(.conflict, message: "local execution already committed")
+        }
+        try await execution.delete(on: fluent.db())
+        return Response(status: .noContent)
+    }
 
     /// Persists the user's message immediately, then opens an SSE stream
     /// that yields `.source` events for retrieved memories, forwarded

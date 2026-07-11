@@ -61,6 +61,8 @@ services:
       # --- Rate limiting ---
       RATE_LIMIT_STORAGE_KIND: ${RATE_LIMIT_STORAGE_KIND:-redis}
       REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      # --- Knowledge graph extraction (staged rollout; reads stay available while off) ---
+      KNOWLEDGE_GRAPH_WORKER_ENABLED: ${KNOWLEDGE_GRAPH_WORKER_ENABLED:-false}
       # --- SMS / phone auth ---
       SMS_KIND: ${SMS_KIND:-logging}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
@@ -139,6 +141,8 @@ services:
       CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
       CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}
       CERBERUS_PARALLEL_ENABLED: ${CERBERUS_PARALLEL_ENABLED:-false}
+      HYBRID_EXECUTION_ENABLED: ${HYBRID_EXECUTION_ENABLED:-false}
+      LOCAL_EXECUTION_TOOL_BROKER_ENABLED: ${LOCAL_EXECUTION_TOOL_BROKER_ENABLED:-false}
       # --- Gemini (vision / multimodal fallback) ---
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # --- TTS ---

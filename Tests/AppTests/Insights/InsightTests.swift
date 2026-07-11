@@ -4,6 +4,7 @@ import Foundation
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 import Testing
 
 /// HER-37 Slice D — Postgres-backed persistence + worker behaviour
@@ -286,8 +287,33 @@ struct InsightTests {
             try await fluent.migrate()
 
             let tenantID = try await Self.makeTenant(on: fluent)
-            for _ in 0 ..< 5 {
-                try await Self.makeMemory(on: fluent, tenantID: tenantID, content: "memo")
+            var memoryIDs: [UUID] = []
+            for index in 0 ..< 5 {
+                try await memoryIDs.append(Self.makeMemory(on: fluent, tenantID: tenantID, content: "memo \(index)"))
+            }
+            let sql = try #require(fluent.db() as? any SQLDatabase)
+            for index in 0 ..< 3 {
+                let left = UUID(), right = UUID(), edge = UUID()
+                try await sql.raw("""
+                INSERT INTO knowledge_nodes (id, tenant_id, kind, canonical_key, label, confidence)
+                VALUES
+                  (\(bind: left), \(bind: tenantID), 'claim', \(bind: "left-\(index)"), \(bind: "Position \(index)"), 1),
+                  (\(bind: right), \(bind: tenantID), 'claim', \(bind: "right-\(index)"), \(bind: "Not position \(index)"), 1)
+                """).run()
+                try await sql.raw("""
+                INSERT INTO knowledge_edges (
+                    id, tenant_id, from_node_id, to_node_id, predicate, state,
+                    confidence, rationale, evidence_fingerprint
+                ) VALUES (
+                    \(bind: edge), \(bind: tenantID), \(bind: left), \(bind: right),
+                    'contradicts', 'suggested', \(bind: 0.9 - Double(index) * 0.1),
+                    \(bind: "Exact conflict \(index)"), \(bind: "conflict-\(index)")
+                )
+                """).run()
+                try await sql.raw("""
+                INSERT INTO knowledge_evidence (id, tenant_id, edge_id, memory_id, quote)
+                VALUES (\(bind: UUID()), \(bind: tenantID), \(bind: edge), \(bind: memoryIDs[index]), \(bind: "evidence \(index)"))
+                """).run()
             }
 
             let transport = StubSynthTransport(plainContent: """
@@ -308,6 +334,11 @@ struct InsightTests {
                 .filter(\.$section == InsightSection.contradictions.rawValue)
                 .all()
             #expect(rows.count == 2)
+            #expect(Set(rows.flatMap(\.sourceMemoryIDs)).isSubset(of: Set(memoryIDs)))
+            #expect(rows.allSatisfy { $0.sourceMemoryIDs.count == 1 })
+            #expect(rows.allSatisfy { $0.knowledgeEdgeID != nil })
+            let calls = await transport.callCount
+            #expect(calls == 0)
         }
     }
 
@@ -351,9 +382,11 @@ struct InsightTests {
         return id
     }
 
-    private static func makeMemory(on fluent: Fluent, tenantID: UUID, content: String) async throws {
+    @discardableResult
+    private static func makeMemory(on fluent: Fluent, tenantID: UUID, content: String) async throws -> UUID {
         let mem = Memory(tenantID: tenantID, content: content)
         try await mem.save(on: fluent.db())
+        return try mem.requireID()
     }
 }
 

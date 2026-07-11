@@ -21,6 +21,7 @@ final class Insight: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "period_start") var periodStart: Date?
     @OptionalField(key: "period_end") var periodEnd: Date?
     @OptionalField(key: "dismissed_at") var dismissedAt: Date?
+    @OptionalField(key: "knowledge_edge_id") var knowledgeEdgeID: UUID?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
     init() {
@@ -36,7 +37,8 @@ final class Insight: Model, TenantModel, @unchecked Sendable {
         sourceMemoryIDs: [UUID] = [],
         periodStart: Date? = nil,
         periodEnd: Date? = nil,
-        dismissedAt: Date? = nil
+        dismissedAt: Date? = nil,
+        knowledgeEdgeID: UUID? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -47,6 +49,7 @@ final class Insight: Model, TenantModel, @unchecked Sendable {
         self.periodStart = periodStart
         self.periodEnd = periodEnd
         self.dismissedAt = dismissedAt
+        self.knowledgeEdgeID = knowledgeEdgeID
     }
 
     /// Convert to the wire DTO. Unknown section strings (defensive

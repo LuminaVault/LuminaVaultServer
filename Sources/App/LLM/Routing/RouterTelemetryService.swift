@@ -99,14 +99,21 @@ actor RouterTelemetryService {
         guard let sql = fluent.db() as? any SQLDatabase else { return }
         let provider = result.provider?.rawValue
         let modeColumn = metadata.mode == .managed ? "managed_usd_micros" : "byok_usd_micros"
+        let dimensionsData = try? JSONEncoder().encode([
+            "provider": provider ?? "unknown",
+            "model": result.model ?? "unknown",
+            "status": result.status,
+        ])
+        let dimensions = dimensionsData.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         do {
             try await sql.raw("""
             INSERT INTO router_executions
-                (id, tenant_id, profile_id, rule_id, surface, task_type, strategy, status,
+                (id, tenant_id, vault_id, actor_user_id, profile_id, rule_id, surface, task_type, strategy, status,
                  selected_provider, selected_model, tokens_in, tokens_out,
                  estimated_cost_usd_micros, latency_ms, usage_estimated, fallback_count)
             VALUES
-                (\(bind: metadata.executionID), \(bind: metadata.tenantID), \(bind: metadata.profileID),
+                (\(bind: metadata.executionID), \(bind: metadata.tenantID), \(bind: metadata.vaultID),
+                 \(bind: metadata.actorUserID), \(bind: metadata.profileID),
                  \(bind: metadata.ruleID), \(bind: metadata.surface.rawValue), \(bind: metadata.taskType.rawValue),
                  \(bind: metadata.strategy.rawValue), \(bind: result.status), \(bind: provider),
                  \(bind: result.model), \(bind: Int64(result.tokensIn)), \(bind: Int64(result.tokensOut)),
@@ -122,6 +129,14 @@ actor RouterTelemetryService {
                 latency_ms = EXCLUDED.latency_ms,
                 usage_estimated = EXCLUDED.usage_estimated,
                 fallback_count = EXCLUDED.fallback_count
+            """).run()
+
+            try await sql.raw("""
+            INSERT INTO analytics_events
+                (vault_id, actor_user_id, event_name, source, dimensions, idempotency_key)
+            VALUES (\(bind: metadata.vaultID), \(bind: metadata.actorUserID), 'ai_request_completed',
+                    'server', \(bind: dimensions)::jsonb, \(bind: metadata.executionID.uuidString))
+            ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
             """).run()
 
             try await sql.raw("""

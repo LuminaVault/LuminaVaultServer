@@ -34,6 +34,15 @@ The prod compose declares these as `${VAR:?required}` — container start fails 
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
 
+### Knowledge graph extraction
+
+`KNOWLEDGE_GRAPH_WORKER_ENABLED` defaults to `false`. When enabled, a durable
+`FOR UPDATE SKIP LOCKED` worker incrementally extracts claim, entity, and event
+nodes from memories and reconciles older content. Turning it off pauses new
+extraction and backfill; existing `/v1/knowledge/*` reads, explanations, and
+confirm/dismiss audit records remain available. Enable it on one deployment,
+watch queue depth and extraction failures, then expand the rollout.
+
 ### Plugin marketplace and WASM runner
 
 | Variable | Required | Default | Purpose |
@@ -263,3 +272,8 @@ diff /tmp/env-keys /tmp/code-keys
 ```
 
 Any code-only key needs an `.env.example` entry. Any env-only key may be safe to delete.
+# Hybrid local execution
+
+- `HYBRID_EXECUTION_ENABLED` gates hybrid preferences, conversation prepare/commit, and local memory synchronization; default `false` during staged rollout.
+- `LOCAL_EXECUTION_TOOL_BROKER_ENABLED` gates the allow-listed server tool broker; default `false`.
+- Device-local Ollama, LM Studio, and MLX server URLs are never server environment variables. Existing Ollama/custom credentials remain for endpoints reachable from the backend itself.

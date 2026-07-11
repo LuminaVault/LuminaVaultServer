@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import HTTPTypes
 import Hummingbird
 import HummingbirdFluent
 import LuminaVaultShared

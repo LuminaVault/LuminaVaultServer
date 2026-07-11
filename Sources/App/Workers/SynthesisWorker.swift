@@ -4,6 +4,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 import ServiceLifecycle
+import SQLKit
 
 /// HER-37 Slice D — proactive synthesis + pattern-detection worker.
 ///
@@ -77,9 +78,15 @@ actor SynthesisWorker: Service {
         let hour = Self.hourComponent(of: now)
         let weekday = Self.weekdayComponent(of: now)
         var weekly = 0, patterns = 0, contradictions = 0
-        if hour == 2, weekday == 1 { weekly = try await runWeeklyForAllUsers(now: now) }
-        if hour == 3 { patterns = try await runPatternsForAllUsers(now: now) }
-        if hour == 4 { contradictions = try await runContradictionsForAllUsers(now: now) }
+        if hour == 2, weekday == 1 {
+            weekly = try await runWeeklyForAllUsers(now: now)
+        }
+        if hour == 3 {
+            patterns = try await runPatternsForAllUsers(now: now)
+        }
+        if hour == 4 {
+            contradictions = try await runContradictionsForAllUsers(now: now)
+        }
         return (weekly, patterns, contradictions)
     }
 
@@ -112,7 +119,9 @@ actor SynthesisWorker: Service {
             .filter(\.$periodStart == window.start)
             .filter(\.$periodEnd == window.end)
             .first()
-        if existing != nil { return false }
+        if existing != nil {
+            return false
+        }
         let rows = try await loadMemories(tenantID: tenantID, since: window.start, limit: memorySampleSize)
         guard !rows.isEmpty else { return false }
         guard let synth = await synthesise(
@@ -158,7 +167,10 @@ actor SynthesisWorker: Service {
             .sort(\.$createdAt, .descending)
             .first(),
             let createdAt = recent.createdAt,
-            createdAt > cutoff { return 0 }
+            createdAt > cutoff
+        {
+            return 0
+        }
         let windowStart = now.addingTimeInterval(-7 * 24 * 3600)
         let rows = try await loadMemories(tenantID: tenantID, since: windowStart, limit: memorySampleSize)
         guard rows.count >= 3 else { return 0 }
@@ -200,29 +212,46 @@ actor SynthesisWorker: Service {
     /// Contradiction job for a single tenant. Returns the number of rows
     /// inserted (0 to `maxPatternsPerRun`). Skips users whose most recent
     /// contradiction row is less than 24h old. Mirrors `runPatternJob`.
-    func runContradictionJob(tenantID: UUID, sessionKey: String, now: Date) async throws -> Int {
+    func runContradictionJob(tenantID: UUID, sessionKey _: String, now: Date) async throws -> Int {
         let cutoff = now.addingTimeInterval(-24 * 3600)
         if let recent = try await Insight.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$section == InsightSection.contradictions.rawValue)
             .sort(\.$createdAt, .descending)
             .first(),
             let createdAt = recent.createdAt,
-            createdAt > cutoff { return 0 }
-        let windowStart = now.addingTimeInterval(-7 * 24 * 3600)
-        let rows = try await loadMemories(tenantID: tenantID, since: windowStart, limit: memorySampleSize)
-        guard rows.count >= 3 else { return 0 }
-        guard let contradictions = await detectContradictions(
-            sessionKey: sessionKey,
-            prompt: Self.contradictionsPrompt(for: rows, max: maxPatternsPerRun)
-        ), !contradictions.isEmpty else { return 0 }
+            createdAt > cutoff
+        {
+            return 0
+        }
+        guard let sql = fluent.db() as? any SQLDatabase else { return 0 }
+        let contradictions = try await sql.raw("""
+        SELECT e.id AS edge_id,
+               left_node.label AS left_label,
+               right_node.label AS right_label,
+               COALESCE(e.rationale, 'Evidence-backed claims use opposing positions.') AS rationale,
+               ARRAY_AGG(DISTINCT evidence.memory_id) AS memory_ids
+        FROM knowledge_edges e
+        JOIN knowledge_nodes left_node ON left_node.id = e.from_node_id
+        JOIN knowledge_nodes right_node ON right_node.id = e.to_node_id
+        JOIN knowledge_evidence evidence ON evidence.edge_id = e.id
+        WHERE e.tenant_id = \(bind: tenantID)
+          AND e.predicate = 'contradicts'
+          AND e.state IN ('suggested', 'confirmed')
+          AND NOT EXISTS (SELECT 1 FROM insights i WHERE i.knowledge_edge_id = e.id)
+        GROUP BY e.id, left_node.label, right_node.label, e.rationale, e.confidence
+        ORDER BY e.confidence DESC, e.updated_at DESC
+        LIMIT \(bind: maxPatternsPerRun)
+        """).all(decoding: GraphContradictionRow.self)
+        guard contradictions.isEmpty == false else { return 0 }
         var inserted = 0
         for contradiction in contradictions.prefix(maxPatternsPerRun) {
             let insight = Insight(
                 tenantID: tenantID,
                 section: .contradictions,
-                headline: contradiction.headline,
-                summary: contradiction.summary,
-                sourceMemoryIDs: rows.map { $0.id ?? UUID() }
+                headline: String("\(contradiction.left_label) ↔ \(contradiction.right_label)".prefix(60)),
+                summary: contradiction.rationale,
+                sourceMemoryIDs: contradiction.memory_ids,
+                knowledgeEdgeID: contradiction.edge_id
             )
             try await insight.save(on: fluent.db())
             inserted += 1
@@ -394,6 +423,14 @@ actor SynthesisWorker: Service {
             return Synthesised(headline: h, summary: s)
         }
     }
+}
+
+private struct GraphContradictionRow: Decodable {
+    let edge_id: UUID
+    let left_label: String
+    let right_label: String
+    let rationale: String
+    let memory_ids: [UUID]
 }
 
 // MARK: - Wire types

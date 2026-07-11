@@ -70,6 +70,8 @@ tags:
   - name: Admin
   - name: Dashboard
     description: OS Shell home/dashboard surface (HER-244).
+  - name: Analytics
+    description: Vault-scoped usage intelligence, memory health, and recommendations.
   - name: Kanban
     description: Native Kanban boards, columns, and cards.
   - name: Calendar
@@ -1008,6 +1010,84 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/UsageSummaryResponse' }
 
+  /v1/analytics/overview:
+    get:
+      tags: [Analytics]
+      operationId: analyticsOverview
+      summary: Usage trends, memory health, and recommendations for a vault.
+      parameters:
+        - { in: query, name: range, schema: { $ref: '#/components/schemas/AnalyticsRange' } }
+        - { in: query, name: scope, schema: { $ref: '#/components/schemas/AnalyticsScope' } }
+      responses:
+        '200':
+          description: Analytics overview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsOverviewResponse' }
+
+  /v1/analytics/models:
+    get:
+      tags: [Analytics]
+      operationId: analyticsModels
+      summary: Operational effectiveness grouped by provider and model.
+      parameters:
+        - { in: query, name: range, schema: { $ref: '#/components/schemas/AnalyticsRange' } }
+        - { in: query, name: scope, schema: { $ref: '#/components/schemas/AnalyticsScope' } }
+      responses:
+        '200':
+          description: Model effectiveness analytics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelEffectivenessResponse' }
+
+  /v1/analytics/team:
+    get:
+      tags: [Analytics]
+      operationId: analyticsTeam
+      summary: Analytics for the selected shared vault.
+      parameters:
+        - { in: query, name: range, schema: { $ref: '#/components/schemas/AnalyticsRange' } }
+      responses:
+        '200':
+          description: Team-vault aggregate with admin-only member detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamAnalyticsResponse' }
+
+  /v1/analytics/events:
+    post:
+      tags: [Analytics]
+      operationId: analyticsEventCreate
+      summary: Record an allowlisted, content-free client analytics event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyticsEventRequest' }
+      responses:
+        '200':
+          description: Event accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
+
+  /v1/analytics/recommendations:
+    patch:
+      tags: [Analytics]
+      operationId: analyticsRecommendationUpdate
+      summary: Dismiss or snooze a recommendation for the current user and vault.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyticsRecommendationStateRequest' }
+      responses:
+        '200':
+          description: Recommendation state updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
+
   /v1/tasks:
     get:
       tags: [Dashboard]
@@ -1859,6 +1939,32 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/me/preferences/hybrid-execution:
+    get:
+      tags: [Me]
+      operationId: hybridExecutionPreferencesGet
+      summary: Get the cross-device local/cloud routing profile.
+      responses:
+        '200':
+          description: Hybrid execution preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HybridRoutingPreferencesDTO' }
+    put:
+      tags: [Me]
+      operationId: hybridExecutionPreferencesPut
+      summary: Replace the cross-device local/cloud routing profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HybridRoutingPreferencesDTO' }
+      responses:
+        '200':
+          description: Updated hybrid execution preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HybridRoutingPreferencesDTO' }
   /v1/me/connections:
     get:
       tags: [Me]
@@ -2244,6 +2350,20 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryProvenanceResponse' }
 
+  /v1/memory/{id}/review:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    post:
+      tags: [Memory]
+      operationId: memoryReview
+      summary: Mark a memory as explicitly reviewed now.
+      responses:
+        '200':
+          description: Updated review metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryReviewResponse' }
+
   /v1/memory/facets:
     get:
       tags: [Memory]
@@ -2305,6 +2425,113 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryGraphResponse' }
+
+  /v1/knowledge/graph:
+    get:
+      tags: [Memory]
+      operationId: knowledgeGraph
+      summary: Evidence-backed claim, entity, and event graph.
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 2000, default: 800 } }
+        - { in: query, name: kinds, schema: { type: string }, description: "CSV node kinds." }
+        - { in: query, name: predicates, schema: { type: string }, description: "CSV edge predicates." }
+        - { in: query, name: states, schema: { type: string }, description: "CSV edge review states." }
+        - { in: query, name: minimumConfidence, schema: { type: number, minimum: 0, maximum: 1, default: 0 } }
+      responses:
+        '200':
+          description: Tenant-scoped reasoning graph.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeGraphResponse' }
+
+  /v1/knowledge/reason:
+    post:
+      tags: [Memory]
+      operationId: knowledgeReason
+      summary: Run an evidence-backed reasoning query.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasoningQueryRequest' }
+      responses:
+        '200':
+          description: Grounded reasoning result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReasoningQueryResponse' }
+
+  /v1/knowledge/reason/stream:
+    post:
+      tags: [Memory]
+      operationId: knowledgeReasonStream
+      summary: Stream an evidence-backed reasoning query over SSE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasoningQueryRequest' }
+      responses:
+        '200':
+          description: SSE stream of ReasoningStreamEventDTO objects.
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /v1/knowledge/connections/explain:
+    post:
+      tags: [Memory]
+      operationId: explainKnowledgeConnection
+      summary: Explain the strongest bounded paths between two knowledge nodes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConnectionExplanationRequest' }
+      responses:
+        '200':
+          description: Ranked paths, evidence, confidence, and caveats.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionExplanationResponse' }
+
+  /v1/knowledge/edges/{id}/confirm:
+    post:
+      tags: [Memory]
+      operationId: confirmKnowledgeEdge
+      summary: Confirm a suggested connection.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InferenceReviewRequest' }
+      responses:
+        '200':
+          description: Confirmed edge.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeEdgeDTO' }
+
+  /v1/knowledge/edges/{id}/dismiss:
+    post:
+      tags: [Memory]
+      operationId: dismissKnowledgeEdge
+      summary: Dismiss a suggested connection without deleting its audit record.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InferenceReviewRequest' }
+      responses:
+        '200':
+          description: Dismissed edge.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeEdgeDTO' }
 
   # ────────────────────────────── Capture ───────────────────────────────
 
@@ -2483,6 +2710,87 @@ paths:
               schema: { $ref: '#/components/schemas/QueryStreamEvent' }
         '404':
           description: Conversation not found.
+
+  /v1/conversations/{id}/messages/prepare:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: conversationPrepareLocalReply
+      summary: Persist a user turn and prepare grounded context for local inference.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationPrepareRequest' }
+      responses:
+        '200':
+          description: Expiring local-execution context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationPrepareResponse' }
+
+  /v1/conversations/{id}/messages/commit:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: conversationCommitLocalReply
+      summary: Idempotently commit a locally generated assistant turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConversationCommitRequest' }
+      responses:
+        '200':
+          description: Persisted assistant turn and follow-up suggestions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConversationCommitResponse' }
+
+  /v1/conversations/{id}/local-executions/{executionID}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+      - in: path
+        name: executionID
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Conversations]
+      operationId: conversationCancelLocalReply
+      summary: Cancel an uncommitted prepared local execution.
+      responses:
+        '204': { description: Cancelled. }
+        '409': { description: Execution was already committed. }
+
+  /v1/memory/local-sync:
+    get:
+      tags: [Memory]
+      operationId: localMemorySync
+      summary: Incrementally synchronize memories for an encrypted client cache.
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: Updated memories and the next synchronization cursor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalMemorySyncResponse' }
 
   # ──────────────────────────────── Memos ───────────────────────────────
 
@@ -2880,6 +3188,94 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ImportApproveResponse' }
+
+  /v1/ingestions:
+    post:
+      tags: [Ingestion]
+      operationId: ingestionCreate
+      summary: Create a multimodal ingestion batch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngestionCreateRequest' }
+      responses:
+        '200':
+          description: Batch created; URL items may already be processing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+    get:
+      tags: [Ingestion]
+      operationId: ingestionList
+      summary: List recent multimodal ingestion batches.
+      responses:
+        '200':
+          description: Recent batches.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchListDTO' }
+
+  /v1/ingestions/{batchID}:
+    get:
+      tags: [Ingestion]
+      operationId: ingestionDetail
+      summary: Get one ingestion batch and item progress.
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Batch detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+
+  /v1/ingestions/{batchID}/items/{itemID}/chunks/{index}:
+    put:
+      tags: [Ingestion]
+      operationId: ingestionUploadChunk
+      summary: Upload one idempotent chunk (maximum 8 MiB).
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: itemID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: index, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '204': { description: Chunk accepted. }
+
+  /v1/ingestions/{batchID}/items/{itemID}/complete:
+    post:
+      tags: [Ingestion]
+      operationId: ingestionCompleteUpload
+      summary: Assemble, validate, vault, and process a completed upload.
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: itemID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Updated batch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+
+  /v1/ingestions/{batchID}/items/{itemID}/retry:
+    post:
+      tags: [Ingestion]
+      operationId: ingestionRetry
+      summary: Retry a failed or capability-blocked item.
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: itemID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Updated batch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
 
   /v1/plugins/catalog:
     get:
@@ -5761,6 +6157,155 @@ components:
         periodStart: { type: string, format: date-time }
         periodEnd: { type: string, format: date-time }
 
+    AnalyticsRange:
+      type: string
+      enum: [7d, 30d, 90d]
+      default: 30d
+    AnalyticsScope:
+      type: string
+      enum: [personal, active]
+      default: active
+    AnalyticsSummaryDTO:
+      type: object
+      required: [sessions, aiRequests, tokensIn, tokensOut, captures, retrievals, estimatedCostUsdMicros]
+      properties:
+        sessions: { type: integer, minimum: 0 }
+        aiRequests: { type: integer, minimum: 0 }
+        tokensIn: { type: integer, minimum: 0 }
+        tokensOut: { type: integer, minimum: 0 }
+        captures: { type: integer, minimum: 0 }
+        retrievals: { type: integer, minimum: 0 }
+        estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+    AnalyticsDailyPointDTO:
+      type: object
+      required: [date, sessions, aiRequests, tokens, captures, retrievals, estimatedCostUsdMicros]
+      properties:
+        date: { type: string, format: date-time }
+        sessions: { type: integer, minimum: 0 }
+        aiRequests: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        captures: { type: integer, minimum: 0 }
+        retrievals: { type: integer, minimum: 0 }
+        estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+    MemoryHealthComponentDTO:
+      type: object
+      required: [key, title, score, weight]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        weight: { type: integer, minimum: 0, maximum: 100 }
+    MemoryHealthDTO:
+      type: object
+      required: [score, totalMemories, staleCount, neverRetrievedCount, unorganizedCount, pendingReviewCount, components]
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        totalMemories: { type: integer, minimum: 0 }
+        staleCount: { type: integer, minimum: 0 }
+        neverRetrievedCount: { type: integer, minimum: 0 }
+        unorganizedCount: { type: integer, minimum: 0 }
+        pendingReviewCount: { type: integer, minimum: 0 }
+        components: { type: array, items: { $ref: '#/components/schemas/MemoryHealthComponentDTO' } }
+    AnalyticsRecommendationSeverity:
+      type: string
+      enum: [info, attention, important]
+    AnalyticsRecommendationDTO:
+      type: object
+      required: [id, title, detail, severity, actionTitle, deepLink]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        detail: { type: string }
+        severity: { $ref: '#/components/schemas/AnalyticsRecommendationSeverity' }
+        actionTitle: { type: string }
+        deepLink: { type: string }
+    AnalyticsOverviewResponse:
+      type: object
+      required: [scope, vaultId, range, periodStart, periodEnd, summary, daily, memoryHealth, recommendations]
+      properties:
+        scope: { $ref: '#/components/schemas/AnalyticsScope' }
+        vaultId: { type: string, format: uuid }
+        range: { $ref: '#/components/schemas/AnalyticsRange' }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        summary: { $ref: '#/components/schemas/AnalyticsSummaryDTO' }
+        daily: { type: array, items: { $ref: '#/components/schemas/AnalyticsDailyPointDTO' } }
+        memoryHealth: { $ref: '#/components/schemas/MemoryHealthDTO' }
+        recommendations: { type: array, items: { $ref: '#/components/schemas/AnalyticsRecommendationDTO' } }
+    ModelEffectivenessDTO:
+      type: object
+      required: [provider, model, requests, successRate, fallbackRate, averageLatencyMs, p95LatencyMs, tokens, estimatedCostUsdMicros]
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        requests: { type: integer, minimum: 0 }
+        successRate: { type: number, format: double, minimum: 0, maximum: 1 }
+        fallbackRate: { type: number, format: double, minimum: 0, maximum: 1 }
+        averageLatencyMs: { type: integer, minimum: 0 }
+        p95LatencyMs: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+    ModelEffectivenessResponse:
+      type: object
+      required: [range, models]
+      properties:
+        range: { $ref: '#/components/schemas/AnalyticsRange' }
+        models: { type: array, items: { $ref: '#/components/schemas/ModelEffectivenessDTO' } }
+    TeamMemberAnalyticsDTO:
+      type: object
+      required: [id, displayName, captures, retrievals, aiRequests, tokens, estimatedCostUsdMicros]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        captures: { type: integer, minimum: 0 }
+        retrievals: { type: integer, minimum: 0 }
+        aiRequests: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+    TeamAnalyticsResponse:
+      type: object
+      required: [vaultId, range, summary]
+      properties:
+        vaultId: { type: string, format: uuid }
+        range: { $ref: '#/components/schemas/AnalyticsRange' }
+        summary: { $ref: '#/components/schemas/AnalyticsSummaryDTO' }
+        members: { type: array, items: { $ref: '#/components/schemas/TeamMemberAnalyticsDTO' } }
+    AnalyticsClientEventName:
+      type: string
+      enum: [analytics_dashboard_viewed, analytics_range_changed, analytics_recommendation_opened, analytics_recommendation_dismissed, analytics_recommendation_snoozed]
+    AnalyticsEventSource:
+      type: string
+      enum: [ios, web]
+    AnalyticsEventRequest:
+      type: object
+      required: [name, source]
+      properties:
+        name: { $ref: '#/components/schemas/AnalyticsClientEventName' }
+        source: { $ref: '#/components/schemas/AnalyticsEventSource' }
+        range: { $ref: '#/components/schemas/AnalyticsRange' }
+        recommendationId: { type: string, maxLength: 96 }
+        idempotencyKey: { type: string, maxLength: 128 }
+    AnalyticsRecommendationDisposition:
+      type: string
+      enum: [dismiss, snooze7, snooze30]
+    AnalyticsRecommendationStateRequest:
+      type: object
+      required: [recommendationId, disposition]
+      properties:
+        recommendationId: { type: string, maxLength: 96 }
+        disposition: { $ref: '#/components/schemas/AnalyticsRecommendationDisposition' }
+    AnalyticsMutationResponse:
+      type: object
+      required: [accepted]
+      properties: { accepted: { type: boolean } }
+    MemoryReviewResponse:
+      type: object
+      required: [memoryId, reviewedAt, reviewCount]
+      properties:
+        memoryId: { type: string, format: uuid }
+        reviewedAt: { type: string, format: date-time }
+        reviewCount: { type: integer, minimum: 1 }
+
     TaskState:
       type: string
       enum: [running, queued, completed, failed]
@@ -7290,6 +7835,145 @@ components:
           items: { $ref: '#/components/schemas/MemoryGraphEdgeDTO' }
         generatedAt: { type: string, format: date-time }
 
+    KnowledgeNodeKindDTO:
+      type: string
+      enum: [claim, entity, event]
+
+    KnowledgeEdgePredicateDTO:
+      type: string
+      enum: [mentions, about, supports, contradicts, causes, precedes, related_to, derived_from]
+
+    KnowledgeEdgeStateDTO:
+      type: string
+      enum: [asserted, suggested, confirmed, dismissed, stale]
+
+    KnowledgeEvidenceDTO:
+      type: object
+      required: [id, memoryID, quote]
+      properties:
+        id: { type: string, format: uuid }
+        memoryID: { type: string, format: uuid }
+        sourceVaultFileID: { type: string, format: uuid }
+        quote: { type: string }
+        startOffset: { type: integer }
+        endOffset: { type: integer }
+
+    KnowledgeNodeDTO:
+      type: object
+      required: [id, kind, label, confidence, evidence]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/KnowledgeNodeKindDTO' }
+        label: { type: string }
+        summary: { type: string }
+        occurredAt: { type: string, format: date-time }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEvidenceDTO' }
+
+    KnowledgeEdgeDTO:
+      type: object
+      required: [id, from, to, predicate, state, confidence, evidence]
+      properties:
+        id: { type: string, format: uuid }
+        from: { type: string, format: uuid }
+        to: { type: string, format: uuid }
+        predicate: { $ref: '#/components/schemas/KnowledgeEdgePredicateDTO' }
+        state: { $ref: '#/components/schemas/KnowledgeEdgeStateDTO' }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        rationale: { type: string }
+        counterEvidence: { type: string }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEvidenceDTO' }
+
+    KnowledgeGraphResponse:
+      type: object
+      required: [nodes, edges, generatedAt]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeNodeDTO' }
+        edges:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEdgeDTO' }
+        generatedAt: { type: string, format: date-time }
+
+    KnowledgePathDTO:
+      type: object
+      required: [id, nodes, edges, confidence]
+      properties:
+        id: { type: string, format: uuid }
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeNodeDTO' }
+        edges:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEdgeDTO' }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+    ConnectionExplanationRequest:
+      type: object
+      required: [fromNodeID, toNodeID]
+      properties:
+        fromNodeID: { type: string, format: uuid }
+        toNodeID: { type: string, format: uuid }
+        maxDepth: { type: integer, minimum: 1, maximum: 4 }
+
+    ConnectionExplanationResponse:
+      type: object
+      required: [explanation, paths, confidence, caveats]
+      properties:
+        explanation: { type: string }
+        paths:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgePathDTO' }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        caveats:
+          type: array
+          items: { type: string }
+
+    ReasoningQueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+        maxDepth: { type: integer, minimum: 1, maximum: 4 }
+        limit: { type: integer, minimum: 1, maximum: 2000 }
+
+    ReasoningQueryResponse:
+      type: object
+      required: [answer, paths, evidence, confidence, caveats, suggestions]
+      properties:
+        answer: { type: string }
+        paths:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgePathDTO' }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEvidenceDTO' }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        caveats:
+          type: array
+          items: { type: string }
+        suggestions:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeEdgeDTO' }
+
+    ReasoningStreamEventDTO:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [result, done, error] }
+        response: { $ref: '#/components/schemas/ReasoningQueryResponse' }
+        message: { type: string }
+
+    InferenceReviewRequest:
+      type: object
+      properties:
+        note: { type: string }
+
     # ── Capture / URL Enrichment ──
 
     CaptureSafariRequest:
@@ -7467,6 +8151,96 @@ components:
         content: { type: string }
         multiModel: { $ref: '#/components/schemas/ChatMultiModelOptionsDTO' }
 
+    HybridExecutionProfile:
+      type: string
+      enum: [private, balanced, quality]
+
+    ExecutionLocation:
+      type: string
+      enum: [on_device, local_endpoint, cloud]
+
+    LocalEndpointKind:
+      type: string
+      enum: [ollama, lm_studio, mlx_server, openai_compatible]
+
+    HybridRoutingPreferencesDTO:
+      type: object
+      required: [profile, localFallbackEnabled, cloudFallbackEnabled, syncLocalConversations]
+      properties:
+        profile: { $ref: '#/components/schemas/HybridExecutionProfile' }
+        localFallbackEnabled: { type: boolean }
+        cloudFallbackEnabled: { type: boolean }
+        syncLocalConversations: { type: boolean }
+
+    ConversationPrepareRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 100000 }
+
+    ConversationPrepareResponse:
+      type: object
+      required: [executionID, messages, sources, expiresAt]
+      properties:
+        executionID: { type: string, format: uuid }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMessage' }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/QueryHitDTO' }
+        expiresAt: { type: string, format: date-time }
+
+    LocalExecutionUsageDTO:
+      type: object
+      required: [inputTokens, outputTokens, latencyMs]
+      properties:
+        inputTokens: { type: integer, minimum: 0 }
+        outputTokens: { type: integer, minimum: 0 }
+        latencyMs: { type: integer, minimum: 0 }
+
+    ConversationCommitRequest:
+      type: object
+      required: [executionID, content, location, provider, model]
+      properties:
+        executionID: { type: string, format: uuid }
+        content: { type: string, minLength: 1, maxLength: 500000 }
+        location: { $ref: '#/components/schemas/ExecutionLocation' }
+        provider: { type: string, minLength: 1, maxLength: 100 }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        usage: { $ref: '#/components/schemas/LocalExecutionUsageDTO' }
+
+    ConversationCommitResponse:
+      type: object
+      required: [message, followUps]
+      properties:
+        message: { $ref: '#/components/schemas/ConversationMessageDTO' }
+        followUps:
+          type: array
+          items: { type: string }
+
+    LocalMemorySyncItemDTO:
+      type: object
+      required: [id, content, source, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        content: { type: string }
+        source: { $ref: '#/components/schemas/MemorySourceKindDTO' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    LocalMemorySyncResponse:
+      type: object
+      required: [memories, deletedIDs]
+      properties:
+        memories:
+          type: array
+          items: { $ref: '#/components/schemas/LocalMemorySyncItemDTO' }
+        deletedIDs:
+          type: array
+          items: { type: string, format: uuid }
+        nextCursor: { type: string, format: date-time }
+
     ChatInboxItemDTO:
       type: object
       required: [id, title, preview, messageCount, lastMessageAt, pinned, archived]
@@ -7639,6 +8413,109 @@ components:
         pendingFiles:
           type: integer
           description: HER-293 — vault rows with `processed_at` IS NULL for the caller's tenant.
+
+    IngestionSourceKindDTO:
+      type: string
+      enum: [file, url]
+
+    IngestionItemStateDTO:
+      type: string
+      enum: [awaiting_upload, queued, extracting, analyzing, saving, blocked_capability, completed, failed, cancelled]
+
+    IngestionCreateItemRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { $ref: '#/components/schemas/IngestionSourceKindDTO' }
+        fileName: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        sha256: { type: string }
+        url: { type: string, format: uri }
+
+    IngestionCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        spaceID: { type: string, format: uuid }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/IngestionCreateItemRequest' }
+
+    IngestionCredibilityDTO:
+      type: object
+      required: [confidence, signals, rationale, version]
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100, nullable: true }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        signals: { type: array, items: { type: string } }
+        rationale: { type: string }
+        version: { type: string }
+
+    IngestionEntityDTO:
+      type: object
+      required: [id, name, type, confidence]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+    IngestionRelationshipDTO:
+      type: object
+      required: [id, subjectEntityID, predicate, objectEntityID, confidence]
+      properties:
+        id: { type: string, format: uuid }
+        subjectEntityID: { type: string, format: uuid }
+        predicate: { type: string }
+        objectEntityID: { type: string, format: uuid }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        evidence: { type: string }
+
+    IngestionItemDTO:
+      type: object
+      required: [id, batchID, kind, state, uploadedBytes, entities, relationships]
+      properties:
+        id: { type: string, format: uuid }
+        batchID: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/IngestionSourceKindDTO' }
+        state: { $ref: '#/components/schemas/IngestionItemStateDTO' }
+        fileName: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        uploadedBytes: { type: integer, format: int64 }
+        url: { type: string, format: uri }
+        vaultFileID: { type: string, format: uuid }
+        memoryID: { type: string, format: uuid }
+        summary: { type: string }
+        error: { type: string }
+        credibility: { $ref: '#/components/schemas/IngestionCredibilityDTO' }
+        entities: { type: array, items: { $ref: '#/components/schemas/IngestionEntityDTO' } }
+        relationships: { type: array, items: { $ref: '#/components/schemas/IngestionRelationshipDTO' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    IngestionBatchDTO:
+      type: object
+      required: [id, state, total, completed, failed, chunkSizeBytes, items]
+      properties:
+        id: { type: string, format: uuid }
+        state: { type: string }
+        total: { type: integer }
+        completed: { type: integer }
+        failed: { type: integer }
+        chunkSizeBytes: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/IngestionItemDTO' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    IngestionBatchListDTO:
+      type: object
+      required: [batches]
+      properties:
+        batches: { type: array, items: { $ref: '#/components/schemas/IngestionBatchDTO' } }
 
     ImportCreateRequest:
       type: object

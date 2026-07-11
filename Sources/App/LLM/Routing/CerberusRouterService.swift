@@ -19,6 +19,8 @@ struct CerberusRequestScope: Sendable, Hashable {
 struct CerberusDecisionMetadata: Hashable, Sendable {
     let executionID: UUID
     let tenantID: UUID
+    let vaultID: UUID
+    let actorUserID: UUID
     let profileID: UUID
     let profileName: String
     let ruleID: UUID?
@@ -163,6 +165,8 @@ struct CerberusModelRouter: ModelRouter {
             let metadata = CerberusDecisionMetadata(
                 executionID: UUID(),
                 tenantID: tenantID,
+                vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
+                actorUserID: tenantID,
                 profileID: profile.id,
                 profileName: profile.name,
                 ruleID: rule?.id,
