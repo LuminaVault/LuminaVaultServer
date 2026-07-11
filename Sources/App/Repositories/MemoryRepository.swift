@@ -267,7 +267,10 @@ struct MemoryRepository {
         let q = Memory.query(on: fluent.db(), tenantID: tenantID)
             .sort(\.$createdAt, .descending)
             .sort(\.$id, .descending)
-            .range(lower: offset, upper: offset + limit)
+            // `range(lower:upper:)` treats `upper` as inclusive, so
+            // `offset..<offset+limit` returned limit+1 rows. Exclusive
+            // half-open range matches the documented limit semantics.
+            .range(offset ..< (offset + limit))
         if let reviewStates {
             q.filter(\.$reviewState ~~ reviewStates)
         } else {

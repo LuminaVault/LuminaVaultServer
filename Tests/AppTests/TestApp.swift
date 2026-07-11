@@ -63,6 +63,10 @@ private let dbTestConfigValuesBase: [AbsoluteConfigKey: ConfigValue] = [
     // validation accepts 127.0.0.1 / docker-internal hosts. Prod
     // must leave this `false`.
     "byoHermes.allowPrivate": "true",
+    // Audit S2 (2026-07-03) flipped requireHttps's default to true outside
+    // `dev`, and `lv.environment` is "test" here. BYO tests PUT plain-http
+    // loopback URLs, so waive it explicitly. Prod keeps the fail-closed default.
+    "byoHermes.requireHttps": "false",
     // HER-254 fail-closed bearer guard fatals when lv.environment != "dev"
     // and hermes.apiKey is empty. Tests don't actually dial Hermes (the
     // gateway is `logging` mode above), so a dummy bearer is sufficient

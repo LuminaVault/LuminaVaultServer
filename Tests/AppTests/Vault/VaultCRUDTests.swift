@@ -74,8 +74,13 @@ struct VaultCRUDTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            _ = try await Self.upload(client: client, token: token, path: "notes/a.md")
-            _ = try await Self.upload(client: client, token: token, path: "notes/b.md")
+            // HER-105 — the server re-files uploads under the Space slug
+            // (unfiled → `inbox/`), so assert on the returned paths instead
+            // of the client-supplied prefix.
+            let pathA = try await Self.upload(client: client, token: token, path: "notes/a.md")
+            let pathB = try await Self.upload(client: client, token: token, path: "notes/b.md")
+            #expect(pathA == "inbox/a.md")
+            #expect(pathB == "inbox/b.md")
 
             try await client.execute(
                 uri: "/v1/vault/files",
@@ -85,8 +90,8 @@ struct VaultCRUDTests {
                 #expect(response.status == .ok)
                 let list = try Self.decodeList(response.body)
                 #expect(list.files.count >= 2)
-                #expect(list.files.contains(where: { $0.path == "notes/a.md" }))
-                #expect(list.files.contains(where: { $0.path == "notes/b.md" }))
+                #expect(list.files.contains(where: { $0.path == pathA }))
+                #expect(list.files.contains(where: { $0.path == pathB }))
             }
         }
     }
@@ -120,23 +125,23 @@ struct VaultCRUDTests {
             let alice = try await Self.registerAndAuth(client: client)
             let mallory = try await Self.registerAndAuth(client: client)
 
-            _ = try await Self.upload(client: client, token: alice, path: "alice-secret.md", body: "private")
+            let storedPath = try await Self.upload(client: client, token: alice, path: "alice-secret.md", body: "private")
 
             // Mallory cannot delete Alice's file.
             try await client.execute(
-                uri: "/v1/vault/files/alice-secret.md",
+                uri: "/v1/vault/files/\(storedPath)",
                 method: .delete,
                 headers: [.authorization: "Bearer \(mallory)"]
             ) { #expect($0.status == .notFound) }
 
             // Alice can delete her own. Idempotent: second call returns 404.
             try await client.execute(
-                uri: "/v1/vault/files/alice-secret.md",
+                uri: "/v1/vault/files/\(storedPath)",
                 method: .delete,
                 headers: [.authorization: "Bearer \(alice)"]
             ) { #expect($0.status == .noContent) }
             try await client.execute(
-                uri: "/v1/vault/files/alice-secret.md",
+                uri: "/v1/vault/files/\(storedPath)",
                 method: .delete,
                 headers: [.authorization: "Bearer \(alice)"]
             ) { #expect($0.status == .notFound) }
@@ -148,9 +153,9 @@ struct VaultCRUDTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            _ = try await Self.upload(client: client, token: token, path: "old.md")
+            let oldPath = try await Self.upload(client: client, token: token, path: "old.md")
 
-            let body = ByteBuffer(string: #"{"path":"old.md","newPath":"new.md"}"#)
+            let body = ByteBuffer(string: #"{"path":"\#(oldPath)","newPath":"new.md"}"#)
             try await client.execute(
                 uri: "/v1/vault/files/move",
                 method: .post,
@@ -170,7 +175,7 @@ struct VaultCRUDTests {
             ) { response in
                 let list = try Self.decodeList(response.body)
                 #expect(list.files.contains(where: { $0.path == "new.md" }))
-                #expect(!list.files.contains(where: { $0.path == "old.md" }))
+                #expect(!list.files.contains(where: { $0.path == oldPath }))
             }
         }
     }
@@ -180,9 +185,9 @@ struct VaultCRUDTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            _ = try await Self.upload(client: client, token: token, path: "src.md")
-            _ = try await Self.upload(client: client, token: token, path: "dst.md")
-            let body = ByteBuffer(string: #"{"path":"src.md","newPath":"dst.md"}"#)
+            let srcPath = try await Self.upload(client: client, token: token, path: "src.md")
+            let dstPath = try await Self.upload(client: client, token: token, path: "dst.md")
+            let body = ByteBuffer(string: #"{"path":"\#(srcPath)","newPath":"\#(dstPath)"}"#)
             try await client.execute(
                 uri: "/v1/vault/files/move",
                 method: .post,
@@ -332,7 +337,9 @@ struct VaultCRUDTests {
                 ],
                 body: ByteBuffer(data: Self.heicStubBytes)
             ) { response in
-                #expect(response.status == .badRequest)
+                // `.heic` is an allowed extension; a mismatched Content-Type
+                // is rejected with 415, not 400.
+                #expect(response.status == .unsupportedMediaType)
             }
         }
     }

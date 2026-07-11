@@ -22,7 +22,7 @@ struct RevenueCatWebhookTests {
                 "log.level": cfg("warning"),
                 "postgres.host": cfg(TestPostgres.host),
                 "postgres.port": cfg(TestPostgres.port),
-                "postgres.database": cfg(TestPostgres.database),
+                "postgres.database": cfg(TestDatabaseIsolation.resolvedDatabase),
                 "postgres.user": cfg(TestPostgres.username),
                 "postgres.password": cfg(TestPostgres.password),
                 "fluent.autoMigrate": cfg("true"),
