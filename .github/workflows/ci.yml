@@ -140,7 +140,7 @@ jobs:
           LOG_LEVEL: error
         # One serial migrate of `hermes_test`; per-suite clones use it as a
         # template so parallel integration boots skip redundant migration work.
-        run: bash scripts/ci-test-wrapper.sh .build/xunit-prime.xml --filter M00EnableExtensionsTests --no-parallel
+        run: bash scripts/ci-test-wrapper.sh .build/xunit-prime.xml --filter PrimeBaseDatabaseTests --no-parallel
 
       - name: Run integration tests (parallel, per-suite DB)
         env:

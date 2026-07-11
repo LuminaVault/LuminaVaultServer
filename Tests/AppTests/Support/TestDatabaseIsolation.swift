@@ -1,3 +1,4 @@
+@testable import App
 import Foundation
 import HummingbirdFluent
 import Logging
@@ -91,10 +92,51 @@ struct IntegrationDatabaseTrait: SuiteTrait, TestTrait, TestScoping {
             try await function()
             return
         }
-        let suite = TestDatabaseIsolation.suiteName(from: test)
-        _ = try await TestDatabaseIsolation.registerDatabase(forSuite: suite)
-        try await TestDatabaseIsolation.$activeSuiteName.withValue(suite) {
-            try await function()
+        // Postgres caps connections (default 100). Unbounded parallel tests each
+        // hold a Fluent pool + an admin connection, which exhausted the server
+        // (SQLSTATE 53300) and failed every DB suite on CI. Gate concurrency so
+        // the worst-case connection count stays well under the cap.
+        await IntegrationTestGate.shared.acquire()
+        do {
+            let suite = TestDatabaseIsolation.suiteName(from: test)
+            _ = try await TestDatabaseIsolation.registerDatabase(forSuite: suite)
+            try await TestDatabaseIsolation.$activeSuiteName.withValue(suite) {
+                try await function()
+            }
+        } catch {
+            await IntegrationTestGate.shared.release()
+            throw error
+        }
+        await IntegrationTestGate.shared.release()
+    }
+}
+
+/// Bounds how many integration tests run concurrently. Each in-flight test can
+/// hold a Fluent pool (up to one connection per event loop) plus a short-lived
+/// admin connection for database provisioning, so the ceiling here — not the
+/// scheduler — determines peak Postgres connection usage.
+private actor IntegrationTestGate {
+    static let shared = IntegrationTestGate(limit: 4)
+
+    private let limit: Int
+    private var active = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    func acquire() async {
+        while active >= limit {
+            await withCheckedContinuation { waiters.append($0) }
+        }
+        active += 1
+    }
+
+    func release() {
+        active -= 1
+        if !waiters.isEmpty {
+            waiters.removeFirst().resume()
         }
     }
 }
@@ -118,18 +160,44 @@ private actor IsolationStore {
     }
 
     private func provisionIfNeeded(name: String) async throws {
-        if try await databaseExists(name) { return }
+        // Always drop a leftover clone from a previous run: its schema was
+        // frozen at clone time and rots as migrations land, which surfaces
+        // as undefined-table PSQLErrors on the next local run.
+        if try await databaseExists(name) {
+            try await dropDatabase(name)
+        }
         let base = TestDatabaseIsolation.baseDatabase
         if try await databaseExists(base) {
             do {
                 try await cloneDatabase(from: base, to: name)
                 return
             } catch {
-                // Template clone fails when the base DB has open connections (common
-                // on first parallel boot). Fall back to empty DB + migrator.
+                // Template clone fails when ANY session is connected to the
+                // base DB (a locally running dev server is enough). Fall back
+                // to an empty DB and migrate it ourselves.
             }
         }
         try await createEmptyDatabase(name)
+        try await migrateDatabase(name)
+    }
+
+    /// Brings a fresh empty database to the current schema. Without this the
+    /// clone-fallback produced empty databases and every query in the suite
+    /// failed with undefined-table PSQLErrors.
+    private func migrateDatabase(_ name: String) async throws {
+        let fluent = Fluent(logger: Logger(label: "test.db.isolation.migrate"))
+        fluent.databases.use(
+            .postgres(configuration: TestPostgres.configuration(database: name)),
+            as: .psql
+        )
+        do {
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+        } catch {
+            try? await fluent.shutdown()
+            throw error
+        }
+        try await fluent.shutdown()
     }
 
     private func withAdminSQL<T>(
@@ -160,6 +228,12 @@ private actor IsolationStore {
             SELECT 1 AS one FROM pg_database WHERE datname = \(bind: name)
             """).all()
             return !rows.isEmpty
+        }
+    }
+
+    private func dropDatabase(_ name: String) async throws {
+        try await withAdminSQL { sql in
+            try await sql.raw("DROP DATABASE \(ident: name) WITH (FORCE)").run()
         }
     }
 

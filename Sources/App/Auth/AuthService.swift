@@ -356,7 +356,11 @@ struct DefaultAuthService: AuthService {
 
     func issueTokens(for user: User) async throws -> AuthResponse {
         let userID = try user.requireID()
-        let hpid = try await hermesProfileService.find(for: user)?.hermesProfileID
+        // HER-29 — only a ready profile's ID belongs in the token. A degraded
+        // gateway leaves a `pending-<uuid>` sentinel row; leaking that into
+        // `hpid` would hand clients an endpoint that doesn't exist yet.
+        let profile = try await hermesProfileService.find(for: user)
+        let hpid = profile?.status == "ready" ? profile?.hermesProfileID : nil
         let now = Date()
         let access = SessionToken(
             userID: userID,

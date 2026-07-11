@@ -126,9 +126,12 @@ struct LLMControllerPushSideEffectTests {
             try await user.save(on: fluent.db())
 
             // Register a device token so notifyLLMReply has something to push to.
+            // Unique per harness call: `device_tokens.token` carries a global
+            // unique constraint, so a fixed value collides across tests that
+            // share the suite's database.
             let token = DeviceToken(
                 tenantID: userID,
-                token: "abc123",
+                token: "tok-\(userID.uuidString.lowercased())",
                 platform: "ios"
             )
             try await token.save(on: fluent.db())
