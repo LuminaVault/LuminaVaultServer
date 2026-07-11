@@ -2,7 +2,7 @@ import Foundation
 import Logging
 import LuminaVaultShared
 
-struct ParallelExecutionOutput: Sendable {
+struct ParallelExecutionOutput {
     let id: UUID
     let participantID: UUID
     let role: String
@@ -16,7 +16,7 @@ struct ParallelExecutionOutput: Sendable {
     let latencyMs: Int
 }
 
-struct ParallelExecutionCompletion: Sendable {
+struct ParallelExecutionCompletion {
     let route: ModelRoute
     let metadata: HermesChatTransportMetadata
     let outputs: [ParallelExecutionOutput]
@@ -31,7 +31,7 @@ struct ParallelExecutionCompletion: Sendable {
 /// Runs independent provider streams concurrently and performs the strategy-
 /// specific merge. Candidate text is always treated as untrusted evidence;
 /// custom synthesis instructions are subordinate to the server safety frame.
-struct ParallelExecutor: Sendable {
+struct ParallelExecutor {
     let registry: ProviderRegistry
     let logger: Logger
     let store: ParallelExecutionStore?

@@ -15,7 +15,7 @@ import SQLKit
 /// results are read back by `MemoryGraphService` into `MemoryGraphNodeDTO.position`.
 struct GraphLayoutService {
     let fluent: Fluent
-    var logger: Logger = Logger(label: "lv.graph.layout")
+    var logger: Logger = .init(label: "lv.graph.layout")
 
     /// Cap on how many memories we lay out per tenant. Matches the graph
     /// endpoint's practical ceiling; the newest/highest-score memories win.
@@ -59,11 +59,19 @@ struct GraphLayoutService {
 
         // Center the data: subtract the per-dimension mean.
         var mean = [Double](repeating: 0, count: d)
-        for v in vectors { for j in 0 ..< d { mean[j] += v[j] } }
-        for j in 0 ..< d { mean[j] /= Double(n) }
+        for v in vectors {
+            for j in 0 ..< d {
+                mean[j] += v[j]
+            }
+        }
+        for j in 0 ..< d {
+            mean[j] /= Double(n)
+        }
         var x = vectors.map { row -> [Double] in
             var r = row
-            for j in 0 ..< d { r[j] -= mean[j] }
+            for j in 0 ..< d {
+                r[j] -= mean[j]
+            }
             return r
         }
 
@@ -78,7 +86,9 @@ struct GraphLayoutService {
                 let tt = dot(t, t)
                 if tt < convergenceEpsilon { break }
                 p = matTvec(x, t, rows: n, cols: d)
-                for j in 0 ..< d { p[j] /= tt }
+                for j in 0 ..< d {
+                    p[j] /= tt
+                }
                 normalize(&p)
                 // t_new = X p / (pᵀ p)   (pᵀp == 1 after normalize)
                 let tNew = matVec(x, p, rows: n, cols: d)
@@ -86,12 +96,16 @@ struct GraphLayoutService {
                 t = tNew
                 if delta < convergenceEpsilon { break }
             }
-            for i in 0 ..< n { scores[i][k] = t[i] }
+            for i in 0 ..< n {
+                scores[i][k] = t[i]
+            }
             // Deflate: X = X - t pᵀ
             for i in 0 ..< n {
                 let ti = t[i]
                 if ti == 0 { continue }
-                for j in 0 ..< d { x[i][j] -= ti * p[j] }
+                for j in 0 ..< d {
+                    x[i][j] -= ti * p[j]
+                }
             }
         }
 
@@ -103,7 +117,11 @@ struct GraphLayoutService {
     /// bounding the render volume). Zero-variance axes collapse to 0.
     static func normalizeToCube(_ scores: [[Double]]) -> [(x: Double, y: Double, z: Double)] {
         var maxAbs = [Double](repeating: 0, count: 3)
-        for s in scores { for k in 0 ..< 3 { maxAbs[k] = max(maxAbs[k], abs(s[k])) } }
+        for s in scores {
+            for k in 0 ..< 3 {
+                maxAbs[k] = max(maxAbs[k], abs(s[k]))
+            }
+        }
         let scale = maxAbs.map { $0 > 1e-9 ? cubeExtent / $0 : 0 }
         return scores.map { s in (x: s[0] * scale[0], y: s[1] * scale[1], z: s[2] * scale[2]) }
     }
@@ -114,35 +132,50 @@ struct GraphLayoutService {
         let j = m.first.map { index % max(1, $0.count) } ?? 0
         return (0 ..< rows).map { m[$0][j] }
     }
+
     private static func dot(_ a: [Double], _ b: [Double]) -> Double {
-        var s = 0.0; for i in 0 ..< a.count { s += a[i] * b[i] }; return s
+        var s = 0.0; for i in 0 ..< a.count {
+            s += a[i] * b[i]
+        }; return s
     }
+
     /// Xᵀ · t  where X is rows×cols → length-cols vector.
     private static func matTvec(_ x: [[Double]], _ t: [Double], rows: Int, cols: Int) -> [Double] {
         var out = [Double](repeating: 0, count: cols)
         for i in 0 ..< rows {
             let ti = t[i]; if ti == 0 { continue }
             let row = x[i]
-            for j in 0 ..< cols { out[j] += row[j] * ti }
+            for j in 0 ..< cols {
+                out[j] += row[j] * ti
+            }
         }
         return out
     }
+
     /// X · p  where X is rows×cols → length-rows vector.
     private static func matVec(_ x: [[Double]], _ p: [Double], rows: Int, cols: Int) -> [Double] {
         var out = [Double](repeating: 0, count: rows)
         for i in 0 ..< rows {
             var s = 0.0; let row = x[i]
-            for j in 0 ..< cols { s += row[j] * p[j] }
+            for j in 0 ..< cols {
+                s += row[j] * p[j]
+            }
             out[i] = s
         }
         return out
     }
+
     private static func normalize(_ v: inout [Double]) {
-        let n = (dot(v, v)).squareRoot()
-        if n > 1e-12 { for i in 0 ..< v.count { v[i] /= n } }
+        let n = dot(v, v).squareRoot()
+        if n > 1e-12 { for i in 0 ..< v.count {
+            v[i] /= n
+        } }
     }
+
     private static func diffNorm(_ a: [Double], _ b: [Double]) -> Double {
-        var s = 0.0; for i in 0 ..< a.count { let d = a[i] - b[i]; s += d * d }; return s.squareRoot()
+        var s = 0.0; for i in 0 ..< a.count {
+            let d = a[i] - b[i]; s += d * d
+        }; return s.squareRoot()
     }
 
     // MARK: - DB I/O

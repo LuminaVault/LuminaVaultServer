@@ -1,6 +1,6 @@
+@testable import App
 import LuminaVaultShared
 import Testing
-@testable import App
 
 @Suite("Cerberus task classification")
 struct RouterTaskClassifierTests {

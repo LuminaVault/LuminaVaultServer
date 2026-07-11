@@ -134,7 +134,7 @@ struct RoutedLLMTransportStreamingTests {
             let adapter = StreamingStubAdapter()
             let service = Self.makeService(adapter: adapter, user: user, preferences: preferences)
             let chunks = try await Self.collect(service.chatStream(
-                sessionKey: try user.requireID().uuidString,
+                sessionKey: user.requireID().uuidString,
                 sessionID: "conversation-1",
                 request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
             ))
@@ -156,7 +156,7 @@ struct RoutedLLMTransportStreamingTests {
             let adapter = NonStreamingStubAdapter()
             let service = Self.makeService(adapter: adapter, user: user, preferences: preferences)
             let chunks = try await Self.collect(service.chatStream(
-                sessionKey: try user.requireID().uuidString,
+                sessionKey: user.requireID().uuidString,
                 sessionID: "conversation-1",
                 request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
             ))

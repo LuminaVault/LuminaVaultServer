@@ -11,7 +11,7 @@ enum RouterBudgetState: Equatable {
     case denied
 }
 
-struct RouterExecutionResult: Sendable {
+struct RouterExecutionResult {
     let provider: ProviderKind?
     let model: String?
     let status: String

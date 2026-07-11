@@ -176,29 +176,29 @@ struct QueryController {
                     var firstTokenMs: Int64?
                     var tokenCount = 0
                     try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                    try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                        try await LLMRoutingContext.$currentUser.withValue(user) {
-                            try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                let chunks = streamService.chatStream(
-                                    sessionKey: sessionKey,
-                                    sessionID: sessionID,
-                                    request: chatRequest
-                                )
-                                for try await chunk in chunks {
-                                    if Task.isCancelled { break }
-                                    if !chunk.delta.isEmpty {
-                                        if firstTokenMs == nil {
-                                            firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                            logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                        try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                            try await LLMRoutingContext.$currentUser.withValue(user) {
+                                try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                    let chunks = streamService.chatStream(
+                                        sessionKey: sessionKey,
+                                        sessionID: sessionID,
+                                        request: chatRequest
+                                    )
+                                    for try await chunk in chunks {
+                                        if Task.isCancelled { break }
+                                        if !chunk.delta.isEmpty {
+                                            if firstTokenMs == nil {
+                                                firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                                logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                            }
+                                            tokenCount += 1
+                                            assistantBuffer.append(chunk.delta)
+                                            continuation.yield(.token(chunk.delta))
                                         }
-                                        tokenCount += 1
-                                        assistantBuffer.append(chunk.delta)
-                                        continuation.yield(.token(chunk.delta))
                                     }
                                 }
                             }
                         }
-                    }
                     }
                     logger.info("query stream complete", metadata: [
                         "tokens": .stringConvertible(tokenCount),
@@ -308,6 +308,11 @@ private final class QueryRouteOutcomeBox: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: ModelProvenanceDTO?
 
-    var value: ModelProvenanceDTO? { lock.withLock { storage } }
-    func set(_ value: ModelProvenanceDTO) { lock.withLock { storage = value } }
+    var value: ModelProvenanceDTO? {
+        lock.withLock { storage }
+    }
+
+    func set(_ value: ModelProvenanceDTO) {
+        lock.withLock { storage = value }
+    }
 }

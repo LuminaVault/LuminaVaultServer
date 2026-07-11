@@ -28,9 +28,9 @@ actor RouterProfileRepository {
             .filter(\.$tenantID == tenantID)
             .sort(\.$createdAt)
             .all()
-        return RouterProfilesResponse(
-            profiles: try rows.map(Self.toDTO),
-            defaultProfileID: try defaultProfile.requireID()
+        return try RouterProfilesResponse(
+            profiles: rows.map(Self.toDTO),
+            defaultProfileID: defaultProfile.requireID()
         )
     }
 
@@ -79,7 +79,7 @@ actor RouterProfileRepository {
     func bindings(tenantID: UUID) async throws -> RouterBindingsResponse {
         _ = try await ensureDefault(tenantID: tenantID)
         let rows = try await RouterBinding.query(on: fluent.db(), tenantID: tenantID).all()
-        return RouterBindingsResponse(bindings: try rows.map(Self.toDTO))
+        return try RouterBindingsResponse(bindings: rows.map(Self.toDTO))
     }
 
     func bind(
@@ -128,7 +128,7 @@ actor RouterProfileRepository {
                 .filter(\.$scope == scope.rawValue)
                 .filter(\.$scopeID == key)
                 .first(),
-               let profile = try await profile(tenantID: tenantID, id: binding.profileID)
+                let profile = try await profile(tenantID: tenantID, id: binding.profileID)
             {
                 return profile
             }
@@ -141,7 +141,7 @@ actor RouterProfileRepository {
             .filter(\.$scope == RouterBindingScope.user.rawValue)
             .filter(\.$scopeID == tenantID.uuidString)
             .first(),
-           let row = try await profile(tenantID: tenantID, id: binding.profileID)
+            let row = try await profile(tenantID: tenantID, id: binding.profileID)
         {
             return row
         }
@@ -190,7 +190,7 @@ actor RouterProfileRepository {
                 .filter(\.$scope == RouterBindingScope.user.rawValue)
                 .filter(\.$scopeID == tenantID.uuidString)
                 .first(),
-               let winner = try await profile(tenantID: tenantID, id: binding.profileID)
+                let winner = try await profile(tenantID: tenantID, id: binding.profileID)
             {
                 return winner
             }

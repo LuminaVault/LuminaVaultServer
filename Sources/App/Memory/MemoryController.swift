@@ -602,12 +602,12 @@ struct MemoryController {
         if let raw = query["sources"], !raw.isEmpty, sources.isEmpty {
             throw HTTPError(.badRequest, message: "sources contains no recognized values")
         }
-        return MemoryGraphFilter(
+        return try MemoryGraphFilter(
             providers: Set(csv(query["providers"])),
             models: Set(csv(query["models"])),
             sources: sources,
-            createdAfter: try parseDate(query["createdAfter"], name: "createdAfter"),
-            createdBefore: try parseDate(query["createdBefore"], name: "createdBefore")
+            createdAfter: parseDate(query["createdAfter"], name: "createdAfter"),
+            createdBefore: parseDate(query["createdBefore"], name: "createdBefore")
         )
     }
 

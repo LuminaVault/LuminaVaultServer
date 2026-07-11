@@ -15,8 +15,8 @@ struct ValkeyPersistDriverIntegrationTests {
     func `valkey persist driver stores reads expires and removes`() async throws {
         let url = try #require(ValkeyIntegrationEnv.url)
         let logger = Logger(label: "test.valkey-persist")
-        let driver = ValkeyPersistDriver(
-            configuration: try ValkeyPersistConfiguration(url: url),
+        let driver = try ValkeyPersistDriver(
+            configuration: ValkeyPersistConfiguration(url: url),
             namespace: "lv:test:\(UUID().uuidString)",
             logger: logger
         )

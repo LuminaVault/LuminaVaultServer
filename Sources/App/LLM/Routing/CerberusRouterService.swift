@@ -2,7 +2,7 @@ import Foundation
 import Logging
 import LuminaVaultShared
 
-struct CerberusRequestScope: Sendable, Hashable {
+struct CerberusRequestScope: Hashable {
     let surface: RouterSurface
     let spaceID: UUID?
     let jobID: String?
@@ -16,7 +16,7 @@ struct CerberusRequestScope: Sendable, Hashable {
     }
 }
 
-struct CerberusDecisionMetadata: Hashable, Sendable {
+struct CerberusDecisionMetadata: Hashable {
     let executionID: UUID
     let tenantID: UUID
     let vaultID: UUID
@@ -125,7 +125,7 @@ struct CerberusModelRouter: ModelRouter {
                     )
                 }
             }
-            if action.kind == .ensemble, (!ensemblesEnabled || effectiveTier != .ultimate) {
+            if action.kind == .ensemble, !ensemblesEnabled || effectiveTier != .ultimate {
                 action = profile.defaultAction.kind == .sequential
                     ? profile.defaultAction
                     : RouterActionDTO(kind: .sequential, routes: action.routes, retryPolicy: action.retryPolicy)
@@ -218,8 +218,8 @@ struct CerberusModelRouter: ModelRouter {
     ) -> Double {
         let catalog = RouterModelCatalog.entry(provider: route.provider, model: route.model)
         let quality = Double(catalog?.taskQuality[task.rawValue] ?? 50) / 100
-        let latency = Double(catalog?.defaultLatencyMs ?? 2_000)
-        let latencyScore = 1 / (1 + latency / 1_000)
+        let latency = Double(catalog?.defaultLatencyMs ?? 2000)
+        let latencyScore = 1 / (1 + latency / 1000)
         let cost = Double(predictedCost(routes: [route], synthesis: nil, promptTokens: promptTokens))
         let costScore = 1 / (1 + cost / 1_000_000)
         return quality * Double(weights.quality)
@@ -238,7 +238,7 @@ struct CerberusModelRouter: ModelRouter {
             let inputRate = route.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
             let outputRate = route.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
             let inputCost = Int64(promptTokens) * inputRate / 1_000_000
-            let outputCost = Int64(1_024) * outputRate / 1_000_000
+            let outputCost = Int64(1024) * outputRate / 1_000_000
             return partial + inputCost + outputCost
         }
         let synthesisCost: Int64 = synthesis.map { route in
@@ -247,7 +247,7 @@ struct CerberusModelRouter: ModelRouter {
             let outputRate = route.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
             let inputTokens = Int64(promptTokens * max(2, routes.count))
             let inputCost = inputTokens * inputRate / 1_000_000
-            let outputCost = Int64(1_024) * outputRate / 1_000_000
+            let outputCost = Int64(1024) * outputRate / 1_000_000
             return inputCost + outputCost
         } ?? 0
         return workers * Int64(max(1, workerRounds)) + synthesisCost

@@ -177,8 +177,8 @@ actor SkillRunner {
         var modelUsed: String?
         var mtokIn = 0
         var mtokOut = 0
-        let routingUser: User? = (try? await User.find(tenantID, on: fluent.db())) ?? nil
-        let routingState: SkillsState? = (try? await SkillsState.query(on: fluent.db())
+        let routingUser: User? = await (try? User.find(tenantID, on: fluent.db())) ?? nil
+        let routingState: SkillsState? = await (try? SkillsState.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
             .filter(\.$source == skill.source.rawValue)
             .filter(\.$name == skill.name)

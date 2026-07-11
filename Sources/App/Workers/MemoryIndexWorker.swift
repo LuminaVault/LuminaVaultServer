@@ -63,7 +63,7 @@ actor MemoryIndexWorker: Service {
 
         do {
             if try await existingMemory(sql: sql, job: job) == nil {
-                let content = String(job.content.prefix(12_000))
+                let content = String(job.content.prefix(12000))
                 let vector = try await embeddings.embed(content, tenantID: job.tenant_id)
                 _ = try await MemoryRepository(fluent: fluent).create(
                     tenantID: job.tenant_id,

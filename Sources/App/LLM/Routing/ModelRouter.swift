@@ -13,7 +13,7 @@ enum LLMCapabilityLevel: String, Codable, CaseIterable {
 /// HER-161 routing primitive — a concrete `(provider, model)` pair the
 /// transport will try. The `modelID` is rewritten into the request payload
 /// before dispatch so the upstream sees the exact model the table picked.
-struct ModelRoute: Hashable, ModelIdentifying, Sendable {
+struct ModelRoute: Hashable, ModelIdentifying {
     let provider: ProviderKind
     let modelID: String
 }

@@ -4,11 +4,11 @@ import HTTPTypes
 import Hummingbird
 import HummingbirdFluent
 
-enum VaultPermission: Sendable {
+enum VaultPermission {
     case read, write, admin, ai
 }
 
-struct ResolvedVaultAccess: Sendable {
+struct ResolvedVaultAccess {
     let vaultID: UUID
     let teamID: UUID?
     let billingSponsorUserID: UUID
@@ -25,7 +25,7 @@ struct ResolvedVaultAccess: Sendable {
     }
 }
 
-struct VaultAccessService: Sendable {
+struct VaultAccessService {
     static let vaultHeader = HTTPField.Name("X-Vault-ID")!
 
     let fluent: Fluent
@@ -90,7 +90,8 @@ struct VaultAccessService: Sendable {
             guard let sponsor = try await User.find(access.billingSponsorUserID, on: fluent.db()),
                   sponsor.entitled(for: .chat)
             else {
-                throw HTTPError(.paymentRequired, message: "team owner subscription does not include AI access")
+                // HTTPTypes has no `.paymentRequired` convenience for 402.
+                throw HTTPError(.init(code: 402, reasonPhrase: "Payment Required"), message: "team owner subscription does not include AI access")
             }
         default:
             break
