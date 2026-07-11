@@ -94,8 +94,8 @@ struct ServiceContainer {
     /// the actual token flow client-side and forwards the access_token.
     let xClientID: String
     /// HER-200 M3 — rate-limit storage selector: `memory` (default) | `redis`.
-    /// `redis` reserves the env knob for a future Redis-backed PersistDriver;
-    /// until that lands the factory falls back to memory with a warning.
+    /// `redis` uses REDIS_URL with Valkey/Redis-backed shared storage; prod
+    /// fails fast if the URL is missing or invalid.
     let rateLimitStorageKind: String
     /// SMS gateway selector: `logging` (default) | `twilio`.
     let smsKind: String

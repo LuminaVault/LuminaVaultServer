@@ -57,7 +57,8 @@ services:
       USAGE_PER_SKILL_MTOK_DAILY: ${USAGE_PER_SKILL_MTOK_DAILY:-0.2}
       USAGE_DEGRADE_MODEL: ${USAGE_DEGRADE_MODEL:-hermes-3-small}
       # --- Rate limiting ---
-      RATE_LIMIT_STORAGE_KIND: ${RATE_LIMIT_STORAGE_KIND:-memory}
+      RATE_LIMIT_STORAGE_KIND: ${RATE_LIMIT_STORAGE_KIND:-redis}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
       # --- SMS / phone auth ---
       SMS_KIND: ${SMS_KIND:-logging}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
@@ -169,6 +170,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
       hermes:
         condition: service_started
       otel-collector:
@@ -215,6 +218,20 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hermes} -d ${POSTGRES_DB:-hermes_db}"]
       interval: 10s
       timeout: 5s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
       retries: 5
 
   hermes:

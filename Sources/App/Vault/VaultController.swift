@@ -64,9 +64,11 @@ struct VaultController {
     /// cascades that memory. Optional so non-note deployments/tests skip it.
     let memories: MemoryRepository?
     let embeddings: (any EmbeddingService)?
+    let noteMemoryUpserts: VaultNoteMemoryUpsertQueue?
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
+    private static let fileStreamChunkSize = 64 * 1024
 
     /// Decodes the `X-Vault-Metadata` note sidecar header. ISO-8601 dates so
     /// `dueAt` round-trips with the client encoder.
@@ -96,6 +98,15 @@ struct VaultController {
         self.maxFileSize = maxFileSize
         self.memories = memories
         self.embeddings = embeddings
+        if let memories, let embeddings {
+            self.noteMemoryUpserts = VaultNoteMemoryUpsertQueue(
+                memories: memories,
+                embeddings: embeddings,
+                logger: logger
+            )
+        } else {
+            self.noteMemoryUpserts = nil
+        }
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -185,13 +196,6 @@ struct VaultController {
             .flatMap { $0.data(using: .utf8) }
             .flatMap { try? Self.metadataDecoder.decode(VaultFileMetadata.self, from: $0) }
 
-        var mutableRequest = request
-        let buffer = try await mutableRequest.collectBody(upTo: maxFileSize)
-        let data = Data(buffer: buffer)
-        guard !data.isEmpty else {
-            throw HTTPError(.badRequest, message: "empty body")
-        }
-
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let target = try Self.resolveInside(rawRoot: rawRoot, relative: safeRelative)
@@ -202,13 +206,24 @@ struct VaultController {
             withIntermediateDirectories: true
         )
         let tmp = target.appendingPathExtension("tmp-\(UUID().uuidString.prefix(8))")
-        try data.write(to: tmp, options: .atomic)
+        var movedTempFile = false
+        defer {
+            if !movedTempFile {
+                try? fm.removeItem(at: tmp)
+            }
+        }
+
+        let upload = try await Self.writeUploadBody(
+            request.body,
+            to: tmp,
+            maxFileSize: maxFileSize
+        )
         if fm.fileExists(atPath: target.path) {
             try fm.removeItem(at: target)
         }
         try fm.moveItem(at: tmp, to: target)
+        movedTempFile = true
 
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         // HER-105 — `?processed=true` marks the row already-compiled (written
         // text notes set this; they create their memory via /v1/memory/upsert).
         let processed = request.uri.queryParameters["processed"].map(String.init) == "true"
@@ -217,12 +232,12 @@ struct VaultController {
             spaceID: spaceID,
             path: safeRelative,
             contentType: contentType,
-            sizeBytes: Int64(data.count),
-            sha256: digest,
+            sizeBytes: Int64(upload.size),
+            sha256: upload.sha256,
             processed: processed,
             metadata: noteMetadata
         )
-        logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(data.count)")
+        logger.info("vault upload tenant=\(tenantID) path=\(safeRelative) bytes=\(upload.size)")
 
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .vaultUploaded)
@@ -247,41 +262,26 @@ struct VaultController {
         // right here, so creation and every later edit re-embed in one call
         // (no separate /v1/memory/upsert, no lineage gap). Create-or-update
         // is keyed on the vault file id; tags ride the metadata sidecar.
-        // Failures are logged, not fatal — the file write already succeeded.
+        // The work is queued after the durable file move so upload latency
+        // isn't pinned to embedding/provider latency. Failures are logged, not
+        // fatal — the file write already succeeded.
         let isNote = request.uri.queryParameters["note"].map(String.init) == "true"
-        if isNote, let memories, let embeddings,
-           let content = String(data: data, encoding: .utf8), !content.isEmpty
-        {
-            do {
-                let embedding = try await embeddings.embed(content, tenantID: tenantID)
-                if let existingMemID = try await memories.idBySourceVaultFileID(
-                    tenantID: tenantID, sourceVaultFileID: savedID
-                ) {
-                    _ = try await memories.updateContent(
-                        tenantID: tenantID, id: existingMemID,
-                        content: content, embedding: embedding
-                    )
-                } else {
-                    _ = try await memories.create(
-                        tenantID: tenantID,
-                        content: content,
-                        embedding: embedding,
-                        tags: noteMetadata?.tags,
-                        sourceVaultFileID: savedID,
-                        spaceID: spaceID,
-                        reviewState: "auto"
-                    )
-                }
-            } catch {
-                logger.error("note memory upsert failed tenant=\(tenantID) path=\(safeRelative): \(error)")
-            }
+        if isNote, let noteMemoryUpserts {
+            await noteMemoryUpserts.enqueue(
+                tenantID: tenantID,
+                sourceVaultFileID: savedID,
+                fileURL: target,
+                spaceID: spaceID,
+                tags: noteMetadata?.tags,
+                path: safeRelative
+            )
         }
 
         return VaultUploadResponse(
             path: safeRelative,
-            size: data.count,
+            size: upload.size,
             contentType: contentType,
-            sha256: digest
+            sha256: upload.sha256
         )
     }
 
@@ -387,14 +387,18 @@ struct VaultController {
             throw HTTPError(.notFound, message: "vault file body missing")
         }
 
-        let data = try Data(contentsOf: target)
+        let size = (try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int(row.sizeBytes)
         var headers = HTTPFields()
         headers[.contentType] = row.contentType
-        headers[.contentLength] = String(data.count)
+        headers[.contentLength] = String(size)
+        let body = ResponseBody(contentLength: size) { writer in
+            try await Self.streamFile(target, writer: &writer)
+            try await writer.finish(nil)
+        }
         return Response(
             status: .ok,
             headers: headers,
-            body: ResponseBody(byteBuffer: ByteBuffer(data: data))
+            body: body
         )
     }
 
@@ -522,6 +526,52 @@ struct VaultController {
         headers[.contentType] = "application/zip"
         headers[.contentDisposition] = "attachment; filename=\"vault-\(tenantID.uuidString).zip\""
         return Response(status: .ok, headers: headers, body: body)
+    }
+
+    // MARK: - File streaming helpers
+
+    private static func writeUploadBody(
+        _ body: RequestBody,
+        to tmp: URL,
+        maxFileSize: Int
+    ) async throws -> (size: Int, sha256: String) {
+        guard FileManager.default.createFile(atPath: tmp.path, contents: nil) else {
+            throw HTTPError(.internalServerError, message: "unable to create upload temp file")
+        }
+        let handle = try FileHandle(forWritingTo: tmp)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        var total = 0
+        for try await chunk in body {
+            let readable = chunk.readableBytes
+            guard readable > 0 else { continue }
+            total += readable
+            guard total <= maxFileSize else {
+                throw HTTPError(.contentTooLarge, message: "vault file exceeds max upload size")
+            }
+            let data = Data(chunk.readableBytesView)
+            hasher.update(data: data)
+            try handle.write(contentsOf: data)
+        }
+        guard total > 0 else {
+            throw HTTPError(.badRequest, message: "empty body")
+        }
+        let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return (size: total, sha256: digest)
+    }
+
+    private static func streamFile(
+        _ fileURL: URL,
+        writer: inout any ResponseBodyWriter
+    ) async throws {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        while true {
+            let data = try handle.read(upToCount: fileStreamChunkSize) ?? Data()
+            guard !data.isEmpty else { break }
+            try await writer.write(ByteBuffer(data: data))
+        }
     }
 
     // MARK: - DB helpers

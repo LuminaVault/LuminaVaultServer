@@ -13,7 +13,7 @@ import Metrics
 /// different routing tier. The `modelID` from the selected `ModelRoute`
 /// is rewritten into the payload before dispatch, so the upstream sees
 /// the model the table picked rather than the original user hint.
-struct RoutedLLMTransport: HermesChatTransport {
+struct RoutedLLMTransport: StreamingHermesChatTransport {
     let registry: ProviderRegistry
     let router: any ModelRouter
     let capability: LLMCapabilityLevel
@@ -88,16 +88,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                         source: source
                     )
                 }
-                if let usageMeter, let user {
-                    var mtokIn = 0
-                    var mtokOut = 0
-                    Self.extractUsage(from: metadata, mtokIn: &mtokIn, mtokOut: &mtokOut)
-                    if mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() {
-                        let meter = usageMeter
-                        let modelToRecord = candidate.modelID
-                        Task { await meter.record(tenantID: userID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
-                    }
-                }
+                recordUsage(from: metadata, candidate: candidate, user: user)
                 return metadata
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
@@ -133,6 +124,162 @@ struct RoutedLLMTransport: HermesChatTransport {
         if lastRecoverable != nil {
             // Only unclassified (non-ProviderError) recoverable failures.
             // No typed reasonCode/userMessage available; emit generic.
+            UpstreamErrorTelemetry.record(reasonCode: "upstream_error", provider: "unknown")
+            throw UpstreamErrorResponse(
+                reasonCode: "upstream_error",
+                userMessage: "LLM upstream failed."
+            )
+        }
+        UpstreamErrorTelemetry.record(reasonCode: "no_providers", provider: "n/a")
+        throw UpstreamErrorResponse(
+            reasonCode: "no_providers",
+            userMessage: "No LLM provider available."
+        )
+    }
+
+    func chatCompletionsStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?
+    ) async throws -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            do {
+                try await dispatchStreamingCompletions(
+                    payload: payload,
+                    sessionKey: sessionKey,
+                    sessionID: sessionID,
+                    continuation: continuation
+                )
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
+    }
+
+    private func dispatchStreamingCompletions(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?,
+        continuation: AsyncThrowingStream<ChatStreamChunk, Error>.Continuation
+    ) async throws {
+        let requestedModel = Self.extractModel(from: payload)
+        let user = await currentUser()
+        let decision = await router.pick(forModel: requestedModel, capability: capability, user: user)
+
+        var lastRecoverable: (any Error)?
+        var lastFailedCandidate: (route: ModelRoute, error: ProviderError)?
+        let userID: UUID? = (try? user?.requireID())
+        let source: ProviderFailoverNotice.TelemetrySource =
+            (LLMRoutingContext.currentResolution?.isUserOverride == true) ? .byo : .hosted
+
+        for candidate in decision.candidates {
+            guard let adapter = await registry.adapter(for: candidate.provider) else {
+                logger.warning("router decision had unregistered provider: \(candidate.provider.rawValue)")
+                continue
+            }
+            let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
+
+            if let streamingAdapter = adapter as? any StreamingProviderAdapter {
+                let streamingPayload = Self.setStream(true, in: candidatePayload)
+                var yieldedChunks = false
+                do {
+                    let providerStream = try await streamingAdapter.chatCompletionsStream(
+                        payload: streamingPayload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID
+                    )
+                    for try await chunk in providerStream {
+                        if !yieldedChunks, let prior = lastFailedCandidate {
+                            publishFailover(
+                                original: prior.route,
+                                originalError: prior.error,
+                                fallback: candidate,
+                                tenantID: userID,
+                                source: source
+                            )
+                        }
+                        yieldedChunks = true
+                        continuation.yield(chunk)
+                    }
+                    if !yieldedChunks, let prior = lastFailedCandidate {
+                        publishFailover(
+                            original: prior.route,
+                            originalError: prior.error,
+                            fallback: candidate,
+                            tenantID: userID,
+                            source: source
+                        )
+                    }
+                    return
+                } catch let providerError as ProviderError where providerError.isRecoverable && !yieldedChunks {
+                    lastRecoverable = providerError
+                    lastFailedCandidate = (candidate, providerError)
+                    logger.warning("provider \(candidate.provider.rawValue) stream failed (\(providerError.reasonCode)): \(providerError)")
+                    continue
+                } catch let providerError as ProviderError {
+                    logger.error("provider \(candidate.provider.rawValue) stream failed: \(providerError)")
+                    UpstreamErrorTelemetry.record(reasonCode: providerError.reasonCode, provider: candidate.provider.rawValue)
+                    throw Self.upstreamResponse(for: providerError)
+                } catch where !yieldedChunks {
+                    lastRecoverable = error
+                    logger.warning("provider \(candidate.provider.rawValue) stream unclassified error: \(error)")
+                    continue
+                } catch {
+                    logger.error("provider \(candidate.provider.rawValue) stream failed after yielding chunks: \(error)")
+                    throw error
+                }
+            }
+
+            do {
+                let metadata = try await adapter.chatCompletionsWithMetadata(
+                    payload: candidatePayload,
+                    sessionKey: sessionKey,
+                    sessionID: sessionID
+                )
+                if let prior = lastFailedCandidate {
+                    publishFailover(
+                        original: prior.route,
+                        originalError: prior.error,
+                        fallback: candidate,
+                        tenantID: userID,
+                        source: source
+                    )
+                }
+                recordUsage(from: metadata, candidate: candidate, user: user)
+                continuation.yield(ChatStreamChunk(
+                    delta: Self.extractAssistantContent(from: metadata.data),
+                    finishReason: "stop"
+                ))
+                return
+            } catch let providerError as ProviderError where providerError.isRecoverable {
+                lastRecoverable = providerError
+                lastFailedCandidate = (candidate, providerError)
+                logger.warning("provider \(candidate.provider.rawValue) failed (\(providerError.reasonCode)): \(providerError)")
+                continue
+            } catch let providerError as ProviderError {
+                logger.error("provider \(candidate.provider.rawValue) permanent: \(providerError)")
+                UpstreamErrorTelemetry.record(reasonCode: providerError.reasonCode, provider: candidate.provider.rawValue)
+                throw Self.upstreamResponse(for: providerError)
+            } catch {
+                lastRecoverable = error
+                logger.warning("provider \(candidate.provider.rawValue) unclassified error: \(error)")
+                continue
+            }
+        }
+
+        logger.error("all providers exhausted for streaming decision \(decision.candidates)")
+        if let lastFailedCandidate {
+            UpstreamErrorTelemetry.record(
+                reasonCode: lastFailedCandidate.error.reasonCode,
+                provider: lastFailedCandidate.route.provider.rawValue
+            )
+            throw Self.upstreamResponse(for: lastFailedCandidate.error)
+        }
+        if lastRecoverable != nil {
             UpstreamErrorTelemetry.record(reasonCode: "upstream_error", provider: "unknown")
             throw UpstreamErrorResponse(
                 reasonCode: "upstream_error",
@@ -183,6 +330,17 @@ struct RoutedLLMTransport: HermesChatTransport {
         failoverLogger?.record(notice: notice, tenantID: tenantID)
     }
 
+    private func recordUsage(from metadata: HermesChatTransportMetadata, candidate: ModelRoute, user: User?) {
+        guard let usageMeter, let user else { return }
+        var mtokIn = 0
+        var mtokOut = 0
+        Self.extractUsage(from: metadata, mtokIn: &mtokIn, mtokOut: &mtokOut)
+        guard mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() else { return }
+        let meter = usageMeter
+        let modelToRecord = candidate.modelID
+        Task { await meter.record(tenantID: userID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
+    }
+
     // MARK: - Helpers
 
     /// Cheap best-effort pull of the `model` field from the chat-completions
@@ -208,6 +366,25 @@ struct RoutedLLMTransport: HermesChatTransport {
         }
         dict["model"] = modelID
         return (try? JSONSerialization.data(withJSONObject: dict)) ?? payload
+    }
+
+    private static func setStream(_ enabled: Bool, in payload: Data) -> Data {
+        guard var dict = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return payload
+        }
+        dict["stream"] = enabled
+        return (try? JSONSerialization.data(withJSONObject: dict)) ?? payload
+    }
+
+    private static func extractAssistantContent(from data: Data) -> String {
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let choices = obj["choices"] as? [[String: Any]],
+            let first = choices.first,
+            let message = first["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else { return "" }
+        return content
     }
 
     private static func extractUsage(
@@ -241,5 +418,13 @@ struct RoutedLLMTransport: HermesChatTransport {
 
     private static func retryHint(for reasonCode: String) -> Int? {
         reasonCode == "upstream_timeout" ? UpstreamErrorResponse.timeoutRetryHintMs : nil
+    }
+
+    private static func upstreamResponse(for providerError: ProviderError) -> UpstreamErrorResponse {
+        UpstreamErrorResponse(
+            reasonCode: providerError.reasonCode,
+            userMessage: providerError.userMessage,
+            retryAfterMs: retryHint(for: providerError.reasonCode)
+        )
     }
 }

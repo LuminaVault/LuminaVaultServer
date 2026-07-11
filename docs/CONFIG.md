@@ -31,8 +31,18 @@ The prod compose declares these as `${VAR:?required}` — container start fails 
 - `POSTHOG_OTEL_TOKEN` (production compose requires it for backend log export)
 - `SENTRY_ORG_SLUG`, `SENTRY_PROJECT_SLUG`, `SENTRY_AUTH_TOKEN` (production compose requires them for backend Sentry export)
 - `HERMES_API_KEY` (32+ bytes; gates the central Hermes gateway — see "Hermes gateway authentication" below)
+- `REDIS_URL` when `RATE_LIMIT_STORAGE_KIND=redis` (production compose defaults to the bundled `valkey` service)
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
+
+### Rate-limit and short-lived state storage
+
+`RATE_LIMIT_STORAGE_KIND` controls the `PersistDriver` used by route rate limits and short-lived auth/pairing records:
+
+- `memory`: default for local single-process development. State is per process and disappears on restart.
+- `redis`: Valkey/Redis-backed shared storage using `REDIS_URL`. Production compose defaults to `RATE_LIMIT_STORAGE_KIND=redis` and `REDIS_URL=redis://valkey:6379`.
+
+When `RATE_LIMIT_STORAGE_KIND=redis`, production (`LV_ENVIRONMENT` not `dev` or `test`) fails fast if `REDIS_URL` is missing or invalid. Supported URL schemes are `redis://` and `valkey://`; use a private compose/VPC network for this storage path. The current server does not accept `rediss://` TLS URLs.
 
 ### Hermes gateway authentication
 

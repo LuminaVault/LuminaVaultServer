@@ -11,11 +11,10 @@ import NIOCore
 /// - **managed** → delegate to `fallback` (the central Hermes gateway,
 ///   `DefaultHermesLLMStreamService`). True token streaming + Hermes agentic
 ///   loop. Unchanged behaviour.
-/// - **byok** → call the non-streaming `RoutedLLMTransport`
-///   (`transport`) — which resolves the tenant's own provider key + model and
-///   fails over across their fallback chain — then emit the full reply as a
-///   single `ChatStreamChunk`. Reliable for every provider on day one; true
-///   per-token SSE per provider is a Phase 2 enhancement.
+/// - **byok** → call the routed transport, which resolves the tenant's own
+///   provider key + model and fails over across their fallback chain. Providers
+///   with `StreamingProviderAdapter` stream native deltas; providers without it
+///   retain the previous single full-reply chunk fallback.
 ///
 /// HER-37 left streaming on the gateway only, so the BYOK toggle changed only
 /// the non-streaming paths and chat silently used the managed model
@@ -48,14 +47,26 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     byokCounter.increment()
                     logger.info("chat stream routed to BYOK provider", metadata: ["model": .string(model)])
                     let payload = try Self.makeOpenAIPayload(model: model, request: request)
-                    let metadata = try await transport.chatCompletionsWithMetadata(
-                        payload: payload,
-                        sessionKey: sessionKey,
-                        sessionID: sessionID
-                    )
-                    let text = Self.extractContent(from: metadata.data)
-                    continuation.yield(ChatStreamChunk(delta: text, finishReason: "stop"))
-                    continuation.finish()
+                    if let streamingTransport = transport as? any StreamingHermesChatTransport {
+                        let stream = try await streamingTransport.chatCompletionsStream(
+                            payload: payload,
+                            sessionKey: sessionKey,
+                            sessionID: sessionID
+                        )
+                        for try await chunk in stream {
+                            continuation.yield(chunk)
+                        }
+                        continuation.finish()
+                    } else {
+                        let metadata = try await transport.chatCompletionsWithMetadata(
+                            payload: payload,
+                            sessionKey: sessionKey,
+                            sessionID: sessionID
+                        )
+                        let text = Self.extractContent(from: metadata.data)
+                        continuation.yield(ChatStreamChunk(delta: text, finishReason: "stop"))
+                        continuation.finish()
+                    }
                 } else {
                     for try await chunk in fallback.chatStream(
                         sessionKey: sessionKey,

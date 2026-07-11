@@ -264,6 +264,7 @@ func buildRouter(
     kbCompileTransportOverride: (any HermesChatTransport)? = nil
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
+    let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
     // HER-310 — gate DB-ticking background services (cron, reconciler, the
     // achievements worker) so they never start when there's no database
     // (no-DB tests) where their `fluent.db()` calls fatalError with
@@ -447,11 +448,17 @@ func buildRouter(
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
     // HER-200 M3 — single config key controls rate-limit storage. Memory
-    // is fine for single-process; Redis seam reserved for multi-replica.
-    let rateLimitStorage = makeRateLimitStorage(
+    // is fine for single-process; Redis/Valkey is required for multi-replica.
+    let rateLimitStorageResult = try makeRateLimitStorage(
         kind: services.rateLimitStorageKind,
+        redisURL: reader.string(forKey: "redis.url", default: ""),
+        environment: lvEnvironment,
         logger: Logger(label: "lv.ratelimit")
     )
+    let rateLimitStorage = rateLimitStorageResult.storage
+    if let managedRateLimitStorage = rateLimitStorageResult.managedService {
+        managedServices.append(managedRateLimitStorage)
+    }
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
@@ -557,7 +564,6 @@ func buildRouter(
     // `DefaultHermesLLMStreamService`). Fail closed in any non-dev
     // profile so a missing key cannot silently degrade prod to
     // unauthenticated traffic.
-    let lvEnvironment = reader.string(forKey: "lv.environment", default: "dev")
     if services.hermesAPIKey.isEmpty {
         if lvEnvironment != "dev" {
             fatalError(
@@ -964,6 +970,7 @@ func buildRouter(
             apiKey: apiKey,
             baseURL: baseURL,
             session: .shared,
+            httpClient: BYOHTTP.httpClient,
             logger: routingLogger
         ))
     }
@@ -985,6 +992,7 @@ func buildRouter(
             apiKey: envKey,
             baseURL: baseURL,
             session: .shared,
+            httpClient: BYOHTTP.httpClient,
             logger: routingLogger,
             userCredentials: userCredentialStore,
             xaiOAuthContainerResolver: xaiResolver
@@ -1394,10 +1402,18 @@ func buildRouter(
         embeddingService = embeddingRegistry.active
     }
 
+    let memoryHitCountUpdates = MemoryHitCountUpdateQueue(fluent: services.fluent)
+    func memoryRepository() -> MemoryRepository {
+        MemoryRepository(
+            fluent: services.fluent,
+            hitCountUpdates: memoryHitCountUpdates
+        )
+    }
+
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let memoryService = HermesMemoryService(
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         eventBus: eventBus,
@@ -1405,7 +1421,7 @@ func buildRouter(
     )
     let memoryController = MemoryController(
         service: memoryService,
-        repository: MemoryRepository(fluent: services.fluent),
+        repository: memoryRepository(),
         embeddings: embeddingService,
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
@@ -1455,7 +1471,7 @@ func buildRouter(
         jinaEnricher: jinaEnricher,
         captureHooks: captureHookDispatcher,
         embeddings: embeddingService,
-        memories: MemoryRepository(fluent: services.fluent)
+        memories: memoryRepository()
     )
     let linkCaptureService = LinkCaptureService(
         vaultPaths: vaultPaths,
@@ -1506,7 +1522,7 @@ func buildRouter(
     let queryController = QueryController(
         service: memoryService,
         achievements: achievementsWorker,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
@@ -1517,7 +1533,10 @@ func buildRouter(
     let queryWithByo = byoHermesMiddleware.map { queryBase.add(middleware: $0) } ?? queryBase
     let queryGroup = queryWithByo
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
-    queryController.addRoutes(to: queryGroup)
+        .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
+    let queryStreamGroup = queryGroup
+        .add(middleware: InFlightLimitMiddleware())
+    queryController.addRoutes(to: queryGroup, streamRouter: queryStreamGroup)
 
     // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
     // native-streaming provider (Gemini today), route the chat stream
@@ -1540,7 +1559,7 @@ func buildRouter(
     // scope because managed turns hit the gateway.
     let conversationController = ConversationController(
         fluent: services.fluent,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         streamService: conversationStreamService,
         followUpGenerator: followUpGenerator,
@@ -1555,12 +1574,15 @@ func buildRouter(
     let conversationsGroup = conversationsWithByo
         .add(middleware: hermesProfileMiddleware)
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
-    conversationController.addRoutes(to: conversationsGroup)
+    let conversationsStreamGroup = conversationsGroup
+        .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
+        .add(middleware: InFlightLimitMiddleware())
+    conversationController.addRoutes(to: conversationsGroup, streamRouter: conversationsStreamGroup)
 
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         vaultPaths: vaultPaths,
         fluent: services.fluent,
@@ -1613,7 +1635,7 @@ func buildRouter(
         eventBus: eventBus,
         achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService
     )
     let vaultGroup = router.group("/v1/vault")
@@ -1647,7 +1669,7 @@ func buildRouter(
     let memoryCompileService = MemoryCompileService(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memory-compile"),
@@ -1737,7 +1759,7 @@ func buildRouter(
             fluent: services.fluent,
             vaultPaths: vaultPaths,
             spaces: spacesService,
-            memories: MemoryRepository(fluent: services.fluent),
+            memories: memoryRepository(),
             embeddings: embeddingService,
             logger: Logger(label: "lv.import.vault")
         )
@@ -1946,7 +1968,7 @@ func buildRouter(
     let todosController = TodosController(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         logger: Logger(label: "lv.todos")
     )
@@ -1959,7 +1981,7 @@ func buildRouter(
     if reader.string(forKey: "synthesis.workerEnabled", default: "false").lowercased() == "true" {
         let synthesisWorker = SynthesisWorker(
             fluent: services.fluent,
-            memories: MemoryRepository(fluent: services.fluent),
+            memories: memoryRepository(),
             transport: routedTransport,
             defaultModel: services.hermesDefaultModel,
             logger: Logger(label: "lv.synthesis")
@@ -2064,7 +2086,7 @@ func buildRouter(
         transport: routedTransport,
         fluent: services.fluent,
         embeddings: embeddingService,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.health-correlate")
     )
@@ -2250,7 +2272,7 @@ func buildRouter(
     let skillRunner = SkillRunner(
         catalog: skillCatalog,
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: memoryRepository(),
         embeddings: embeddingService,
         apns: pushService,
         defaultModel: services.hermesDefaultModel,

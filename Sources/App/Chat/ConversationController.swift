@@ -58,12 +58,15 @@ struct ConversationController {
         self.logger = logger
     }
 
-    func addRoutes(to router: RouterGroup<AppRequestContext>) {
+    func addRoutes(
+        to router: RouterGroup<AppRequestContext>,
+        streamRouter: RouterGroup<AppRequestContext>? = nil
+    ) {
         router.post("", use: create)
         router.get("", use: list)
         router.get("/:id", use: getOne)
         router.delete("/:id", use: delete)
-        router.post("/:id/messages/stream", use: streamReply)
+        (streamRouter ?? router).post("/:id/messages/stream", use: streamReply)
     }
 
     // MARK: - CRUD

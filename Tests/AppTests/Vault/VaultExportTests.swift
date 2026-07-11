@@ -89,8 +89,8 @@ struct VaultExportTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            _ = try await Self.upload(client: client, token: token, path: "notes/a.md", body: "# a")
-            _ = try await Self.upload(client: client, token: token, path: "notes/b.md", body: "# b")
+            let aPath = try await Self.upload(client: client, token: token, path: "notes/a.md", body: "# a")
+            let bPath = try await Self.upload(client: client, token: token, path: "notes/b.md", body: "# b")
 
             try await client.execute(
                 uri: "/v1/vault/export",
@@ -101,8 +101,8 @@ struct VaultExportTests {
                 let bytes = Array(Data(buffer: response.body))
                 try Self.assertValidZip(bytes: bytes)
                 let names = try Self.entryNames(zip: bytes)
-                #expect(names.contains("raw/notes/a.md"))
-                #expect(names.contains("raw/notes/b.md"))
+                #expect(names.contains("raw/\(aPath)"))
+                #expect(names.contains("raw/\(bPath)"))
             }
         }
     }
@@ -112,7 +112,7 @@ struct VaultExportTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
-            _ = try await Self.upload(client: client, token: token, path: "notes/old.md", body: "# old")
+            let uploadedPath = try await Self.upload(client: client, token: token, path: "notes/old.md", body: "# old")
 
             // ISO timestamp in the future — should exclude everything.
             let future = ISO8601DateFormatter().string(from: Date().addingTimeInterval(60 * 60))
@@ -127,7 +127,7 @@ struct VaultExportTests {
                 let bytes = Array(Data(buffer: response.body))
                 try Self.assertValidZip(bytes: bytes)
                 let names = try Self.entryNames(zip: bytes)
-                #expect(!names.contains("raw/notes/old.md"))
+                #expect(!names.contains("raw/\(uploadedPath)"))
                 // SOUL.md + memories.json are always included.
                 #expect(names.contains("SOUL.md"))
             }

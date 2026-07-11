@@ -1,5 +1,7 @@
+import AsyncHTTPClient
 import Foundation
 import Logging
+import NIOCore
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
@@ -15,11 +17,13 @@ import Logging
 ///
 /// `kind` is set at construction so log lines, metrics labels, and
 /// `ProviderError` cases identify the upstream correctly.
-struct OpenAICompatibleAdapter: ProviderAdapter {
+struct OpenAICompatibleAdapter: StreamingProviderAdapter {
     let kind: ProviderKind
     let apiKey: String
     let baseURL: URL
     let session: URLSession
+    let httpClient: HTTPClient
+    let requestTimeout: TimeAmount
     let logger: Logger
     /// HER-252 — optional per-user credential resolver. When present, the
     /// adapter consults the store via `LLMRoutingContext.currentUser` on
@@ -40,6 +44,8 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         apiKey: String,
         baseURL: URL,
         session: URLSession = .shared,
+        httpClient: HTTPClient = .shared,
+        requestTimeout: TimeAmount = .seconds(120),
         logger: Logger,
         userCredentials: UserCredentialStore? = nil,
         xaiOAuthContainerResolver: (@Sendable (UUID) async -> HermesContainerHandle?)? = nil
@@ -48,6 +54,8 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.session = session
+        self.httpClient = httpClient
+        self.requestTimeout = requestTimeout
         self.logger = logger
         self.userCredentials = userCredentials
         self.xaiOAuthContainerResolver = xaiOAuthContainerResolver
@@ -105,6 +113,57 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
         logger.error("\(kind.rawValue) upstream \(error.reasonCode) status=\(status)")
         throw error
+    }
+
+    func chatCompletionsStream(
+        payload: Data,
+        sessionKey _: String,
+        sessionID _: String?
+    ) async throws -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+        let url = Self.endpoint(for: kind, baseURL: resolvedBaseURL)
+        let streamPayload = Self.setStream(true, in: payload)
+        let kind = kind
+        let logger = logger
+        let httpClient = httpClient
+        let requestTimeout = requestTimeout
+
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let work = Task {
+            do {
+                let request = Self.makeStreamRequest(
+                    url: url,
+                    apiKey: resolvedKey,
+                    kind: kind,
+                    payloadData: streamPayload
+                )
+                let response = try await httpClient.execute(request, timeout: requestTimeout)
+                let status = Int(response.status.code)
+                guard (200 ..< 300).contains(status) else {
+                    let body = try await Self.collectBodyPreview(response.body)
+                    let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: body)
+                    logger.error("\(kind.rawValue) stream upstream \(error.reasonCode) status=\(status)")
+                    continuation.finish(throwing: error)
+                    return
+                }
+                try await Self.consumeStreamBody(response.body, provider: kind, continuation: continuation, logger: logger)
+                continuation.finish()
+            } catch let providerError as ProviderError {
+                continuation.finish(throwing: providerError)
+            } catch let streamError as HermesStreamUpstreamError {
+                continuation.finish(throwing: ProviderError.transient(
+                    provider: kind,
+                    status: 0,
+                    body: String(describing: streamError)
+                ))
+            } catch is CancellationError {
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: ProviderError.network(provider: kind, underlying: error))
+            }
+        }
+        continuation.onTermination = { _ in work.cancel() }
+        return stream
     }
 
     // MARK: - Credential resolution
@@ -186,6 +245,97 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             "max_tokens": 1,
         ]
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
+    }
+
+    private static func makeStreamRequest(
+        url: URL,
+        apiKey: String,
+        kind: ProviderKind,
+        payloadData: Data
+    ) -> HTTPClientRequest {
+        var request = HTTPClientRequest(url: url.absoluteString)
+        request.method = .POST
+        request.headers.add(name: "Content-Type", value: "application/json")
+        request.headers.add(name: "Accept", value: "text/event-stream")
+        if !apiKey.isEmpty {
+            request.headers.add(name: "Authorization", value: "Bearer \(apiKey)")
+        }
+        if kind == .openRouter {
+            request.headers.add(name: "HTTP-Referer", value: "https://luminavault.app")
+            request.headers.add(name: "X-Title", value: "LuminaVault")
+        }
+        request.body = .bytes(payloadData)
+        return request
+    }
+
+    private static func consumeStreamBody<Body: AsyncSequence>(
+        _ body: Body,
+        provider: ProviderKind,
+        continuation: AsyncThrowingStream<ChatStreamChunk, Error>.Continuation,
+        logger: Logger
+    ) async throws where Body.Element == ByteBuffer {
+        var buffer = ""
+        let decoder = JSONDecoder()
+        var finished = false
+        var totalBytes = 0
+        let maxStreamBytes = 64 * 1024 * 1024
+
+        for try await chunk in body {
+            totalBytes += chunk.readableBytes
+            if totalBytes > maxStreamBytes {
+                throw ProviderError.transient(provider: provider, status: 0, body: "provider stream exceeded \(maxStreamBytes) bytes")
+            }
+            if let text = chunk.getString(at: chunk.readerIndex, length: chunk.readableBytes) {
+                buffer.append(text)
+            }
+            while let terminator = buffer.range(of: "\n\n") {
+                let record = String(buffer[..<terminator.lowerBound])
+                buffer.removeSubrange(..<terminator.upperBound)
+                if try DefaultHermesLLMStreamService.processRecord(
+                    record,
+                    decoder: decoder,
+                    yield: { continuation.yield($0) },
+                    logger: logger
+                ) {
+                    finished = true
+                    break
+                }
+            }
+            if finished { break }
+        }
+
+        if !finished, !buffer.isEmpty {
+            _ = try DefaultHermesLLMStreamService.processRecord(
+                buffer,
+                decoder: decoder,
+                yield: { continuation.yield($0) },
+                logger: logger
+            )
+        }
+    }
+
+    private static func collectBodyPreview<Body: AsyncSequence>(
+        _ body: Body,
+        maxBytes: Int = 4096
+    ) async throws -> Data where Body.Element == ByteBuffer {
+        var data = Data()
+        for try await chunk in body {
+            var chunk = chunk
+            let readable = min(chunk.readableBytes, maxBytes - data.count)
+            if readable > 0, let part = chunk.readData(length: readable) {
+                data.append(part)
+            }
+            if data.count >= maxBytes { break }
+        }
+        return data
+    }
+
+    private static func setStream(_ enabled: Bool, in payload: Data) -> Data {
+        guard var dict = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] else {
+            return payload
+        }
+        dict["stream"] = enabled
+        return (try? JSONSerialization.data(withJSONObject: dict)) ?? payload
     }
 
     /// Routes the chat-completions URL per provider. Every supported

@@ -11,6 +11,10 @@ struct MemoryRepository {
     /// nil so existing `MemoryRepository(fluent:)` constructions keep working
     /// while the telemetry wiring lands incrementally.
     var telemetry: RouteTelemetry?
+    /// App-owned queue for best-effort hit-count bumps. Nil keeps test and
+    /// migration constructions lightweight; the HTTP app injects a shared
+    /// queue so semantic-search latency never waits on counter writes.
+    var hitCountUpdates: MemoryHitCountUpdateQueue?
 
     func create(content: String, context: AppRequestContext) async throws -> Memory {
         let tenantID = try context.requireTenantID()
@@ -182,11 +186,8 @@ struct MemoryRepository {
         """).all(decoding: MemorySearchRow.self)
 
         let hitIDs = rows.map(\.id)
-        if !hitIDs.isEmpty {
-            let fluent = fluent
-            Task.detached { [hitIDs] in
-                try? await MemoryRepository.bumpQueryHits(fluent: fluent, ids: hitIDs)
-            }
+        if !hitIDs.isEmpty, let hitCountUpdates {
+            await hitCountUpdates.enqueue(ids: hitIDs)
         }
 
         return rows.map {
