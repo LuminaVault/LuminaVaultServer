@@ -129,6 +129,9 @@ services:
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luminavault}
       FLUENT_AUTOMIGRATE: "true"
+      # --- Rate limiting ---
+      RATE_LIMIT_STORAGE_KIND: ${RATE_LIMIT_STORAGE_KIND:-memory}
+      REDIS_URL: ${REDIS_URL:-}
       # --- Auth ---
       JWT_HMAC_SECRET: ${JWT_HMAC_SECRET:-dev-secret-32chars-not-for-prod-x}
       JWT_KID: lv-dev

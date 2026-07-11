@@ -44,9 +44,12 @@ struct QueryController {
         self.logger = logger
     }
 
-    func addRoutes(to router: RouterGroup<AppRequestContext>) {
+    func addRoutes(
+        to router: RouterGroup<AppRequestContext>,
+        streamRouter: RouterGroup<AppRequestContext>? = nil
+    ) {
         router.post("", use: query)
-        router.post("/stream", use: queryStream)
+        (streamRouter ?? router).post("/stream", use: queryStream)
     }
 
     @Sendable

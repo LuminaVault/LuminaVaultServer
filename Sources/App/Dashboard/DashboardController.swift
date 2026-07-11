@@ -203,20 +203,38 @@ struct DashboardController {
     }
 
     /// Current consecutive-day activity streak: the length of the most recent
-    /// unbroken run of days with at least one memory or conversation. Day keys
-    /// are computed in UTC and returned as `YYYY-MM-DD` text to avoid Postgres
-    /// `date`→`Date` decoding quirks; the run length is computed in Swift.
-    private static func currentStreakDays(tenantID: UUID, db: any Database) async throws -> Int {
+    /// unbroken run of days with at least one memory or conversation. Computed
+    /// in SQL from distinct UTC activity days so large tenants do not ship
+    /// their full history back to Swift just to count the current island.
+    static func currentStreakDays(tenantID: UUID, db: any Database) async throws -> Int {
         guard let sql = db as? any SQLDatabase else { return 0 }
-        struct DayRow: Decodable { let d: String }
-        let rows = try await sql.raw("""
-        SELECT to_char((created_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS d FROM memories
-        WHERE tenant_id = \(bind: tenantID)
-        UNION
-        SELECT to_char((created_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS d FROM conversations
-        WHERE tenant_id = \(bind: tenantID)
-        """).all(decoding: DayRow.self)
-        return consecutiveStreak(fromDayKeys: rows.map(\.d))
+        struct CountRow: Decodable { let count: Int }
+        let row = try await sql.raw("""
+        WITH activity_days AS (
+            SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date AS day
+            FROM memories
+            WHERE tenant_id = \(bind: tenantID)
+            UNION
+            SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date AS day
+            FROM conversations
+            WHERE tenant_id = \(bind: tenantID)
+        ),
+        ranked AS (
+            SELECT day,
+                   day - (row_number() OVER (ORDER BY day))::int AS island_key
+            FROM activity_days
+        ),
+        latest AS (
+            SELECT island_key
+            FROM ranked
+            ORDER BY day DESC
+            LIMIT 1
+        )
+        SELECT COUNT(*)::int AS count
+        FROM ranked
+        WHERE island_key = (SELECT island_key FROM latest)
+        """).first(decoding: CountRow.self)
+        return row?.count ?? 0
     }
 
     /// Pure, testable: given `YYYY-MM-DD` day keys (any order, may dup),

@@ -8,6 +8,43 @@ import Testing
 /// keyer keeps two tenants behind the same NAT in separate buckets, while
 /// still degrading to a per-IP bucket when no identity is attached.
 struct RateLimitMiddlewareTests {
+    private actor StreamGate {
+        private var entered = false
+        private var released = false
+        private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+        func enterAndWait() async {
+            entered = true
+            let waiters = enteredWaiters
+            enteredWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+
+            guard !released else { return }
+            await withCheckedContinuation { continuation in
+                releaseWaiters.append(continuation)
+            }
+        }
+
+        func waitUntilEntered() async {
+            guard !entered else { return }
+            await withCheckedContinuation { continuation in
+                enteredWaiters.append(continuation)
+            }
+        }
+
+        func release() {
+            released = true
+            let waiters = releaseWaiters
+            releaseWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
+    }
+
     /// Test-only auth stub: when `x-test-user: <uuid>` is present, attaches
     /// a synthetic `User` to the request context so the rate-limit
     /// middleware sees an `identity`. No header → identity stays nil and
@@ -47,6 +84,65 @@ struct RateLimitMiddlewareTests {
             .add(middleware: RateLimitMiddleware(policy: policy, storage: storage))
             .post("") { _, _ in Response(status: .ok) }
         return Application(router: router)
+    }
+
+    private static func makeQueryStreamApp(gate: StreamGate) -> some ApplicationProtocol {
+        let router = Router(context: AppRequestContext.self)
+        router.group("/v1/query")
+            .add(middleware: StubAuth())
+            .add(middleware: InFlightLimitMiddleware(maxConcurrent: 1))
+            .post("/stream") { _, _ in
+                await gate.enterAndWait()
+                return Response(status: .ok)
+            }
+        return Application(router: router)
+    }
+
+    private static func makeConversationStreamApp(gate: StreamGate) -> some ApplicationProtocol {
+        let router = Router(context: AppRequestContext.self)
+        router.group("/v1/conversations")
+            .add(middleware: StubAuth())
+            .add(middleware: InFlightLimitMiddleware(maxConcurrent: 1))
+            .post("/:id/messages/stream") { _, _ in
+                await gate.enterAndWait()
+                return Response(status: .ok)
+            }
+        return Application(router: router)
+    }
+
+    private static func assertSecondConcurrentRequestIsRejected(
+        app: some ApplicationProtocol,
+        gate: StreamGate,
+        uri: String
+    ) async throws {
+        try await app.test(.router) { client in
+            let userID = UUID()
+            let headers: HTTPFields = [
+                .init("x-test-user")!: userID.uuidString,
+                .init("x-real-ip")!: "10.9.8.7",
+            ]
+
+            async let first: Void = client.execute(
+                uri: uri,
+                method: .post,
+                headers: headers
+            ) { response in
+                #expect(response.status == .ok)
+            }
+
+            await gate.waitUntilEntered()
+
+            try await client.execute(
+                uri: uri,
+                method: .post,
+                headers: headers
+            ) { response in
+                #expect(response.status == .tooManyRequests)
+            }
+
+            await gate.release()
+            try await first
+        }
     }
 
     @Test
@@ -132,5 +228,32 @@ struct RateLimitMiddlewareTests {
                 #expect(response.status == .ok)
             }
         }
+    }
+
+    @Test
+    func `query policy uses the per user keyer`() {
+        #expect(RateLimitPolicy.queryByUser.max == RateLimitPolicy.chatByUser.max)
+        #expect(RateLimitPolicy.queryByUser.window == RateLimitPolicy.chatByUser.window)
+    }
+
+    @Test
+    func `query stream rejects a second concurrent stream for the same user`() async throws {
+        let gate = StreamGate()
+        try await Self.assertSecondConcurrentRequestIsRejected(
+            app: Self.makeQueryStreamApp(gate: gate),
+            gate: gate,
+            uri: "/v1/query/stream"
+        )
+    }
+
+    @Test
+    func `conversation stream rejects a second concurrent stream for the same user`() async throws {
+        let gate = StreamGate()
+        let conversationID = UUID()
+        try await Self.assertSecondConcurrentRequestIsRejected(
+            app: Self.makeConversationStreamApp(gate: gate),
+            gate: gate,
+            uri: "/v1/conversations/\(conversationID)/messages/stream"
+        )
     }
 }

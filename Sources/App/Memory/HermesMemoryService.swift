@@ -38,6 +38,14 @@ protocol HermesChatTransport: Sendable {
     func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
 
+protocol StreamingHermesChatTransport: HermesChatTransport {
+    func chatCompletionsStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?
+    ) async throws -> AsyncThrowingStream<ChatStreamChunk, Error>
+}
+
 struct HermesChatTransportMetadata {
     let data: Data
     let headers: [String: String]

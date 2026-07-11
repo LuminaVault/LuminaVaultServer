@@ -78,10 +78,10 @@ struct VaultExportService {
         )
 
         // --- memories.json (synthesized snapshot) ---
-        let memJSON = try await fetchMemoriesJSON(tenantID: tenantID, since: since)
-        try await Self.writeStoredEntry(
+        try await streamMemoriesJSONEntry(
             name: "memories.json",
-            data: Array(memJSON),
+            tenantID: tenantID,
+            since: since,
             mtime: exportedAt,
             offset: &offset,
             entries: &entries,
@@ -131,18 +131,133 @@ struct VaultExportService {
 
     // MARK: - Memories snapshot
 
-    /// Pulls every memory row for the tenant (optionally filtered by
-    /// `created_at >= since`) and encodes as a stable JSON array.
-    private func fetchMemoriesJSON(tenantID: UUID, since: Date?) async throws -> Data {
+    /// Streams memory rows for the tenant (optionally filtered by
+    /// `created_at >= since`) as a stable JSON array. Rows are fetched in
+    /// bounded pages so large tenants don't need a full memories table snapshot
+    /// resident in RAM before ZIP bytes can flow.
+    private func streamMemoriesJSONEntry(
+        name: String,
+        tenantID: UUID,
+        since: Date?,
+        mtime: Date,
+        offset: inout UInt64,
+        entries: inout [CentralEntry],
+        writer: inout some ResponseBodyWriter
+    ) async throws {
+        let nameBytes = Array(name.utf8)
+        let (dosTime, dosDate) = Self.dosDateTime(mtime)
+        let entryOffset = offset
+
+        let lfh = Self.encodeLocalFileHeader(
+            nameBytes: nameBytes,
+            dosTime: dosTime,
+            dosDate: dosDate
+        )
+        offset += UInt64(lfh.count)
+        try await writer.write(ByteBuffer(bytes: lfh))
+
+        var crc: UInt32 = 0xFFFF_FFFF
+        var written: Int64 = 0
+        var first = true
+        var pageOffset = 0
+        let pageSize = 200
+        let encoder = Self.memoryExportEncoder()
+
+        try await Self.writeStoredEntryChunk(
+            Array("[\n".utf8),
+            crc: &crc,
+            written: &written,
+            offset: &offset,
+            writer: &writer
+        )
+        while true {
+            let rows = try await fetchMemoryExportPage(
+                tenantID: tenantID,
+                since: since,
+                offset: pageOffset,
+                limit: pageSize
+            )
+            guard !rows.isEmpty else { break }
+            for row in rows {
+                if !first {
+                    try await Self.writeStoredEntryChunk(
+                        Array(",\n".utf8),
+                        crc: &crc,
+                        written: &written,
+                        offset: &offset,
+                        writer: &writer
+                    )
+                }
+                try await Self.writeStoredEntryChunk(
+                    Array("  ".utf8),
+                    crc: &crc,
+                    written: &written,
+                    offset: &offset,
+                    writer: &writer
+                )
+                let rowData = try encoder.encode(row)
+                try await Self.writeStoredEntryChunk(
+                    Array(rowData),
+                    crc: &crc,
+                    written: &written,
+                    offset: &offset,
+                    writer: &writer
+                )
+                first = false
+            }
+            pageOffset += rows.count
+            if rows.count < pageSize { break }
+        }
+        if !first {
+            try await Self.writeStoredEntryChunk(
+                Array("\n".utf8),
+                crc: &crc,
+                written: &written,
+                offset: &offset,
+                writer: &writer
+            )
+        }
+        try await Self.writeStoredEntryChunk(
+            Array("]\n".utf8),
+            crc: &crc,
+            written: &written,
+            offset: &offset,
+            writer: &writer
+        )
+
+        let finalCRC = crc ^ 0xFFFF_FFFF
+        let entrySize = UInt32(clamping: written)
+        let dd = Self.encodeDataDescriptor(crc: finalCRC, size: entrySize)
+        offset += UInt64(dd.count)
+        try await writer.write(ByteBuffer(bytes: dd))
+
+        entries.append(CentralEntry(
+            name: nameBytes,
+            crc: finalCRC,
+            size: entrySize,
+            offset: UInt32(clamping: entryOffset),
+            dosTime: dosTime,
+            dosDate: dosDate,
+            useDataDescriptor: true
+        ))
+    }
+
+    private func fetchMemoryExportPage(
+        tenantID: UUID,
+        since: Date?,
+        offset: Int,
+        limit: Int
+    ) async throws -> [MemoryExportRow] {
         let db = fluent.db()
         let query = Memory.query(on: db, tenantID: tenantID)
             .sort(\.$createdAt, .ascending)
             .sort(\.$id, .ascending)
+            .range(lower: offset, upper: offset + limit)
         if let since {
             _ = query.filter(\.$createdAt >= since)
         }
         let rows = try await query.all()
-        let payload = rows.map { row in
+        return rows.map { row in
             MemoryExportRow(
                 id: row.id,
                 content: row.content,
@@ -150,10 +265,13 @@ struct VaultExportService {
                 createdAt: row.createdAt
             )
         }
+    }
+
+    private static func memoryExportEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(payload)
+        return encoder
     }
 
     private struct MemoryExportRow: Codable {
@@ -340,6 +458,22 @@ struct VaultExportService {
             dosDate: dosDate,
             useDataDescriptor: false
         ))
+    }
+
+    private static func writeStoredEntryChunk(
+        _ bytes: [UInt8],
+        crc: inout UInt32,
+        written: inout Int64,
+        offset: inout UInt64,
+        writer: inout some ResponseBodyWriter
+    ) async throws {
+        guard Int64(bytes.count) <= maxEntryBytes - written else {
+            throw HTTPError(.contentTooLarge, message: "synthesized entry exceeds zip32 limit")
+        }
+        crc = CRC32.update(crc: crc, bytes: bytes)
+        written += Int64(bytes.count)
+        offset += UInt64(bytes.count)
+        try await writer.write(ByteBuffer(bytes: bytes))
     }
 
     // MARK: - ZIP header encoders

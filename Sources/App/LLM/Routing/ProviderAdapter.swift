@@ -31,6 +31,18 @@ protocol ProviderAdapter: Sendable {
     func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error>
 }
 
+/// Optional extension for providers that can return OpenAI-compatible
+/// `text/event-stream` chat deltas natively. The routed stream service uses
+/// this when available and keeps the single-shot fallback for providers that
+/// only implement `ProviderAdapter`.
+protocol StreamingProviderAdapter: ProviderAdapter {
+    func chatCompletionsStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?
+    ) async throws -> AsyncThrowingStream<ChatStreamChunk, Error>
+}
+
 extension ProviderAdapter {
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
