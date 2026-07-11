@@ -241,32 +241,53 @@ struct MultimodalIngestionService {
 
     private func process(item: IngestionItem, tenantID: UUID, spaceID: UUID?) async throws {
         let source: String
-        if item.kind == IngestionSourceKindDTO.url.rawValue, let url = item.url {
-            let captured = try await linkCapture.captureLink(tenantID: tenantID, url: url, note: nil, spaceID: spaceID)
-            item.vaultFileID = captured.fileID
-            source = url
-        } else if let vaultFileID = item.vaultFileID,
-                  let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == vaultFileID).first()
-        {
-            source = vaultPaths.rawDirectory(for: tenantID).appendingPathComponent(row.path).path
-        } else {
-            throw HTTPError(.conflict, message: "item has no source")
+        do {
+            if item.kind == IngestionSourceKindDTO.url.rawValue, let url = item.url {
+                if item.vaultFileID == nil {
+                    let captured = try await linkCapture.captureLink(tenantID: tenantID, url: url, note: nil, spaceID: spaceID)
+                    item.vaultFileID = captured.fileID
+                }
+                source = url
+            } else if let vaultFileID = item.vaultFileID,
+                      let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == vaultFileID).first()
+            {
+                source = vaultPaths.rawDirectory(for: tenantID).appendingPathComponent(row.path).path
+            } else {
+                throw HTTPError(.conflict, message: "item has no source")
+            }
+        } catch {
+            item.state = IngestionItemStateDTO.failed.rawValue
+            item.errorMessage = "Could not prepare source: \(String(describing: error).prefix(400))"
+            try await item.save(on: fluent.db())
+            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            return
         }
 
         item.state = IngestionItemStateDTO.extracting.rawValue
         item.attempts += 1
         try await item.save(on: fluent.db())
+        let result: HermesIngestionResult
         do {
-            let result = try await processor.process(
+            result = try await processor.process(
                 tenantID: tenantID,
                 source: source,
                 contentType: item.contentType ?? (item.kind == "url" ? "text/html" : "application/octet-stream")
             )
-            if let current = try await IngestionItem.query(on: fluent.db(), tenantID: tenantID)
-                .filter(\.$id == item.id).first(), current.state == IngestionItemStateDTO.cancelled.rawValue
-            {
-                return
-            }
+        } catch {
+            item.state = IngestionItemStateDTO.blockedCapability.rawValue
+            item.errorMessage = "Hermes multimodal ingestion unavailable: \(String(describing: error).prefix(400))"
+            try await item.save(on: fluent.db())
+            logger.warning("ingestion blocked tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
+            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            return
+        }
+
+        if let current = try await IngestionItem.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == item.id).first(), current.state == IngestionItemStateDTO.cancelled.rawValue
+        {
+            return
+        }
+        do {
             item.state = IngestionItemStateDTO.saving.rawValue
             try await item.save(on: fluent.db())
             let sourceFileID = item.vaultFileID
@@ -283,10 +304,10 @@ struct MultimodalIngestionService {
             item.errorMessage = nil
             try await item.save(on: fluent.db())
         } catch {
-            item.state = IngestionItemStateDTO.blockedCapability.rawValue
-            item.errorMessage = "Hermes multimodal ingestion unavailable: \(String(describing: error).prefix(400))"
+            item.state = IngestionItemStateDTO.failed.rawValue
+            item.errorMessage = "Could not save derived memory: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
-            logger.warning("ingestion blocked tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
+            logger.warning("ingestion save failed tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
         }
         try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
     }
@@ -295,7 +316,7 @@ struct MultimodalIngestionService {
         guard let itemID = item.id, let fileName = item.fileName, let contentType = item.contentType else {
             throw HTTPError(.badRequest, message: "missing file metadata")
         }
-        let safeName = try (VaultController.sanitizePath(fileName) as NSString).lastPathComponent
+        let safeName = Self.safeFileName((fileName as NSString).lastPathComponent)
         let folder: String = if let spaceID = batch.spaceID,
                                 let space = try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first()
         {
@@ -303,7 +324,7 @@ struct MultimodalIngestionService {
         } else {
             "inbox"
         }
-        let relative = try VaultController.sanitizePath("\(folder)/\(safeName)")
+        let relative = try VaultController.sanitizePath("\(folder)/\(itemID.uuidString.lowercased())-\(safeName)")
         try VaultController.validateContentType(contentType, againstExtension: (safeName as NSString).pathExtension.lowercased())
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let target = try VaultController.resolveInside(rawRoot: vaultPaths.rawDirectory(for: tenantID), relative: relative)
@@ -405,5 +426,21 @@ struct MultimodalIngestionService {
 
     private func chunkDirectory(tenantID: UUID, itemID: UUID) -> URL {
         vaultPaths.tenantRoot(for: tenantID).appendingPathComponent("tmp/ingestion/\(itemID.uuidString)")
+    }
+
+    private static func safeFileName(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        var result = ""
+        var insertedDash = false
+        for scalar in value.unicodeScalars {
+            if allowed.contains(scalar) {
+                result.unicodeScalars.append(scalar)
+                insertedDash = false
+            } else if !insertedDash {
+                result.append("-")
+                insertedDash = true
+            }
+        }
+        return String(result.prefix(180)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 }

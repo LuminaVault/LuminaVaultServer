@@ -1913,7 +1913,7 @@ func buildRouter(
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService)
     let ingestionGroup = router.group("/v1/ingestions")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
+        .add(middleware: RateLimitMiddleware(policy: .ingestionUploadByUser, storage: rateLimitStorage))
     ingestionController.addRoutes(to: ingestionGroup)
     if fluentEnabled, lvEnvironment != "test" {
         managedServices.append(MultimodalIngestionWorker(service: multimodalIngestionService))
@@ -2203,7 +2203,7 @@ func buildRouter(
     // Durable claim/entity/event extraction. The worker is feature-gated for
     // a measured backfill rollout; graph reads remain available while off.
     if fluentEnabled, lvEnvironment != "test",
-       reader.string(forKey: "knowledgeGraph.workerEnabled", default: "false").lowercased() == "true" {
+       reader.string(forKey: "knowledgeGraph.workerEnabled", default: "true").lowercased() == "true" {
         managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent))
     } else {
         routingLogger.info("knowledge graph worker disabled (set KNOWLEDGE_GRAPH_WORKER_ENABLED=true to enable)")

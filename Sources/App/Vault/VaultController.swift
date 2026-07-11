@@ -660,7 +660,9 @@ struct VaultController {
     private static func parseISODate(_ raw: String) -> Date? {
         let withFractional = ISO8601DateFormatter()
         withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = withFractional.date(from: raw) { return d }
+        if let d = withFractional.date(from: raw) {
+            return d
+        }
         let plain = ISO8601DateFormatter()
         return plain.date(from: raw)
     }
@@ -682,6 +684,16 @@ struct VaultController {
         // container MIME (`image/heif`) and sometimes the codec MIME
         // (`image/heic`).
         "heic": ["image/heic", "image/heif"],
+        "heif": ["image/heif", "image/heic"],
+        "pdf": ["application/pdf"],
+        "mp3": ["audio/mpeg", "audio/mp3"],
+        "m4a": ["audio/mp4", "audio/x-m4a"],
+        "aac": ["audio/aac"],
+        "wav": ["audio/wav", "audio/x-wav"],
+        "flac": ["audio/flac", "audio/x-flac"],
+        "mp4": ["video/mp4"],
+        "mov": ["video/quicktime"],
+        "webm": ["video/webm"],
     ]
 
     static func sanitizePath(_ raw: String) throws -> String {

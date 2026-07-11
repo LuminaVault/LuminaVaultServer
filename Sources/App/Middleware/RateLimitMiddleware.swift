@@ -185,6 +185,9 @@ extension RateLimitPolicy {
     static let memoryCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
     static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
     static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// Resumable ingestion uses 8 MiB chunks, so a 2 GiB file needs 256
+    /// idempotent PUTs. Keep abuse bounded without throttling valid media.
+    static let ingestionUploadByUser = RateLimitPolicy(max: 600, window: 60, keyBuilder: userOrIPKey)
     /// HER-91: vault export streams the entire tenant tree. Expensive on
     /// disk + bandwidth, so cap at a handful per 5-minute window per user.
     static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, keyBuilder: userOrIPKey)

@@ -138,6 +138,8 @@ actor RouterTelemetryService {
                     'server', \(bind: dimensions)::jsonb, \(bind: metadata.executionID.uuidString))
             ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
             """).run()
+            try await sql.raw("DELETE FROM analytics_events WHERE occurred_at < NOW() - interval '90 days'").run()
+            try await sql.raw("DELETE FROM analytics_daily_rollups WHERE day < CURRENT_DATE - interval '13 months'").run()
 
             try await sql.raw("""
             INSERT INTO router_monthly_usage

@@ -62,7 +62,7 @@ services:
       RATE_LIMIT_STORAGE_KIND: ${RATE_LIMIT_STORAGE_KIND:-redis}
       REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
       # --- Knowledge graph extraction (staged rollout; reads stay available while off) ---
-      KNOWLEDGE_GRAPH_WORKER_ENABLED: ${KNOWLEDGE_GRAPH_WORKER_ENABLED:-false}
+      KNOWLEDGE_GRAPH_WORKER_ENABLED: ${KNOWLEDGE_GRAPH_WORKER_ENABLED:-true}
       # --- SMS / phone auth ---
       SMS_KIND: ${SMS_KIND:-logging}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}

@@ -23,11 +23,9 @@ import SQLKit
 ///   `Insight` row per pattern with `section=patterns`. Skips users
 ///   whose most recent pattern row is < 24h old.
 ///
-/// - **Daily contradiction detection** — 04:00 UTC. HER-248. Same
-///   ≥3-memory gate + 24h cooldown as patterns, but asks Hermes to
-///   surface logically incompatible positions on the same subject and
-///   inserts one `Insight` row per contradiction with
-///   `section=contradictions`.
+/// - **Daily contradiction projection** — 04:00 UTC. Reads evidence-backed
+///   contradiction edges from the knowledge graph and inserts one `Insight`
+///   per edge with only its exact source memories. No whole-vault LLM sample.
 ///
 /// Single-replica. Multi-replica = double-fire — add Postgres
 /// advisory-lock leader election when scaling out (out of scope for
@@ -211,7 +209,8 @@ actor SynthesisWorker: Service {
 
     /// Contradiction job for a single tenant. Returns the number of rows
     /// inserted (0 to `maxPatternsPerRun`). Skips users whose most recent
-    /// contradiction row is less than 24h old. Mirrors `runPatternJob`.
+    /// contradiction row is less than 24h old. New rows are projections of
+    /// graph edges, so their source ids remain exact and auditable.
     func runContradictionJob(tenantID: UUID, sessionKey _: String, now: Date) async throws -> Int {
         let cutoff = now.addingTimeInterval(-24 * 3600)
         if let recent = try await Insight.query(on: fluent.db(), tenantID: tenantID)

@@ -220,6 +220,7 @@ struct MemoryController {
                     \(bind: "memory-created:\(memoryID.uuidString)"))
             ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
             """).run()
+            try? await Self.enforceAnalyticsRetention(sql)
         }
 
         // HER-171 — notify the skills runtime a memory landed (best-effort;
@@ -285,6 +286,7 @@ struct MemoryController {
                 VALUES (\(bind: tenantID), \(bind: actorID), 'memory_retrieved', 'server', '{}'::jsonb)
                 """).run()
             }
+            try? await Self.enforceAnalyticsRetention(sql)
         }
         return MemorySearchResponse(hits: hits, summary: answer.summary)
     }
@@ -421,6 +423,7 @@ struct MemoryController {
                 (vault_id, actor_user_id, event_name, source, dimensions)
             VALUES (\(bind: tenantID), \(bind: row.updatedByUserID), 'memory_reviewed', 'server', '{}'::jsonb)
             """).run()
+            try? await Self.enforceAnalyticsRetention(sql)
         }
         return MemoryReviewResponse(memoryId: id, reviewedAt: now, reviewCount: Int(row.reviewCount))
     }
@@ -638,6 +641,11 @@ struct MemoryController {
             throw HTTPError(.badRequest, message: "invalid memory id")
         }
         return id
+    }
+
+    private static func enforceAnalyticsRetention(_ sql: any SQLDatabase) async throws {
+        try await sql.raw("DELETE FROM analytics_events WHERE occurred_at < NOW() - interval '90 days'").run()
+        try await sql.raw("DELETE FROM analytics_daily_rollups WHERE day < CURRENT_DATE - interval '13 months'").run()
     }
 
     private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {

@@ -36,7 +36,7 @@ Everything else has a safe default appropriate for a single-tenant deploy. Empty
 
 ### Knowledge graph extraction
 
-`KNOWLEDGE_GRAPH_WORKER_ENABLED` defaults to `false`. When enabled, a durable
+`KNOWLEDGE_GRAPH_WORKER_ENABLED` defaults to `true`. When enabled, a durable
 `FOR UPDATE SKIP LOCKED` worker incrementally extracts claim, entity, and event
 nodes from memories and reconciles older content. Turning it off pauses new
 extraction and backfill; existing `/v1/knowledge/*` reads, explanations, and

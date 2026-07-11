@@ -8463,7 +8463,7 @@ components:
       type: object
       required: [confidence, signals, rationale, version]
       properties:
-        score: { type: integer, minimum: 0, maximum: 100, nullable: true }
+        score: { type: [integer, "null"], minimum: 0, maximum: 100 }
         confidence: { type: number, minimum: 0, maximum: 1 }
         signals: { type: array, items: { type: string } }
         rationale: { type: string }
