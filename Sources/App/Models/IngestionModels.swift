@@ -51,6 +51,8 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
     @Field(key: "attempts") var attempts: Int
     @OptionalField(key: "next_attempt_at") var nextAttemptAt: Date?
     @OptionalField(key: "lease_expires_at") var leaseExpiresAt: Date?
+    @OptionalField(key: "source_token_hash") var sourceTokenHash: String?
+    @OptionalField(key: "source_token_expires_at") var sourceTokenExpiresAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -80,5 +82,7 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
         attempts = 0
         nextAttemptAt = nil
         leaseExpiresAt = nil
+        sourceTokenHash = nil
+        sourceTokenExpiresAt = nil
     }
 }

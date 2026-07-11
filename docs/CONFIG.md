@@ -43,6 +43,16 @@ extraction and backfill; existing `/v1/knowledge/*` reads, explanations, and
 confirm/dismiss audit records remain available. Enable it on one deployment,
 watch queue depth and extraction failures, then expand the rollout.
 
+### Multimodal ingestion source delivery
+
+`INGESTION_PUBLIC_BASE_URL` is the externally reachable API origin, normally
+`https://api.luminavault.com`. Set it when BYO Hermes is enabled. For remote
+file processing the server creates a random 256-bit token, stores only its
+SHA-256 hash, and gives Hermes a one-hour `/v1/ingestion-sources/<token>` URL.
+The route exposes only the source for that active job, sends `no-store`, and
+becomes unavailable when the token expires or processing finishes. Non-dev
+environments reject a non-HTTPS base URL.
+
 ### Plugin marketplace and WASM runner
 
 | Variable | Required | Default | Purpose |

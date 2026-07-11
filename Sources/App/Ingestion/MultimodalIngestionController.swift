@@ -18,6 +18,21 @@ struct MultimodalIngestionController {
         router.delete("/:batchID/items/:itemID", use: cancel)
     }
 
+    func addPublicSourceRoute(to router: Router<AppRequestContext>) {
+        router.get("/v1/ingestion-sources/:token", use: source)
+    }
+
+    @Sendable private func source(_: Request, ctx: AppRequestContext) async throws -> Response {
+        guard let token = ctx.parameters.get("token") else { throw HTTPError(.notFound) }
+        let source = try await service.source(token: token)
+        var headers = HTTPFields()
+        headers[.contentType] = source.contentType
+        headers[.contentLength] = String(source.data.count)
+        headers[.cacheControl] = "private, no-store"
+        headers[.contentDisposition] = "attachment; filename=\"\(source.fileName.replacingOccurrences(of: "\"", with: ""))\""
+        return Response(status: .ok, headers: headers, body: ResponseBody(byteBuffer: ByteBuffer(data: source.data)))
+    }
+
     @Sendable private func create(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
         let tenantID = try ctx.requireTenantID()
         let body = try await request.decode(as: IngestionCreateRequest.self, context: ctx)

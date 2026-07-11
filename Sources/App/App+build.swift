@@ -1900,6 +1900,15 @@ func buildRouter(
     // Durable multimodal ingestion. The original is written to the same vault
     // Hermes sees; Hermes returns structured analysis and the server owns the
     // resulting source-linked memory and processing status.
+    let ingestionCapabilitiesService = hermesCapabilitiesService
+    let ingestionPublicBaseURLRaw = reader.string(forKey: "ingestion.publicBaseUrl", default: "")
+    let ingestionPublicBaseURL = ingestionPublicBaseURLRaw.isEmpty ? nil : URL(string: ingestionPublicBaseURLRaw)
+    if !ingestionPublicBaseURLRaw.isEmpty, ingestionPublicBaseURL == nil {
+        fatalError("INGESTION_PUBLIC_BASE_URL must be an absolute URL")
+    }
+    if lvEnvironment != "dev", let ingestionPublicBaseURL, ingestionPublicBaseURL.scheme != "https" {
+        fatalError("INGESTION_PUBLIC_BASE_URL must use HTTPS outside development")
+    }
     let multimodalIngestionService = MultimodalIngestionService(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
@@ -1910,9 +1919,15 @@ func buildRouter(
         ),
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
-        logger: Logger(label: "lv.ingestion")
+        logger: Logger(label: "lv.ingestion"),
+        ingestionCapabilities: { tenantID in
+            guard let ingestionCapabilitiesService else { return .managedDefault }
+            return await ingestionCapabilitiesService.capabilities(tenantID: tenantID).capabilities
+        },
+        publicBaseURL: ingestionPublicBaseURL
     )
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService)
+    ingestionController.addPublicSourceRoute(to: router)
     let ingestionGroup = router.group("/v1/ingestions")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .ingestionUploadByUser, storage: rateLimitStorage))

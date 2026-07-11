@@ -116,6 +116,8 @@ struct MultimodalIngestionService {
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
     let logger: Logger
+    let ingestionCapabilities: @Sendable (UUID) async -> HermesCapabilities
+    let publicBaseURL: URL?
 
     func create(tenantID: UUID, request: IngestionCreateRequest) async throws -> IngestionBatchDTO {
         guard !request.items.isEmpty, request.items.count <= Self.maxItems else {
@@ -199,6 +201,8 @@ struct MultimodalIngestionService {
         item.errorMessage = nil
         item.nextAttemptAt = nil
         item.leaseExpiresAt = nil
+        item.sourceTokenHash = nil
+        item.sourceTokenExpiresAt = nil
         try await item.save(on: fluent.db())
         try await refreshBatch(tenantID: tenantID, batchID: batchID)
         return try await detail(tenantID: tenantID, batchID: batchID)
@@ -213,6 +217,8 @@ struct MultimodalIngestionService {
         item.errorMessage = nil
         item.nextAttemptAt = nil
         item.leaseExpiresAt = nil
+        item.sourceTokenHash = nil
+        item.sourceTokenExpiresAt = nil
         try await item.save(on: fluent.db())
         try? FileManager.default.removeItem(at: chunkDirectory(tenantID: tenantID, itemID: itemID))
         try await refreshBatch(tenantID: tenantID, batchID: batchID)
@@ -266,6 +272,38 @@ struct MultimodalIngestionService {
     }
 
     private func process(item: IngestionItem, tenantID: UUID, spaceID: UUID?) async throws {
+        let capabilities = await ingestionCapabilities(tenantID)
+        if capabilities.multimodalIngestion == .unsupported {
+            item.state = IngestionItemStateDTO.blockedCapability.rawValue
+            item.leaseExpiresAt = nil
+            item.errorMessage = capabilities.ingestionRemoteSourceURL == true
+                ? "Connected Hermes advertises remote sources but not multimodal ingestion. Upgrade or enable its ingestion API."
+                : "Connected Hermes does not advertise multimodal ingestion with remote source URLs. Upgrade Hermes or use managed processing."
+            try await item.save(on: fluent.db())
+            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            return
+        }
+        if let maximum = capabilities.ingestionMaxSourceBytes,
+           let size = item.sizeBytes, size > maximum
+        {
+            item.state = IngestionItemStateDTO.blockedCapability.rawValue
+            item.leaseExpiresAt = nil
+            item.errorMessage = "Connected Hermes accepts sources up to \(maximum) bytes."
+            try await item.save(on: fluent.db())
+            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            return
+        }
+        if let supported = capabilities.ingestionSupportedMimeTypes,
+           let contentType = item.contentType,
+           !Self.supports(contentType: contentType, patterns: supported)
+        {
+            item.state = IngestionItemStateDTO.blockedCapability.rawValue
+            item.leaseExpiresAt = nil
+            item.errorMessage = "Connected Hermes does not support \(contentType)."
+            try await item.save(on: fluent.db())
+            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            return
+        }
         let source: String
         do {
             if item.kind == IngestionSourceKindDTO.url.rawValue, let url = item.url {
@@ -277,13 +315,29 @@ struct MultimodalIngestionService {
             } else if let vaultFileID = item.vaultFileID,
                       let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == vaultFileID).first()
             {
-                source = vaultPaths.rawDirectory(for: tenantID).appendingPathComponent(row.path).path
+                if capabilities.isUserOverride, capabilities.ingestionRemoteSourceURL == true {
+                    guard let publicBaseURL else {
+                        throw HTTPError(.serviceUnavailable, message: "INGESTION_PUBLIC_BASE_URL is required for BYO Hermes file ingestion")
+                    }
+                    let token = Self.randomSourceToken()
+                    item.sourceTokenHash = Self.sourceTokenHash(token)
+                    item.sourceTokenExpiresAt = Date().addingTimeInterval(TimeInterval(Self.processingLeaseSeconds))
+                    try await item.save(on: fluent.db())
+                    source = publicBaseURL
+                        .appendingPathComponent("v1/ingestion-sources")
+                        .appendingPathComponent(token)
+                        .absoluteString
+                } else {
+                    source = vaultPaths.rawDirectory(for: tenantID).appendingPathComponent(row.path).path
+                }
             } else {
                 throw HTTPError(.conflict, message: "item has no source")
             }
         } catch {
             item.state = IngestionItemStateDTO.failed.rawValue
             item.leaseExpiresAt = nil
+            item.sourceTokenHash = nil
+            item.sourceTokenExpiresAt = nil
             item.errorMessage = "Could not prepare source: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
@@ -302,6 +356,8 @@ struct MultimodalIngestionService {
             item.state = shouldRetry ? IngestionItemStateDTO.queued.rawValue : IngestionItemStateDTO.blockedCapability.rawValue
             item.nextAttemptAt = shouldRetry ? Date().addingTimeInterval(Self.retryDelay(for: item.attempts)) : nil
             item.leaseExpiresAt = nil
+            item.sourceTokenHash = nil
+            item.sourceTokenExpiresAt = nil
             item.errorMessage = shouldRetry
                 ? "Hermes processing deferred: \(String(describing: error).prefix(400))"
                 : "Hermes multimodal ingestion unavailable after \(item.attempts) attempts: \(String(describing: error).prefix(400))"
@@ -333,10 +389,14 @@ struct MultimodalIngestionService {
             item.errorMessage = nil
             item.nextAttemptAt = nil
             item.leaseExpiresAt = nil
+            item.sourceTokenHash = nil
+            item.sourceTokenExpiresAt = nil
             try await item.save(on: fluent.db())
         } catch {
             item.state = IngestionItemStateDTO.failed.rawValue
             item.leaseExpiresAt = nil
+            item.sourceTokenHash = nil
+            item.sourceTokenExpiresAt = nil
             item.errorMessage = "Could not save derived memory: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             logger.warning("ingestion save failed tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
@@ -489,6 +549,40 @@ struct MultimodalIngestionService {
 
     private static func retryDelay(for attempt: Int) -> TimeInterval {
         TimeInterval(min(300, 1 << min(max(0, attempt), 8)))
+    }
+
+    static func supports(contentType: String, patterns: [String]) -> Bool {
+        let value = contentType.lowercased()
+        return patterns.contains { pattern in
+            let normalized = pattern.lowercased()
+            if normalized.hasSuffix("/*") {
+                return value.hasPrefix(String(normalized.dropLast()))
+            }
+            return value == normalized
+        }
+    }
+
+    func source(token: String) async throws -> (data: Data, contentType: String, fileName: String) {
+        guard token.count == 64,
+              let item = try await IngestionItem.query(on: fluent.db())
+              .filter(\.$sourceTokenHash == Self.sourceTokenHash(token)).first(),
+              let expiry = item.sourceTokenExpiresAt, expiry > Date(),
+              let vaultFileID = item.vaultFileID,
+              let row = try await VaultFile.query(on: fluent.db(), tenantID: item.tenantID)
+              .filter(\.$id == vaultFileID).first()
+        else { throw HTTPError(.notFound, message: "ingestion source not found or expired") }
+        let target = vaultPaths.rawDirectory(for: item.tenantID).appendingPathComponent(row.path)
+        guard FileManager.default.fileExists(atPath: target.path) else { throw HTTPError(.notFound) }
+        return (try Data(contentsOf: target), row.contentType, item.fileName ?? "source")
+    }
+
+    static func sourceTokenHash(_ token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func randomSourceToken() -> String {
+        var generator = SystemRandomNumberGenerator()
+        return (0 ..< 32).map { _ in String(format: "%02x", UInt8.random(in: .min ... .max, using: &generator)) }.joined()
     }
 
     private static func safeFileName(_ value: String) -> String {

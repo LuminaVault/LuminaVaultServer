@@ -133,7 +133,11 @@ struct HermesRemoteCapabilitiesService {
             soul: .unsupported,
             gateways: .unsupported,
             memory: .unsupported,
-            providers: .readOnly
+            providers: .readOnly,
+            multimodalIngestion: avail(flags?.multimodalIngestion ?? false),
+            ingestionSupportedMimeTypes: flags?.ingestionSupportedMimeTypes,
+            ingestionMaxSourceBytes: flags?.ingestionMaxSourceBytes,
+            ingestionRemoteSourceURL: flags?.ingestionRemoteSourceURL
         )
     }
 
@@ -141,6 +145,10 @@ struct HermesRemoteCapabilitiesService {
         let sessions: Bool
         let jobs: Bool
         let skills: Bool
+        let multimodalIngestion: Bool
+        let ingestionSupportedMimeTypes: [String]?
+        let ingestionMaxSourceBytes: Int64?
+        let ingestionRemoteSourceURL: Bool
     }
 
     private func fetchVersion(base: URL) async -> String? {
@@ -183,7 +191,11 @@ struct HermesRemoteCapabilitiesService {
         return CapabilityFlags(
             sessions: flag(["session_resources", "sessions", "session_chat"]),
             jobs: flag(["jobs_admin", "jobs"]),
-            skills: flag(["skills_api", "skills"])
+            skills: flag(["skills_api", "skills"]),
+            multimodalIngestion: flag(["multimodal_ingestion", "ingestion_api"]),
+            ingestionSupportedMimeTypes: features["ingestion_supported_mime_types"] as? [String],
+            ingestionMaxSourceBytes: (features["ingestion_max_source_bytes"] as? NSNumber)?.int64Value,
+            ingestionRemoteSourceURL: flag(["ingestion_remote_source_url", "remote_source_url"])
         )
     }
 

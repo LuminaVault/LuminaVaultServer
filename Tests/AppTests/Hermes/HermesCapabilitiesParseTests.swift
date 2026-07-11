@@ -14,7 +14,10 @@ struct HermesCapabilitiesParseTests {
         {"features":{
             "chat_completions":true,"responses_api":true,
             "session_resources":true,"skills_api":true,
-            "admin_config_rw":false,"jobs_admin":false,"memory_write_api":false
+            "admin_config_rw":false,"jobs_admin":false,"memory_write_api":false,
+            "multimodal_ingestion":true,"ingestion_remote_source_url":true,
+            "ingestion_supported_mime_types":["application/pdf","image/*"],
+            "ingestion_max_source_bytes":104857600
         }}
         """.data(using: .utf8)!
         let flags = HermesRemoteCapabilitiesService.parseCapabilities(body)
@@ -23,6 +26,10 @@ struct HermesCapabilitiesParseTests {
         // jobs_admin is false in the flags (the /api/jobs probe overrides this
         // at runtime — see the service), so the flag itself reads false.
         #expect(flags?.jobs == false)
+        #expect(flags?.multimodalIngestion == true)
+        #expect(flags?.ingestionRemoteSourceURL == true)
+        #expect(flags?.ingestionSupportedMimeTypes == ["application/pdf", "image/*"])
+        #expect(flags?.ingestionMaxSourceBytes == 104_857_600)
     }
 
     @Test("accepts a flat map without a features envelope")
@@ -37,7 +44,11 @@ struct HermesCapabilitiesParseTests {
     @Test("unknown flags default to false")
     func unknownFlagsFalse() throws {
         let flags = try HermesRemoteCapabilitiesService.parseCapabilities(#require(#"{"features":{}}"#.data(using: .utf8)))
-        #expect(flags == HermesRemoteCapabilitiesService.CapabilityFlags(sessions: false, jobs: false, skills: false))
+        #expect(flags == HermesRemoteCapabilitiesService.CapabilityFlags(
+            sessions: false, jobs: false, skills: false,
+            multimodalIngestion: false, ingestionSupportedMimeTypes: nil,
+            ingestionMaxSourceBytes: nil, ingestionRemoteSourceURL: false
+        ))
     }
 
     @Test("garbage body returns nil")
@@ -49,7 +60,7 @@ struct HermesCapabilitiesParseTests {
     func managedDefaultAllManaged() {
         let c = HermesCapabilities.managedDefault
         #expect(c.isUserOverride == false)
-        for domain in [c.chat, c.sessions, c.jobs, c.skills, c.soul, c.gateways, c.memory, c.providers] {
+        for domain in [c.chat, c.sessions, c.jobs, c.skills, c.soul, c.gateways, c.memory, c.providers, c.multimodalIngestion] {
             #expect(domain == .managed)
         }
     }

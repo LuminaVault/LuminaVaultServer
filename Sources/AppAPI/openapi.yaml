@@ -6598,6 +6598,12 @@ components:
         gateways: { $ref: '#/components/schemas/HermesDomainAvailability' }
         memory: { $ref: '#/components/schemas/HermesDomainAvailability' }
         providers: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        multimodalIngestion: { $ref: '#/components/schemas/HermesDomainAvailability' }
+        ingestionSupportedMimeTypes:
+          type: array
+          items: { type: string }
+        ingestionMaxSourceBytes: { type: integer, format: int64 }
+        ingestionRemoteSourceURL: { type: boolean }
 
     HermesCapabilitiesResponse:
       type: object

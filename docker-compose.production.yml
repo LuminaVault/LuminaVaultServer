@@ -74,6 +74,7 @@ services:
       # --- Hermes ---
       HERMES_GATEWAY_KIND: ${HERMES_GATEWAYKIND:-filesystem}
       HERMES_GATEWAY_URL: ${HERMES_GATEWAYURL:-http://hermes:8642}
+      INGESTION_PUBLIC_BASE_URL: ${INGESTION_PUBLIC_BASE_URL:-}
       HERMES_API_KEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
       HERMES_DATA_ROOT: /app/data/hermes
       HERMES_DEFAULT_MODEL: ${HERMES_DEFAULTMODEL:-hermes-3}

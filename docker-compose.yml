@@ -159,6 +159,7 @@ services:
       # --- Hermes profile + chat ---
       HERMES_GATEWAYKIND: filesystem
       HERMES_GATEWAYURL: http://hermes:8642
+      INGESTION_PUBLIC_BASE_URL: ${INGESTION_PUBLIC_BASE_URL:-}
       HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required — run `make hermes-bootstrap` to generate}
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: hermes-3
