@@ -84,7 +84,9 @@ struct GraphLayoutService {
             for _ in 0 ..< powerIterations {
                 // p = Xᵀ t / (tᵀ t)
                 let tt = dot(t, t)
-                if tt < convergenceEpsilon { break }
+                if tt < convergenceEpsilon {
+                    break
+                }
                 p = matTvec(x, t, rows: n, cols: d)
                 for j in 0 ..< d {
                     p[j] /= tt
@@ -94,7 +96,9 @@ struct GraphLayoutService {
                 let tNew = matVec(x, p, rows: n, cols: d)
                 let delta = diffNorm(t, tNew)
                 t = tNew
-                if delta < convergenceEpsilon { break }
+                if delta < convergenceEpsilon {
+                    break
+                }
             }
             for i in 0 ..< n {
                 scores[i][k] = t[i]
@@ -102,7 +106,9 @@ struct GraphLayoutService {
             // Deflate: X = X - t pᵀ
             for i in 0 ..< n {
                 let ti = t[i]
-                if ti == 0 { continue }
+                if ti == 0 {
+                    continue
+                }
                 for j in 0 ..< d {
                     x[i][j] -= ti * p[j]
                 }
@@ -143,7 +149,9 @@ struct GraphLayoutService {
     private static func matTvec(_ x: [[Double]], _ t: [Double], rows: Int, cols: Int) -> [Double] {
         var out = [Double](repeating: 0, count: cols)
         for i in 0 ..< rows {
-            let ti = t[i]; if ti == 0 { continue }
+            let ti = t[i]; if ti == 0 {
+                continue
+            }
             let row = x[i]
             for j in 0 ..< cols {
                 out[j] += row[j] * ti
@@ -167,9 +175,11 @@ struct GraphLayoutService {
 
     private static func normalize(_ v: inout [Double]) {
         let n = dot(v, v).squareRoot()
-        if n > 1e-12 { for i in 0 ..< v.count {
-            v[i] /= n
-        } }
+        if n > 1e-12 {
+            for i in 0 ..< v.count {
+                v[i] /= n
+            }
+        }
     }
 
     private static func diffNorm(_ a: [Double], _ b: [Double]) -> Double {
@@ -224,7 +234,9 @@ struct GraphLayoutService {
             let end = min(index + batchSize, ids.count)
             var values = SQLQueryString("")
             for i in index ..< end {
-                if i > index { values += SQLQueryString(", ") }
+                if i > index {
+                    values += SQLQueryString(", ")
+                }
                 let c = coords[i]
                 values += "(\(bind: ids[i])::uuid, \(bind: c.x)::double precision, \(bind: c.y)::double precision, \(bind: c.z)::double precision)"
             }

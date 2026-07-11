@@ -174,7 +174,9 @@ private extension Data {
         var buf = [UInt8](repeating: 0, count: bufSize)
         while stream.hasBytesAvailable {
             let read = stream.read(&buf, maxLength: bufSize)
-            if read <= 0 { break }
+            if read <= 0 {
+                break
+            }
             append(buf, count: read)
         }
     }

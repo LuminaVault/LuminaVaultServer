@@ -130,7 +130,9 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
             "projectId": projectId,
             "spaceId": spaceId,
         ]
-        if let text { body["text"] = text }
+        if let text {
+            body["text"] = text
+        }
         if let atts = attachments, !atts.isEmpty {
             body["attachments"] = atts.map { [
                 "path": $0.path as Any,
@@ -180,7 +182,9 @@ struct PhotonSidecarClient: PhotonSidecarClienting {
         guard let http = response as? HTTPURLResponse else {
             throw PhotonSidecarError.unexpected("no_http_response")
         }
-        if (200 ..< 300).contains(http.statusCode) { return }
+        if (200 ..< 300).contains(http.statusCode) {
+            return
+        }
         let body = String(data: data, encoding: .utf8) ?? ""
         logger.warning("photon sidecar \(operation) failed", metadata: [
             "status": .stringConvertible(http.statusCode),

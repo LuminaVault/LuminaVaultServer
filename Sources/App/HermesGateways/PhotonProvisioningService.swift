@@ -242,7 +242,9 @@ actor PhotonProvisioningService {
         var sleepSeconds = TimeInterval(code.interval)
 
         while Date() < deadline {
-            if sessions[sessionID]?.completed == true { return }
+            if sessions[sessionID]?.completed == true {
+                return
+            }
 
             try? await Task.sleep(nanoseconds: UInt64(sleepSeconds * 1_000_000_000))
 
@@ -463,7 +465,9 @@ actor PhotonProvisioningService {
         try checkStatus(resp, data: data, action: "create project")
 
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        if let id = json["id"] as? String { return id }
+        if let id = json["id"] as? String {
+            return id
+        }
         throw NSError(domain: "photon", code: 0, userInfo: [NSLocalizedDescriptionKey: "no project id returned"])
     }
 
@@ -510,7 +514,9 @@ actor PhotonProvisioningService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try checkStatus(resp, data: data, action: "regenerate secret")
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        if let secret = json["projectSecret"] as? String { return secret }
+        if let secret = json["projectSecret"] as? String {
+            return secret
+        }
         throw NSError(domain: "photon", code: 0, userInfo: [NSLocalizedDescriptionKey: "no projectSecret"])
     }
 
@@ -656,10 +662,14 @@ actor PhotonProvisioningService {
     }
 
     private func unwrapList(_ json: Any) -> [[String: Any]] {
-        if let arr = json as? [[String: Any]] { return arr }
+        if let arr = json as? [[String: Any]] {
+            return arr
+        }
         if let dict = json as? [String: Any] {
             for key in ["data", "projects", "users", "items"] {
-                if let inner = dict[key] as? [[String: Any]] { return inner }
+                if let inner = dict[key] as? [[String: Any]] {
+                    return inner
+                }
             }
         }
         return []
@@ -667,12 +677,22 @@ actor PhotonProvisioningService {
 
     private func extractTokenCandidate(from body: [String: Any], headers: [AnyHashable: Any]?) -> String? {
         // Simplified version of Hermes _device_response_token_candidates
-        if let t = body["access_token"] as? String { return cleanBearer(t) }
-        if let t = body["accessToken"] as? String { return cleanBearer(t) }
-        if let session = body["session"] as? [String: Any], let t = session["access_token"] as? String { return cleanBearer(t) }
+        if let t = body["access_token"] as? String {
+            return cleanBearer(t)
+        }
+        if let t = body["accessToken"] as? String {
+            return cleanBearer(t)
+        }
+        if let session = body["session"] as? [String: Any], let t = session["access_token"] as? String {
+            return cleanBearer(t)
+        }
         if let data = body["data"] as? [String: Any] {
-            if let t = data["access_token"] as? String { return cleanBearer(t) }
-            if let t = data["accessToken"] as? String { return cleanBearer(t) }
+            if let t = data["access_token"] as? String {
+                return cleanBearer(t)
+            }
+            if let t = data["accessToken"] as? String {
+                return cleanBearer(t)
+            }
         }
         if let h = headers, let t = h["set-auth-token"] as? String ?? h["Set-Auth-Token"] as? String {
             return cleanBearer(t)
@@ -682,7 +702,9 @@ actor PhotonProvisioningService {
 
     private func cleanBearer(_ v: String) -> String {
         let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.lowercased().hasPrefix("bearer ") { return String(t.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+        if t.lowercased().hasPrefix("bearer ") {
+            return String(t.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+        }
         return t
     }
 

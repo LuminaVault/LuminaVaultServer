@@ -92,7 +92,6 @@ struct WorkflowWebhookController {
         var generator = SystemRandomNumberGenerator()
         return Data((0 ..< 32).map { _ in UInt8.random(in: .min ... .max, using: &generator) }).base64EncodedString()
     }
-
 }
 
 enum WorkflowWebhookSignature {

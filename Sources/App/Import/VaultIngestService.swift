@@ -42,7 +42,11 @@ struct VaultIngestService {
         for file in files {
             do {
                 let ingested = try await ingestOne(tenantID: tenantID, spaceID: spaceID, slug: space.slug, input: file)
-                if ingested { result.imported += 1 } else { result.skipped += 1 }
+                if ingested {
+                    result.imported += 1
+                } else {
+                    result.skipped += 1
+                }
             } catch {
                 result.failed += 1
                 logger.error("vault ingest failed tenant=\(tenantID) path=\(file.path): \(error)")
@@ -85,7 +89,9 @@ struct VaultIngestService {
         let db = fluent.db()
         let existing = try await VaultFile.query(on: db, tenantID: tenantID)
             .filter(\.$path == safeRelative).first()
-        if let existing, existing.sha256 == digest { return false } // unchanged
+        if let existing, existing.sha256 == digest {
+            return false
+        } // unchanged
 
         // Write the on-disk blob (the row is the index, the file is the payload).
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
@@ -133,7 +139,9 @@ struct VaultIngestService {
     private static func title(from content: String, fallback: String) -> String {
         for line in content.split(separator: "\n", maxSplits: 20, omittingEmptySubsequences: true) {
             let t = line.trimmingCharacters(in: .whitespaces)
-            if t.hasPrefix("# ") { return String(t.dropFirst(2)).trimmingCharacters(in: .whitespaces) }
+            if t.hasPrefix("# ") {
+                return String(t.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            }
         }
         return (fallback as NSString).deletingPathExtension
     }
@@ -153,7 +161,9 @@ struct VaultIngestService {
                 segs.append(slugifySegment(part))
             }
         }
-        if segs.isEmpty { segs = ["note.md"] }
+        if segs.isEmpty {
+            segs = ["note.md"]
+        }
         return ([slug] + segs).joined(separator: "/")
     }
 

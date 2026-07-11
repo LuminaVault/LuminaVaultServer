@@ -48,12 +48,18 @@ struct TodosController {
         let todos = try rows
             .compactMap { f -> TodoDTO? in
                 guard let m = f.metadata, m.isTodo == true else { return nil }
-                if let doneFilter, (m.done ?? false) != doneFilter { return nil }
-                if let projectFilter, m.projectID != projectFilter { return nil }
+                if let doneFilter, (m.done ?? false) != doneFilter {
+                    return nil
+                }
+                if let projectFilter, m.projectID != projectFilter {
+                    return nil
+                }
                 return try Self.toDTO(f)
             }
             .sorted { a, b in
-                if a.done != b.done { return !a.done } // open before done
+                if a.done != b.done {
+                    return !a.done
+                } // open before done
                 return (a.dueAt ?? .distantFuture) < (b.dueAt ?? .distantFuture)
             }
         return TodoListResponse(todos: todos, nextCursor: nil)
@@ -137,10 +143,18 @@ struct TodosController {
 
         var meta = row.metadata ?? VaultFileMetadata()
         meta.isTodo = true
-        if let t = patch.title { meta.title = t }
-        if let d = patch.done { meta.done = d }
-        if let due = patch.dueAt { meta.dueAt = due }
-        if let pid = patch.projectID { meta.projectID = pid }
+        if let t = patch.title {
+            meta.title = t
+        }
+        if let d = patch.done {
+            meta.done = d
+        }
+        if let due = patch.dueAt {
+            meta.dueAt = due
+        }
+        if let pid = patch.projectID {
+            meta.projectID = pid
+        }
         row.metadata = meta
         try await row.save(on: fluent.db())
         return try Self.toDTO(row)
@@ -168,7 +182,9 @@ struct TodosController {
             let flattened = row.path.replacingOccurrences(of: "/", with: "_")
             let trash = rawRoot.appendingPathComponent("_deleted_\(ts)_\(flattened)")
             let fm = FileManager.default
-            if fm.fileExists(atPath: target.path) { try? fm.moveItem(at: target, to: trash) }
+            if fm.fileExists(atPath: target.path) {
+                try? fm.moveItem(at: target, to: trash)
+            }
         }
         if let memories, let rowID = try? row.requireID() {
             try? await memories.deleteBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: rowID)

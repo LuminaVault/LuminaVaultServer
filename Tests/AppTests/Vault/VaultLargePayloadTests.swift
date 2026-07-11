@@ -109,7 +109,9 @@ struct VaultLargePayloadTests {
                     let list = try testJSONDecoder().decode(MemoryListResponse.self, from: Data(buffer: response.body))
                     return list.memories.contains(where: { $0.content == content })
                 }
-                if found { break }
+                if found {
+                    break
+                }
             }
             #expect(found)
         }

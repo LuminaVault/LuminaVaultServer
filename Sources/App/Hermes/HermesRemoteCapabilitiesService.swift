@@ -159,7 +159,9 @@ struct HermesRemoteCapabilitiesService {
         var req = URLRequest(url: base.appendingPathComponent("v1/capabilities"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
-        if let auth { req.setValue(auth, forHTTPHeaderField: "Authorization") }
+        if let auth {
+            req.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
         guard
             let (data, response) = try? await probeSession.data(for: req),
             let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode)
@@ -191,7 +193,9 @@ struct HermesRemoteCapabilitiesService {
         var req = URLRequest(url: base.appendingPathComponent("api/jobs"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
-        if let auth { req.setValue(auth, forHTTPHeaderField: "Authorization") }
+        if let auth {
+            req.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
         guard
             let (_, response) = try? await probeSession.data(for: req),
             let http = response as? HTTPURLResponse

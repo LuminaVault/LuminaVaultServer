@@ -61,7 +61,9 @@ actor RouterTelemetryService {
                 """).first()
                 guard let reserved else { return .denied }
                 let spent = (try? reserved.decode(column: "spent", as: Int64.self)) ?? 0
-                if let soft = policy.softLimitUsdMicros, spent >= soft { return .softLimit }
+                if let soft = policy.softLimitUsdMicros, spent >= soft {
+                    return .softLimit
+                }
                 return .allowed
             }
 
@@ -72,7 +74,9 @@ actor RouterTelemetryService {
               AND month = date_trunc('month', CURRENT_DATE)::date
             """).first()
             let spent = (try? row?.decode(column: "spent", as: Int64.self)) ?? 0
-            if let soft = policy.softLimitUsdMicros, spent >= soft { return .softLimit }
+            if let soft = policy.softLimitUsdMicros, spent >= soft {
+                return .softLimit
+            }
             return .allowed
         } catch {
             logger.error("cerberus budget reservation failed", metadata: ["error": .string("\(error)")])

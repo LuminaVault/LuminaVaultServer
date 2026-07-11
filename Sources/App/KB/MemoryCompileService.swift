@@ -413,15 +413,21 @@ actor MemoryCompileService {
     /// bare array `["a","b"]`. Tolerates markdown code fences some models add.
     static func parseExtractedMemories(_ raw: String) -> [String] {
         func stringFrom(_ any: Any) -> String? {
-            if let str = any as? String { return str }
-            if let dict = any as? [String: Any], let c = dict["content"] as? String { return c }
+            if let str = any as? String {
+                return str
+            }
+            if let dict = any as? [String: Any], let c = dict["content"] as? String {
+                return c
+            }
             return nil
         }
         func memories(from obj: Any) -> [String]? {
             if let dict = obj as? [String: Any], let arr = dict["memories"] as? [Any] {
                 return arr.compactMap(stringFrom)
             }
-            if let arr = obj as? [Any] { return arr.compactMap(stringFrom) }
+            if let arr = obj as? [Any] {
+                return arr.compactMap(stringFrom)
+            }
             return nil
         }
 

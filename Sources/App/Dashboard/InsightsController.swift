@@ -44,7 +44,9 @@ struct InsightsController {
             .filter(\.$dismissedAt == nil)
             .sort(\.$createdAt, .descending)
             .limit(limit)
-        if let section { q = q.filter(\.$section == section.rawValue) }
+        if let section {
+            q = q.filter(\.$section == section.rawValue)
+        }
         let rows = try await q.all()
         return try InsightListResponse(insights: rows.map { try $0.toDTO() }, nextCursor: nil)
     }

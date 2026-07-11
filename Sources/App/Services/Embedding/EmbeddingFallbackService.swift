@@ -49,7 +49,9 @@ final class EmbeddingFallbackService: EmbeddingService {
                 continue
             }
         }
-        if let last = lastError { throw last }
+        if let last = lastError {
+            throw last
+        }
         throw EmbeddingProviderError.permanent(reason: .allProvidersFailed)
     }
 }

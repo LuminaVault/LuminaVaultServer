@@ -76,11 +76,17 @@ struct GoogleCalendarClient {
         if let syncToken {
             items.append(.init(name: "syncToken", value: syncToken))
         } else {
-            if let timeMin { items.append(.init(name: "timeMin", value: Self.rfc3339(timeMin))) }
-            if let timeMax { items.append(.init(name: "timeMax", value: Self.rfc3339(timeMax))) }
+            if let timeMin {
+                items.append(.init(name: "timeMin", value: Self.rfc3339(timeMin)))
+            }
+            if let timeMax {
+                items.append(.init(name: "timeMax", value: Self.rfc3339(timeMax)))
+            }
             items.append(.init(name: "orderBy", value: "startTime"))
         }
-        if let pageToken { items.append(.init(name: "pageToken", value: pageToken)) }
+        if let pageToken {
+            items.append(.init(name: "pageToken", value: pageToken))
+        }
         comps.queryItems = items
 
         var req = URLRequest(url: comps.url!)
@@ -126,9 +132,15 @@ struct GoogleCalendarClient {
             "start": ["dateTime": Self.rfc3339(startsAt)],
             "end": ["dateTime": Self.rfc3339(endsAt)],
         ]
-        if let location { body["location"] = location }
-        if let notes { body["description"] = notes }
-        if !attendees.isEmpty { body["attendees"] = attendees.map { ["email": $0] } }
+        if let location {
+            body["location"] = location
+        }
+        if let notes {
+            body["description"] = notes
+        }
+        if !attendees.isEmpty {
+            body["attendees"] = attendees.map { ["email": $0] }
+        }
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -198,8 +210,12 @@ struct GoogleCalendarClient {
     /// (YYYY-MM-DD, all-day).
     private static func parseEndpoint(_ raw: [String: Any]?) -> (Date?, Bool) {
         guard let raw else { return (nil, false) }
-        if let dt = raw["dateTime"] as? String { return (rfc3339Date(dt), false) }
-        if let d = raw["date"] as? String { return (dayDate(d), true) }
+        if let dt = raw["dateTime"] as? String {
+            return (rfc3339Date(dt), false)
+        }
+        if let d = raw["date"] as? String {
+            return (dayDate(d), true)
+        }
         return (nil, false)
     }
 

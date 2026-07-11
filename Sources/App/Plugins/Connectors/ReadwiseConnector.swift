@@ -49,7 +49,9 @@ struct ReadwiseConnector: PluginConnector {
 
         for _ in 0 ..< maxPages {
             var comps = URLComponents(url: baseURL.appendingPathComponent("/api/v2/export/"), resolvingAgainstBaseURL: false)
-            if let cursor { comps?.queryItems = [URLQueryItem(name: "pageCursor", value: cursor)] }
+            if let cursor {
+                comps?.queryItems = [URLQueryItem(name: "pageCursor", value: cursor)]
+            }
             guard let url = comps?.url else { break }
 
             let resp = try await http.get(url: url, headers: headers)
@@ -64,7 +66,9 @@ struct ReadwiseConnector: PluginConnector {
                 guard let raw = result.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines),
                       raw.hasPrefix("http://") || raw.hasPrefix("https://")
                 else { continue }
-                if seen.insert(raw).inserted { urls.append(raw) }
+                if seen.insert(raw).inserted {
+                    urls.append(raw)
+                }
             }
 
             guard let next = page.nextPageCursor, !next.isEmpty else { break }

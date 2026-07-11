@@ -115,7 +115,9 @@ struct ProcessDockerExec: DockerExec {
         // otherwise. Only call `create` when inspect fails so re-runs are
         // idempotent and don't log a spurious "already exists" error.
         let inspect = try await runProcess(args: ["network", "inspect", name], stdin: nil)
-        if inspect.ok { return }
+        if inspect.ok {
+            return
+        }
         let create = try await runProcess(
             args: ["network", "create", "--driver=bridge", name],
             stdin: nil

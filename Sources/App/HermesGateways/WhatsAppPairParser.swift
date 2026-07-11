@@ -46,7 +46,9 @@ struct WhatsAppPairParser {
 
         var events: [HermesWhatsAppPairEvent] = []
         // Any non-QR line closes an in-progress QR frame.
-        if let qr = flushQR() { events.append(qr) }
+        if let qr = flushQR() {
+            events.append(qr)
+        }
 
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return events }
@@ -97,12 +99,16 @@ struct WhatsAppPairParser {
         while i < s.endIndex {
             if s[i] == "\u{1B}" {
                 var j = s.index(after: i)
-                if j < s.endIndex, s[j] == "[" { j = s.index(after: j) }
+                if j < s.endIndex, s[j] == "[" {
+                    j = s.index(after: j)
+                }
                 // CSI runs until a final byte in @A–Z[a–z~ range.
                 while j < s.endIndex, !Self.isCSIFinal(s[j]) {
                     j = s.index(after: j)
                 }
-                if j < s.endIndex { j = s.index(after: j) } // consume final byte
+                if j < s.endIndex {
+                    j = s.index(after: j)
+                } // consume final byte
                 i = j
             } else {
                 out.append(s[i])

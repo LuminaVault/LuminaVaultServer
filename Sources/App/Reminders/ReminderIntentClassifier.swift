@@ -98,7 +98,9 @@ struct ReminderIntentClassifier {
     static func parseDate(_ raw: String) -> Date? {
         let withFraction = ISO8601DateFormatter()
         withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: raw) { return date }
+        if let date = withFraction.date(from: raw) {
+            return date
+        }
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: raw)

@@ -26,7 +26,11 @@ actor StubDockerExec: DockerExec {
     }
 
     func setRunning(_ container: String, _ value: Bool) {
-        if value { running.insert(container) } else { running.remove(container) }
+        if value {
+            running.insert(container)
+        } else {
+            running.remove(container)
+        }
     }
 
     func run(args: [String]) async throws -> DockerResult {
@@ -36,7 +40,9 @@ actor StubDockerExec: DockerExec {
         {
             running.insert(args[nameIdx + 1])
         }
-        if args.first == "rm", let target = args.last { running.remove(target) }
+        if args.first == "rm", let target = args.last {
+            running.remove(target)
+        }
         return matchOrDefault(args: args)
     }
 

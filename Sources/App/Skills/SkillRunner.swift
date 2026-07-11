@@ -790,8 +790,12 @@ actor SkillRunner {
         iso.formatOptions = [.withInternetDateTime]
         let items = rows.map { row -> [String: String] in
             var item: [String: String] = ["title": row.title]
-            if let due = row.due_at { item["due"] = iso.string(from: due) }
-            if let notes = row.notes, !notes.isEmpty { item["notes"] = notes }
+            if let due = row.due_at {
+                item["due"] = iso.string(from: due)
+            }
+            if let notes = row.notes, !notes.isEmpty {
+                item["notes"] = notes
+            }
             return item
         }
         let itemsJSON = Self.encodeJSON(items)
@@ -942,7 +946,9 @@ actor SkillRunner {
             row.sha256 = digest
             row.contentType = contentType
             row.processedAt = nil
-            if let spaceID { row.spaceID = spaceID }
+            if let spaceID {
+                row.spaceID = spaceID
+            }
             try await row.update(on: fluent.db())
         } else {
             let row = VaultFile(
@@ -1265,7 +1271,9 @@ actor SkillRunner {
             if ch.isLetter || ch.isNumber {
                 out.append(ch)
             } else if ch == " " || ch == "-" || ch == "_" {
-                if !out.isEmpty, out.last != "-" { out.append("-") }
+                if !out.isEmpty, out.last != "-" {
+                    out.append("-")
+                }
             }
         }
         while out.last == "-" {

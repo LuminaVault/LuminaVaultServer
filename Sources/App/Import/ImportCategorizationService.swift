@@ -138,16 +138,23 @@ actor ImportCategorizationService {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         func obj(from str: String) -> [String: Any]? {
-            if let d = str.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { return o }
+            if let d = str.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                return o
+            }
             if let lo = str.firstIndex(of: "{"), let hi = str.lastIndex(of: "}"), lo < hi,
                let d = String(str[lo ... hi]).data(using: .utf8),
-               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { return o }
+               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+            {
+                return o
+            }
             return nil
         }
         guard let root = obj(from: s), let arr = root["mappings"] as? [[String: Any]] else { return [:] }
         var out: [String: String] = [:]
         for m in arr {
-            if let id = m["id"] as? String, let space = m["space"] as? String { out[id] = space }
+            if let id = m["id"] as? String, let space = m["space"] as? String {
+                out[id] = space
+            }
         }
         return out
     }

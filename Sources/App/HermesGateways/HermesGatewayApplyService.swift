@@ -148,7 +148,9 @@ actor HermesGatewayApplyService {
 
     private func removeSubscriber(jobID: UUID, subID: UUID) {
         subscribers[jobID]?[subID] = nil
-        if subscribers[jobID]?.isEmpty == true { subscribers[jobID] = nil }
+        if subscribers[jobID]?.isEmpty == true {
+            subscribers[jobID] = nil
+        }
     }
 
     private func broadcast(_ event: HermesGatewayApplyEvent, jobID: UUID) {
@@ -224,7 +226,9 @@ actor HermesGatewayApplyService {
     private func awaitHealthy(port: Int, apiKey: String) async -> Bool {
         let deadline = now().addingTimeInterval(TimeInterval(healthTimeoutSeconds))
         while now() < deadline {
-            if await healthProbe(port, apiKey) { return true }
+            if await healthProbe(port, apiKey) {
+                return true
+            }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
         return await healthProbe(port, apiKey)

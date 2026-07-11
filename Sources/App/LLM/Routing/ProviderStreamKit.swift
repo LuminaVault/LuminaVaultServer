@@ -79,7 +79,9 @@ enum ProviderStreamKit {
                         if let bytes = chunk.getBytes(at: chunk.readerIndex, length: chunk.readableBytes) {
                             body.append(contentsOf: bytes)
                         }
-                        if body.count > 64 * 1024 { break }
+                        if body.count > 64 * 1024 {
+                            break
+                        }
                     }
                     let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: body)
                     logger.error("\(kind.rawValue) stream upstream \(error.reasonCode) status=\(status)")
@@ -91,7 +93,9 @@ enum ProviderStreamKit {
                 var totalBytes = 0
                 let separator = framing.separator
                 for try await chunk in response.body {
-                    if Task.isCancelled { break }
+                    if Task.isCancelled {
+                        break
+                    }
                     totalBytes += chunk.readableBytes
                     if totalBytes > Self.maxStreamBytes {
                         throw ProviderError.transient(
@@ -112,7 +116,9 @@ enum ProviderStreamKit {
                             break
                         }
                     }
-                    if finished { break }
+                    if finished {
+                        break
+                    }
                 }
                 // Flush a trailing record that arrived without its
                 // terminator (upstream closed mid-frame).
@@ -156,9 +162,15 @@ enum ProviderStreamKit {
             }
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload.isEmpty { continue }
-            if payload == "[DONE]" { return true }
-            if let eventName, eventName != "message" { continue }
+            if payload.isEmpty {
+                continue
+            }
+            if payload == "[DONE]" {
+                return true
+            }
+            if let eventName, eventName != "message" {
+                continue
+            }
             guard
                 let data = payload.data(using: .utf8),
                 let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -176,7 +188,9 @@ enum ProviderStreamKit {
             if !delta.isEmpty || finishReason != nil {
                 yield(ChatStreamChunk(delta: delta, finishReason: finishReason))
             }
-            if finishReason != nil { return true }
+            if finishReason != nil {
+                return true
+            }
         }
         return false
     }

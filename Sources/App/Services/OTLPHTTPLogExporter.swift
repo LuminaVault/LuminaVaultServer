@@ -77,7 +77,9 @@ struct OTLPHTTPLogExporter: OTelLogRecordExporter {
         var order: [ResourceKey] = []
         for record in batch {
             let key = ResourceKey(record.resource)
-            if groups[key] == nil { order.append(key) }
+            if groups[key] == nil {
+                order.append(key)
+            }
             groups[key, default: []].append(record)
         }
 

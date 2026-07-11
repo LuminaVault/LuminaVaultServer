@@ -178,7 +178,9 @@ struct VaultExportTests {
                 return i
             }
             i -= 1
-            if bytes.count - i > 22 + 0xFFFF { break }
+            if bytes.count - i > 22 + 0xFFFF {
+                break
+            }
         }
         return nil
     }

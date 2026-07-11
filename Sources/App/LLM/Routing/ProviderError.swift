@@ -105,9 +105,15 @@ enum ProviderError: Error {
             let data = body.data(using: .utf8),
             let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         {
-            if let err = obj["error"] as? [String: Any], let m = err["message"] as? String { return Self.clip(m) }
-            if let errStr = obj["error"] as? String { return Self.clip(errStr) }
-            if let m = obj["message"] as? String { return Self.clip(m) }
+            if let err = obj["error"] as? [String: Any], let m = err["message"] as? String {
+                return Self.clip(m)
+            }
+            if let errStr = obj["error"] as? String {
+                return Self.clip(errStr)
+            }
+            if let m = obj["message"] as? String {
+                return Self.clip(m)
+            }
         }
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : Self.clip(trimmed)

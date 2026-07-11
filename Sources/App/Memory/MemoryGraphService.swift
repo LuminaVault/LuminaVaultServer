@@ -368,7 +368,9 @@ struct MemoryGraphService {
             let sorted = members.sorted { a, b in
                 let da = a.createdAt ?? Date(timeIntervalSince1970: 0)
                 let db = b.createdAt ?? Date(timeIntervalSince1970: 0)
-                if da != db { return da > db }
+                if da != db {
+                    return da > db
+                }
                 return a.id.uuidString < b.id.uuidString
             }
             for i in 0 ..< (sorted.count - 1) {
@@ -407,9 +409,15 @@ struct MemoryGraphService {
         }
 
         let ordered = byPair.values.sorted { a, b in
-            if a.rank != b.rank { return a.rank < b.rank }
-            if a.edge.weight != b.edge.weight { return a.edge.weight > b.edge.weight }
-            if a.edge.from != b.edge.from { return a.edge.from.uuidString < b.edge.from.uuidString }
+            if a.rank != b.rank {
+                return a.rank < b.rank
+            }
+            if a.edge.weight != b.edge.weight {
+                return a.edge.weight > b.edge.weight
+            }
+            if a.edge.from != b.edge.from {
+                return a.edge.from.uuidString < b.edge.from.uuidString
+            }
             return a.edge.to.uuidString < b.edge.to.uuidString
         }
         var degree: [UUID: Int] = [:]
@@ -423,8 +431,12 @@ struct MemoryGraphService {
             let toOK = uncapped.contains(edge.to) || degree[edge.to, default: 0] < maxEdgesPerNode
             guard fromOK, toOK else { continue }
             kept.append(edge)
-            if !uncapped.contains(edge.from) { degree[edge.from, default: 0] += 1 }
-            if !uncapped.contains(edge.to) { degree[edge.to, default: 0] += 1 }
+            if !uncapped.contains(edge.from) {
+                degree[edge.from, default: 0] += 1
+            }
+            if !uncapped.contains(edge.to) {
+                degree[edge.to, default: 0] += 1
+            }
         }
         return kept
     }
@@ -437,8 +449,12 @@ struct MemoryGraphService {
         // clean (e.g. "KB Healthcheck Report", not "# KB Healthcheck Report").
         var firstLine = String(raw.drop(while: { "#>-* \t".contains($0) }))
             .trimmingCharacters(in: .whitespaces)
-        if firstLine.isEmpty { firstLine = raw.trimmingCharacters(in: .whitespaces) }
-        if firstLine.count <= 60 { return firstLine }
+        if firstLine.isEmpty {
+            firstLine = raw.trimmingCharacters(in: .whitespaces)
+        }
+        if firstLine.count <= 60 {
+            return firstLine
+        }
         let idx = firstLine.index(firstLine.startIndex, offsetBy: 60)
         return String(firstLine[..<idx]) + "…"
     }
@@ -470,7 +486,9 @@ struct MemoryGraphService {
     /// Wiki-page title: prefer the metadata title, else the file's basename
     /// (sans extension), else the raw path.
     private static func titleFromWiki(title: String?, path: String) -> String {
-        if let title, !title.trimmingCharacters(in: .whitespaces).isEmpty { return title }
+        if let title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
+            return title
+        }
         let base = (path as NSString).lastPathComponent
         let noExt = (base as NSString).deletingPathExtension
         return noExt.isEmpty ? path : noExt
@@ -573,23 +591,38 @@ struct MemoryGraphFilter {
     var createdBefore: Date?
 
     func matches(_ row: MemoryNodeRow) -> Bool {
-        if !providers.isEmpty, !providers.contains(row.origin_provider ?? "") { return false }
-        if !models.isEmpty, !models.contains(row.origin_model ?? "") { return false }
+        if !providers.isEmpty, !providers.contains(row.origin_provider ?? "") {
+            return false
+        }
+        if !models.isEmpty, !models.contains(row.origin_model ?? "") {
+            return false
+        }
         if !sources.isEmpty,
-           !sources.contains(MemorySourceKindDTO(rawValue: row.origin_kind) ?? .legacy) { return false }
+           !sources.contains(MemorySourceKindDTO(rawValue: row.origin_kind) ?? .legacy)
+        {
+            return false
+        }
         return matches(date: row.created_at)
     }
 
     fileprivate func matches(_ row: WikiNodeRow) -> Bool {
-        if !providers.isEmpty || !models.isEmpty { return false }
-        if !sources.isEmpty, !sources.contains(.vault) { return false }
+        if !providers.isEmpty || !models.isEmpty {
+            return false
+        }
+        if !sources.isEmpty, !sources.contains(.vault) {
+            return false
+        }
         return matches(date: row.created_at)
     }
 
     private func matches(date: Date?) -> Bool {
         guard let date else { return createdAfter == nil && createdBefore == nil }
-        if let createdAfter, date < createdAfter { return false }
-        if let createdBefore, date > createdBefore { return false }
+        if let createdAfter, date < createdAfter {
+            return false
+        }
+        if let createdBefore, date > createdBefore {
+            return false
+        }
         return true
     }
 }

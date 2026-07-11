@@ -66,9 +66,15 @@ struct CronExpression: Equatable {
 
         // dom/dow OR-semantics — both wildcard → match; otherwise match if
         // EITHER restricted field matches.
-        if dayOfMonth.isWildcard, dayOfWeek.isWildcard { return true }
-        if dayOfMonth.isWildcard { return dayOfWeek.matches(dowValue) }
-        if dayOfWeek.isWildcard { return dayOfMonth.matches(dayValue) }
+        if dayOfMonth.isWildcard, dayOfWeek.isWildcard {
+            return true
+        }
+        if dayOfMonth.isWildcard {
+            return dayOfWeek.matches(dowValue)
+        }
+        if dayOfWeek.isWildcard {
+            return dayOfMonth.matches(dayValue)
+        }
         return dayOfMonth.matches(dayValue) || dayOfWeek.matches(dowValue)
     }
 }

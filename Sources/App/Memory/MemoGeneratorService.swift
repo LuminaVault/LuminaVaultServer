@@ -414,8 +414,12 @@ actor MemoGeneratorService {
         while s.last == "-" {
             s.removeLast()
         }
-        if s.isEmpty { s = "memo" }
-        if s.count > 64 { s = String(s.prefix(64)) }
+        if s.isEmpty {
+            s = "memo"
+        }
+        if s.count > 64 {
+            s = String(s.prefix(64))
+        }
         return s
     }
 

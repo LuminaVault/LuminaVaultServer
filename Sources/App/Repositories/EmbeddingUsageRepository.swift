@@ -44,7 +44,9 @@ struct EmbeddingUsageRepository {
             } catch {
                 // Likely unique-constraint race — loop once and take the
                 // update path. On the second attempt give up and surface.
-                if attempt == 1 { throw error }
+                if attempt == 1 {
+                    throw error
+                }
             }
         }
     }

@@ -199,7 +199,9 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                         var totalBytes = 0
                         let maxStreamBytes = 64 * 1024 * 1024
                         for try await chunk in response.body {
-                            if Task.isCancelled { break }
+                            if Task.isCancelled {
+                                break
+                            }
                             lastActivity.withLockedValue { $0 = .now() }
                             rawChunks += 1
                             totalBytes += chunk.readableBytes
@@ -225,7 +227,9 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                                     break
                                 }
                             }
-                            if finished { break }
+                            if finished {
+                                break
+                            }
                         }
                         // Flush a trailing record that arrived without the
                         // `\n\n` terminator (upstream closed mid-frame).
@@ -245,7 +249,9 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                     group.addTask {
                         while true {
                             try await Task.sleep(for: .milliseconds(1000))
-                            if Task.isCancelled { return }
+                            if Task.isCancelled {
+                                return
+                            }
                             let idle = NIODeadline.now() - lastActivity.withLockedValue { $0 }
                             if idle.nanoseconds > idleNanos {
                                 throw HermesStreamIdleTimeout(seconds: Double(idleNanos) / 1_000_000_000)
@@ -332,8 +338,12 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
             }
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload.isEmpty { continue }
-            if payload == "[DONE]" { return true }
+            if payload.isEmpty {
+                continue
+            }
+            if payload == "[DONE]" {
+                return true
+            }
             if let eventName, eventName != "message" {
                 logger.debug("hermes stream non-content event", metadata: ["event": .string(eventName)])
                 continue
@@ -359,7 +369,9 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
                 if !delta.isEmpty || choice.finishReason != nil {
                     yield(ChatStreamChunk(delta: delta, finishReason: choice.finishReason))
                 }
-                if choice.finishReason != nil { return true }
+                if choice.finishReason != nil {
+                    return true
+                }
             } catch {
                 logger.debug("hermes stream chunk decode skipped", metadata: [
                     "event": .string(eventName ?? "none"),

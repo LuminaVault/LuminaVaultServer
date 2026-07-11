@@ -139,7 +139,9 @@ extension RateLimitPolicy {
             return String(xff.split(separator: ",").first ?? "anon")
                 .trimmingCharacters(in: .whitespaces)
         }
-        if let real = req.headers[.init("x-real-ip")!] { return real }
+        if let real = req.headers[.init("x-real-ip")!] {
+            return real
+        }
         return "anon"
     }
 

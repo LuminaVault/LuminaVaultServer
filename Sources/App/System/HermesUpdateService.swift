@@ -205,7 +205,9 @@ actor HermesUpdateService {
 
     private func removeSubscriber(jobID: UUID, subID: UUID) {
         subscribers[jobID]?[subID] = nil
-        if subscribers[jobID]?.isEmpty == true { subscribers[jobID] = nil }
+        if subscribers[jobID]?.isEmpty == true {
+            subscribers[jobID] = nil
+        }
     }
 
     private func broadcast(_ event: HermesUpdateEvent, jobID: UUID) {

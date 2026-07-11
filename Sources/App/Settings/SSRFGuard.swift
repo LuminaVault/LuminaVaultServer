@@ -116,8 +116,12 @@ struct SSRFGuard {
         if Self.isHostnameLoopbackLiteral(host) {
             // Loopback is never a tailnet address, so the deferred http
             // rejection fires even when private ranges are open.
-            if httpPendingTailnetCheck { throw Rejection.schemeNotAllowed(scheme) }
-            if allowPrivateRanges { return url }
+            if httpPendingTailnetCheck {
+                throw Rejection.schemeNotAllowed(scheme)
+            }
+            if allowPrivateRanges {
+                return url
+            }
             throw Rejection.loopback(host)
         }
 
@@ -137,19 +141,27 @@ struct SSRFGuard {
     /// Reject IPs in loopback / RFC1918 / link-local / metadata ranges.
     private func classify(ip: String) throws {
         if Self.isLoopback(ip) {
-            if allowPrivateRanges { return }
+            if allowPrivateRanges {
+                return
+            }
             throw Rejection.loopback(ip)
         }
         if Self.isLinkLocal(ip) {
-            if allowPrivateRanges { return }
+            if allowPrivateRanges {
+                return
+            }
             throw Rejection.linkLocal(ip)
         }
         // Tailscale IPv6 sits inside fc00::/7, so this exemption must run
         // before the unique-local block or MagicDNS AAAA answers fail
         // validation even over https.
-        if Self.isTailscale(ip), allowTailnetHTTP { return }
+        if Self.isTailscale(ip), allowTailnetHTTP {
+            return
+        }
         if Self.isPrivate(ip) {
-            if allowPrivateRanges { return }
+            if allowPrivateRanges {
+                return
+            }
             throw Rejection.privateAddress(ip)
         }
     }
@@ -158,8 +170,12 @@ struct SSRFGuard {
 
     static func isHostnameLoopbackLiteral(_ host: String) -> Bool {
         let lower = host.lowercased()
-        if lower == "localhost" { return true }
-        if lower == "ip6-localhost" || lower == "ip6-loopback" { return true }
+        if lower == "localhost" {
+            return true
+        }
+        if lower == "ip6-localhost" || lower == "ip6-loopback" {
+            return true
+        }
         // Numeric loopbacks survive `URL.host` extraction with or without
         // bracketing for IPv6.
         let stripped = lower.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
@@ -167,18 +183,26 @@ struct SSRFGuard {
     }
 
     static func isLoopback(_ ip: String) -> Bool {
-        if ip == "::1" || ip == "0:0:0:0:0:0:0:1" { return true }
+        if ip == "::1" || ip == "0:0:0:0:0:0:0:1" {
+            return true
+        }
         // IPv4 loopback: 127.0.0.0/8.
-        if let v4 = parseIPv4(ip), v4.0 == 127 { return true }
+        if let v4 = parseIPv4(ip), v4.0 == 127 {
+            return true
+        }
         return false
     }
 
     static func isLinkLocal(_ ip: String) -> Bool {
         // IPv4 link-local: 169.254.0.0/16 (covers EC2 metadata 169.254.169.254).
-        if let v4 = parseIPv4(ip), v4.0 == 169, v4.1 == 254 { return true }
+        if let v4 = parseIPv4(ip), v4.0 == 169, v4.1 == 254 {
+            return true
+        }
         // IPv6 link-local: fe80::/10.
         let lower = ip.lowercased()
-        if lower.hasPrefix("fe80:") || lower.hasPrefix("fe80::") { return true }
+        if lower.hasPrefix("fe80:") || lower.hasPrefix("fe80::") {
+            return true
+        }
         return false
     }
 
@@ -195,13 +219,21 @@ struct SSRFGuard {
     static func isPrivate(_ ip: String) -> Bool {
         if let v4 = parseIPv4(ip) {
             // 10.0.0.0/8
-            if v4.0 == 10 { return true }
+            if v4.0 == 10 {
+                return true
+            }
             // 172.16.0.0/12
-            if v4.0 == 172, (16 ... 31).contains(v4.1) { return true }
+            if v4.0 == 172, (16 ... 31).contains(v4.1) {
+                return true
+            }
             // 192.168.0.0/16
-            if v4.0 == 192, v4.1 == 168 { return true }
+            if v4.0 == 192, v4.1 == 168 {
+                return true
+            }
             // 0.0.0.0/8 (wildcard / "this network") — never legitimate as a target.
-            if v4.0 == 0 { return true }
+            if v4.0 == 0 {
+                return true
+            }
         }
         let lower = ip.lowercased()
         // IPv6 unique-local: fc00::/7.
@@ -238,8 +270,12 @@ struct SystemHostResolver: HostResolver {
     func resolve(host: String) async throws -> [String] {
         // IP literal short-circuit — `getaddrinfo` returns it unchanged,
         // but we can skip the syscall.
-        if SSRFGuard.parseIPv4(host) != nil { return [host] }
-        if host.contains(":") { return [host] }
+        if SSRFGuard.parseIPv4(host) != nil {
+            return [host]
+        }
+        if host.contains(":") {
+            return [host]
+        }
 
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC

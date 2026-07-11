@@ -206,7 +206,9 @@ struct VaultExportService {
                 first = false
             }
             pageOffset += rows.count
-            if rows.count < pageSize { break }
+            if rows.count < pageSize {
+                break
+            }
         }
         if !first {
             try await Self.writeStoredEntryChunk(
@@ -336,7 +338,9 @@ struct VaultExportService {
             guard values.isRegularFile == true else { continue }
             let size = Int64(values.fileSize ?? 0)
             let mtime = values.contentModificationDate ?? Date()
-            if let since, mtime < since { continue }
+            if let since, mtime < since {
+                continue
+            }
 
             let path = resolved.path
             guard path.hasPrefix(rootPath + "/") else { continue }
@@ -388,7 +392,9 @@ struct VaultExportService {
 
         while true {
             let data = try handle.read(upToCount: Self.chunkSize) ?? Data()
-            if data.isEmpty { break }
+            if data.isEmpty {
+                break
+            }
             written += Int64(data.count)
             guard written <= size + Int64(Self.chunkSize) else {
                 // Defensive: file grew while we were streaming. Bail rather

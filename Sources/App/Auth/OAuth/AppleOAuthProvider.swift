@@ -27,7 +27,9 @@ struct BoolOrStringClaim: Codable {
     let value: Bool
     init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let b = try? container.decode(Bool.self) { value = b; return }
+        if let b = try? container.decode(Bool.self) {
+            value = b; return
+        }
         if let s = try? container.decode(String.self) {
             value = (s.lowercased() == "true")
             return

@@ -85,7 +85,11 @@ struct PhotoIndexController {
             RETURNING (xmax = 0) AS was_inserted
             """).first(decoding: UpsertRow.self)
 
-            if outcome?.was_inserted == true { inserted += 1 } else { updated += 1 }
+            if outcome?.was_inserted == true {
+                inserted += 1
+            } else {
+                updated += 1
+            }
         }
 
         logger.info("photos.index tenant=\(tenantID) inserted=\(inserted) updated=\(updated) skipped=\(skipped)")
@@ -98,8 +102,12 @@ struct PhotoIndexController {
         let ocrTrimmed = ocr?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let tagsJoined = (tags ?? []).joined(separator: ", ")
         var parts: [String] = []
-        if !ocrTrimmed.isEmpty { parts.append(ocrTrimmed) }
-        if !tagsJoined.isEmpty { parts.append("Scene: \(tagsJoined)") }
+        if !ocrTrimmed.isEmpty {
+            parts.append(ocrTrimmed)
+        }
+        if !tagsJoined.isEmpty {
+            parts.append("Scene: \(tagsJoined)")
+        }
         let combined = parts.joined(separator: "\n")
         return combined.isEmpty ? nil : combined
     }

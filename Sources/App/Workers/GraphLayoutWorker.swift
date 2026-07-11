@@ -55,7 +55,9 @@ actor GraphLayoutWorker: Service {
             do {
                 if try await needsLayout(tenantID: tenantID) {
                     let count = try await layout.computeAndPersist(tenantID: tenantID)
-                    if count > 0 { relaid += 1 }
+                    if count > 0 {
+                        relaid += 1
+                    }
                 }
             } catch {
                 logger.warning("graph.layout tenant=\(tenantID) error: \(error)")

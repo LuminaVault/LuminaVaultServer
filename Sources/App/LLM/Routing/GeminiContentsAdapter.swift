@@ -183,7 +183,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
             return "gemini-2.5-flash"
         default:
             // If it already starts with "gemini-" pass through
-            if lower.hasPrefix("gemini-") { return raw }
+            if lower.hasPrefix("gemini-") {
+                return raw
+            }
             // Fallback to latest pro
             return "gemini-2.5-pro"
         }
@@ -273,7 +275,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
                     if !parsed.delta.isEmpty || finishReason != nil {
                         yield(ChatStreamChunk(delta: parsed.delta, finishReason: finishReason))
                     }
-                    if finishReason != nil { return true }
+                    if finishReason != nil {
+                        return true
+                    }
                 }
                 return false
             }
@@ -295,7 +299,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
             let parts = content["parts"] as? [[String: Any]]
         {
             for part in parts {
-                if let t = part["text"] as? String { text += t }
+                if let t = part["text"] as? String {
+                    text += t
+                }
             }
         }
         return (text, finishReason)
@@ -384,10 +390,18 @@ struct GeminiContentsAdapter: ProviderAdapter {
 
         // generation config
         var generationConfig: [String: Any] = [:]
-        if let temperature { generationConfig["temperature"] = temperature }
-        if let maxTokens { generationConfig["maxOutputTokens"] = maxTokens }
-        if let topP { generationConfig["topP"] = topP }
-        if let stopSequences { generationConfig["stopSequences"] = stopSequences }
+        if let temperature {
+            generationConfig["temperature"] = temperature
+        }
+        if let maxTokens {
+            generationConfig["maxOutputTokens"] = maxTokens
+        }
+        if let topP {
+            generationConfig["topP"] = topP
+        }
+        if let stopSequences {
+            generationConfig["stopSequences"] = stopSequences
+        }
         // NOTE: deliberately NOT mapping OpenAI `response_format` →
         // `responseMimeType: application/json`. gemini-2.5-flash hangs (90s+
         // upstream timeout) when that field is set, even on tiny inputs. We
@@ -409,7 +423,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
     private static func functionCallingConfig(for toolChoice: Any?) -> [String: Any] {
         func cfg(_ mode: String, names: [String]? = nil) -> [String: Any] {
             var fcc: [String: Any] = ["mode": mode]
-            if let names, !names.isEmpty { fcc["allowed_function_names"] = names }
+            if let names, !names.isEmpty {
+                fcc["allowed_function_names"] = names
+            }
             return ["function_calling_config": fcc]
         }
         if let choice = toolChoice as? String {

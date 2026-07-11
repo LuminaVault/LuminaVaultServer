@@ -58,8 +58,12 @@ struct UserPreferenceModelRouter: ModelRouter {
         /// stitched-on table defaults. Block-list always wins; a non-empty
         /// allow-list means "only these providers".
         func isAllowed(_ provider: ProviderKind) -> Bool {
-            if pref.blockedProviders.contains(provider) { return false }
-            if !pref.allowedProviders.isEmpty, !pref.allowedProviders.contains(provider) { return false }
+            if pref.blockedProviders.contains(provider) {
+                return false
+            }
+            if !pref.allowedProviders.isEmpty, !pref.allowedProviders.contains(provider) {
+                return false
+            }
             return true
         }
 

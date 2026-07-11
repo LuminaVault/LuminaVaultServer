@@ -68,8 +68,12 @@ struct RequestLogMiddleware<Context: RequestContext>: RouterMiddleware {
     }
 
     private static func level(forStatus code: Int, success: Logger.Level) -> Logger.Level {
-        if code >= 500 { return .error }
-        if code >= 400 { return .notice }
+        if code >= 500 {
+            return .error
+        }
+        if code >= 400 {
+            return .notice
+        }
         return success
     }
 

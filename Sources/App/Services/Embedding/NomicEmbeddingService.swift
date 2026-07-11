@@ -81,7 +81,9 @@ final class NomicEmbeddingService: EmbeddingService {
     /// already at targetDim pass through; larger vectors trigger a
     /// `dimMismatch` so we never silently truncate.
     static func padToTarget(_ v: [Float]) -> [Float] {
-        if v.count == targetDim { return v }
+        if v.count == targetDim {
+            return v
+        }
         if v.count < targetDim {
             var padded = v
             padded.append(contentsOf: [Float](repeating: 0, count: targetDim - v.count))

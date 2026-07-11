@@ -81,7 +81,9 @@ struct VisionEmbedController {
     static func parseIndexAsMemory(from request: Request) throws -> UUID? {
         let indexAs = request.uri.queryParameters["indexAs"].map(String.init)
         let memoryIDRaw = request.uri.queryParameters["memoryId"].map(String.init)
-        if indexAs == nil, memoryIDRaw == nil { return nil }
+        if indexAs == nil, memoryIDRaw == nil {
+            return nil
+        }
         guard indexAs == "memory" else {
             throw HTTPError(.badRequest, message: "indexAs must be 'memory' when supplied")
         }

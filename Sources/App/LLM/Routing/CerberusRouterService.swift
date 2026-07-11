@@ -47,7 +47,9 @@ enum CerberusStreamContext {
 
 enum RouterTaskClassifier {
     static func classify(_ prompt: String, surface: RouterSurface) -> RouterTaskType {
-        if surface == .job || surface == .skill { return .automation }
+        if surface == .job || surface == .skill {
+            return .automation
+        }
         let value = prompt.lowercased()
         if containsAny(value, ["search", "latest", "today", "news", "find online", "look up", "research"]) {
             return .search
@@ -112,7 +114,9 @@ struct CerberusModelRouter: ModelRouter {
                 for candidate in table.candidates {
                     guard let provider = candidate.provider.toShared() else { continue }
                     let route = RouterModelRouteDTO(provider: provider, model: candidate.modelID)
-                    if !routes.contains(where: { $0.id == route.id }) { routes.append(route) }
+                    if !routes.contains(where: { $0.id == route.id }) {
+                        routes.append(route)
+                    }
                 }
                 routes = Array(routes.prefix(3))
                 if routes.count >= 2 {

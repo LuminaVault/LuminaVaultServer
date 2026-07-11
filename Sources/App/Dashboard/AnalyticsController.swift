@@ -55,7 +55,7 @@ struct AnalyticsController {
         return UsageSummaryResponse(
             llmTokensIn: Int(row?.tin ?? 0), llmTokensOut: Int(row?.tout ?? 0),
             embeddingTokens: Int(embedding?.tokensUsed ?? 0), sessionsCount: Int(row?.sessions ?? 0),
-            estimatedCostCents: Int((row?.cost ?? 0) / 10_000), periodStart: start, periodEnd: now
+            estimatedCostCents: Int((row?.cost ?? 0) / 10000), periodStart: start, periodEnd: now
         )
     }
 
@@ -75,9 +75,9 @@ struct AnalyticsController {
         let resolvedHealth = try await health
         let recs = try await recommendations(vaultID: access.vaultID, userID: userID,
                                              health: resolvedHealth, since: start, now: now)
-        return AnalyticsOverviewResponse(
+        return try await AnalyticsOverviewResponse(
             scope: scope, vaultId: access.vaultID, range: range, periodStart: start, periodEnd: now,
-            summary: summary, daily: try await daily, memoryHealth: resolvedHealth,
+            summary: summary, daily: daily, memoryHealth: resolvedHealth,
             recommendations: recs
         )
     }
@@ -242,11 +242,10 @@ struct AnalyticsController {
         let userID = try ctx.requireTenantID()
         let now = Date()
         let dismissed: Date? = body.disposition == .dismiss ? now : nil
-        let snoozed: Date?
-        switch body.disposition {
-        case .dismiss: snoozed = nil
-        case .snooze7: snoozed = Calendar(identifier: .gregorian).date(byAdding: .day, value: 7, to: now)
-        case .snooze30: snoozed = Calendar(identifier: .gregorian).date(byAdding: .day, value: 30, to: now)
+        let snoozed: Date? = switch body.disposition {
+        case .dismiss: nil
+        case .snooze7: Calendar(identifier: .gregorian).date(byAdding: .day, value: 7, to: now)
+        case .snooze30: Calendar(identifier: .gregorian).date(byAdding: .day, value: 30, to: now)
         }
         guard let sql = fluent.db() as? any SQLDatabase else { throw HTTPError(.internalServerError) }
         try await sql.raw("""
@@ -402,10 +401,10 @@ struct AnalyticsController {
         return .init(score: totalScore, totalMemories: Int(value.total), staleCount: Int(value.stale),
                      neverRetrievedCount: Int(value.never_retrieved), unorganizedCount: Int(value.unorganized),
                      pendingReviewCount: Int(value.pending), components: [
-                        .init(key: "freshness", title: "Freshness", score: freshness, weight: 35),
-                        .init(key: "engagement", title: "Engagement", score: engagement, weight: 25),
-                        .init(key: "organization", title: "Organization", score: organization, weight: 20),
-                        .init(key: "review", title: "Review readiness", score: review, weight: 20),
+                         .init(key: "freshness", title: "Freshness", score: freshness, weight: 35),
+                         .init(key: "engagement", title: "Engagement", score: engagement, weight: 25),
+                         .init(key: "organization", title: "Organization", score: organization, weight: 20),
+                         .init(key: "review", title: "Review readiness", score: review, weight: 20),
                      ])
     }
 
@@ -444,7 +443,7 @@ struct AnalyticsController {
                    COALESCE(AVG(latency_ms), 0)::bigint AS latency
             FROM router_executions WHERE vault_id = \(bind: vaultID) AND occurred_at >= \(bind: since)
         """).first(decoding: ModelRow.self), model.requests >= 10,
-           Double(model.failures) / Double(model.requests) >= 0.10 || model.latency >= 10_000
+            Double(model.failures) / Double(model.requests) >= 0.10 || model.latency >= 10000
         {
             values.append(.init(id: "model-reliability", title: "Review model routing",
                                 detail: "Recent AI runs are slower or less reliable than expected.",
@@ -486,5 +485,4 @@ struct AnalyticsController {
             + Double(organization) * 0.20 + Double(review) * 0.20
         return min(100, max(0, Int(score.rounded())))
     }
-
 }

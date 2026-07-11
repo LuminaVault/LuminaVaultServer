@@ -100,9 +100,15 @@ struct RevenueCatWebhookTests {
             "\"type\":\"\(type)\"",
             "\"app_user_id\":\"\(appUserId)\"",
         ]
-        if let productId { parts.append("\"product_id\":\"\(productId)\"") }
-        if let expirationAtMs { parts.append("\"expiration_at_ms\":\(expirationAtMs)") }
-        if let isRefund { parts.append("\"is_refund\":\(isRefund)") }
+        if let productId {
+            parts.append("\"product_id\":\"\(productId)\"")
+        }
+        if let expirationAtMs {
+            parts.append("\"expiration_at_ms\":\(expirationAtMs)")
+        }
+        if let isRefund {
+            parts.append("\"is_refund\":\(isRefund)")
+        }
         return "{\"event\":{\(parts.joined(separator: ","))}}"
     }
 

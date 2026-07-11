@@ -99,12 +99,16 @@ actor WorkflowEngine: Service {
                         group.addTask { [self] in try await executePersistedNode(node, run: run, runID: runID, context: snapshot) }
                     }
                     for _ in 0 ..< min(WorkflowExecutionBounds.maxParallelNodes, runnable.count) {
-                        if let node = iterator.next() { submit(node) }
+                        if let node = iterator.next() {
+                            submit(node)
+                        }
                     }
                     var values: [WorkflowNodeExecution] = []
                     while let value = try await group.next() {
                         values.append(value)
-                        if let node = iterator.next() { submit(node) }
+                        if let node = iterator.next() {
+                            submit(node)
+                        }
                     }
                     return values
                 }
@@ -279,7 +283,7 @@ actor WorkflowEngine: Service {
         min(max(Int(raw ?? "20") ?? 20, 1), WorkflowExecutionBounds.maxIterations)
     }
 
-    nonisolated private func interpolate(_ value: String, context: [String: String]) -> String {
+    private nonisolated func interpolate(_ value: String, context: [String: String]) -> String {
         context.reduce(value) { result, pair in result.replacingOccurrences(of: "{{\(pair.key)}}", with: pair.value) }
     }
 

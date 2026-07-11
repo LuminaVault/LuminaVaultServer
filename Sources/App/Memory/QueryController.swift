@@ -185,7 +185,9 @@ struct QueryController {
                                         request: chatRequest
                                     )
                                     for try await chunk in chunks {
-                                        if Task.isCancelled { break }
+                                        if Task.isCancelled {
+                                            break
+                                        }
                                         if !chunk.delta.isEmpty {
                                             if firstTokenMs == nil {
                                                 firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)

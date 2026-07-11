@@ -24,7 +24,9 @@ struct WhatsAppPairParserTests {
         let qrRows = Array(repeating: "█▀▀▀█ ▄▄ █▀▀▀█", count: 6)
         let events = run(["Scan this QR code:", ""] + qrRows + ["", "Waiting for scan…"])
         let qrs = events.compactMap { event -> String? in
-            if case let .qr(art) = event { return art }
+            if case let .qr(art) = event {
+                return art
+            }
             return nil
         }
         #expect(qrs.count == 1)
@@ -36,7 +38,13 @@ struct WhatsAppPairParserTests {
     @Test func `ignores short block noise`() {
         // Fewer than the 5-row minimum → not treated as a QR.
         let events = run(["██", "██", "done"])
-        #expect(!events.contains { if case .qr = $0 { true } else { false } })
+        #expect(!events.contains {
+            if case .qr = $0 {
+                true
+            } else {
+                false
+            }
+        })
     }
 
     @Test func `detects linked success`() {
@@ -51,7 +59,13 @@ struct WhatsAppPairParserTests {
 
     @Test func `detects error`() {
         let events = run(["Error: could not connect to WhatsApp"])
-        guard case let .error(msg)? = events.first(where: { if case .error = $0 { true } else { false } }) else {
+        guard case let .error(msg)? = events.first(where: {
+            if case .error = $0 {
+                true
+            } else {
+                false
+            }
+        }) else {
             Issue.record("expected an .error event")
             return
         }
@@ -73,7 +87,11 @@ struct WhatsAppPairParserTests {
         let frame = Array(repeating: "█ █ █ █ █ █", count: 5)
         let events = run(frame + ["refreshing"] + frame + ["scan now"])
         let count = events.reduce(0) { acc, e in
-            if case .qr = e { acc + 1 } else { acc }
+            if case .qr = e {
+                acc + 1
+            } else {
+                acc
+            }
         }
         #expect(count == 2)
     }

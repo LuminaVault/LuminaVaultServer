@@ -93,7 +93,9 @@ struct CalendarSyncService {
 
             pageToken = result.nextPageToken
             // `nextSyncToken` only appears on the final page.
-            if let token = result.nextSyncToken { newSyncToken = token }
+            if let token = result.nextSyncToken {
+                newSyncToken = token
+            }
         } while pageToken != nil
 
         account.syncToken = newSyncToken ?? account.syncToken

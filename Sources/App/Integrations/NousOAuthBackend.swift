@@ -191,7 +191,9 @@ struct LiveNousOAuthBackend: NousOAuthBackend {
                 if let colon = line.firstIndex(of: ":") {
                     let value = line[line.index(after: colon)...]
                         .trimmingCharacters(in: .whitespaces)
-                    if !value.isEmpty { return value }
+                    if !value.isEmpty {
+                        return value
+                    }
                 }
                 return line.isEmpty ? nil : line
             }

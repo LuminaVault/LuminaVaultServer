@@ -56,14 +56,20 @@ struct RaindropConnector: PluginConnector {
             }
 
             let decoded = try decoder.decode(Page.self, from: resp.body)
-            if decoded.items.isEmpty { break }
+            if decoded.items.isEmpty {
+                break
+            }
             for item in decoded.items {
                 guard let raw = item.link?.trimmingCharacters(in: .whitespacesAndNewlines),
                       raw.hasPrefix("http://") || raw.hasPrefix("https://")
                 else { continue }
-                if seen.insert(raw).inserted { urls.append(raw) }
+                if seen.insert(raw).inserted {
+                    urls.append(raw)
+                }
             }
-            if decoded.items.count < Self.perPage { break }
+            if decoded.items.count < Self.perPage {
+                break
+            }
         }
 
         logger.info("raindrop connector tenant=\(tenantID) urls=\(urls.count)")

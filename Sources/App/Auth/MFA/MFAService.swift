@@ -41,9 +41,15 @@ struct DefaultMFAService: MFAService {
         guard let row = try await MFAChallenge.find(challengeID, on: fluent.db()) else {
             return false
         }
-        if row.consumedAt != nil { return false }
-        if row.expiresAt < Date() { return false }
-        if row.failedAttempts >= maxFailedAttempts { return false }
+        if row.consumedAt != nil {
+            return false
+        }
+        if row.expiresAt < Date() {
+            return false
+        }
+        if row.failedAttempts >= maxFailedAttempts {
+            return false
+        }
 
         if row.codeHash == sha256Hex(code) {
             row.consumedAt = Date()

@@ -43,7 +43,9 @@ actor ReminderScheduler: Service {
         while !Task.isCancelled {
             do {
                 let fired = try await tick(at: Date())
-                if fired > 0 { logger.info("reminders.tick fired=\(fired)") }
+                if fired > 0 {
+                    logger.info("reminders.tick fired=\(fired)")
+                }
             } catch {
                 logger.warning("reminders.tick error \(error)")
             }
@@ -127,7 +129,9 @@ actor ReminderScheduler: Service {
         var candidate = after.addingTimeInterval(60 - Double(calendar.component(.second, from: after)))
         let cap = after.addingTimeInterval(366 * 24 * 60 * 60)
         while candidate <= cap {
-            if expression.matches(candidate, in: .gmt) { return candidate }
+            if expression.matches(candidate, in: .gmt) {
+                return candidate
+            }
             candidate.addTimeInterval(60)
         }
         return nil

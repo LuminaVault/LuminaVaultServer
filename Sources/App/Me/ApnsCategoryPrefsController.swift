@@ -42,9 +42,15 @@ struct ApnsCategoryPrefsController {
         let db = fluent.db()
         let row = try await ApnsCategoryPrefs.find(tenantID, on: db)
             ?? ApnsCategoryPrefs(tenantID: tenantID)
-        if let chat = body.chatEnabled { row.chatEnabled = chat }
-        if let nudge = body.nudgeEnabled { row.nudgeEnabled = nudge }
-        if let digest = body.digestEnabled { row.digestEnabled = digest }
+        if let chat = body.chatEnabled {
+            row.chatEnabled = chat
+        }
+        if let nudge = body.nudgeEnabled {
+            row.nudgeEnabled = nudge
+        }
+        if let digest = body.digestEnabled {
+            row.digestEnabled = digest
+        }
         try await row.save(on: db)
 
         return APNSCategoryPrefsResponse(

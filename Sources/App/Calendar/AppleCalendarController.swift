@@ -116,7 +116,11 @@ struct AppleCalendarController {
             // `xmax = 0` ⇒ the row was freshly inserted; otherwise it was updated.
             // No row returned ⇒ the WHERE guard rejected a stale delta → skipped.
             if let result {
-                if result.inserted { inserted += 1 } else { updated += 1 }
+                if result.inserted {
+                    inserted += 1
+                } else {
+                    updated += 1
+                }
             } else {
                 skipped += 1
             }

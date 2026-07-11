@@ -65,8 +65,12 @@ struct DefaultAuthService: AuthService {
     func register(email: String, username rawUsername: String, password: String) async throws -> AuthResponse {
         guard password.count >= minPasswordLength else { throw AuthError.weakPassword }
         let username = try UsernamePolicy.validate(rawUsername)
-        if try await repo.findUser(byEmail: email) != nil { throw AuthError.emailExists }
-        if try await repo.findUser(byUsername: username) != nil { throw AuthError.usernameTaken }
+        if try await repo.findUser(byEmail: email) != nil {
+            throw AuthError.emailExists
+        }
+        if try await repo.findUser(byUsername: username) != nil {
+            throw AuthError.usernameTaken
+        }
         let hash = await hasher.hash(password)
         let user = try await repo.createUser(email: email, username: username, passwordHash: hash)
         try await Self.applyTrialDefaults(to: user, on: fluent.db())
@@ -100,7 +104,9 @@ struct DefaultAuthService: AuthService {
         guard let user = try await repo.findUser(byEmail: email) else {
             throw AuthError.invalidCredentials
         }
-        if let lock = user.lockoutUntil, lock > Date() { throw AuthError.accountLocked }
+        if let lock = user.lockoutUntil, lock > Date() {
+            throw AuthError.accountLocked
+        }
 
         let userID = try user.requireID()
         guard await hasher.verify(password, hash: user.passwordHash) else {
@@ -161,8 +167,12 @@ struct DefaultAuthService: AuthService {
             .first()
         else { throw AuthError.resetCodeInvalid }
 
-        if let lock = row.lockedUntil, lock > Date() { throw AuthError.resetLocked }
-        if row.expiresAt < Date() { throw AuthError.resetCodeInvalid }
+        if let lock = row.lockedUntil, lock > Date() {
+            throw AuthError.resetLocked
+        }
+        if row.expiresAt < Date() {
+            throw AuthError.resetCodeInvalid
+        }
 
         if row.codeHash == sha256Hex(code) {
             row.usedAt = Date()
@@ -191,7 +201,9 @@ struct DefaultAuthService: AuthService {
 
     func sendVerification(email: String) async throws {
         guard let user = try await repo.findUser(byEmail: email) else { return } // no-op (don't leak existence)
-        if user.isVerified { return } // idempotent: nothing to do
+        if user.isVerified {
+            return
+        } // idempotent: nothing to do
         try await issueVerificationCode(for: user)
     }
 
@@ -200,7 +212,9 @@ struct DefaultAuthService: AuthService {
             throw AuthError.verifyCodeInvalid
         }
         let userID = try user.requireID()
-        if user.isVerified { return } // idempotent
+        if user.isVerified {
+            return
+        } // idempotent
 
         guard let row = try await EmailVerificationToken.query(on: fluent.db(), tenantID: userID)
             .filter(\.$usedAt == nil)
@@ -208,8 +222,12 @@ struct DefaultAuthService: AuthService {
             .first()
         else { throw AuthError.verifyCodeInvalid }
 
-        if let lock = row.lockedUntil, lock > Date() { throw AuthError.verifyLocked }
-        if row.expiresAt < Date() { throw AuthError.verifyCodeInvalid }
+        if let lock = row.lockedUntil, lock > Date() {
+            throw AuthError.verifyLocked
+        }
+        if row.expiresAt < Date() {
+            throw AuthError.verifyCodeInvalid
+        }
 
         if row.codeHash == sha256Hex(code) {
             row.usedAt = Date()

@@ -81,8 +81,12 @@ struct VisionEmbedService {
     /// determines how harmful that is — note in the TODO if we adopt a
     /// model wider than 1536.
     static func padOrTruncate(_ v: [Float], to dim: Int) -> [Float] {
-        if v.count == dim { return v }
-        if v.count > dim { return Array(v.prefix(dim)) }
+        if v.count == dim {
+            return v
+        }
+        if v.count > dim {
+            return Array(v.prefix(dim))
+        }
         return v + Array(repeating: 0, count: dim - v.count)
     }
 

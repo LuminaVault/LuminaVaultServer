@@ -81,7 +81,9 @@ struct OpenAIEmbeddingServiceTests {
 
         // URLSession with custom URLProtocol uploads via httpBodyStream, not httpBody.
         let body: Data = {
-            if let d = req.httpBody { return d }
+            if let d = req.httpBody {
+                return d
+            }
             guard let s = req.httpBodyStream else { return Data() }
             s.open(); defer { s.close() }
             var out = Data()
@@ -89,7 +91,9 @@ struct OpenAIEmbeddingServiceTests {
             defer { buf.deallocate() }
             while s.hasBytesAvailable {
                 let n = s.read(buf, maxLength: 4096)
-                if n <= 0 { break }
+                if n <= 0 {
+                    break
+                }
                 out.append(buf, count: n)
             }
             return out

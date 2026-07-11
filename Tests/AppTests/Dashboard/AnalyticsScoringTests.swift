@@ -1,5 +1,5 @@
-import Testing
 @testable import App
+import Testing
 
 @Suite("Analytics memory health scoring")
 struct AnalyticsScoringTests {

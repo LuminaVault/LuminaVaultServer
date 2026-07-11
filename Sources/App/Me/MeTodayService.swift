@@ -99,7 +99,9 @@ struct MeTodayService {
         let sleepMinutes = sleepRows.first.map { Int($0.total) } ?? 0
         let sleepDuration: String? = sleepMinutes > 0 ? Self.iso8601Duration(minutes: sleepMinutes) : nil
 
-        if stepsToday == nil, sleepDuration == nil { return nil }
+        if stepsToday == nil, sleepDuration == nil {
+            return nil
+        }
         return MeTodayHealthSummaryDTO(stepsToday: stepsToday, sleepLastNight: sleepDuration)
     }
 
@@ -108,15 +110,21 @@ struct MeTodayService {
     static func titlePreview(from content: String) -> String {
         let firstLine = content.split(whereSeparator: \.isNewline).first.map(String.init) ?? content
         let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
-        if trimmed.count <= 80 { return trimmed }
+        if trimmed.count <= 80 {
+            return trimmed
+        }
         return String(trimmed.prefix(77)) + "..."
     }
 
     static func iso8601Duration(minutes: Int) -> String {
         let hours = minutes / 60
         let mins = minutes % 60
-        if hours > 0, mins > 0 { return "PT\(hours)H\(mins)M" }
-        if hours > 0 { return "PT\(hours)H" }
+        if hours > 0, mins > 0 {
+            return "PT\(hours)H\(mins)M"
+        }
+        if hours > 0 {
+            return "PT\(hours)H"
+        }
         return "PT\(mins)M"
     }
 }

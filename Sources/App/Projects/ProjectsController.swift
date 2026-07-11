@@ -66,8 +66,12 @@ struct ProjectsController {
             guard !trimmed.isEmpty else { throw HTTPError(.badRequest, message: "project name cannot be empty") }
             project.name = trimmed
         }
-        if let description = body.description { project.description = description.isEmpty ? nil : description }
-        if let archived = body.archived { project.archived = archived }
+        if let description = body.description {
+            project.description = description.isEmpty ? nil : description
+        }
+        if let archived = body.archived {
+            project.archived = archived
+        }
         try await project.save(on: fluent.db())
         let count = try await Self.todoCount(tenantID: tenantID, projectID: id, db: fluent.db())
         return try project.toDTO(todoCount: count)
@@ -95,7 +99,9 @@ struct ProjectsController {
         let rows = try await VaultFile.query(on: db, tenantID: tenantID).all()
         var counts: [UUID: Int] = [:]
         for file in rows where file.metadata?.isTodo == true {
-            if let pid = file.metadata?.projectID { counts[pid, default: 0] += 1 }
+            if let pid = file.metadata?.projectID {
+                counts[pid, default: 0] += 1
+            }
         }
         return counts
     }

@@ -29,7 +29,9 @@ struct DeterministicEmbeddingService: EmbeddingService {
     func embed(_ text: String, tenantID _: UUID) async throws -> [Float] {
         var v = [Float](repeating: 0, count: 1536)
         let bytes = Array(text.utf8)
-        if bytes.isEmpty { return v }
+        if bytes.isEmpty {
+            return v
+        }
         for i in 0 ..< v.count {
             let b = bytes[i % bytes.count]
             v[i] = (Float(b) / 127.5) - 1.0

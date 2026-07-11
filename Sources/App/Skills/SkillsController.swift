@@ -99,7 +99,9 @@ struct SkillsController {
             source: manifest.source.rawValue,
             name: manifest.name
         )
-        if let enabled = body.enabled { state.enabled = enabled }
+        if let enabled = body.enabled {
+            state.enabled = enabled
+        }
         if let override = body.scheduleOverride {
             state.scheduleOverride = override.isEmpty ? nil : override
         }

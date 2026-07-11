@@ -241,7 +241,7 @@ struct MultimodalIngestionService {
         WHERE item.id = candidate.id
         RETURNING item.id
         """).first(decoding: ClaimedItem.self),
-              let item = try await IngestionItem.query(on: fluent.db()).filter(\.$id == claim.id).first()
+            let item = try await IngestionItem.query(on: fluent.db()).filter(\.$id == claim.id).first()
         else { return false }
         let batch = try await requireBatch(tenantID: item.tenantID, batchID: item.batchID)
         try await process(item: item, tenantID: item.tenantID, spaceID: batch.spaceID)

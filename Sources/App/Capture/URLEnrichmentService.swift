@@ -250,10 +250,14 @@ struct URLEnrichmentService {
     /// returns the primary metadata unchanged so the capture still lands.
     private func applyJinaIfShallow(metadata: EnrichedMetadata, url: URL, tenantID: UUID) async -> EnrichedMetadata {
         guard let jinaEnricher else { return metadata }
-        if metadata.body?.isEmpty == false { return metadata }
+        if metadata.body?.isEmpty == false {
+            return metadata
+        }
         let descLen = metadata.description?.count ?? 0
         let transcriptLen = metadata.transcript?.count ?? 0
-        if descLen >= 500 || transcriptLen >= 500 { return metadata }
+        if descLen >= 500 || transcriptLen >= 500 {
+            return metadata
+        }
 
         do {
             let jina = try await jinaEnricher.enrich(url: url)

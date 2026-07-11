@@ -143,8 +143,12 @@ struct CronBridgeService {
         {
             let min = m.count > 1 ? (Int(m[1]) ?? 0) : 0
             let mer = m.count > 2 ? m[2] : ""
-            if mer == "pm", h < 12 { h += 12 }
-            if mer == "am", h == 12 { h = 0 }
+            if mer == "pm", h < 12 {
+                h += 12
+            }
+            if mer == "am", h == 12 {
+                h = 0
+            }
             return (h % 24, min)
         }
         // 24h "at HH:MM" or "at HH". groups: [hour, minute?]
@@ -199,8 +203,12 @@ struct CronBridgeService {
         req.headers.add(name: "Authorization", value: "Bearer \(token)")
         req.headers.add(name: "Content-Type", value: "application/json")
         var bodyObj: [String: Any] = ["schedule": spec.schedule, "deliver": spec.deliver ?? "origin"]
-        if let prompt = spec.prompt, !prompt.isEmpty { bodyObj["prompt"] = prompt }
-        if let name = spec.name, !name.isEmpty { bodyObj["name"] = name }
+        if let prompt = spec.prompt, !prompt.isEmpty {
+            bodyObj["prompt"] = prompt
+        }
+        if let name = spec.name, !name.isEmpty {
+            bodyObj["name"] = name
+        }
         req.body = try .bytes(JSONSerialization.data(withJSONObject: bodyObj))
         let resp = try await httpClient.execute(req, timeout: .seconds(25))
         guard (200 ..< 300).contains(Int(resp.status.code)) else {
@@ -291,9 +299,15 @@ struct CronBridgeService {
     func createManaged(tenantID: UUID, spec: CronCreateSpec) async throws -> [HermesCronJob] {
         let handle = try await requireHandle(tenantID: tenantID)
         var command = ["hermes", "cron", "create", spec.schedule]
-        if let prompt = spec.prompt, !prompt.isEmpty { command.append(prompt) }
-        if let name = spec.name, !name.isEmpty { command += ["--name", name] }
-        if let deliver = spec.deliver, !deliver.isEmpty { command += ["--deliver", deliver] }
+        if let prompt = spec.prompt, !prompt.isEmpty {
+            command.append(prompt)
+        }
+        if let name = spec.name, !name.isEmpty {
+            command += ["--name", name]
+        }
+        if let deliver = spec.deliver, !deliver.isEmpty {
+            command += ["--deliver", deliver]
+        }
         for skill in spec.skills ?? [] where !skill.isEmpty {
             command += ["--skill", skill]
         }
@@ -339,20 +353,29 @@ struct CronBridgeService {
             guard let id = j["id"] as? String else { return nil }
             // schedule: dashboard sends `schedule_display` + an object
             // `schedule {kind,expr,display}`; jobs.json may send a plain string.
-            let schedule: String? = if let sd = j["schedule_display"] as? String { sd }
-            else if let so = j["schedule"] as? [String: Any] {
+            let schedule: String? = if let sd = j["schedule_display"] as? String {
+                sd
+            } else if let so = j["schedule"] as? [String: Any] {
                 (so["display"] as? String) ?? (so["expr"] as? String)
-            } else { j["schedule"] as? String }
+            } else {
+                j["schedule"] as? String
+            }
             // last run: `last_run_at` (+ `last_status`) or legacy `last_run`.
             let lastRun: String? = if let lr = j["last_run_at"] as? String {
                 (j["last_status"] as? String).map { "\(lr) (\($0))" } ?? lr
-            } else if let s = j["last_run"] as? String { s }
-            else if let d = j["last_run"] as? [String: Any] {
+            } else if let s = j["last_run"] as? String {
+                s
+            } else if let d = j["last_run"] as? [String: Any] {
                 (d["at"] as? String) ?? (d["status"] as? String)
-            } else { nil }
+            } else {
+                nil
+            }
             // status: paused flag wins, else state/status, else active.
-            let status: String = if j["enabled"] as? Bool == false { "paused" }
-            else { (j["state"] as? String) ?? (j["status"] as? String) ?? "active" }
+            let status: String = if j["enabled"] as? Bool == false {
+                "paused"
+            } else {
+                (j["state"] as? String) ?? (j["status"] as? String) ?? "active"
+            }
             let mode = (j["no_agent"] as? Bool == true) ? "script" : "agent"
             return HermesCronJob(
                 id: id,

@@ -37,7 +37,9 @@ struct ImportService {
         re.enumerateMatches(in: html, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
             guard let match, match.numberOfRanges > 1 else { return }
             let u = ns.substring(with: match.range(at: 1))
-            if u.hasPrefix("http://") || u.hasPrefix("https://") { urls.append(u) }
+            if u.hasPrefix("http://") || u.hasPrefix("https://") {
+                urls.append(u)
+            }
         }
         var seen = Set<String>()
         return urls.filter { seen.insert($0).inserted }
@@ -187,7 +189,9 @@ struct ImportService {
                 let dst = rawRoot.appendingPathComponent(newRel)
                 try? fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
                 if fm.fileExists(atPath: src.path) {
-                    if fm.fileExists(atPath: dst.path) { try? fm.removeItem(at: dst) }
+                    if fm.fileExists(atPath: dst.path) {
+                        try? fm.removeItem(at: dst)
+                    }
                     try? fm.moveItem(at: src, to: dst)
                 }
                 vf.path = newRel
@@ -281,7 +285,9 @@ struct ImportService {
     /// Resolves an approval target (`slug` | `new:Name` | `imported`) to a real,
     /// existing Space slug — creating a proposed new Space when needed.
     private func resolveDestSlug(tenantID: UUID, target: String, slugCache _: inout [String: UUID]) async throws -> String {
-        if target.isEmpty || target == Self.importedSlug { return Self.importedSlug }
+        if target.isEmpty || target == Self.importedSlug {
+            return Self.importedSlug
+        }
         if target.hasPrefix("new:") {
             let name = String(target.dropFirst(4)).trimmingCharacters(in: .whitespaces)
             let slug = Self.slugify(name)
@@ -301,7 +307,9 @@ struct ImportService {
     }
 
     private func spaceID(tenantID: UUID, slug: String, slugCache: inout [String: UUID]) async throws -> UUID {
-        if let cached = slugCache[slug] { return cached }
+        if let cached = slugCache[slug] {
+            return cached
+        }
         if let space = try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$slug == slug).first() {
             let id = try space.requireID()
             slugCache[slug] = id
@@ -332,11 +340,16 @@ struct ImportService {
         var out = ""
         var lastDash = false
         for ch in name.lowercased() {
-            if ch.isLetter || ch.isNumber { out.append(ch); lastDash = false }
-            else if !lastDash { out.append("-"); lastDash = true }
+            if ch.isLetter || ch.isNumber {
+                out.append(ch); lastDash = false
+            } else if !lastDash {
+                out.append("-"); lastDash = true
+            }
         }
         out = String(out.trimmingCharacters(in: CharacterSet(charactersIn: "-")).prefix(31))
-        if out.count < 2 { out = "imported" }
+        if out.count < 2 {
+            out = "imported"
+        }
         return out
     }
 }

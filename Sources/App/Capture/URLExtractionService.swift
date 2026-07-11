@@ -47,7 +47,9 @@ struct URLExtractionService {
             let normalized = Self.normalize(url)
             if seen.insert(normalized).inserted {
                 out.append(ExtractedURL(raw: url.absoluteString, normalized: normalized))
-                if out.count >= Self.maxURLsPerExtraction { break }
+                if out.count >= Self.maxURLsPerExtraction {
+                    break
+                }
             }
         }
         return out
@@ -63,7 +65,9 @@ struct URLExtractionService {
         let scheme = components?.scheme?.lowercased() ?? "http"
         let host = components?.host?.lowercased() ?? ""
         var path = components?.path ?? ""
-        if path == "/" { path = "" }
+        if path == "/" {
+            path = ""
+        }
         var portFragment = ""
         if let port = components?.port {
             let defaultPort = (scheme == "https") ? 443 : 80

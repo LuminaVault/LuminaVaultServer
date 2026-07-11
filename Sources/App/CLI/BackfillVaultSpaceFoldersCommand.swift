@@ -74,7 +74,9 @@ func runBackfillVaultSpaceFoldersCommand(reader: ConfigReader) async throws {
             }
             do {
                 try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
+                if fm.fileExists(atPath: dest.path) {
+                    try fm.removeItem(at: dest)
+                }
                 try fm.moveItem(at: source, to: dest)
                 row.path = newRel
                 try await row.save(on: db)

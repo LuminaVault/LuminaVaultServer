@@ -278,41 +278,93 @@ enum HermesGatewayCatalog {
         var out: [String: String] = [:]
         switch id {
         case .telegram:
-            if let t = value("bot_token") { out["TELEGRAM_BOT_TOKEN"] = t }
-            if let u = value("allowed_users") { out["TELEGRAM_ALLOWED_USERS"] = u }
+            if let t = value("bot_token") {
+                out["TELEGRAM_BOT_TOKEN"] = t
+            }
+            if let u = value("allowed_users") {
+                out["TELEGRAM_ALLOWED_USERS"] = u
+            }
         case .discord:
-            if let t = value("bot_token") { out["DISCORD_BOT_TOKEN"] = t }
-            if let u = value("allowed_users") { out["DISCORD_ALLOWED_USERS"] = u }
+            if let t = value("bot_token") {
+                out["DISCORD_BOT_TOKEN"] = t
+            }
+            if let u = value("allowed_users") {
+                out["DISCORD_ALLOWED_USERS"] = u
+            }
         case .slack:
-            if let t = value("bot_token") { out["SLACK_BOT_TOKEN"] = t }
-            if let t = value("app_token") { out["SLACK_APP_TOKEN"] = t }
-            if let u = value("allowed_users") { out["SLACK_ALLOWED_USERS"] = u }
+            if let t = value("bot_token") {
+                out["SLACK_BOT_TOKEN"] = t
+            }
+            if let t = value("app_token") {
+                out["SLACK_APP_TOKEN"] = t
+            }
+            if let u = value("allowed_users") {
+                out["SLACK_ALLOWED_USERS"] = u
+            }
         case .whatsapp:
             // Not remotely configurable (interactive QR pairing). No env-vars.
             break
         case .email:
-            if let t = value("address") { out["EMAIL_ADDRESS"] = t }
-            if let t = value("password") { out["EMAIL_PASSWORD"] = t }
-            if let t = value("imap_host") { out["EMAIL_IMAP_HOST"] = t }
-            if let t = value("smtp_host") { out["EMAIL_SMTP_HOST"] = t }
-            if let t = value("allowed_users") { out["EMAIL_ALLOWED_USERS"] = t }
-            if let t = value("imap_port") { out["EMAIL_IMAP_PORT"] = t }
-            if let t = value("smtp_port") { out["EMAIL_SMTP_PORT"] = t }
-            if let t = value("home_address") { out["EMAIL_HOME_ADDRESS"] = t }
+            if let t = value("address") {
+                out["EMAIL_ADDRESS"] = t
+            }
+            if let t = value("password") {
+                out["EMAIL_PASSWORD"] = t
+            }
+            if let t = value("imap_host") {
+                out["EMAIL_IMAP_HOST"] = t
+            }
+            if let t = value("smtp_host") {
+                out["EMAIL_SMTP_HOST"] = t
+            }
+            if let t = value("allowed_users") {
+                out["EMAIL_ALLOWED_USERS"] = t
+            }
+            if let t = value("imap_port") {
+                out["EMAIL_IMAP_PORT"] = t
+            }
+            if let t = value("smtp_port") {
+                out["EMAIL_SMTP_PORT"] = t
+            }
+            if let t = value("home_address") {
+                out["EMAIL_HOME_ADDRESS"] = t
+            }
         case .matrix:
-            if let t = value("homeserver") { out["MATRIX_HOMESERVER"] = t }
-            if let t = value("access_token") { out["MATRIX_ACCESS_TOKEN"] = t }
-            if let u = value("allowed_users") { out["MATRIX_ALLOWED_USERS"] = u }
-            if let t = value("user_id") { out["MATRIX_USER_ID"] = t }
+            if let t = value("homeserver") {
+                out["MATRIX_HOMESERVER"] = t
+            }
+            if let t = value("access_token") {
+                out["MATRIX_ACCESS_TOKEN"] = t
+            }
+            if let u = value("allowed_users") {
+                out["MATRIX_ALLOWED_USERS"] = u
+            }
+            if let t = value("user_id") {
+                out["MATRIX_USER_ID"] = t
+            }
         case .ntfy:
-            if let t = value("topic") { out["NTFY_TOPIC"] = t }
-            if let u = value("allowed_users") { out["NTFY_ALLOWED_USERS"] = u }
-            if let t = value("server_url") { out["NTFY_SERVER_URL"] = t }
-            if let t = value("token") { out["NTFY_TOKEN"] = t }
+            if let t = value("topic") {
+                out["NTFY_TOPIC"] = t
+            }
+            if let u = value("allowed_users") {
+                out["NTFY_ALLOWED_USERS"] = u
+            }
+            if let t = value("server_url") {
+                out["NTFY_SERVER_URL"] = t
+            }
+            if let t = value("token") {
+                out["NTFY_TOKEN"] = t
+            }
         case .mattermost:
-            if let t = value("url") { out["MATTERMOST_URL"] = t }
-            if let t = value("token") { out["MATTERMOST_TOKEN"] = t }
-            if let u = value("allowed_users") { out["MATTERMOST_ALLOWED_USERS"] = u }
+            if let t = value("url") {
+                out["MATTERMOST_URL"] = t
+            }
+            if let t = value("token") {
+                out["MATTERMOST_TOKEN"] = t
+            }
+            if let u = value("allowed_users") {
+                out["MATTERMOST_ALLOWED_USERS"] = u
+            }
         case .photon:
             // Runtime is via the central Node sidecar (spectrum-ts) + public webhook
             // on the Lumina API. No per-tenant Hermes container env vars.

@@ -151,7 +151,9 @@ actor WhatsAppPairingService {
             for event in parser.consume(line: line) {
                 handle(sessionID: sessionID, event: event)
             }
-            if sessions[sessionID]?.terminal != nil { break }
+            if sessions[sessionID]?.terminal != nil {
+                break
+            }
         }
         for event in parser.finish() {
             handle(sessionID: sessionID, event: event)
@@ -171,7 +173,9 @@ actor WhatsAppPairingService {
         switch event {
         case let .qr(art):
             session.lastQR = art
-            if session.lastStatus == .starting { session.lastStatus = .awaitingScan }
+            if session.lastStatus == .starting {
+                session.lastStatus = .awaitingScan
+            }
         case let .status(status):
             session.lastStatus = status
         case .linked:

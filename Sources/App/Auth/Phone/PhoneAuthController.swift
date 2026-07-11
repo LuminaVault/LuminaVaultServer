@@ -58,7 +58,9 @@ actor PreAuthChallengeStore {
     func issue(channel: String, destination: String, purpose: String, code: String) -> (id: UUID, expiresAt: Date) {
         // Burn any prior outstanding challenge for the same destination so
         // the latest send wins (and old codes can't be reused after resend).
-        if let oldID = latestByDestination[destination] { byID[oldID] = nil }
+        if let oldID = latestByDestination[destination] {
+            byID[oldID] = nil
+        }
 
         let id = UUID()
         let expiresAt = Date().addingTimeInterval(lifetime)

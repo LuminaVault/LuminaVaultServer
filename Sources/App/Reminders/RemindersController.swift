@@ -106,7 +106,9 @@ struct RemindersController {
             }
             reminder.title = trimmed
         }
-        if let bodyText = body.body { reminder.body = bodyText }
+        if let bodyText = body.body {
+            reminder.body = bodyText
+        }
         if let fireAt = body.fireAt {
             reminder.fireAt = fireAt
             // Editing the fire time re-arms a fired reminder.

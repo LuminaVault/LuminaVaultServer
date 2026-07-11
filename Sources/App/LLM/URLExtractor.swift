@@ -25,13 +25,17 @@ enum URLExtractor {
             while let last = raw.last, ".,;:!?\"'".contains(last) {
                 raw.removeLast()
             }
-            if seen.contains(raw) { continue }
+            if seen.contains(raw) {
+                continue
+            }
             seen.insert(raw)
             guard let url = URL(string: raw), url.scheme?.lowercased() == "http" || url.scheme?.lowercased() == "https" else {
                 continue
             }
             urls.append(url)
-            if urls.count >= maxURLsPerMessage { break }
+            if urls.count >= maxURLsPerMessage {
+                break
+            }
         }
         return urls
     }

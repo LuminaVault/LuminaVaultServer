@@ -154,7 +154,9 @@ private actor IsolationStore {
     private var ready: Set<String> = []
 
     func ensureDatabase(_ name: String) async throws {
-        if ready.contains(name) { return }
+        if ready.contains(name) {
+            return
+        }
         try await provisionIfNeeded(name: name)
         ready.insert(name)
     }

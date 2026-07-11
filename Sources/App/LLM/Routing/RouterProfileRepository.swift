@@ -96,7 +96,9 @@ actor RouterProfileRepository {
             .filter(\.$scopeID == scopeID)
             .first()
         let row = existing ?? RouterBinding()
-        if row.id == nil { row.id = UUID() }
+        if row.id == nil {
+            row.id = UUID()
+        }
         row.tenantID = tenantID
         row.scope = scope.rawValue
         row.scopeID = scopeID

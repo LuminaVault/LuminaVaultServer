@@ -119,7 +119,9 @@ struct CentralHermesManager {
     private func awaitHealthy(port: Int, timeoutSeconds: Int, intervalSeconds: Int) async -> Bool {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
         while Date() < deadline {
-            if await healthProbe(port, config.apiServerKey) { return true }
+            if await healthProbe(port, config.apiServerKey) {
+                return true
+            }
             try? await Task.sleep(for: .seconds(intervalSeconds))
         }
         return false

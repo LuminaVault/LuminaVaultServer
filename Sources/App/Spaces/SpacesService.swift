@@ -138,10 +138,18 @@ struct SpacesService {
             guard !trimmed.isEmpty else { throw SpacesError.nameRequired }
             space.name = trimmed
         }
-        if let description { space.spaceDescription = description.isEmpty ? nil : description }
-        if let color { space.color = color.isEmpty ? nil : color }
-        if let icon { space.icon = icon.isEmpty ? nil : icon }
-        if let category { space.category = category.isEmpty ? nil : category }
+        if let description {
+            space.spaceDescription = description.isEmpty ? nil : description
+        }
+        if let color {
+            space.color = color.isEmpty ? nil : color
+        }
+        if let icon {
+            space.icon = icon.isEmpty ? nil : icon
+        }
+        if let category {
+            space.category = category.isEmpty ? nil : category
+        }
         try await space.save(on: fluent.db())
         return space
     }

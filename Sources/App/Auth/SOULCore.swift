@@ -86,9 +86,13 @@ enum SOULCore {
         let suffix = trimLeadingBlank(String(cleaned[splitAt...]))
 
         var out = ""
-        if !prefix.isEmpty { out += prefix + "\n\n" }
+        if !prefix.isEmpty {
+            out += prefix + "\n\n"
+        }
         out += render()
-        if !suffix.isEmpty { out += "\n\n" + suffix }
+        if !suffix.isEmpty {
+            out += "\n\n" + suffix
+        }
         return out
     }
 

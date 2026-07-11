@@ -373,7 +373,9 @@ actor HermesContainerManager {
             // "already in use" → container exists but stopped; try start.
             if result.stderr.contains("is already in use") {
                 let start = try await docker.run(args: ["start", containerName])
-                if start.ok { return }
+                if start.ok {
+                    return
+                }
             }
             throw Error.dockerRunFailed(stderr: result.stderr, exitCode: result.exitCode)
         }

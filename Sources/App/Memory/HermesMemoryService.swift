@@ -379,10 +379,14 @@ actor HermesMemoryService {
             let cleaned = value
                 .lowercased()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if cleaned.isEmpty { continue }
+            if cleaned.isEmpty {
+                continue
+            }
             if seen.insert(cleaned).inserted {
                 out.append(cleaned)
-                if out.count == 5 { break }
+                if out.count == 5 {
+                    break
+                }
             }
         }
         return out

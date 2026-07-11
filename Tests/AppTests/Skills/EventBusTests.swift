@@ -174,7 +174,9 @@ struct EventBusTests {
         let start = DispatchTime.now().uptimeNanoseconds
         while true {
             let count = bus.subscriberCount(for: type)
-            if count == expected { return }
+            if count == expected {
+                return
+            }
             if DispatchTime.now().uptimeNanoseconds - start > timeoutNanos {
                 Issue.record("subscriberCount(for: \(type)) timed out: got \(count), expected \(expected)")
                 return

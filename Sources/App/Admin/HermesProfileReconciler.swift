@@ -111,7 +111,9 @@ struct HermesProfileReconciler {
 
         for entry in entries {
             // Skip already-soft-deleted dirs.
-            if entry.hasPrefix("_deleted_") { continue }
+            if entry.hasPrefix("_deleted_") {
+                continue
+            }
             if activeIDs.contains(entry) {
                 kept += 1
                 continue

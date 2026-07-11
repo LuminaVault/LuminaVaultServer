@@ -38,8 +38,12 @@ enum URLEnricherGuard {
             "localhost", "ip6-localhost", "ip6-loopback",
             "metadata.google.internal",
         ]
-        if blockedHosts.contains(host) { return false }
-        if host.hasSuffix(".internal") || host.hasSuffix(".local") { return false }
+        if blockedHosts.contains(host) {
+            return false
+        }
+        if host.hasSuffix(".internal") || host.hasSuffix(".local") {
+            return false
+        }
 
         return !isPrivateNumericHost(host)
     }
@@ -68,9 +72,15 @@ enum URLEnricherGuard {
 
         // IPv6
         let lower = stripped.lowercased()
-        if lower == "::1" || lower == "::" { return true }
-        if lower.hasPrefix("fc") || lower.hasPrefix("fd") { return true }
-        if lower.hasPrefix("fe80") { return true }
+        if lower == "::1" || lower == "::" {
+            return true
+        }
+        if lower.hasPrefix("fc") || lower.hasPrefix("fd") {
+            return true
+        }
+        if lower.hasPrefix("fe80") {
+            return true
+        }
 
         return false
     }

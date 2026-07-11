@@ -388,8 +388,13 @@ struct ProvidersController {
         return list.compactMap { entry in
             guard var id = entry["name"] as? String, !id.isEmpty else { return nil }
             if let methods = entry["supportedGenerationMethods"] as? [String],
-               !methods.contains("generateContent") { return nil }
-            if id.hasPrefix("models/") { id = String(id.dropFirst("models/".count)) }
+               !methods.contains("generateContent")
+            {
+                return nil
+            }
+            if id.hasPrefix("models/") {
+                id = String(id.dropFirst("models/".count))
+            }
             let label = (entry["displayName"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id
             return LLMModelInfo(id: id, displayName: label)
         }

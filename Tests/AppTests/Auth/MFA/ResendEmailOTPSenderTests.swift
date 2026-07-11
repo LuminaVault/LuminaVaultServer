@@ -184,7 +184,9 @@ final class ResendStubURLProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 
     private static func reconstituteBody(from request: URLRequest) -> URLRequest {
-        if request.httpBody != nil { return request }
+        if request.httpBody != nil {
+            return request
+        }
         guard let stream = request.httpBodyStream else { return request }
         stream.open()
         defer { stream.close() }
@@ -194,7 +196,9 @@ final class ResendStubURLProtocol: URLProtocol, @unchecked Sendable {
         defer { buffer.deallocate() }
         while stream.hasBytesAvailable {
             let read = stream.read(buffer, maxLength: bufSize)
-            if read <= 0 { break }
+            if read <= 0 {
+                break
+            }
             data.append(buffer, count: read)
         }
         var copy = request
