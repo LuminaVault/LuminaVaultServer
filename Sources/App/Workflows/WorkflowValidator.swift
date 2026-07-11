@@ -13,7 +13,7 @@ enum WorkflowValidator {
     static func validate(_ definition: WorkflowDefinitionDTO) throws {
         let ids = Set(definition.nodes.map(\.id))
         guard ids.count == definition.nodes.count else { throw WorkflowValidationError.duplicateNodeID }
-        guard definition.nodes.filter({ $0.kind == .trigger }).count == 1 else { throw WorkflowValidationError.missingTrigger }
+        guard definition.nodes.count(where: { $0.kind == .trigger }) == 1 else { throw WorkflowValidationError.missingTrigger }
         guard definition.edges.allSatisfy({ ids.contains($0.sourceNodeID) && ids.contains($0.targetNodeID) }) else {
             throw WorkflowValidationError.unknownEdgeNode
         }

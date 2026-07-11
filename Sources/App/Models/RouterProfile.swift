@@ -2,7 +2,7 @@ import FluentKit
 import Foundation
 import LuminaVaultShared
 
-struct RouterProfileDocument: Codable, Sendable {
+struct RouterProfileDocument: Codable {
     var objective: RouterObjectiveWeightsDTO
     var budget: RouterBudgetPolicyDTO
     var allowedProviders: [ProviderID]

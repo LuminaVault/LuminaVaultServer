@@ -4,7 +4,27 @@ import Logging
 import ServiceLifecycle
 import Valkey
 
-struct ValkeyPersistConfiguration: Sendable {
+/// Boot-time failures parsing `REDIS_URL` for the rate-limit/persist store.
+/// Thrown before the server starts serving, so the operator sees the bad
+/// value instead of a silently-degraded in-memory fallback.
+enum RateLimitStorageConfigurationError: Error, CustomStringConvertible {
+    case invalidRedisURL(String)
+    case unsupportedRedisScheme(String)
+    case invalidRedisDatabase(String)
+
+    var description: String {
+        switch self {
+        case let .invalidRedisURL(url):
+            "invalid REDIS_URL: \(url)"
+        case let .unsupportedRedisScheme(scheme):
+            "unsupported REDIS_URL scheme `\(scheme)` (expected redis:// or valkey://)"
+        case let .invalidRedisDatabase(database):
+            "invalid REDIS_URL database index `\(database)`"
+        }
+    }
+}
+
+struct ValkeyPersistConfiguration {
     let address: ValkeyServerAddress
     let client: ValkeyClientConfiguration
 
@@ -44,13 +64,13 @@ struct ValkeyPersistConfiguration: Sendable {
             configuration.databaseNumber = database
         }
 
-        self.address = .hostname(host, port: port)
-        self.client = configuration
+        address = .hostname(host, port: port)
+        client = configuration
     }
 }
 
 final class ValkeyPersistDriver: PersistDriver {
-    private struct Envelope: Codable, Sendable {
+    private struct Envelope: Codable {
         let payload: Data
         let expiresAt: Date?
     }
@@ -100,20 +120,20 @@ final class ValkeyPersistDriver: PersistDriver {
 
     func shutdown() async throws {}
 
-    func create<Object: Codable & Sendable>(key: String, value: Object, expires: Duration?) async throws {
+    func create(key: String, value: some Codable & Sendable, expires: Duration?) async throws {
         if try await readEnvelope(key: key) != nil {
             throw PersistError.duplicate
         }
         try await writeEnvelope(key: key, value: value, expiresAt: expires.map(expirationDate))
     }
 
-    func set<Object: Codable & Sendable>(key: String, value: Object, expires: Duration?) async throws {
+    func set(key: String, value: some Codable & Sendable, expires: Duration?) async throws {
         let existing = try await readEnvelope(key: key)
         let expiresAt = expires.map(expirationDate) ?? existing?.expiresAt
         try await writeEnvelope(key: key, value: value, expiresAt: expiresAt)
     }
 
-    func get<Object: Codable & Sendable>(key: String, as: Object.Type) async throws -> Object? {
+    func get<Object: Codable & Sendable>(key: String, as _: Object.Type) async throws -> Object? {
         guard let envelope = try await readLiveEnvelope(key: key) else { return nil }
         do {
             return try JSONDecoder().decode(Object.self, from: envelope.payload)
@@ -124,7 +144,7 @@ final class ValkeyPersistDriver: PersistDriver {
 
     func getWithTTL<Object: Codable & Sendable>(
         key: String,
-        as: Object.Type
+        as _: Object.Type
     ) async throws -> (object: Object, ttl: Duration?)? {
         guard let envelope = try await readLiveEnvelope(key: key) else { return nil }
         let object: Object
@@ -133,7 +153,7 @@ final class ValkeyPersistDriver: PersistDriver {
         } catch {
             throw PersistError.invalidConversion
         }
-        let ttl = envelope.expiresAt.map { max(0, $0.timeIntervalSinceNow) }.map { Duration.milliseconds(Int($0 * 1_000)) }
+        let ttl = envelope.expiresAt.map { max(0, $0.timeIntervalSinceNow) }.map { Duration.milliseconds(Int($0 * 1000)) }
         return (object, ttl)
     }
 
@@ -166,9 +186,9 @@ final class ValkeyPersistDriver: PersistDriver {
         return try JSONDecoder().decode(Envelope.self, from: data)
     }
 
-    private func writeEnvelope<Object: Codable & Sendable>(
+    private func writeEnvelope(
         key: String,
-        value: Object,
+        value: some Codable & Sendable,
         expiresAt: Date?
     ) async throws {
         let payload = try JSONEncoder().encode(value)

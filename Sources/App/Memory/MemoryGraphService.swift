@@ -451,7 +451,7 @@ struct MemoryGraphService {
         let scoreNorm = min(1.0, max(0.0, log1p(max(0, score)) / log1p(100.0)))
         let recency: Double
         if let lastAccessed {
-            let ageDays = now.timeIntervalSince(lastAccessed) / 86_400.0
+            let ageDays = now.timeIntervalSince(lastAccessed) / 86400.0
             recency = min(1.0, max(0.0, 1.0 - ageDays / 90.0))
         } else {
             recency = 0.0
@@ -565,7 +565,7 @@ private struct WikiNodeRow: Decodable {
     let created_at: Date?
 }
 
-struct MemoryGraphFilter: Sendable {
+struct MemoryGraphFilter {
     var providers: Set<String> = []
     var models: Set<String> = []
     var sources: Set<MemorySourceKindDTO> = []

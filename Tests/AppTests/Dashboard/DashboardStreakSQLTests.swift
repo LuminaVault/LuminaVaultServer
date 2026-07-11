@@ -43,7 +43,7 @@ struct DashboardStreakSQLTests {
         }
         try await sql.raw("""
         INSERT INTO memories (id, tenant_id, content, created_at)
-        VALUES (\(bind: UUID()), \(bind: tenantID), \(bind: content), \(bind: try date(day)))
+        VALUES (\(bind: UUID()), \(bind: tenantID), \(bind: content), \(bind: date(day)))
         """).run()
     }
 

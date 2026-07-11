@@ -1,4 +1,4 @@
-import CryptoKit
+import Crypto
 import FluentKit
 import Foundation
 import Hummingbird
@@ -6,7 +6,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 
-struct MarketplaceListingCreateRequest: Codable, Sendable {
+struct MarketplaceListingCreateRequest: Codable {
     let slug: String
     let name: String
     let summary: String
@@ -16,7 +16,7 @@ struct MarketplaceListingCreateRequest: Codable, Sendable {
     let screenshots: [String]?
 }
 
-struct MarketplaceVersionCreateRequest: Codable, Sendable {
+struct MarketplaceVersionCreateRequest: Codable {
     let version: String
     let runtimeKind: MarketplaceRuntimeKind
     let permissions: [PluginPermission]
@@ -28,7 +28,7 @@ struct MarketplaceVersionCreateRequest: Codable, Sendable {
     let manifestJSON: String?
 }
 
-struct MarketplaceSubmissionsResponse: Codable, Sendable {
+struct MarketplaceSubmissionsResponse: Codable {
     let items: [MarketplaceSubmissionDTO]
 }
 

@@ -30,7 +30,7 @@ actor GraphLayoutWorker: Service {
         tickInterval: Duration = .seconds(3600)
     ) {
         self.fluent = fluent
-        self.layout = GraphLayoutService(fluent: fluent, logger: logger)
+        layout = GraphLayoutService(fluent: fluent, logger: logger)
         self.logger = logger
         self.tickInterval = tickInterval
     }

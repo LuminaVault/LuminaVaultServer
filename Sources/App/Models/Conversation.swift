@@ -18,7 +18,9 @@ final class Conversation: Model, TenantModel, @unchecked Sendable {
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
-    init() { pinnedMemoryIDs = [] }
+    init() {
+        pinnedMemoryIDs = []
+    }
 
     init(
         id: UUID? = nil,
@@ -33,8 +35,8 @@ final class Conversation: Model, TenantModel, @unchecked Sendable {
         self.title = title
         self.spaceID = spaceID
         self.pinnedMemoryIDs = pinnedMemoryIDs
-        self.routeProvider = routeOverride?.provider.rawValue
-        self.routeModel = routeOverride?.model
+        routeProvider = routeOverride?.provider.rawValue
+        routeModel = routeOverride?.model
     }
 
     /// Convert to the wire DTO. Falls back to "now" for timestamps when

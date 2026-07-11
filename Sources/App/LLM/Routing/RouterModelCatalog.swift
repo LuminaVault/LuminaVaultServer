@@ -11,7 +11,7 @@ enum RouterModelCatalog {
             taskQuality: ratings(general: 82, reasoning: 84, coding: 78, search: 65, summarization: 83),
             inputPerMillionUsdMicros: 350_000,
             outputPerMillionUsdMicros: 400_000,
-            defaultLatencyMs: 1_100,
+            defaultLatencyMs: 1100,
             capabilities: ["chat", "tools"]
         ),
         .init(
@@ -21,7 +21,7 @@ enum RouterModelCatalog {
             taskQuality: ratings(general: 94, reasoning: 96, coding: 95, search: 76, summarization: 96),
             inputPerMillionUsdMicros: 3_000_000,
             outputPerMillionUsdMicros: 15_000_000,
-            defaultLatencyMs: 1_500,
+            defaultLatencyMs: 1500,
             capabilities: ["chat", "tools", "reasoning"]
         ),
         .init(
@@ -31,7 +31,7 @@ enum RouterModelCatalog {
             taskQuality: ratings(general: 95, reasoning: 96, coding: 94, search: 80, summarization: 94),
             inputPerMillionUsdMicros: 1_250_000,
             outputPerMillionUsdMicros: 10_000_000,
-            defaultLatencyMs: 1_700,
+            defaultLatencyMs: 1700,
             capabilities: ["chat", "tools", "reasoning"]
         ),
         .init(
@@ -41,7 +41,7 @@ enum RouterModelCatalog {
             taskQuality: ratings(general: 91, reasoning: 92, coding: 89, search: 90, summarization: 92),
             inputPerMillionUsdMicros: 1_250_000,
             outputPerMillionUsdMicros: 10_000_000,
-            defaultLatencyMs: 1_250,
+            defaultLatencyMs: 1250,
             capabilities: ["chat", "tools", "search"]
         ),
         .init(
@@ -51,7 +51,7 @@ enum RouterModelCatalog {
             taskQuality: ratings(general: 91, reasoning: 92, coding: 88, search: 96, summarization: 88),
             inputPerMillionUsdMicros: 3_000_000,
             outputPerMillionUsdMicros: 15_000_000,
-            defaultLatencyMs: 1_350,
+            defaultLatencyMs: 1350,
             capabilities: ["chat", "tools", "search"]
         ),
         .init(

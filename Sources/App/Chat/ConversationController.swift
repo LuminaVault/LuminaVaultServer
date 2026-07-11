@@ -274,7 +274,7 @@ struct ConversationController {
                     continuation.yield(.fallback(notice.wireDTO()))
                 }
                 let cerberusSink: @Sendable (QueryStreamEvent) -> Void = { event in
-                    if case .parallel(let progress) = event, progress.kind == .executionStarted {
+                    if case let .parallel(progress) = event, progress.kind == .executionStarted {
                         parallelExecutionID.set(progress.executionID)
                     }
                     continuation.yield(event)
@@ -292,43 +292,43 @@ struct ConversationController {
                     // outside this Task and then pushing a second @TaskLocal
                     // here segfaults on Linux (swift_task_localValuePush).
                     try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                    try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
-                    try await CerberusStreamContext.$sink.withValue(cerberusSink) {
-                        try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
-                            try await LLMRoutingContext.$cerberusScope.withValue(
-                                CerberusRequestScope(
-                                    surface: .chat,
-                                    spaceID: conversation.spaceID,
-                                    conversationID: conversationID
-                                )
-                            ) {
-                            try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                                try await LLMRoutingContext.$currentUser.withValue(user) {
-                                    try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                        let chunks = streamService.chatStream(
-                                            sessionKey: sessionKey,
-                                            sessionID: sessionID,
-                                            request: chatRequest
+                        try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
+                            try await CerberusStreamContext.$sink.withValue(cerberusSink) {
+                                try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
+                                    try await LLMRoutingContext.$cerberusScope.withValue(
+                                        CerberusRequestScope(
+                                            surface: .chat,
+                                            spaceID: conversation.spaceID,
+                                            conversationID: conversationID
                                         )
-                                        for try await chunk in chunks {
-                                            if Task.isCancelled { break }
-                                            if !chunk.delta.isEmpty {
-                                                if firstTokenMs == nil {
-                                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                    ) {
+                                        try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                                            try await LLMRoutingContext.$currentUser.withValue(user) {
+                                                try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                                    let chunks = streamService.chatStream(
+                                                        sessionKey: sessionKey,
+                                                        sessionID: sessionID,
+                                                        request: chatRequest
+                                                    )
+                                                    for try await chunk in chunks {
+                                                        if Task.isCancelled { break }
+                                                        if !chunk.delta.isEmpty {
+                                                            if firstTokenMs == nil {
+                                                                firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                                                logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                                            }
+                                                            tokenCount += 1
+                                                            assistantBuffer.append(chunk.delta)
+                                                            continuation.yield(.token(chunk.delta))
+                                                        }
+                                                    }
                                                 }
-                                                tokenCount += 1
-                                                assistantBuffer.append(chunk.delta)
-                                                continuation.yield(.token(chunk.delta))
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                        }
-                    }
-                    }
                     }
                     logger.info("chat stream complete", metadata: [
                         "tokens": .stringConvertible(tokenCount),
@@ -586,8 +586,13 @@ private final class RouteOutcomeBox: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: ModelProvenanceDTO?
 
-    var value: ModelProvenanceDTO? { lock.withLock { storage } }
-    func set(_ value: ModelProvenanceDTO) { lock.withLock { storage = value } }
+    var value: ModelProvenanceDTO? {
+        lock.withLock { storage }
+    }
+
+    func set(_ value: ModelProvenanceDTO) {
+        lock.withLock { storage = value }
+    }
 }
 
 private extension Array {

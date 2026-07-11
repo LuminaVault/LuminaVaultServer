@@ -5,7 +5,7 @@ import HummingbirdFluent
 import LuminaVaultShared
 import SQLKit
 
-struct MemoryContributionInput: Sendable {
+struct MemoryContributionInput {
     let operation: MemoryContributionOperationDTO
     let actor: MemoryActorKindDTO
     let source: MemorySourceKindDTO
@@ -55,7 +55,7 @@ struct MemoryContributionInput: Sendable {
     )
 }
 
-struct MemoryProvenanceRepository: Sendable {
+struct MemoryProvenanceRepository {
     let fluent: Fluent
 
     func record(tenantID: UUID, memoryID: UUID, input: MemoryContributionInput) async throws {

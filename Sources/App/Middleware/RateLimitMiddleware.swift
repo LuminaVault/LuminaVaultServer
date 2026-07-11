@@ -50,6 +50,81 @@ struct RateLimitMiddleware: RouterMiddleware {
     }
 }
 
+actor InFlightLimitStore {
+    private var counts: [String: Int] = [:]
+
+    func acquire(key: String, maxConcurrent: Int) -> Bool {
+        let current = counts[key, default: 0]
+        guard current < maxConcurrent else { return false }
+        counts[key] = current + 1
+        return true
+    }
+
+    func release(key: String) {
+        guard let current = counts[key] else { return }
+        if current <= 1 {
+            counts.removeValue(forKey: key)
+        } else {
+            counts[key] = current - 1
+        }
+    }
+}
+
+/// Caps concurrent long-lived requests, keyed the same way as user/IP rate
+/// limits. Unlike request-count rate limiting, this wraps the response body so
+/// SSE streams hold their slot until the body finishes writing.
+struct InFlightLimitMiddleware: RouterMiddleware {
+    typealias Context = AppRequestContext
+
+    let maxConcurrent: Int
+    let keyBuilder: @Sendable (Request, AppRequestContext) -> String
+    let store: InFlightLimitStore
+
+    init(
+        maxConcurrent: Int = 3,
+        keyBuilder: @Sendable @escaping (Request, AppRequestContext) -> String = RateLimitPolicy.userOrIPKey,
+        store: InFlightLimitStore = InFlightLimitStore()
+    ) {
+        self.maxConcurrent = max(1, maxConcurrent)
+        self.keyBuilder = keyBuilder
+        self.store = store
+    }
+
+    func handle(
+        _ request: Request,
+        context: Context,
+        next: (Request, Context) async throws -> Response
+    ) async throws -> Response {
+        let key = "if:" + keyBuilder(request, context)
+        guard await store.acquire(key: key, maxConcurrent: maxConcurrent) else {
+            throw HTTPError(
+                .tooManyRequests,
+                headers: [.retryAfter: "1"],
+                message: "too many concurrent streams"
+            )
+        }
+
+        do {
+            var response = try await next(request, context)
+            let body = response.body
+            let store = store
+            response.body = ResponseBody(contentLength: body.contentLength) { writer in
+                do {
+                    try await body.write(writer)
+                    await store.release(key: key)
+                } catch {
+                    await store.release(key: key)
+                    throw error
+                }
+            }
+            return response
+        } catch {
+            await store.release(key: key)
+            throw error
+        }
+    }
+}
+
 private struct BucketState: Codable {
     var start: TimeInterval
     var count: Int

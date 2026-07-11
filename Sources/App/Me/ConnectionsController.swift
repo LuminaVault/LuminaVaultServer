@@ -314,24 +314,24 @@ struct ConnectionsController {
     private func gatewayHealth(status: HermesGatewayStatus, row: UserHermesGateway?) -> ConnectionHealth {
         switch status {
         case .notConfigured:
-            return .needsSetup
+            .needsSetup
         case .verified:
-            return .connected
+            .connected
         case .configured:
-            return health(configured: true, verifiedAt: row?.verifiedAt, lastFailureAt: row?.lastFailureAt)
+            health(configured: true, verifiedAt: row?.verifiedAt, lastFailureAt: row?.lastFailureAt)
         case .error:
-            return .error
+            .error
         }
     }
 
     private func severity(for health: ConnectionHealth) -> ConnectionDiagnosticSeverity {
         switch health {
         case .connected, .needsSetup, .testing:
-            return .info
+            .info
         case .degraded, .unknown:
-            return .warning
+            .warning
         case .error:
-            return .error
+            .error
         }
     }
 

@@ -190,7 +190,9 @@ struct MemoryGraphServiceTests {
             MemoryNodeRow(
                 id: id, content: "c", tags: nil, created_at: Date(), score: 1,
                 space_id: nil, source_vault_file_id: source,
-                last_accessed_at: nil, graph_x: nil, graph_y: nil, graph_z: nil
+                last_accessed_at: nil, graph_x: nil, graph_y: nil, graph_z: nil,
+                origin_kind: MemorySourceKindDTO.legacy.rawValue,
+                origin_source_id: nil, origin_provider: nil, origin_model: nil
             )
         }
         let rows = [row(mem, source: page), row(orphanSource, source: orphanSource)]

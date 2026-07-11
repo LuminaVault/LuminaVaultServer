@@ -49,8 +49,12 @@ struct GraphLayoutServiceTests {
         // Cluster A near origin, cluster B far along all dims. The top PC should
         // place them on opposite sides, so their mean x-coords differ.
         var vectors: [[Double]] = []
-        for _ in 0 ..< 20 { vectors.append((0 ..< 8).map { _ in 0.0 }) }
-        for _ in 0 ..< 20 { vectors.append((0 ..< 8).map { _ in 10.0 }) }
+        for _ in 0 ..< 20 {
+            vectors.append((0 ..< 8).map { _ in 0.0 })
+        }
+        for _ in 0 ..< 20 {
+            vectors.append((0 ..< 8).map { _ in 10.0 })
+        }
         let coords = GraphLayoutService.projectTo3D(vectors)
         let meanA = coords.prefix(20).map(\.x).reduce(0, +) / 20
         let meanB = coords.suffix(20).map(\.x).reduce(0, +) / 20
@@ -68,7 +72,7 @@ struct GraphLayoutServiceTests {
     func `activity blends recency and score`() {
         let now = Date()
         let fresh = MemoryGraphService.activity(score: 50, lastAccessed: now, now: now)
-        let stale = MemoryGraphService.activity(score: 50, lastAccessed: now.addingTimeInterval(-120 * 86_400), now: now)
+        let stale = MemoryGraphService.activity(score: 50, lastAccessed: now.addingTimeInterval(-120 * 86400), now: now)
         #expect(fresh > stale)
         #expect(fresh <= 1.0 && stale >= 0.0)
     }

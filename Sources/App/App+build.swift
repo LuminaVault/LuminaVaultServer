@@ -2142,7 +2142,8 @@ func buildRouter(
     // in-process PCA), so on by default outside test. Toggle via
     // `GRAPH_LAYOUT_WORKER_ENABLED=false`.
     if fluentEnabled, lvEnvironment != "test",
-       reader.string(forKey: "graphLayout.workerEnabled", default: "true").lowercased() == "true" {
+       reader.string(forKey: "graphLayout.workerEnabled", default: "true").lowercased() == "true"
+    {
         managedServices.append(GraphLayoutWorker(fluent: services.fluent))
     }
 
