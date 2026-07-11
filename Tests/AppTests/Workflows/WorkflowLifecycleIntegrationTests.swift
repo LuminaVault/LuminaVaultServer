@@ -7,7 +7,12 @@ import Testing
 struct WorkflowLifecycleIntegrationTests {
     @Test func createsPublishesDeduplicatesAndCancelsRun() async throws {
         try await withTestFluent(label: "lv.test.workflow.lifecycle") { fluent in
-            await registerMigrations(on: fluent)
+            // Integration bases are primed through the legacy schema. Keep
+            // this suite focused on the workflow migrations so unrelated
+            // historical migrations cannot mask workflow regressions.
+            await fluent.migrations.add(M92_CreateWorkflows())
+            await fluent.migrations.add(M93_HardenWorkflowAutomation())
+            await fluent.migrations.add(M100_CreateWorkflowWebhooks())
             try await fluent.migrate()
             let suffix = UUID().uuidString.lowercased()
             let user = User(email: "workflow-\(suffix)@example.test", username: "wf_\(suffix.prefix(12))", passwordHash: "test")
