@@ -12,13 +12,16 @@ actor KnowledgeExtractionWorker: Service {
     let fluent: Fluent
     let logger: Logger
     let tickInterval: Duration
+    let push: APNSNotificationService?
 
     init(
         fluent: Fluent,
+        push: APNSNotificationService? = nil,
         logger: Logger = Logger(label: "lv.knowledge.extraction.worker"),
         tickInterval: Duration = .seconds(2)
     ) {
         self.fluent = fluent
+        self.push = push
         self.logger = logger
         self.tickInterval = tickInterval
     }
@@ -46,6 +49,7 @@ actor KnowledgeExtractionWorker: Service {
         guard let job = try await claimJob(sql: sql) else { return 0 }
         do {
             try await extract(job: job, sql: sql)
+            try await finalizeIngestion(job: job, sql: sql)
             try await sql.raw("""
             UPDATE knowledge_extraction_jobs
             SET status = 'completed', last_error = NULL, updated_at = NOW()
@@ -186,6 +190,60 @@ actor KnowledgeExtractionWorker: Service {
             fingerprint: Self.fingerprint("\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
         )
         try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: statement)
+
+        let fromEntityID = try await upsertNode(
+            sql: sql, tenantID: job.tenant_id, kind: "entity",
+            key: Self.canonical(relation.from), label: relation.from,
+            summary: nil, confidence: 0.9
+        )
+        let toEntityID = try await upsertNode(
+            sql: sql, tenantID: job.tenant_id, kind: "entity",
+            key: Self.canonical(relation.to), label: relation.to,
+            summary: nil, confidence: 0.9
+        )
+        try await addEvidence(sql: sql, job: job, nodeID: fromEntityID, edgeID: nil, quote: statement)
+        try await addEvidence(sql: sql, job: job, nodeID: toEntityID, edgeID: nil, quote: statement)
+        if fromEntityID != toEntityID {
+            let entityEdgeID = try await upsertEdge(
+                sql: sql, tenantID: job.tenant_id, from: fromEntityID, to: toEntityID,
+                predicate: relation.predicate, state: "asserted", confidence: 0.9,
+                rationale: "The source explicitly relates these entities.",
+                fingerprint: Self.fingerprint("entity|\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
+            )
+            try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: entityEdgeID, quote: statement)
+        }
+    }
+
+    private func finalizeIngestion(job: ExtractionJobRow, sql: any SQLDatabase) async throws {
+        struct FinalizedRow: Decodable { let id: UUID; let tenant_id: UUID; let batch_id: UUID; let file_name: String? }
+        let rows = try await sql.raw("""
+        UPDATE ingestion_items
+        SET state = 'completed', graph_ready_at = NOW(), lease_expires_at = NULL,
+            next_attempt_at = NULL, error_message = NULL, updated_at = NOW()
+        WHERE tenant_id = \(bind: job.tenant_id) AND memory_id = \(bind: job.memory_id)
+          AND state = 'analyzing'
+        RETURNING id, tenant_id, batch_id, file_name
+        """).all(decoding: FinalizedRow.self)
+        for row in rows {
+            try await sql.raw("""
+            INSERT INTO ingestion_events (tenant_id, batch_id, item_id, type, state)
+            VALUES (\(bind: row.tenant_id), \(bind: row.batch_id), \(bind: row.id), 'terminal', 'completed')
+            """).run()
+            try await sql.raw("""
+            UPDATE ingestion_batches SET state = CASE
+              WHEN NOT EXISTS (SELECT 1 FROM ingestion_items i WHERE i.batch_id = \(bind: row.batch_id) AND i.state <> 'completed')
+              THEN 'completed' ELSE 'active' END, updated_at = NOW()
+            WHERE id = \(bind: row.batch_id) AND tenant_id = \(bind: row.tenant_id)
+            """).run()
+            if let push {
+                do {
+                    try await push.notifyIngestion(userID: row.tenant_id, completed: true, fileName: row.file_name)
+                    try await sql.raw("UPDATE ingestion_items SET terminal_notified_at = NOW() WHERE id = \(bind: row.id) AND terminal_notified_at IS NULL").run()
+                } catch {
+                    logger.warning("ingestion terminal push failed item=\(row.id): \(error)")
+                }
+            }
+        }
     }
 
     private func inferWithinMemory(

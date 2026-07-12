@@ -53,6 +53,11 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "lease_expires_at") var leaseExpiresAt: Date?
     @OptionalField(key: "source_token_hash") var sourceTokenHash: String?
     @OptionalField(key: "source_token_expires_at") var sourceTokenExpiresAt: Date?
+    @OptionalField(key: "content_sha256") var contentSHA256: String?
+    @Field(key: "pipeline_version") var pipelineVersion: String
+    @OptionalField(key: "reused_from_item_id") var reusedFromItemID: UUID?
+    @OptionalField(key: "graph_ready_at") var graphReadyAt: Date?
+    @OptionalField(key: "terminal_notified_at") var terminalNotifiedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -84,5 +89,10 @@ final class IngestionItem: Model, TenantModel, @unchecked Sendable {
         leaseExpiresAt = nil
         sourceTokenHash = nil
         sourceTokenExpiresAt = nil
+        contentSHA256 = nil
+        pipelineVersion = "multimodal-v2"
+        reusedFromItemID = nil
+        graphReadyAt = nil
+        terminalNotifiedAt = nil
     }
 }

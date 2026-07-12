@@ -108,6 +108,7 @@ struct MultimodalIngestionService {
     static let processingLeaseSeconds = 60 * 60
     static let maximumAutomaticAttempts = 3
     static let abandonedUploadHours = 24
+    static let pipelineVersion = "multimodal-v2"
 
     let fluent: Fluent
     let vaultPaths: VaultPathService
@@ -184,9 +185,11 @@ struct MultimodalIngestionService {
         guard item.uploadedBytes == item.sizeBytes else { throw HTTPError(.badRequest, message: "upload is incomplete") }
         let batch = try await requireBatch(tenantID: tenantID, batchID: batchID)
         let fileID = try await assembleAndStore(item: item, batch: batch, tenantID: tenantID)
-        item.vaultFileID = fileID
+        item.vaultFileID = fileID.id
+        item.contentSHA256 = fileID.sha256
         item.state = IngestionItemStateDTO.queued.rawValue
         try await item.save(on: fluent.db())
+        try await recordEvent(item: item, type: .stateChanged)
         try? FileManager.default.removeItem(at: chunkDirectory(tenantID: tenantID, itemID: itemID))
         return try await detail(tenantID: tenantID, batchID: batchID)
     }
@@ -258,7 +261,7 @@ struct MultimodalIngestionService {
         let batch = try await requireBatch(tenantID: tenantID, batchID: batchID)
         let items = try await IngestionItem.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$batchID == batchID).sort(\.$createdAt, .ascending).all()
-        return try dto(batch: batch, items: items)
+        return try await dto(batch: batch, items: items)
     }
 
     func list(tenantID: UUID) async throws -> IngestionBatchListDTO {
@@ -271,7 +274,35 @@ struct MultimodalIngestionService {
         return IngestionBatchListDTO(batches: result)
     }
 
+    func events(tenantID: UUID, batchID: UUID, after: Int64) async throws -> [IngestionEventDTO] {
+        _ = try await requireBatch(tenantID: tenantID, batchID: batchID)
+        guard let sql = fluent.db() as? any SQLDatabase else { return [] }
+        struct EventRow: Decodable {
+            let id: Int64; let batch_id: UUID; let item_id: UUID?; let type: String
+            let state: String?; let uploaded_bytes: Int64?; let created_at: Date
+        }
+        return try await sql.raw("""
+        SELECT id, batch_id, item_id, type, state, uploaded_bytes, created_at
+        FROM ingestion_events
+        WHERE tenant_id = \(bind: tenantID) AND batch_id = \(bind: batchID) AND id > \(bind: after)
+        ORDER BY id ASC LIMIT 200
+        """).all(decoding: EventRow.self).compactMap { row in
+            guard let type = IngestionEventTypeDTO(rawValue: row.type) else { return nil }
+            return .init(id: row.id, batchID: row.batch_id, itemID: row.item_id, type: type,
+                         state: row.state.flatMap(IngestionItemStateDTO.init(rawValue:)),
+                         uploadedBytes: row.uploaded_bytes, createdAt: row.created_at)
+        }
+    }
+
+    func isTerminal(tenantID: UUID, batchID: UUID) async throws -> Bool {
+        let batch = try await requireBatch(tenantID: tenantID, batchID: batchID)
+        return batch.state == "completed" || batch.state == "attention"
+    }
+
     private func process(item: IngestionItem, tenantID: UUID, spaceID: UUID?) async throws {
+        if try await reuseCompletedAnalysisIfAvailable(item: item, tenantID: tenantID, spaceID: spaceID) {
+            return
+        }
         let capabilities = await ingestionCapabilities(tenantID)
         if capabilities.multimodalIngestion == .unsupported {
             item.state = IngestionItemStateDTO.blockedCapability.rawValue
@@ -385,13 +416,14 @@ struct MultimodalIngestionService {
             item.memoryID = try memory.requireID()
             item.summary = result.summary
             item.credibility = result.credibility
-            item.state = IngestionItemStateDTO.completed.rawValue
+            item.state = IngestionItemStateDTO.analyzing.rawValue
             item.errorMessage = nil
             item.nextAttemptAt = nil
             item.leaseExpiresAt = nil
             item.sourceTokenHash = nil
             item.sourceTokenExpiresAt = nil
             try await item.save(on: fluent.db())
+            try await recordEvent(item: item, type: .stateChanged)
         } catch {
             item.state = IngestionItemStateDTO.failed.rawValue
             item.leaseExpiresAt = nil
@@ -404,7 +436,7 @@ struct MultimodalIngestionService {
         try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
     }
 
-    private func assembleAndStore(item: IngestionItem, batch: IngestionBatch, tenantID: UUID) async throws -> UUID {
+    private func assembleAndStore(item: IngestionItem, batch: IngestionBatch, tenantID: UUID) async throws -> (id: UUID, sha256: String) {
         guard let itemID = item.id, let fileName = item.fileName, let contentType = item.contentType else {
             throw HTTPError(.badRequest, message: "missing file metadata")
         }
@@ -453,7 +485,7 @@ struct MultimodalIngestionService {
             contentType: contentType, sizeBytes: item.sizeBytes ?? item.uploadedBytes, sha256: sha
         )
         try await row.save(on: fluent.db())
-        return try row.requireID()
+        return (try row.requireID(), sha)
     }
 
     private func validate(_ item: IngestionCreateItemRequest) throws {
@@ -496,9 +528,11 @@ struct MultimodalIngestionService {
         try await batch.save(on: fluent.db())
     }
 
-    private func dto(batch: IngestionBatch, items: [IngestionItem]) throws -> IngestionBatchDTO {
-        let mapped = try items.map { item in
-            try IngestionItemDTO(
+    private func dto(batch: IngestionBatch, items: [IngestionItem]) async throws -> IngestionBatchDTO {
+        var mapped: [IngestionItemDTO] = []
+        for item in items {
+            let projection = try await graphProjection(for: item)
+            try mapped.append(IngestionItemDTO(
                 id: item.requireID(), batchID: batch.requireID(),
                 kind: IngestionSourceKindDTO(rawValue: item.kind) ?? .file,
                 state: IngestionItemStateDTO(rawValue: item.state) ?? .failed,
@@ -506,13 +540,87 @@ struct MultimodalIngestionService {
                 uploadedBytes: item.uploadedBytes, url: item.url, vaultFileID: item.vaultFileID,
                 memoryID: item.memoryID, summary: item.summary, error: item.errorMessage,
                 credibility: item.credibility.map { .init(score: $0.score, confidence: $0.confidence, signals: $0.signals, rationale: $0.rationale, version: $0.version) },
+                entities: projection.entities, relationships: projection.relationships,
+                contentSHA256: item.contentSHA256, pipelineVersion: item.pipelineVersion,
+                reusedFromItemID: item.reusedFromItemID, graphReadyAt: item.graphReadyAt,
                 createdAt: item.createdAt, updatedAt: item.updatedAt
-            )
+            ))
         }
         return try IngestionBatchDTO(
             id: batch.requireID(), state: batch.state, total: mapped.count,
             completed: mapped.count { $0.state == .completed }, failed: mapped.count { $0.state == .failed },
             chunkSizeBytes: Self.chunkSize, items: mapped, createdAt: batch.createdAt, updatedAt: batch.updatedAt
+        )
+    }
+
+    private func reuseCompletedAnalysisIfAvailable(item: IngestionItem, tenantID: UUID, spaceID: UUID?) async throws -> Bool {
+        guard let hash = item.contentSHA256,
+              let source = try await IngestionItem.query(on: fluent.db(), tenantID: tenantID)
+              .filter(\.$contentSHA256 == hash)
+              .filter(\.$pipelineVersion == item.pipelineVersion)
+              .filter(\.$state == IngestionItemStateDTO.completed.rawValue)
+              .filter(\.$id != item.requireID())
+              .sort(\.$updatedAt, .descending).first(),
+              let sourceMemoryID = source.memoryID,
+              let sourceMemory = try await Memory.query(on: fluent.db(), tenantID: tenantID)
+              .filter(\.$id == sourceMemoryID).first()
+        else { return false }
+
+        let embedding = try await embeddings.embed(sourceMemory.content, tenantID: tenantID)
+        let memory = try await memories.create(
+            tenantID: tenantID, content: sourceMemory.content, embedding: embedding,
+            tags: sourceMemory.tags ?? [], sourceVaultFileID: item.vaultFileID,
+            spaceID: spaceID, reviewState: "auto"
+        )
+        item.memoryID = try memory.requireID()
+        item.summary = source.summary
+        item.credibility = source.credibility
+        item.reusedFromItemID = try source.requireID()
+        item.state = IngestionItemStateDTO.analyzing.rawValue
+        item.leaseExpiresAt = nil
+        item.errorMessage = nil
+        try await item.save(on: fluent.db())
+        try await recordEvent(item: item, type: .stateChanged)
+        try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+        return true
+    }
+
+    private func recordEvent(item: IngestionItem, type: IngestionEventTypeDTO) async throws {
+        guard let sql = fluent.db() as? any SQLDatabase else { return }
+        try await sql.raw("""
+        INSERT INTO ingestion_events (tenant_id, batch_id, item_id, type, state, uploaded_bytes)
+        VALUES (\(bind: item.tenantID), \(bind: item.batchID), \(bind: item.id),
+                \(bind: type.rawValue), \(bind: item.state), \(bind: item.uploadedBytes))
+        """).run()
+    }
+
+    private func graphProjection(for item: IngestionItem) async throws -> (entities: [IngestionEntityDTO], relationships: [IngestionRelationshipDTO]) {
+        guard let memoryID = item.memoryID, let sql = fluent.db() as? any SQLDatabase else { return ([], []) }
+        struct EntityRow: Decodable { let id: UUID; let label: String; let confidence: Double }
+        struct RelationshipRow: Decodable {
+            let id: UUID; let from_node_id: UUID; let predicate: String; let to_node_id: UUID
+            let confidence: Double; let quote: String?
+        }
+        let entities = try await sql.raw("""
+        SELECT DISTINCT n.id, n.label, n.confidence
+        FROM knowledge_nodes n JOIN knowledge_evidence e ON e.node_id = n.id
+        WHERE e.tenant_id = \(bind: item.tenantID) AND e.memory_id = \(bind: memoryID) AND n.kind = 'entity'
+        ORDER BY n.label LIMIT 100
+        """).all(decoding: EntityRow.self)
+        let entityIDs = Set(entities.map(\.id))
+        let edges = try await sql.raw("""
+        SELECT DISTINCT ON (edge.id) edge.id, edge.from_node_id, edge.predicate, edge.to_node_id,
+               edge.confidence, evidence.quote
+        FROM knowledge_edges edge JOIN knowledge_evidence evidence ON evidence.edge_id = edge.id
+        WHERE evidence.tenant_id = \(bind: item.tenantID) AND evidence.memory_id = \(bind: memoryID)
+        ORDER BY edge.id, evidence.created_at LIMIT 200
+        """).all(decoding: RelationshipRow.self)
+        return (
+            entities.map { .init(id: $0.id, name: $0.label, type: "entity", confidence: $0.confidence) },
+            edges.filter { entityIDs.contains($0.from_node_id) && entityIDs.contains($0.to_node_id) }.map {
+                .init(id: $0.id, subjectEntityID: $0.from_node_id, predicate: $0.predicate,
+                      objectEntityID: $0.to_node_id, confidence: $0.confidence, evidence: $0.quote)
+            }
         )
     }
 
@@ -562,7 +670,7 @@ struct MultimodalIngestionService {
         }
     }
 
-    func source(token: String) async throws -> (data: Data, contentType: String, fileName: String) {
+    func source(token: String) async throws -> (path: String, size: Int64, contentType: String, fileName: String, etag: String?) {
         guard token.count == 64,
               let item = try await IngestionItem.query(on: fluent.db())
               .filter(\.$sourceTokenHash == Self.sourceTokenHash(token)).first(),
@@ -573,7 +681,9 @@ struct MultimodalIngestionService {
         else { throw HTTPError(.notFound, message: "ingestion source not found or expired") }
         let target = vaultPaths.rawDirectory(for: item.tenantID).appendingPathComponent(row.path)
         guard FileManager.default.fileExists(atPath: target.path) else { throw HTTPError(.notFound) }
-        return (try Data(contentsOf: target), row.contentType, item.fileName ?? "source")
+        let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? row.sizeBytes
+        return (target.path, size, row.contentType, item.fileName ?? "source", row.sha256)
     }
 
     static func sourceTokenHash(_ token: String) -> String {

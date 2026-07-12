@@ -22,6 +22,7 @@ enum APNSPushCategory: String {
     case reminder
     /// HER-Cron — a scheduled (cron) skill fired.
     case cron
+    case ingestion
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -226,6 +227,16 @@ struct APNSNotificationService {
         )
     }
 
+    func notifyIngestion(userID: UUID, completed: Bool, fileName: String?) async throws {
+        try await notify(
+            userID: userID,
+            title: completed ? "Capture ready" : "Capture needs attention",
+            subtitle: fileName,
+            body: completed ? "Hermes finished processing and linked the new memory." : "Open LuminaVault to review the ingestion status.",
+            category: .ingestion
+        )
+    }
+
     /// Generic per-user push. Looks up every active `DeviceToken` row,
     /// sends to each, reaps tokens that APNS marks as dead.
     func notify(
@@ -300,7 +311,7 @@ struct APNSNotificationService {
         on db: any Database
     ) async throws -> Bool {
         switch category {
-        case .achievement, .reminder, .cron:
+        case .achievement, .reminder, .cron, .ingestion:
             // High-signal, low-frequency surfaces — never gated by the
             // category opt-out table in v1.
             return false
@@ -314,7 +325,7 @@ struct APNSNotificationService {
         case .chat: return !prefs.chatEnabled
         case .nudge: return !prefs.nudgeEnabled
         case .digest: return !prefs.digestEnabled
-        case .achievement, .reminder, .cron: return false
+        case .achievement, .reminder, .cron, .ingestion: return false
         }
     }
 

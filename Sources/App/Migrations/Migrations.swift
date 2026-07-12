@@ -107,4 +107,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M100_CreateWorkflowWebhooks())
     await fluent.migrations.add(M102_HardenMultimodalIngestion())
     await fluent.migrations.add(M103_AddIngestionSourceTokens())
+    await fluent.migrations.add(M104_CompleteMultimodalIngestion())
 }

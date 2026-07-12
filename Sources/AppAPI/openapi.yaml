@@ -3255,6 +3255,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
 
+  /v1/ingestions/{batchID}/events:
+    get:
+      tags: [Ingestion]
+      operationId: ingestionEvents
+      summary: Stream durable ingestion progress and terminal events.
+      parameters:
+        - { name: batchID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: after, in: query, required: false, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: Last-Event-ID, in: header, required: false, schema: { type: integer, format: int64, minimum: 0 } }
+      responses:
+        '200':
+          description: Server-sent event stream; each ingestion event is durable and resumable by ID.
+          content:
+            text/event-stream:
+              schema: { type: string }
+
   /v1/ingestions/{batchID}/items/{itemID}/chunks/{index}:
     put:
       tags: [Ingestion]
@@ -8567,6 +8583,10 @@ components:
         credibility: { $ref: '#/components/schemas/IngestionCredibilityDTO' }
         entities: { type: array, items: { $ref: '#/components/schemas/IngestionEntityDTO' } }
         relationships: { type: array, items: { $ref: '#/components/schemas/IngestionRelationshipDTO' } }
+        contentSHA256: { type: string }
+        pipelineVersion: { type: string }
+        reusedFromItemID: { type: string, format: uuid }
+        graphReadyAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -8589,6 +8609,18 @@ components:
       required: [batches]
       properties:
         batches: { type: array, items: { $ref: '#/components/schemas/IngestionBatchDTO' } }
+
+    IngestionEventDTO:
+      type: object
+      required: [id, batchID, type, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        batchID: { type: string, format: uuid }
+        itemID: { type: string, format: uuid }
+        type: { type: string, enum: [snapshot, state_changed, progress, terminal, heartbeat] }
+        state: { $ref: '#/components/schemas/IngestionItemStateDTO' }
+        uploadedBytes: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
 
     ImportCreateRequest:
       type: object

@@ -2222,7 +2222,7 @@ func buildRouter(
     if fluentEnabled, lvEnvironment != "test",
        reader.string(forKey: "knowledgeGraph.workerEnabled", default: "true").lowercased() == "true"
     {
-        managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent))
+        managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent, push: pushService))
     } else {
         routingLogger.info("knowledge graph worker disabled (set KNOWLEDGE_GRAPH_WORKER_ENABLED=true to enable)")
     }
