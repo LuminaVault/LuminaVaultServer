@@ -133,6 +133,7 @@ jobs:
           test -n "${{ secrets.SERVER_HOST }}" || (echo "SERVER_HOST is empty" && exit 1)
           test -n "${{ secrets.SERVER_USER }}" || (echo "SERVER_USER is empty" && exit 1)
           test -n "${{ secrets.SERVER_SSH_KEY }}" || (echo "SERVER_SSH_KEY is empty" && exit 1)
+          test -n "${{ vars.TEAM_INVITE_BASE_URL }}" || (echo "TEAM_INVITE_BASE_URL repository variable is empty" && exit 1)
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -170,6 +171,7 @@ jobs:
             SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}"
             SENTRY_ENVIRONMENT="${{ secrets.SENTRY_ENVIRONMENT }}"
             SENTRY_RELEASE="${{ github.sha }}"
+            TEAM_INVITE_BASE_URL="${{ vars.TEAM_INVITE_BASE_URL }}"
 
             # HER-131: backup config. Each is optional — an unset secret leaves
             # any value already in .env.production untouched (see the write loop
@@ -213,6 +215,11 @@ jobs:
               else
                 echo "ADMIN_TOKEN=${ADMIN_TOKEN}" >> .env.production
               fi
+            fi
+            if grep -q '^TEAM_INVITE_BASE_URL=' .env.production; then
+              sed -i "s|^TEAM_INVITE_BASE_URL=.*|TEAM_INVITE_BASE_URL=${TEAM_INVITE_BASE_URL}|" .env.production
+            else
+              echo "TEAM_INVITE_BASE_URL=${TEAM_INVITE_BASE_URL}" >> .env.production
             fi
             for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE \
                        BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK; do
