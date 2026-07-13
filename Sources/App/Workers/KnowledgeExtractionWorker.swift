@@ -30,7 +30,7 @@ actor KnowledgeExtractionWorker: Service {
         let fingerprint: String
     }
 
-    struct RelationCandidate: Equatable, Sendable {
+    struct RelationCandidate: Equatable {
         let key: String
         let aID: UUID
         let aLabel: String
@@ -38,12 +38,12 @@ actor KnowledgeExtractionWorker: Service {
         let bLabel: String
     }
 
-    enum RelationDirection: String, Decodable, Sendable {
+    enum RelationDirection: String, Decodable {
         case aToB = "a_to_b"
         case bToA = "b_to_a"
     }
 
-    enum ModelPredicate: String, Decodable, Sendable {
+    enum ModelPredicate: String, Decodable {
         case supports
         case contradicts
         case causes
@@ -58,7 +58,7 @@ actor KnowledgeExtractionWorker: Service {
         }
     }
 
-    struct AdjudicatedRelation: Equatable, Sendable {
+    struct AdjudicatedRelation: Equatable {
         let candidate: RelationCandidate
         let predicate: ModelPredicate
         let direction: RelationDirection
