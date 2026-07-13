@@ -52,6 +52,17 @@ struct KnowledgeReasoningPathTests {
         #expect(paths.isEmpty)
     }
 
+    @Test("Natural-language queries become safe prefix OR expressions")
+    func searchExpression() {
+        #expect(
+            KnowledgeGraphService.searchExpression(for: "How is Atlas connected to vendor-risk?")
+                == "atlas:* | connected:* | vendor:* | risk:*"
+        )
+        #expect(KnowledgeGraphService.searchExpression(for: "Atlas atlas") == "atlas:*")
+        #expect(KnowledgeGraphService.searchExpression(for: "AI") == "ai:*")
+        #expect(KnowledgeGraphService.searchExpression(for: "?!") == "")
+    }
+
     private func node(_ label: String) -> KnowledgeNodeDTO {
         KnowledgeNodeDTO(id: UUID(), kind: .claim, label: label, confidence: 1)
     }

@@ -25,18 +25,22 @@ struct KnowledgeGraphService {
 
     func graph(tenantID: UUID, limit: Int, filter: KnowledgeGraphFilter) async throws -> KnowledgeGraphResponse {
         let sql = try requireSQL()
+        let kindClause = filter.kinds.isEmpty
+            ? ""
+            : "AND kind = ANY(\(Self.stringArray(filter.kinds.map(\.rawValue))))"
+        let predicateClause = filter.predicates.isEmpty
+            ? ""
+            : "AND predicate = ANY(\(Self.stringArray(filter.predicates.map(\.rawValue))))"
         let nodeRows = try await sql.raw("""
         SELECT id, kind, label, summary, occurred_at, confidence
         FROM knowledge_nodes
         WHERE tenant_id = \(bind: tenantID)
+          AND confidence >= \(bind: filter.minimumConfidence)
+          \(unsafeRaw: kindClause)
         ORDER BY updated_at DESC, id ASC
         LIMIT \(bind: min(max(1, limit), Self.maxLimit))
         """).all(decoding: NodeRow.self)
-        let filteredNodes = nodeRows.filter {
-            (filter.kinds.isEmpty || filter.kinds.contains($0.nodeKind))
-                && $0.confidence >= filter.minimumConfidence
-        }
-        let nodeIDs = Set(filteredNodes.map(\.id))
+        let nodeIDs = Set(nodeRows.map(\.id))
         guard !nodeIDs.isEmpty else {
             return KnowledgeGraphResponse(nodes: [], edges: [], generatedAt: Date())
         }
@@ -47,23 +51,21 @@ struct KnowledgeGraphService {
         WHERE tenant_id = \(bind: tenantID)
           AND from_node_id = ANY(\(unsafeRaw: Self.uuidArray(nodeIDs)))
           AND to_node_id = ANY(\(unsafeRaw: Self.uuidArray(nodeIDs)))
+          AND state = ANY(\(unsafeRaw: Self.stringArray(filter.states.map(\.rawValue))))
+          AND confidence >= \(bind: filter.minimumConfidence)
+          \(unsafeRaw: predicateClause)
         ORDER BY confidence DESC, id ASC
         LIMIT \(bind: Self.maxLimit * 8)
         """).all(decoding: EdgeRow.self)
-        let filteredEdges = edgeRows.filter {
-            filter.states.contains($0.edgeState)
-                && (filter.predicates.isEmpty || filter.predicates.contains($0.edgePredicate))
-                && $0.confidence >= filter.minimumConfidence
-        }
         let evidence = try await loadEvidence(
             sql: sql,
             tenantID: tenantID,
             nodeIDs: nodeIDs,
-            edgeIDs: Set(filteredEdges.map(\.id))
+            edgeIDs: Set(edgeRows.map(\.id))
         )
         return KnowledgeGraphResponse(
-            nodes: filteredNodes.map { $0.dto(evidence: evidence.nodes[$0.id] ?? []) },
-            edges: filteredEdges.map { $0.dto(evidence: evidence.edges[$0.id] ?? []) },
+            nodes: nodeRows.map { $0.dto(evidence: evidence.nodes[$0.id] ?? []) },
+            edges: edgeRows.map { $0.dto(evidence: evidence.edges[$0.id] ?? []) },
             generatedAt: Date()
         )
     }
@@ -109,21 +111,14 @@ struct KnowledgeGraphService {
                 caveats: ["The graph may still be processing recent memories."]
             )
         }
-        let graph = try await graph(tenantID: tenantID, limit: Self.maxLimit, filter: .init())
-        let nodes = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
-        let edges = Dictionary(uniqueKeysWithValues: graph.edges.map { ($0.id, $0) })
-        let paths = rows.compactMap { row -> KnowledgePathDTO? in
-            let pathNodes = row.node_ids.compactMap { nodes[$0] }
-            let pathEdges = row.edge_ids.compactMap { edges[$0] }
-            guard pathNodes.count == row.node_ids.count, pathEdges.count == row.edge_ids.count else { return nil }
-            return KnowledgePathDTO(nodes: pathNodes, edges: pathEdges, confidence: row.path_confidence)
-        }
+        let paths = try await hydratePaths(sql: sql, tenantID: tenantID, rows: rows)
         guard let best = paths.first else {
             throw HTTPError(.internalServerError, message: "connection path could not be hydrated")
         }
         let steps: String = best.edges.enumerated().map { index, edge -> String in
+            let source = best.nodes[index]
             let destination = best.nodes[index + 1].label
-            return "\(edge.predicate.displayName) \(destination)"
+            return "\(edge.predicate.displayName(reversed: edge.from != source.id)) \(destination)"
         }.joined(separator: ", then ")
         let inferred = best.edges.contains { $0.state == .suggested }
         return ConnectionExplanationResponse(
@@ -159,35 +154,59 @@ struct KnowledgeGraphService {
     func ground(tenantID: UUID, request: ReasoningQueryRequest) async throws -> ReasoningQueryResponse {
         let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { throw HTTPError(.badRequest, message: "query required") }
-        let graph = try await graph(
-            tenantID: tenantID,
-            limit: min(max(1, request.limit ?? 200), Self.maxLimit),
-            filter: .init()
+        let searchExpression = Self.searchExpression(for: query)
+        guard !searchExpression.isEmpty else { throw HTTPError(.badRequest, message: "query must contain searchable words") }
+        let sql = try requireSQL()
+        let requestedLimit = min(max(1, request.limit ?? 200), Self.maxLimit)
+        let seedLimit = min(12, requestedLimit)
+        let nodeRows = try await sql.raw("""
+        WITH query AS (
+            SELECT to_tsquery('simple', \(bind: searchExpression)) AS value
         )
-        let words = query.lowercased().split { character in
-            character.isLetter == false && character.isNumber == false
-        }
-        let terms = Set(words.map { String($0) }.filter { $0.count > 2 })
-        var ranked: [(node: KnowledgeNodeDTO, score: Int)] = []
-        ranked.reserveCapacity(graph.nodes.count)
-        for node in graph.nodes {
-            let haystack = "\(node.label) \(node.summary ?? "")".lowercased()
-            let score = terms.reduce(into: 0) { total, term in
-                if haystack.contains(term) {
-                    total += 1
-                }
-            }
-            if score > 0 {
-                ranked.append((node: node, score: score))
-            }
-        }
-        ranked.sort { lhs, rhs in
-            lhs.score == rhs.score ? lhs.node.confidence > rhs.node.confidence : lhs.score > rhs.score
-        }
-        let selected: [KnowledgeNodeDTO] = ranked.prefix(6).map(\.node)
+        SELECT id, kind, label, summary, occurred_at, confidence
+        FROM knowledge_nodes, query
+        WHERE tenant_id = \(bind: tenantID)
+          AND to_tsvector('simple', coalesce(label, '') || ' ' || coalesce(summary, '')) @@ query.value
+        ORDER BY ts_rank_cd(
+            to_tsvector('simple', coalesce(label, '') || ' ' || coalesce(summary, '')),
+            query.value
+        ) DESC, confidence DESC, updated_at DESC
+        LIMIT \(bind: seedLimit)
+        """).all(decoding: NodeRow.self)
+        let selectedNodeIDs = Set(nodeRows.prefix(6).map(\.id))
+        let edgeRows = selectedNodeIDs.isEmpty ? [] : try await sql.raw("""
+        SELECT id, from_node_id, to_node_id, predicate, state, confidence,
+               rationale, counter_evidence
+        FROM knowledge_edges
+        WHERE tenant_id = \(bind: tenantID)
+          AND state IN ('asserted', 'suggested', 'confirmed')
+          AND (from_node_id = ANY(\(unsafeRaw: Self.uuidArray(selectedNodeIDs)))
+               OR to_node_id = ANY(\(unsafeRaw: Self.uuidArray(selectedNodeIDs))))
+        ORDER BY confidence DESC, updated_at DESC
+        LIMIT \(bind: min(requestedLimit * 4, Self.maxLimit * 2))
+        """).all(decoding: EdgeRow.self)
+        let adjacentNodeIDs = Set(edgeRows.flatMap { [$0.from_node_id, $0.to_node_id] })
+        let missingNodeIDs = adjacentNodeIDs.subtracting(selectedNodeIDs)
+        let adjacentNodeRows: [NodeRow] = missingNodeIDs.isEmpty ? [] : try await sql.raw("""
+        SELECT id, kind, label, summary, occurred_at, confidence
+        FROM knowledge_nodes
+        WHERE tenant_id = \(bind: tenantID)
+          AND id = ANY(\(unsafeRaw: Self.uuidArray(missingNodeIDs)))
+        """).all(decoding: NodeRow.self)
+        let allNodeRows = nodeRows + adjacentNodeRows
+        let graphEvidence = try await loadEvidence(
+            sql: sql,
+            tenantID: tenantID,
+            nodeIDs: Set(allNodeRows.map(\.id)),
+            edgeIDs: Set(edgeRows.map(\.id))
+        )
+        let nodesByID = Dictionary(uniqueKeysWithValues: allNodeRows.map {
+            ($0.id, $0.dto(evidence: graphEvidence.nodes[$0.id] ?? []))
+        })
+        let selected = nodeRows.prefix(6).compactMap { nodesByID[$0.id] }
         let selectedIDs = Set(selected.map(\.id))
-        let edges: [KnowledgeEdgeDTO] = graph.edges.filter { edge in
-            selectedIDs.contains(edge.from) || selectedIDs.contains(edge.to)
+        let edges = edgeRows.map { row in
+            row.dto(evidence: graphEvidence.edges[row.id] ?? [])
         }
         let nodeEvidence = selected.flatMap(\.evidence)
         let edgeEvidence = edges.flatMap(\.evidence)
@@ -201,12 +220,14 @@ struct KnowledgeGraphService {
             )
         }
         let summary = selected.map(\.label).joined(separator: "; ")
-        let paths = Self.reasoningPaths(
-            graph: graph,
+        let pathRows = try await reasoningPathRows(
+            sql: sql,
+            tenantID: tenantID,
             seedIDs: selectedIDs,
             maxDepth: min(max(1, request.maxDepth ?? Self.maxDepth), Self.maxDepth),
             limit: 5
         )
+        let paths = try await hydratePaths(sql: sql, tenantID: tenantID, rows: pathRows)
         let pathEvidence = paths.flatMap { path in
             path.nodes.flatMap(\.evidence) + path.edges.flatMap(\.evidence)
         }
@@ -315,14 +336,108 @@ struct KnowledgeGraphService {
         return (nodes, edges)
     }
 
+    private func reasoningPathRows(
+        sql: any SQLDatabase,
+        tenantID: UUID,
+        seedIDs: Set<UUID>,
+        maxDepth: Int,
+        limit: Int
+    ) async throws -> [PathRow] {
+        guard seedIDs.count > 1 else { return [] }
+        return try await sql.raw("""
+        WITH RECURSIVE paths(start_id, current_id, node_ids, edge_ids, path_confidence, depth) AS (
+            SELECT seed, seed, ARRAY[seed], ARRAY[]::uuid[], 1.0::double precision, 0
+            FROM unnest(\(unsafeRaw: Self.uuidArray(seedIDs))) AS seed
+            UNION ALL
+            SELECT
+                p.start_id,
+                CASE WHEN e.from_node_id = p.current_id THEN e.to_node_id ELSE e.from_node_id END,
+                p.node_ids || CASE WHEN e.from_node_id = p.current_id THEN e.to_node_id ELSE e.from_node_id END,
+                p.edge_ids || e.id,
+                p.path_confidence * e.confidence,
+                p.depth + 1
+            FROM paths p
+            JOIN knowledge_edges e
+              ON e.tenant_id = \(bind: tenantID)
+             AND (e.from_node_id = p.current_id OR e.to_node_id = p.current_id)
+             AND e.state IN ('asserted', 'suggested', 'confirmed')
+            WHERE p.depth < \(bind: maxDepth)
+              AND NOT (CASE WHEN e.from_node_id = p.current_id THEN e.to_node_id ELSE e.from_node_id END = ANY(p.node_ids))
+        )
+        SELECT node_ids, edge_ids, path_confidence
+        FROM paths
+        WHERE current_id = ANY(\(unsafeRaw: Self.uuidArray(seedIDs)))
+          AND start_id < current_id
+        ORDER BY path_confidence DESC, array_length(edge_ids, 1) ASC
+        LIMIT \(bind: max(1, limit))
+        """).all(decoding: PathRow.self)
+    }
+
+    private func hydratePaths(
+        sql: any SQLDatabase,
+        tenantID: UUID,
+        rows: [PathRow]
+    ) async throws -> [KnowledgePathDTO] {
+        let nodeIDs = Set(rows.flatMap(\.node_ids))
+        let edgeIDs = Set(rows.flatMap(\.edge_ids))
+        guard !nodeIDs.isEmpty else { return [] }
+        let nodeRows = try await sql.raw("""
+        SELECT id, kind, label, summary, occurred_at, confidence
+        FROM knowledge_nodes
+        WHERE tenant_id = \(bind: tenantID)
+          AND id = ANY(\(unsafeRaw: Self.uuidArray(nodeIDs)))
+        """).all(decoding: NodeRow.self)
+        let edgeRows: [EdgeRow] = edgeIDs.isEmpty ? [] : try await sql.raw("""
+        SELECT id, from_node_id, to_node_id, predicate, state, confidence,
+               rationale, counter_evidence
+        FROM knowledge_edges
+        WHERE tenant_id = \(bind: tenantID)
+          AND id = ANY(\(unsafeRaw: Self.uuidArray(edgeIDs)))
+        """).all(decoding: EdgeRow.self)
+        let evidence = try await loadEvidence(sql: sql, tenantID: tenantID, nodeIDs: nodeIDs, edgeIDs: edgeIDs)
+        let nodes = Dictionary(uniqueKeysWithValues: nodeRows.map {
+            ($0.id, $0.dto(evidence: evidence.nodes[$0.id] ?? []))
+        })
+        let edges = Dictionary(uniqueKeysWithValues: edgeRows.map {
+            ($0.id, $0.dto(evidence: evidence.edges[$0.id] ?? []))
+        })
+        return rows.compactMap { row in
+            let pathNodes = row.node_ids.compactMap { nodes[$0] }
+            let pathEdges = row.edge_ids.compactMap { edges[$0] }
+            guard pathNodes.count == row.node_ids.count, pathEdges.count == row.edge_ids.count else { return nil }
+            return KnowledgePathDTO(nodes: pathNodes, edges: pathEdges, confidence: row.path_confidence)
+        }
+    }
+
     private static func uuidArray(_ ids: some Collection<UUID>) -> String {
         guard !ids.isEmpty else { return "ARRAY[]::uuid[]" }
         return "ARRAY[" + ids.map { "'\($0.uuidString)'::uuid" }.joined(separator: ",") + "]"
     }
 
+    private static func stringArray(_ values: some Collection<String>) -> String {
+        guard !values.isEmpty else { return "ARRAY[]::text[]" }
+        let escaped = values.map { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+        return "ARRAY[" + escaped.joined(separator: ",") + "]::text[]"
+    }
+
     private static func uniqueEvidence(_ values: [KnowledgeEvidenceDTO]) -> [KnowledgeEvidenceDTO] {
         var seen: Set<UUID> = []
         return values.filter { seen.insert($0.id).inserted }
+    }
+
+    static func searchExpression(for query: String) -> String {
+        let stopWords: Set = [
+            "a", "an", "and", "are", "as", "at", "be", "by", "did", "do", "does", "for", "from",
+            "how", "i", "in", "is", "it", "of", "on", "or", "the", "this", "to", "was", "what",
+            "when", "where", "which", "who", "why", "with",
+        ]
+        var seen: Set<String> = []
+        let terms = query.lowercased().split { character in
+            character.isLetter == false && character.isNumber == false
+        }.map(String.init).filter {
+            $0.count > 1 && !stopWords.contains($0) && seen.insert($0).inserted
+        }
+        return terms.prefix(16).map { "\($0):*" }.joined(separator: " | ")
     }
 
     static func reasoningPaths(
@@ -471,8 +586,20 @@ private struct PathRow: Decodable {
 }
 
 private extension KnowledgeEdgePredicateDTO {
-    var displayName: String {
-        switch self {
+    func displayName(reversed: Bool) -> String {
+        if reversed {
+            return switch self {
+            case .mentions: "is mentioned by"
+            case .about: "is the subject of"
+            case .supports: "is supported by"
+            case .contradicts: "contradicts"
+            case .causes: "is caused by"
+            case .precedes: "follows"
+            case .relatedTo: "relates to"
+            case .derivedFrom: "is a source for"
+            }
+        }
+        return switch self {
         case .mentions: "mentions"
         case .about: "is about"
         case .supports: "supports"

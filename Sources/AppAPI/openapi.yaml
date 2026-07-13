@@ -1098,6 +1098,23 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
 
+  /v1/analytics/model-feedback:
+    post:
+      tags: [Analytics]
+      operationId: analyticsModelFeedbackCreate
+      summary: Record content-free positive or negative feedback for a provider/model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModelFeedbackRequest' }
+      responses:
+        '200':
+          description: Feedback accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
+
   /v1/analytics/recommendations:
     patch:
       tags: [Analytics]
@@ -2270,6 +2287,12 @@ paths:
             HER-290 — comma-separated subset of `auto | pending | approved | rejected`
             (e.g. `pending` or `pending,approved`). When omitted, the default
             returns all states except `rejected`.
+        - in: query
+          name: healthFilter
+          schema:
+            type: string
+            enum: [review-overdue, pending, unorganized, unused]
+          description: Actionable memory-health queue used by analytics recommendations.
       responses:
         '200':
           description: Memory page.
@@ -2800,6 +2823,35 @@ paths:
         '204': { description: Cancelled. }
         '409': { description: Execution was already committed. }
 
+  /v1/conversations/{id}/local-executions/{executionID}/tools:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+      - in: path
+        name: executionID
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: localExecutionToolInvoke
+      summary: Invoke an allow-listed read-only tool for an active local execution.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocalToolInvokeRequest' }
+      responses:
+        '200':
+          description: Read-only tool result and cited memory sources.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalToolInvokeResponse' }
+        '404': { description: Tool broker disabled or execution not found. }
+        '409': { description: Execution was already committed. }
+        '410': { description: Execution expired. }
+
   /v1/memory/local-sync:
     get:
       tags: [Memory]
@@ -2808,7 +2860,8 @@ paths:
       parameters:
         - in: query
           name: cursor
-          schema: { type: string, format: date-time }
+          description: Opaque stable pagination cursor. Legacy ISO-8601 cursors remain accepted.
+          schema: { type: string }
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
@@ -6648,12 +6701,26 @@ components:
         p95LatencyMs: { type: integer, minimum: 0 }
         tokens: { type: integer, minimum: 0 }
         estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+        positiveFeedback: { type: integer, minimum: 0 }
+        negativeFeedback: { type: integer, minimum: 0 }
+        satisfactionRate: { type: number, format: double, minimum: 0, maximum: 1 }
     ModelEffectivenessResponse:
       type: object
       required: [range, models]
       properties:
         range: { $ref: '#/components/schemas/AnalyticsRange' }
         models: { type: array, items: { $ref: '#/components/schemas/ModelEffectivenessDTO' } }
+    ModelFeedbackRating:
+      type: string
+      enum: [positive, negative]
+    ModelFeedbackRequest:
+      type: object
+      required: [provider, model, rating]
+      properties:
+        provider: { type: string, minLength: 1, maxLength: 128 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        rating: { $ref: '#/components/schemas/ModelFeedbackRating' }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
     TeamMemberAnalyticsDTO:
       type: object
       required: [id, displayName, captures, retrievals, aiRequests, tokens, estimatedCostUsdMicros]
@@ -8589,7 +8656,7 @@ components:
 
     ConversationPrepareResponse:
       type: object
-      required: [executionID, messages, sources, expiresAt]
+      required: [executionID, messages, sources, expiresAt, allowedTools]
       properties:
         executionID: { type: string, format: uuid }
         messages:
@@ -8599,6 +8666,38 @@ components:
           type: array
           items: { $ref: '#/components/schemas/QueryHitDTO' }
         expiresAt: { type: string, format: date-time }
+        allowedTools:
+          type: array
+          items: { $ref: '#/components/schemas/LocalExecutionToolDTO' }
+
+    LocalExecutionToolName:
+      type: string
+      enum: [memory_search]
+
+    LocalExecutionToolDTO:
+      type: object
+      required: [name, description]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        description: { type: string }
+
+    LocalToolInvokeRequest:
+      type: object
+      required: [name, query]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        query: { type: string, minLength: 1, maxLength: 10000 }
+        limit: { type: integer, minimum: 1, maximum: 10, default: 5 }
+
+    LocalToolInvokeResponse:
+      type: object
+      required: [name, content, sources]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        content: { type: string }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/QueryHitDTO' }
 
     LocalExecutionUsageDTO:
       type: object
@@ -8648,7 +8747,7 @@ components:
         deletedIDs:
           type: array
           items: { type: string, format: uuid }
-        nextCursor: { type: string, format: date-time }
+        nextCursor: { type: string, description: Opaque stable pagination cursor. }
 
     ChatInboxItemDTO:
       type: object

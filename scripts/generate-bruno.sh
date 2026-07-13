@@ -76,6 +76,10 @@ mkdir -p "${DEST}"
 # manual environments/ folder untouched (bru would otherwise overwrite it).
 rsync -a --delete --exclude 'environments' "${GENERATED}/" "${DEST}/"
 
+# Bruno may emit a space after an empty optional query value. Keep generated
+# requests deterministic and compatible with git diff --check on every host.
+find "${DEST}" -type f -name '*.bru' -exec perl -pi -e 's/[ \t]+$//' {} +
+
 echo
 echo "✓ regenerated Bruno collection at ${DEST}"
 echo "  preserved: ${DEST}/environments"

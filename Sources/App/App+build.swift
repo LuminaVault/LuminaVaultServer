@@ -1681,8 +1681,13 @@ func buildRouter(
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         parallelEnabled: cerberusParallelEnabled,
         hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
+        localExecutionToolBrokerEnabled: reader.string(
+            forKey: "localExecution.toolBroker.enabled",
+            default: "true"
+        ).lowercased() == "true",
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.conversations")
+        logger: Logger(label: "lv.conversations"),
+        vaultAccess: VaultAccessService(fluent: services.fluent)
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -1864,7 +1869,7 @@ func buildRouter(
     let spacesController = SpacesController(
         service: spacesService,
         vaultAccess: vaultAccessService,
-        activity: vaultActivityRecorder,
+        activity: vaultActivityRecorder
     )
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
@@ -2101,6 +2106,9 @@ func buildRouter(
     )
     let analyticsGroup = router.group("/v1/analytics").add(middleware: jwtAuthenticator)
     analyticsController.addRoutes(to: analyticsGroup)
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(AnalyticsMaintenanceService(fluent: services.fluent))
+    }
 
     let tasksController = TasksController(logger: Logger(label: "lv.tasks"))
     let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
@@ -2783,7 +2791,7 @@ func buildRouter(
     let kanbanController = KanbanController(
         service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
         vaultAccess: vaultAccessService,
-        activity: vaultActivityRecorder,
+        activity: vaultActivityRecorder
     )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)

@@ -25,6 +25,7 @@ struct AnalyticsController {
         router.get("/models", use: models)
         router.get("/team", use: team)
         router.post("/events", use: recordEvent)
+        router.post("/model-feedback", use: recordModelFeedback)
         router.patch("/recommendations", use: updateRecommendation)
     }
 
@@ -42,13 +43,13 @@ struct AnalyticsController {
         }
         let row = try await sql.raw("""
         SELECT COALESCE((SELECT SUM(mtok_in) FROM usage_meter
-                         WHERE tenant_id = \(bind: userID) AND day >= \(bind: start)), 0) AS tin,
+                         WHERE tenant_id = \(bind: userID) AND day >= \(bind: start)), 0)::bigint AS tin,
                COALESCE((SELECT SUM(mtok_out) FROM usage_meter
-                         WHERE tenant_id = \(bind: userID) AND day >= \(bind: start)), 0) AS tout,
+                         WHERE tenant_id = \(bind: userID) AND day >= \(bind: start)), 0)::bigint AS tout,
                COALESCE((SELECT COUNT(*) FROM conversations
                          WHERE tenant_id = \(bind: userID) AND created_at >= \(bind: start)), 0) AS sessions,
                COALESCE((SELECT SUM(estimated_cost_usd_micros) FROM router_executions
-                         WHERE actor_user_id = \(bind: userID) AND occurred_at >= \(bind: start)), 0) AS cost
+                         WHERE actor_user_id = \(bind: userID) AND occurred_at >= \(bind: start)), 0)::bigint AS cost
         """).first(decoding: Row.self)
         let embedding = try await EmbeddingUsage.query(on: fluent.db())
             .filter(\.$tenantID == userID).filter(\.$yearMonth == EmbeddingUsage.yearMonth()).first()
@@ -67,17 +68,45 @@ struct AnalyticsController {
         let userID = try ctx.requireTenantID()
         let now = Date()
         let start = Self.periodStart(range: range, now: now)
-        let summary = try await summary(vaultID: access.vaultID, userID: userID,
-                                        personal: access.isPersonal, since: start)
+        let resolvedSummary: AnalyticsSummaryDTO
+        do {
+            resolvedSummary = try await summary(vaultID: access.vaultID, userID: userID,
+                                                personal: access.isPersonal, since: start)
+        } catch {
+            logger.error("analytics summary aggregation failed", metadata: [
+                "error": "\(String(reflecting: error))",
+                "vault_id": "\(access.vaultID)",
+            ])
+            throw error
+        }
         async let daily = daily(vaultID: access.vaultID, userID: userID,
                                 personal: access.isPersonal, since: start, days: range.days)
         async let health = memoryHealth(vaultID: access.vaultID, now: now)
-        let resolvedHealth = try await health
+        let resolvedHealth: MemoryHealthDTO
+        do {
+            resolvedHealth = try await health
+        } catch {
+            logger.error("analytics health aggregation failed", metadata: [
+                "error": "\(String(reflecting: error))",
+                "vault_id": "\(access.vaultID)",
+            ])
+            throw error
+        }
         let recs = try await recommendations(vaultID: access.vaultID, userID: userID,
                                              health: resolvedHealth, since: start, now: now)
-        return try await AnalyticsOverviewResponse(
+        let resolvedDaily: [AnalyticsDailyPointDTO]
+        do {
+            resolvedDaily = try await daily
+        } catch {
+            logger.error("analytics daily aggregation failed", metadata: [
+                "error": "\(String(reflecting: error))",
+                "vault_id": "\(access.vaultID)",
+            ])
+            throw error
+        }
+        return AnalyticsOverviewResponse(
             scope: scope, vaultId: access.vaultID, range: range, periodStart: start, periodEnd: now,
-            summary: summary, daily: daily, memoryHealth: resolvedHealth,
+            summary: resolvedSummary, daily: resolvedDaily, memoryHealth: resolvedHealth,
             recommendations: recs
         )
     }
@@ -98,33 +127,81 @@ struct AnalyticsController {
             let p95: Int64
             let tokens: Int64
             let cost: Int64
+            let positive_feedback: Int64
+            let negative_feedback: Int64
         }
         let rows = try await sql.raw("""
-        SELECT COALESCE(selected_provider, 'unknown') AS provider,
-               COALESCE(selected_model, 'unknown') AS model,
+        WITH feedback AS (
+            SELECT dimensions->>'provider' AS provider, dimensions->>'model' AS model,
+                   COUNT(*) FILTER (WHERE event_name = 'model_feedback_positive') AS positive_feedback,
+                   COUNT(*) FILTER (WHERE event_name = 'model_feedback_negative') AS negative_feedback
+            FROM analytics_events
+            WHERE vault_id = \(bind: access.vaultID)
+              AND occurred_at >= \(bind: Self.periodStart(range: range, now: Date()))
+              AND event_name IN ('model_feedback_positive', 'model_feedback_negative')
+            GROUP BY 1, 2
+        )
+        SELECT COALESCE(r.selected_provider, 'unknown') AS provider,
+               COALESCE(r.selected_model, 'unknown') AS model,
                COUNT(*) AS requests,
-               COUNT(*) FILTER (WHERE status = 'ok') AS successes,
-               COUNT(*) FILTER (WHERE fallback_count > 0) AS fallbacks,
-               COALESCE(AVG(latency_ms), 0)::bigint AS latency,
-               COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY latency_ms), 0)::bigint AS p95,
-               COALESCE(SUM(tokens_in + tokens_out), 0) AS tokens,
-               COALESCE(SUM(estimated_cost_usd_micros), 0) AS cost
-        FROM router_executions
-        WHERE vault_id = \(bind: access.vaultID)
-          AND occurred_at >= \(bind: Self.periodStart(range: range, now: Date()))
-        GROUP BY selected_provider, selected_model
+               COUNT(*) FILTER (WHERE r.status = 'ok') AS successes,
+               COUNT(*) FILTER (WHERE r.fallback_count > 0) AS fallbacks,
+               COALESCE(AVG(r.latency_ms), 0)::bigint AS latency,
+               COALESCE(percentile_disc(0.95) WITHIN GROUP (ORDER BY r.latency_ms), 0)::bigint AS p95,
+               COALESCE(SUM(r.tokens_in + r.tokens_out), 0)::bigint AS tokens,
+               COALESCE(SUM(r.estimated_cost_usd_micros), 0)::bigint AS cost,
+               COALESCE(f.positive_feedback, 0) AS positive_feedback,
+               COALESCE(f.negative_feedback, 0) AS negative_feedback
+        FROM router_executions r
+        LEFT JOIN feedback f ON f.provider = COALESCE(r.selected_provider, 'unknown')
+                            AND f.model = COALESCE(r.selected_model, 'unknown')
+        WHERE r.vault_id = \(bind: access.vaultID)
+          AND r.occurred_at >= \(bind: Self.periodStart(range: range, now: Date()))
+        GROUP BY r.selected_provider, r.selected_model, f.positive_feedback, f.negative_feedback
         ORDER BY requests DESC
         """).all(decoding: Row.self)
         return ModelEffectivenessResponse(range: range, models: rows.map { row in
             let denominator = max(1, Double(row.requests))
+            let feedbackCount = row.positive_feedback + row.negative_feedback
             return ModelEffectivenessDTO(
                 provider: row.provider, model: row.model, requests: Int(row.requests),
                 successRate: Double(row.successes) / denominator,
                 fallbackRate: Double(row.fallbacks) / denominator,
                 averageLatencyMs: Int(row.latency), p95LatencyMs: Int(row.p95),
-                tokens: Int(row.tokens), estimatedCostUsdMicros: row.cost
+                tokens: Int(row.tokens), estimatedCostUsdMicros: row.cost,
+                positiveFeedback: Int(row.positive_feedback),
+                negativeFeedback: Int(row.negative_feedback),
+                satisfactionRate: feedbackCount > 0
+                    ? Double(row.positive_feedback) / Double(feedbackCount) : nil
             )
         })
+    }
+
+    @Sendable
+    func recordModelFeedback(_ req: Request, ctx: AppRequestContext) async throws -> AnalyticsMutationResponse {
+        let body = try await req.decode(as: ModelFeedbackRequest.self, context: ctx)
+        guard Self.validModelIdentity(body.provider), Self.validModelIdentity(body.model) else {
+            throw HTTPError(.badRequest, message: "invalid provider or model")
+        }
+        if let key = body.idempotencyKey, !Self.validIdempotencyKey(key) {
+            throw HTTPError(.badRequest, message: "invalid idempotencyKey")
+        }
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read)
+        let userID = try ctx.requireTenantID()
+        guard let sql = fluent.db() as? any SQLDatabase else { throw HTTPError(.internalServerError) }
+        let dimensions = try String(
+            decoding: JSONEncoder().encode(["provider": body.provider, "model": body.model]),
+            as: UTF8.self
+        )
+        let eventName = body.rating == .positive ? "model_feedback_positive" : "model_feedback_negative"
+        try await sql.raw("""
+        INSERT INTO analytics_events
+            (vault_id, actor_user_id, event_name, source, dimensions, idempotency_key)
+        VALUES (\(bind: access.vaultID), \(bind: userID), \(bind: eventName), 'server',
+                \(bind: dimensions)::jsonb, \(bind: body.idempotencyKey))
+        ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+        """).run()
+        return .init()
     }
 
     @Sendable
@@ -172,8 +249,8 @@ struct AnalyticsController {
             ) q ON q.actor = u.id
             LEFT JOIN (
                 SELECT actor_user_id AS actor, COUNT(*) AS requests,
-                       COALESCE(SUM(tokens_in + tokens_out), 0) AS tokens,
-                       COALESCE(SUM(estimated_cost_usd_micros), 0) AS cost
+                       COALESCE(SUM(tokens_in + tokens_out), 0)::bigint AS tokens,
+                       COALESCE(SUM(estimated_cost_usd_micros), 0)::bigint AS cost
                 FROM router_executions WHERE vault_id = \(bind: access.vaultID)
                   AND occurred_at >= \(bind: start) GROUP BY actor_user_id
             ) r ON r.actor = u.id
@@ -194,9 +271,7 @@ struct AnalyticsController {
     @Sendable
     func recordEvent(_ req: Request, ctx: AppRequestContext) async throws -> AnalyticsMutationResponse {
         let body = try await req.decode(as: AnalyticsEventRequest.self, context: ctx)
-        if let key = body.idempotencyKey,
-           key.count > 128 || !key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
-        {
+        if let key = body.idempotencyKey, !Self.validIdempotencyKey(key) {
             throw HTTPError(.badRequest, message: "invalid idempotencyKey")
         }
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read)
@@ -225,10 +300,6 @@ struct AnalyticsController {
         ON CONFLICT (day, vault_id, actor_user_id, metric, dimension_key) DO UPDATE SET
             value = analytics_daily_rollups.value + 1, updated_at = NOW()
         """).run()
-        // Bounded retention is enforced opportunistically on writes; the
-        // indexed deletes are idempotent and avoid a separate deployment knob.
-        try await sql.raw("DELETE FROM analytics_events WHERE occurred_at < NOW() - interval '90 days'").run()
-        try await sql.raw("DELETE FROM analytics_daily_rollups WHERE day < CURRENT_DATE - interval '13 months'").run()
         return .init()
     }
 
@@ -280,7 +351,8 @@ struct AnalyticsController {
     {
         guard let sql = fluent.db() as? any SQLDatabase else { throw HTTPError(.internalServerError) }
         struct Row: Decodable {
-            let sessions: Int64
+            let personal_sessions: Int64
+            let team_sessions: Int64
             let requests: Int64
             let tin: Int64
             let tout: Int64
@@ -290,21 +362,24 @@ struct AnalyticsController {
         }
         let row = try await sql.raw("""
         SELECT COALESCE((SELECT COUNT(*) FROM conversations WHERE tenant_id = \(bind: userID)
-                         AND created_at >= \(bind: since)), 0) AS sessions,
+                         AND created_at >= \(bind: since)), 0) AS personal_sessions,
+               COALESCE((SELECT COUNT(*) FROM analytics_events WHERE vault_id = \(bind: vaultID)
+                         AND event_name = 'conversation_created' AND occurred_at >= \(bind: since)), 0) AS team_sessions,
                COALESCE((SELECT COUNT(*) FROM router_executions WHERE vault_id = \(bind: vaultID)
                          AND occurred_at >= \(bind: since)), 0) AS requests,
                COALESCE((SELECT SUM(tokens_in) FROM router_executions WHERE vault_id = \(bind: vaultID)
-                         AND occurred_at >= \(bind: since)), 0) AS tin,
+                         AND occurred_at >= \(bind: since)), 0)::bigint AS tin,
                COALESCE((SELECT SUM(tokens_out) FROM router_executions WHERE vault_id = \(bind: vaultID)
-                         AND occurred_at >= \(bind: since)), 0) AS tout,
+                         AND occurred_at >= \(bind: since)), 0)::bigint AS tout,
                COALESCE((SELECT COUNT(*) FROM memories WHERE tenant_id = \(bind: vaultID)
                          AND created_at >= \(bind: since) AND review_state != 'rejected'), 0) AS captures,
                COALESCE((SELECT COUNT(*) FROM analytics_events WHERE vault_id = \(bind: vaultID)
                          AND event_name = 'memory_retrieved' AND occurred_at >= \(bind: since)), 0) AS retrievals,
                COALESCE((SELECT SUM(estimated_cost_usd_micros) FROM router_executions
-                         WHERE vault_id = \(bind: vaultID) AND occurred_at >= \(bind: since)), 0) AS cost
+                         WHERE vault_id = \(bind: vaultID) AND occurred_at >= \(bind: since)), 0)::bigint AS cost
         """).first(decoding: Row.self)
-        return .init(sessions: personal ? Int(row?.sessions ?? 0) : 0, aiRequests: Int(row?.requests ?? 0),
+        let sessions = personal ? row?.personal_sessions : row?.team_sessions
+        return .init(sessions: Int(sessions ?? 0), aiRequests: Int(row?.requests ?? 0),
                      tokensIn: Int(row?.tin ?? 0), tokensOut: Int(row?.tout ?? 0),
                      captures: Int(row?.captures ?? 0), retrievals: Int(row?.retrievals ?? 0),
                      estimatedCostUsdMicros: row?.cost ?? 0)
@@ -337,13 +412,19 @@ struct AnalyticsController {
               AND event_name = 'memory_retrieved' AND occurred_at >= \(bind: since) GROUP BY 1
         ), router_day AS (
             SELECT date_trunc('day', occurred_at) AS day, COUNT(*) AS requests,
-                   COALESCE(SUM(tokens_in + tokens_out), 0) AS tokens,
-                   COALESCE(SUM(estimated_cost_usd_micros), 0) AS cost
+                   COALESCE(SUM(tokens_in + tokens_out), 0)::bigint AS tokens,
+                   COALESCE(SUM(estimated_cost_usd_micros), 0)::bigint AS cost
             FROM router_executions WHERE vault_id = \(bind: vaultID) AND occurred_at >= \(bind: since)
             GROUP BY 1
         ), session_day AS (
             SELECT date_trunc('day', created_at) AS day, COUNT(*) AS sessions
-            FROM conversations WHERE tenant_id = \(bind: userID) AND created_at >= \(bind: since)
+            FROM conversations WHERE \(bind: personal) AND tenant_id = \(bind: userID)
+              AND created_at >= \(bind: since)
+            GROUP BY 1
+            UNION ALL
+            SELECT date_trunc('day', occurred_at) AS day, COUNT(*) AS sessions
+            FROM analytics_events WHERE \(bind: !personal) AND vault_id = \(bind: vaultID)
+              AND event_name = 'conversation_created' AND occurred_at >= \(bind: since)
             GROUP BY 1
         )
         SELECT d.day, COALESCE(s.sessions, 0) AS sessions,
@@ -355,7 +436,7 @@ struct AnalyticsController {
         LEFT JOIN router_day r ON r.day = d.day LEFT JOIN session_day s ON s.day = d.day
         ORDER BY d.day LIMIT \(bind: days)
         """).all(decoding: Row.self)
-        return rows.map { .init(date: $0.day, sessions: personal ? Int($0.sessions) : 0, aiRequests: Int($0.requests),
+        return rows.map { .init(date: $0.day, sessions: Int($0.sessions), aiRequests: Int($0.requests),
                                 tokens: Int($0.tokens), captures: Int($0.captures),
                                 retrievals: Int($0.retrievals), estimatedCostUsdMicros: $0.cost) }
     }
@@ -476,6 +557,18 @@ struct AnalyticsController {
 
     private static func validRecommendationID(_ value: String) -> Bool {
         !value.isEmpty && value.count <= 96 && value.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    private static func validIdempotencyKey(_ value: String) -> Bool {
+        !value.isEmpty && value.count <= 128
+            && value.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    private static func validModelIdentity(_ value: String) -> Bool {
+        !value.isEmpty && value.count <= 128
+            && value.allSatisfy {
+                $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." || $0 == "/" || $0 == ":"
+            }
     }
 
     static func weightedHealthScore(freshness: Int, engagement: Int,
