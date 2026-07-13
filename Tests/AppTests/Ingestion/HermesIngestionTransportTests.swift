@@ -76,7 +76,7 @@ struct HermesIngestionTransportTests {
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer managed-key")
         #expect(request.value(forHTTPHeaderField: "X-Hermes-Session-Key") == tenantID.uuidString)
-        let body = try #require(request.httpBody)
+        let body = try #require(request.httpBody ?? request.httpBodyStream.map(Self.read))
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
         #expect(json["source_url"] == "https://vault.test/v1/ingestion-sources/token")
         #expect(json["content_type"] == "application/pdf")
@@ -101,5 +101,18 @@ struct HermesIngestionTransportTests {
                 instructions: nil
             )
         }
+    }
+
+    private static func read(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
     }
 }
