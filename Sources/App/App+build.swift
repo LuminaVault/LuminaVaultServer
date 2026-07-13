@@ -1511,6 +1511,8 @@ func buildRouter(
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let vaultAccessService = VaultAccessService(fluent: services.fluent)
+    let vaultActivityPublisher = VaultActivityPublisher()
+    let vaultActivityRecorder = VaultActivityRecorder(fluent: services.fluent, publisher: vaultActivityPublisher)
     let memoryService = HermesMemoryService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
@@ -1679,8 +1681,13 @@ func buildRouter(
         linkCapture: autoSaveLinksEnabled ? linkCaptureService : nil,
         parallelEnabled: cerberusParallelEnabled,
         hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
+        localExecutionToolBrokerEnabled: reader.string(
+            forKey: "localExecution.toolBroker.enabled",
+            default: "true"
+        ).lowercased() == "true",
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.conversations")
+        logger: Logger(label: "lv.conversations"),
+        vaultAccess: VaultAccessService(fluent: services.fluent)
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -1859,13 +1866,16 @@ func buildRouter(
 
     // Spaces routes — service is constructed alongside `vaultInitService`
     // above so first-run vault create can seed defaults.
-    let spacesController = SpacesController(service: spacesService, vaultAccess: vaultAccessService)
+    let spacesController = SpacesController(
+        service: spacesService,
+        vaultAccess: vaultAccessService,
+        activity: vaultActivityRecorder
+    )
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
 
     // Team/shared-vault control plane. Resource endpoints remain backwards
     // compatible: no X-Vault-ID means the caller's personal vault.
-    let vaultActivityPublisher = VaultActivityPublisher()
     let teamController = TeamController(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
@@ -2096,6 +2106,9 @@ func buildRouter(
     )
     let analyticsGroup = router.group("/v1/analytics").add(middleware: jwtAuthenticator)
     analyticsController.addRoutes(to: analyticsGroup)
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(AnalyticsMaintenanceService(fluent: services.fluent))
+    }
 
     let tasksController = TasksController(logger: Logger(label: "lv.tasks"))
     let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
@@ -2777,7 +2790,8 @@ func buildRouter(
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
     let kanbanController = KanbanController(
         service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
-        vaultAccess: vaultAccessService
+        vaultAccess: vaultAccessService,
+        activity: vaultActivityRecorder
     )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)

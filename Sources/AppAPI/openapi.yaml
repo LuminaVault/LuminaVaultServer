@@ -56,6 +56,8 @@ tags:
   - name: Marketplace
     description: Public plugin discovery, publishing, moderation, ratings, and version-pinned installs.
   - name: Spaces
+  - name: Teams
+    description: Team membership, shared vault permissions, invitations, and activity.
   - name: Soul
     description: SOUL.md CRUD (HER-85).
   - name: Achievements
@@ -1092,6 +1094,23 @@ paths:
       responses:
         '200':
           description: Event accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
+
+  /v1/analytics/model-feedback:
+    post:
+      tags: [Analytics]
+      operationId: analyticsModelFeedbackCreate
+      summary: Record content-free positive or negative feedback for a provider/model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModelFeedbackRequest' }
+      responses:
+        '200':
+          description: Feedback accepted.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnalyticsMutationResponse' }
@@ -2268,6 +2287,12 @@ paths:
             HER-290 — comma-separated subset of `auto | pending | approved | rejected`
             (e.g. `pending` or `pending,approved`). When omitted, the default
             returns all states except `rejected`.
+        - in: query
+          name: healthFilter
+          schema:
+            type: string
+            enum: [review-overdue, pending, unorganized, unused]
+          description: Actionable memory-health queue used by analytics recommendations.
       responses:
         '200':
           description: Memory page.
@@ -2798,6 +2823,35 @@ paths:
         '204': { description: Cancelled. }
         '409': { description: Execution was already committed. }
 
+  /v1/conversations/{id}/local-executions/{executionID}/tools:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+      - in: path
+        name: executionID
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Conversations]
+      operationId: localExecutionToolInvoke
+      summary: Invoke an allow-listed read-only tool for an active local execution.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocalToolInvokeRequest' }
+      responses:
+        '200':
+          description: Read-only tool result and cited memory sources.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalToolInvokeResponse' }
+        '404': { description: Tool broker disabled or execution not found. }
+        '409': { description: Execution was already committed. }
+        '410': { description: Execution expired. }
+
   /v1/memory/local-sync:
     get:
       tags: [Memory]
@@ -2806,7 +2860,8 @@ paths:
       parameters:
         - in: query
           name: cursor
-          schema: { type: string, format: date-time }
+          description: Opaque stable pagination cursor. Legacy ISO-8601 cursors remain accepted.
+          schema: { type: string }
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
@@ -5306,6 +5361,166 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ──────────────────────────────── Teams / shared vaults ────────────────────────────────
+
+  /v1/teams:
+    get:
+      tags: [Teams]
+      operationId: teamsList
+      responses:
+        '200':
+          description: Teams visible to the current user.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TeamSummary' } } } }
+    post:
+      tags: [Teams]
+      operationId: teamsCreate
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TeamCreateRequest' } } }
+      responses:
+        '200': { description: Created team, content: { application/json: { schema: { $ref: '#/components/schemas/TeamSummary' } } } }
+
+  /v1/teams/{teamID}/vaults:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    get:
+      tags: [Teams]
+      operationId: teamVaultsList
+      responses:
+        '200': { description: Team vaults, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VaultSummary' } } } } }
+    post:
+      tags: [Teams]
+      operationId: teamVaultsCreate
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SharedVaultCreateRequest' } } }
+      responses:
+        '200': { description: Created vault, content: { application/json: { schema: { $ref: '#/components/schemas/VaultSummary' } } } }
+
+  /v1/teams/{teamID}/invitations:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    get:
+      tags: [Teams]
+      operationId: teamInvitationsList
+      responses:
+        '200': { description: Pending invitations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/TeamInvitation' } } } } }
+    post:
+      tags: [Teams]
+      operationId: teamInvitationsCreate
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TeamInviteRequest' } } }
+      responses:
+        '200': { description: Invitation created, content: { application/json: { schema: { $ref: '#/components/schemas/TeamInvitation' } } } }
+        '409': { description: An active invitation already exists. }
+
+  /v1/teams/{teamID}/invitations/{invitationID}:
+    parameters:
+      - { $ref: '#/components/parameters/TeamID' }
+      - { $ref: '#/components/parameters/InvitationID' }
+    delete:
+      tags: [Teams]
+      operationId: teamInvitationsRevoke
+      responses: { '204': { description: Invitation revoked. } }
+
+  /v1/teams/{teamID}/invitations/{invitationID}/resend:
+    parameters:
+      - { $ref: '#/components/parameters/TeamID' }
+      - { $ref: '#/components/parameters/InvitationID' }
+    post:
+      tags: [Teams]
+      operationId: teamInvitationsResend
+      responses:
+        '200': { description: Invitation token rotated and resent, content: { application/json: { schema: { $ref: '#/components/schemas/TeamInvitation' } } } }
+
+  /v1/teams/{teamID}/owner:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    put:
+      tags: [Teams]
+      operationId: teamsTransferOwner
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OwnershipTransferRequest' } } }
+      responses:
+        '200': { description: Ownership transferred, content: { application/json: { schema: { $ref: '#/components/schemas/TeamSummary' } } } }
+
+  /v1/teams/{teamID}/archive:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    post:
+      tags: [Teams]
+      operationId: teamsArchive
+      responses: { '200': { description: Team archived, content: { application/json: { schema: { $ref: '#/components/schemas/TeamSummary' } } } } }
+
+  /v1/teams/{teamID}/restore:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    post:
+      tags: [Teams]
+      operationId: teamsRestore
+      responses: { '200': { description: Team restored, content: { application/json: { schema: { $ref: '#/components/schemas/TeamSummary' } } } } }
+
+  /v1/teams/{teamID}/leave:
+    parameters: [{ $ref: '#/components/parameters/TeamID' }]
+    post:
+      tags: [Teams]
+      operationId: teamsLeave
+      responses: { '204': { description: Current user left the team. } }
+
+  /v1/vaults:
+    get:
+      tags: [Teams]
+      operationId: vaultsList
+      responses:
+        '200': { description: Personal and shared vaults, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VaultSummary' } } } } }
+
+  /v1/vaults/{vaultID}/members:
+    parameters: [{ $ref: '#/components/parameters/VaultID' }]
+    get:
+      tags: [Teams]
+      operationId: vaultMembersList
+      responses:
+        '200': { description: Vault members, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VaultMember' } } } } }
+
+  /v1/vaults/{vaultID}/members/{userID}:
+    parameters:
+      - { $ref: '#/components/parameters/VaultID' }
+      - { $ref: '#/components/parameters/UserID' }
+    put:
+      tags: [Teams]
+      operationId: vaultMembersUpdate
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VaultMembershipUpdateRequest' } } }
+      responses:
+        '200': { description: Updated member, content: { application/json: { schema: { $ref: '#/components/schemas/VaultMember' } } } }
+    delete:
+      tags: [Teams]
+      operationId: vaultMembersRemove
+      responses: { '204': { description: Member removed. } }
+
+  /v1/vaults/{vaultID}/activity:
+    parameters: [{ $ref: '#/components/parameters/VaultID' }]
+    get:
+      tags: [Teams]
+      operationId: vaultActivityList
+      responses:
+        '200': { description: Recent vault activity, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VaultActivity' } } } } }
+
+  /v1/vaults/{vaultID}/activity/stream:
+    parameters: [{ $ref: '#/components/parameters/VaultID' }]
+    get:
+      tags: [Teams]
+      operationId: vaultActivityStream
+      responses:
+        '200': { description: Server-sent vault activity events, content: { text/event-stream: { schema: { type: string } } } }
+
+  /v1/team-invitations/{token}/accept:
+    post:
+      tags: [Teams]
+      operationId: teamInvitationsAccept
+      parameters:
+        - { in: path, name: token, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Invitation accepted, content: { application/json: { schema: { $ref: '#/components/schemas/TeamSummary' } } } }
+
 components:
 
   securitySchemes:
@@ -5332,6 +5547,26 @@ components:
       description: RevenueCat webhook shared secret (`revenuecat.webhookSecret`).
 
   parameters:
+    TeamID:
+      in: path
+      name: teamID
+      required: true
+      schema: { type: string, format: uuid }
+    VaultID:
+      in: path
+      name: vaultID
+      required: true
+      schema: { type: string, format: uuid }
+    UserID:
+      in: path
+      name: userID
+      required: true
+      schema: { type: string, format: uuid }
+    InvitationID:
+      in: path
+      name: invitationID
+      required: true
+      schema: { type: string, format: uuid }
     MemoryId:
       in: path
       name: id
@@ -5375,6 +5610,100 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
   schemas:
+
+    TeamSummary:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [owner, admin, member] }
+        archivedAt: { type: [string, 'null'], format: date-time }
+
+    VaultSummary:
+      type: object
+      required: [id, name, isPersonal, role, canUseAI]
+      properties:
+        id: { type: string, format: uuid }
+        teamID: { type: [string, 'null'], format: uuid }
+        name: { type: string }
+        isPersonal: { type: boolean }
+        role: { type: string, enum: [viewer, editor, admin] }
+        canUseAI: { type: boolean }
+        archivedAt: { type: [string, 'null'], format: date-time }
+
+    VaultMember:
+      type: object
+      required: [id, userID, username, email, role, canUseAI]
+      properties:
+        id: { type: string, format: uuid }
+        userID: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [viewer, editor, admin] }
+        canUseAI: { type: boolean }
+
+    TeamInvitation:
+      type: object
+      required: [id, teamID, email, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        teamID: { type: string, format: uuid }
+        email: { type: string, format: email }
+        expiresAt: { type: string, format: date-time }
+        token: { type: [string, 'null'] }
+
+    VaultActivity:
+      type: object
+      required: [id, vaultID, actorName, action, targetType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        vaultID: { type: string, format: uuid }
+        actorUserID: { type: [string, 'null'], format: uuid }
+        actorName: { type: string }
+        action: { type: string }
+        targetType: { type: string }
+        targetID: { type: [string, 'null'], format: uuid }
+        targetTitle: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+
+    TeamCreateRequest:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 2, maxLength: 80 } }
+
+    SharedVaultCreateRequest:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 2, maxLength: 80 } }
+
+    VaultInviteGrant:
+      type: object
+      required: [role, canUseAI]
+      properties:
+        role: { type: string, enum: [viewer, editor, admin] }
+        canUseAI: { type: boolean }
+
+    TeamInviteRequest:
+      type: object
+      required: [email, vaultGrants]
+      properties:
+        email: { type: string, format: email }
+        vaultGrants:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/VaultInviteGrant' }
+
+    VaultMembershipUpdateRequest:
+      type: object
+      required: [role, canUseAI]
+      properties:
+        role: { type: string, enum: [viewer, editor, admin] }
+        canUseAI: { type: boolean }
+
+    OwnershipTransferRequest:
+      type: object
+      required: [userID]
+      properties: { userID: { type: string, format: uuid } }
 
     ErrorEnvelope:
       type: object
@@ -6372,12 +6701,26 @@ components:
         p95LatencyMs: { type: integer, minimum: 0 }
         tokens: { type: integer, minimum: 0 }
         estimatedCostUsdMicros: { type: integer, format: int64, minimum: 0 }
+        positiveFeedback: { type: integer, minimum: 0 }
+        negativeFeedback: { type: integer, minimum: 0 }
+        satisfactionRate: { type: number, format: double, minimum: 0, maximum: 1 }
     ModelEffectivenessResponse:
       type: object
       required: [range, models]
       properties:
         range: { $ref: '#/components/schemas/AnalyticsRange' }
         models: { type: array, items: { $ref: '#/components/schemas/ModelEffectivenessDTO' } }
+    ModelFeedbackRating:
+      type: string
+      enum: [positive, negative]
+    ModelFeedbackRequest:
+      type: object
+      required: [provider, model, rating]
+      properties:
+        provider: { type: string, minLength: 1, maxLength: 128 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        rating: { $ref: '#/components/schemas/ModelFeedbackRating' }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
     TeamMemberAnalyticsDTO:
       type: object
       required: [id, displayName, captures, retrievals, aiRequests, tokens, estimatedCostUsdMicros]
@@ -8313,7 +8656,7 @@ components:
 
     ConversationPrepareResponse:
       type: object
-      required: [executionID, messages, sources, expiresAt]
+      required: [executionID, messages, sources, expiresAt, allowedTools]
       properties:
         executionID: { type: string, format: uuid }
         messages:
@@ -8323,6 +8666,38 @@ components:
           type: array
           items: { $ref: '#/components/schemas/QueryHitDTO' }
         expiresAt: { type: string, format: date-time }
+        allowedTools:
+          type: array
+          items: { $ref: '#/components/schemas/LocalExecutionToolDTO' }
+
+    LocalExecutionToolName:
+      type: string
+      enum: [memory_search]
+
+    LocalExecutionToolDTO:
+      type: object
+      required: [name, description]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        description: { type: string }
+
+    LocalToolInvokeRequest:
+      type: object
+      required: [name, query]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        query: { type: string, minLength: 1, maxLength: 10000 }
+        limit: { type: integer, minimum: 1, maximum: 10, default: 5 }
+
+    LocalToolInvokeResponse:
+      type: object
+      required: [name, content, sources]
+      properties:
+        name: { $ref: '#/components/schemas/LocalExecutionToolName' }
+        content: { type: string }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/QueryHitDTO' }
 
     LocalExecutionUsageDTO:
       type: object
@@ -8372,7 +8747,7 @@ components:
         deletedIDs:
           type: array
           items: { type: string, format: uuid }
-        nextCursor: { type: string, format: date-time }
+        nextCursor: { type: string, description: Opaque stable pagination cursor. }
 
     ChatInboxItemDTO:
       type: object

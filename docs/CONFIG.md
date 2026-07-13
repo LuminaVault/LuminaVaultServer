@@ -307,5 +307,5 @@ Any code-only key needs an `.env.example` entry. Any env-only key may be safe to
 # Hybrid local execution
 
 - `HYBRID_EXECUTION_ENABLED` gates hybrid preferences, conversation prepare/commit, and local memory synchronization; default `true`.
-- `LOCAL_EXECUTION_TOOL_BROKER_ENABLED` gates the allow-listed server tool broker; default `false`.
+- `LOCAL_EXECUTION_TOOL_BROKER_ENABLED` gates the tenant-scoped, read-only local tool broker; default `true`. The initial allow-list contains only `memory_search` and requires an active, unexpired prepared execution.
 - Device-local Ollama, LM Studio, and MLX server URLs are never server environment variables. Existing Ollama/custom credentials remain for endpoints reachable from the backend itself.

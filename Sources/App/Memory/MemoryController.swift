@@ -222,7 +222,6 @@ struct MemoryController {
                     \(bind: "memory-created:\(memoryID.uuidString)"))
             ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
             """).run()
-            try? await Self.enforceAnalyticsRetention(sql)
         }
 
         // HER-171 — notify the skills runtime a memory landed (best-effort;
@@ -269,13 +268,16 @@ struct MemoryController {
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
-        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai).vaultID
-        let answer = try await service.search(
-            tenantID: tenantID,
-            sessionKey: tenantID.uuidString,
-            query: body.query,
-            limit: body.limit ?? 5
-        )
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
+        let tenantID = access.vaultID
+        let answer = try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
+            try await service.search(
+                tenantID: tenantID,
+                sessionKey: tenantID.uuidString,
+                query: body.query,
+                limit: body.limit ?? 5
+            )
+        }
         let hits = answer.hits.map {
             MemorySearchHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }
@@ -288,7 +290,6 @@ struct MemoryController {
                 VALUES (\(bind: tenantID), \(bind: actorID), 'memory_retrieved', 'server', '{}'::jsonb)
                 """).run()
             }
-            try? await Self.enforceAnalyticsRetention(sql)
         }
         return MemorySearchResponse(hits: hits, summary: answer.summary)
     }
@@ -309,6 +310,15 @@ struct MemoryController {
         )
         let offset = max(0, req.uri.queryParameters["offset"].flatMap { Int($0) } ?? 0)
         let tag = req.uri.queryParameters["tag"].map { String($0) }
+        let healthFilter: MemoryHealthFilter?
+        if let raw = req.uri.queryParameters["healthFilter"], !raw.isEmpty {
+            guard let parsed = MemoryHealthFilter(rawValue: String(raw)) else {
+                throw HTTPError(.badRequest, message: "healthFilter must be one of \(MemoryHealthFilter.allCases.map(\.rawValue).joined(separator: ", "))")
+            }
+            healthFilter = parsed
+        } else {
+            healthFilter = nil
+        }
 
         // HER-290 — `reviewState` is comma-separated to keep the call-site
         // ergonomic (`?reviewState=pending,approved`). Empty / missing means
@@ -331,6 +341,7 @@ struct MemoryController {
             tenantID: tenantID,
             tag: tag,
             reviewStates: reviewStates,
+            healthFilter: healthFilter,
             limit: limit,
             offset: offset
         )
@@ -366,37 +377,79 @@ struct MemoryController {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
         let requested = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 200
         let limit = max(1, min(requested, 500))
-        let cursor = req.uri.queryParameters["cursor"].flatMap { ISO8601DateFormatter().date(from: String($0)) }
+        let rawCursor = req.uri.queryParameters["cursor"].map(String.init)
+        let cursor: LocalMemorySyncCursor?
+        do {
+            cursor = try LocalMemorySyncCursor.decode(rawCursor)
+        } catch {
+            throw HTTPError(.badRequest, message: "invalid local memory sync cursor")
+        }
         var query = Memory.query(on: repository.fluent.db(), tenantID: tenantID)
         if let cursor {
-            query = query.filter(\.$updatedAt > cursor)
+            query = query.group(.or) { outer in
+                outer.filter(\.$updatedAt > cursor.timestamp)
+                outer.group(.and) { sameTimestamp in
+                    sameTimestamp.filter(\.$updatedAt == cursor.timestamp)
+                    sameTimestamp.filter(\.$id > cursor.id)
+                }
+            }
         }
         let rows = try await query
             .sort(\.$updatedAt, .ascending)
             .sort(\.$id, .ascending)
             .limit(limit)
             .all()
-        let items = rows.map { row in
+        var tombstones = MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
+        if let cursor {
+            tombstones = tombstones.group(.or) { outer in
+                outer.filter(\.$deletedAt > cursor.timestamp)
+                outer.group(.and) { sameTimestamp in
+                    sameTimestamp.filter(\.$deletedAt == cursor.timestamp)
+                    if cursor.kind == .memory {
+                        sameTimestamp.filter(\.$id >= cursor.id)
+                    } else {
+                        sameTimestamp.filter(\.$id > cursor.id)
+                    }
+                }
+            }
+        }
+        let deleted = try await tombstones.sort(\.$deletedAt, .ascending).limit(limit).all()
+        let events = (
+            rows.compactMap { row -> LocalMemorySyncEvent? in
+                guard let timestamp = row.updatedAt, let id = row.id else { return nil }
+                return LocalMemorySyncEvent(
+                    cursor: LocalMemorySyncCursor(timestamp: timestamp, id: id, kind: .memory),
+                    payload: .memory(row)
+                )
+            } + deleted.compactMap { tombstone -> LocalMemorySyncEvent? in
+                guard let timestamp = tombstone.deletedAt, let id = tombstone.id else { return nil }
+                return LocalMemorySyncEvent(
+                    cursor: LocalMemorySyncCursor(timestamp: timestamp, id: id, kind: .deletion),
+                    payload: .deletion(tombstone)
+                )
+            }
+        )
+        .sorted(by: LocalMemorySyncEvent.ordered)
+        .prefix(limit)
+        let items = events.compactMap { event -> LocalMemorySyncItemDTO? in
+            guard case let .memory(row) = event.payload else { return nil }
             let createdAt = row.createdAt ?? .distantPast
-            let updatedAt = row.updatedAt ?? createdAt
             return LocalMemorySyncItemDTO(
                 id: row.savedID,
                 content: row.content,
                 source: MemorySourceKindDTO(rawValue: row.originKind) ?? .legacy,
                 createdAt: createdAt,
-                updatedAt: updatedAt
+                updatedAt: row.updatedAt ?? createdAt
             )
         }
-        var tombstones = MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
-        if let cursor {
-            tombstones = tombstones.filter(\.$deletedAt > cursor)
+        let deletedIDs = events.compactMap { event -> UUID? in
+            guard case let .deletion(tombstone) = event.payload else { return nil }
+            return tombstone.memoryID
         }
-        let deleted = try await tombstones.sort(\.$deletedAt, .ascending).limit(limit).all()
-        let nextDate = [rows.last?.updatedAt, deleted.last?.deletedAt].compactMap(\.self).max()
-        return LocalMemorySyncResponse(
+        return try LocalMemorySyncResponse(
             memories: items,
-            deletedIDs: deleted.map(\.memoryID),
-            nextCursor: nextDate.map { ISO8601DateFormatter().string(from: $0) }
+            deletedIDs: deletedIDs,
+            nextCursor: events.last.map { try $0.cursor.encode() }
         )
     }
 
@@ -435,7 +488,6 @@ struct MemoryController {
                 (vault_id, actor_user_id, event_name, source, dimensions)
             VALUES (\(bind: tenantID), \(bind: row.updatedByUserID), 'memory_reviewed', 'server', '{}'::jsonb)
             """).run()
-            try? await Self.enforceAnalyticsRetention(sql)
         }
         return MemoryReviewResponse(memoryId: id, reviewedAt: now, reviewCount: Int(row.reviewCount))
     }
@@ -653,11 +705,6 @@ struct MemoryController {
             throw HTTPError(.badRequest, message: "invalid memory id")
         }
         return id
-    }
-
-    private static func enforceAnalyticsRetention(_ sql: any SQLDatabase) async throws {
-        try await sql.raw("DELETE FROM analytics_events WHERE occurred_at < NOW() - interval '90 days'").run()
-        try await sql.raw("DELETE FROM analytics_daily_rollups WHERE day < CURRENT_DATE - interval '13 months'").run()
     }
 
     private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {

@@ -2,6 +2,7 @@
 import FluentKit
 import FluentPostgresDriver
 import Foundation
+import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
@@ -235,6 +236,42 @@ struct KanbanServiceTests {
             #expect(updatedCol1.cards.count == 1)
             #expect(updatedCol2.cards.count == 1)
             #expect(dto2.version > v1, "version must increment after moveCard")
+        }
+    }
+
+    @Test
+    func `stale shared board version cannot mutate content`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "cas\(UUID().uuidString.prefix(4).lowercased())")
+                .save(on: fluent.db())
+            let service = Self.makeService(fluent)
+            let board = try await service.createBoard(tenantID: tenantID, title: "Original")
+            let boardID = try board.requireID()
+            let version = try await service.version(tenantID: tenantID, boardID: boardID)
+
+            _ = try await service.patchBoard(
+                tenantID: tenantID,
+                boardID: boardID,
+                req: BoardPatchRequest(title: "First writer"),
+                expectedVersion: version
+            )
+
+            do {
+                _ = try await service.patchBoard(
+                    tenantID: tenantID,
+                    boardID: boardID,
+                    req: BoardPatchRequest(title: "Stale writer"),
+                    expectedVersion: version
+                )
+                Issue.record("stale mutation unexpectedly succeeded")
+            } catch let error as HTTPError {
+                #expect(error.status == .conflict)
+            }
+
+            let snapshot = try await service.snapshot(tenantID: tenantID, boardID: boardID)
+            #expect(snapshot.title == "First writer")
+            #expect(snapshot.version == version + 1)
         }
     }
 

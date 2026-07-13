@@ -5,6 +5,13 @@ import HummingbirdFluent
 import LuminaVaultShared
 import SQLKit
 
+enum MemoryHealthFilter: String, CaseIterable {
+    case reviewOverdue = "review-overdue"
+    case pending
+    case unorganized
+    case unused
+}
+
 struct MemoryRepository {
     let fluent: Fluent
     /// HER-234 — optional latency timer around the hot search path. Default
@@ -271,6 +278,7 @@ struct MemoryRepository {
         tenantID: UUID,
         tag: String?,
         reviewStates: [String]? = nil,
+        healthFilter: MemoryHealthFilter? = nil,
         limit: Int,
         offset: Int
     ) async throws -> [Memory] {
@@ -285,6 +293,35 @@ struct MemoryRepository {
             q.filter(\.$reviewState ~~ reviewStates)
         } else {
             q.filter(\.$reviewState != MemoryReviewState.rejected)
+        }
+        switch healthFilter {
+        case .reviewOverdue:
+            let cutoff = Date.now.addingTimeInterval(-30 * 24 * 60 * 60)
+            q.group(.or) { stale in
+                stale.filter(\.$lastReviewedAt < cutoff)
+                stale.group(.and) { neverReviewed in
+                    neverReviewed.filter(\.$lastReviewedAt == nil)
+                    neverReviewed.filter(\.$lastAccessedAt < cutoff)
+                }
+                stale.group(.and) { neverTouched in
+                    neverTouched.filter(\.$lastReviewedAt == nil)
+                    neverTouched.filter(\.$lastAccessedAt == nil)
+                    neverTouched.filter(\.$createdAt < cutoff)
+                }
+            }
+        case .pending:
+            q.filter(\.$reviewState == MemoryReviewState.pending)
+        case .unorganized:
+            q.filter(\.$spaceID == nil)
+            q.filter(\.$sourceVaultFileID == nil)
+            q.group(.or) { loose in
+                loose.filter(\.$tags == nil)
+                loose.filter(\.$tags == [])
+            }
+        case .unused:
+            q.filter(\.$queryHitCount == 0)
+        case nil:
+            break
         }
         if let tag, !tag.isEmpty {
             guard let sql = fluent.db() as? any SQLDatabase else {

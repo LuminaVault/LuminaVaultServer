@@ -170,7 +170,8 @@ struct RoutedLLMTransport: HermesChatTransport {
                     if mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() {
                         let meter = usageMeter
                         let modelToRecord = candidate.modelID
-                        Task { await meter.record(tenantID: userID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
+                        let billingID = LLMRoutingContext.billingTenantID ?? userID
+                        Task { await meter.record(tenantID: billingID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
                     }
                 }
                 if let cerberus = decision.cerberus, let routerTelemetry {

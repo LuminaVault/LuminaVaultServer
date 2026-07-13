@@ -1,6 +1,8 @@
+import FluentKit
 import Foundation
 import HTTPTypes
 import Hummingbird
+import HummingbirdFluent
 import NIOCore
 
 actor VaultActivityPublisher {
@@ -28,6 +30,38 @@ actor VaultActivityPublisher {
         if subscribers[vaultID]?.isEmpty == true {
             subscribers[vaultID] = nil
         }
+    }
+}
+
+struct VaultActivityRecorder: Sendable {
+    let fluent: Fluent
+    let publisher: VaultActivityPublisher
+
+    func record(vaultID: UUID, actor: User, action: String, targetType: String,
+                targetID: UUID?, targetTitle: String?) async throws
+    {
+        let row = try VaultActivityEvent(
+            vaultID: vaultID,
+            actorUserID: actor.requireID(),
+            actorName: actor.username,
+            action: action,
+            targetType: targetType,
+            targetID: targetID,
+            targetTitle: targetTitle
+        )
+        try await row.save(on: fluent.db())
+        let response = try ActivityResponse(
+            id: row.requireID(),
+            vaultID: vaultID,
+            actorUserID: row.actorUserID,
+            actorName: row.actorName,
+            action: action,
+            targetType: targetType,
+            targetID: targetID,
+            targetTitle: targetTitle,
+            createdAt: row.createdAt ?? Date()
+        )
+        await publisher.publish(response)
     }
 }
 

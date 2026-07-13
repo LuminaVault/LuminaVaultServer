@@ -17,6 +17,7 @@ struct KanbanController {
     private static let expectedVersionHeader = HTTPField.Name("X-Board-Version")!
     let service: KanbanService
     let vaultAccess: VaultAccessService
+    var activity: VaultActivityRecorder?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get(use: listBoards)
@@ -46,13 +47,15 @@ struct KanbanController {
     }
 
     @Sendable func createBoard(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
-        let tenant = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
+        let tenant = access.vaultID
         let body = try await req.decode(as: BoardCreateRequest.self, context: ctx)
         let b = try await service.createBoard(tenantID: tenant, title: body.title)
         let actorID = try ctx.requireTenantID()
         b.createdByUserID = actorID
         b.updatedByUserID = actorID
         try await b.update(on: service.fluent.db())
+        try await record(access, ctx, "board.created", "board", b.requireID(), b.title)
         return try await service.snapshot(tenantID: tenant, boardID: b.requireID())
     }
 
@@ -69,16 +72,21 @@ struct KanbanController {
     @Sendable func patchBoard(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
         let body = try await req.decode(as: BoardPatchRequest.self, context: ctx)
-        return try await service.patchBoard(tenantID: tenant, boardID: boardID(ctx), req: body)
+        let id = try boardID(ctx)
+        let result = try await service.patchBoard(tenantID: tenant, boardID: id, req: body,
+                                                  expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "board.updated", "board", id, result.title)
+        return result
     }
 
     @Sendable func deleteBoard(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
-        try await service.deleteBoard(tenantID: tenant, boardID: boardID(ctx))
+        let id = try boardID(ctx)
+        try await service.deleteBoard(tenantID: tenant, boardID: id,
+                                      expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "board.deleted", "board", id, nil)
         return Response(status: .noContent)
     }
 
@@ -87,58 +95,68 @@ struct KanbanController {
         let tenant = access.vaultID
         let body = try await req.decode(as: ColumnCreateRequest.self, context: ctx)
         let bid = try boardID(ctx)
-        try await requireFreshVersion(req, access: access, boardID: bid)
-        _ = try await service.createColumn(tenantID: tenant, boardID: bid, title: body.title)
+        _ = try await service.createColumn(tenantID: tenant, boardID: bid, title: body.title,
+                                           expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "column.created", "column", nil, body.title)
         return try await service.snapshot(tenantID: tenant, boardID: bid)
     }
 
     @Sendable func patchColumn(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
         let body = try await req.decode(as: ColumnPatchRequest.self, context: ctx)
-        return try await service.patchColumn(
+        let id = try columnID(ctx)
+        let result = try await service.patchColumn(
             tenantID: tenant,
             boardID: boardID(ctx),
-            columnID: columnID(ctx),
-            title: body.title
+            columnID: id,
+            title: body.title,
+            expectedVersion: expectedVersion(req, access: access),
         )
+        await record(access, ctx, "column.updated", "column", id, body.title)
+        return result
     }
 
     @Sendable func deleteColumn(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
-        return try await service.deleteColumn(
+        let id = try columnID(ctx)
+        let result = try await service.deleteColumn(
             tenantID: tenant,
             boardID: boardID(ctx),
-            columnID: columnID(ctx)
+            columnID: id,
+            expectedVersion: expectedVersion(req, access: access),
         )
+        await record(access, ctx, "column.deleted", "column", id, nil)
+        return result
     }
 
     @Sendable func reorderColumn(_ req: Request, ctx: AppRequestContext) async throws -> BoardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
         let body = try await req.decode(as: ColumnReorderRequest.self, context: ctx)
-        return try await service.reorderColumn(tenantID: tenant, boardID: boardID(ctx), req: body)
+        let result = try await service.reorderColumn(tenantID: tenant, boardID: boardID(ctx), req: body,
+                                                     expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "column.reordered", "column", body.columnID, nil)
+        return result
     }
 
     @Sendable func createCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        try await requireFreshVersion(req, access: access, boardID: boardID(ctx))
         let body = try await req.decode(as: CardCreateRequest.self, context: ctx)
         let card = try await service.createCard(
             tenantID: tenant,
             boardID: boardID(ctx),
             columnID: body.columnID,
-            req: body
+            req: body,
+            expectedVersion: expectedVersion(req, access: access),
         )
         let actorID = try ctx.requireTenantID()
         card.createdByUserID = actorID
         card.updatedByUserID = actorID
         try await card.update(on: service.fluent.db())
+        try await record(access, ctx, "card.created", "card", card.requireID(), card.title)
         return try CardDTO(
             id: card.requireID(),
             columnID: card.columnID,
@@ -149,35 +167,38 @@ struct KanbanController {
             rank: card.rank,
             updatedAt: card.updatedAt,
             createdByUserId: card.createdByUserID,
-            updatedByUserId: card.updatedByUserID
+            updatedByUserId: card.updatedByUserID,
         )
     }
 
     @Sendable func patchCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        let bid = try await service.boardID(tenantID: tenant, cardID: cardID(ctx))
-        try await requireFreshVersion(req, access: access, boardID: bid)
         let body = try await req.decode(as: CardPatchRequest.self, context: ctx)
-        return try await service.patchCard(tenantID: tenant, cardID: cardID(ctx), req: body)
+        let result = try await service.patchCard(tenantID: tenant, cardID: cardID(ctx), req: body,
+                                                 expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "card.updated", "card", result.id, result.title)
+        return result
     }
 
     @Sendable func deleteCard(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        let bid = try await service.boardID(tenantID: tenant, cardID: cardID(ctx))
-        try await requireFreshVersion(req, access: access, boardID: bid)
-        try await service.deleteCard(tenantID: tenant, cardID: cardID(ctx))
+        let id = try cardID(ctx)
+        try await service.deleteCard(tenantID: tenant, cardID: id,
+                                     expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "card.deleted", "card", id, nil)
         return Response(status: .noContent)
     }
 
     @Sendable func moveCard(_ req: Request, ctx: AppRequestContext) async throws -> CardDTO {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let tenant = access.vaultID
-        let bid = try await service.boardID(tenantID: tenant, cardID: cardID(ctx))
-        try await requireFreshVersion(req, access: access, boardID: bid)
         let body = try await req.decode(as: CardMoveRequest.self, context: ctx)
-        return try await service.moveCard(tenantID: tenant, cardID: cardID(ctx), req: body)
+        let result = try await service.moveCard(tenantID: tenant, cardID: cardID(ctx), req: body,
+                                                expectedVersion: expectedVersion(req, access: access))
+        await record(access, ctx, "card.moved", "card", result.id, result.title)
+        return result
     }
 
     /// Card → Job promotion (gap #1). Reads structured `card.extra.job` config,
@@ -189,13 +210,17 @@ struct KanbanController {
             throw HTTPError(.forbidden, message: "vault write permission required")
         }
         let tenant = access.vaultID
-        let bid = try await service.boardID(tenantID: tenant, cardID: cardID(ctx))
-        try await requireFreshVersion(req, access: access, boardID: bid)
         // Body is optional: when present, its fields are written onto the card
         // before authoring (single-call promote); when absent, the card's
         // existing `extra.job` config is used.
         let body = try? await req.decode(as: CardPromoteRequest.self, context: ctx)
-        let promoted = try await service.promoteCard(tenantID: tenant, cardID: cardID(ctx), request: body)
+        let promoted = try await service.promoteCard(
+            tenantID: tenant,
+            cardID: cardID(ctx),
+            request: body,
+            expectedVersion: expectedVersion(req, access: access),
+        )
+        try await record(access, ctx, "card.promoted", "card", cardID(ctx), promoted.title)
         return SkillDTO(
             id: promoted.slug,
             source: .vault,
@@ -208,7 +233,7 @@ struct KanbanController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(promoted.spec.prefix(160))
+            bodyExcerpt: String(promoted.spec.prefix(160)),
         )
     }
 
@@ -235,16 +260,20 @@ struct KanbanController {
         return id
     }
 
-    private func requireFreshVersion(_ request: Request, access: ResolvedVaultAccess,
-                                     boardID: UUID) async throws
-    {
-        guard !access.isPersonal else { return }
+    private func expectedVersion(_ request: Request, access: ResolvedVaultAccess) throws -> Int64? {
+        guard !access.isPersonal else { return nil }
         guard let raw = request.headers[Self.expectedVersionHeader], let expected = Int64(raw) else {
             throw HTTPError(.conflict, message: "shared board mutation requires X-Board-Version")
         }
-        let current = try await service.version(tenantID: access.vaultID, boardID: boardID)
-        guard expected == current else {
-            throw HTTPError(.conflict, message: "board version conflict; current=\(current)")
-        }
+        return expected
+    }
+
+    private func record(_ access: ResolvedVaultAccess, _ context: AppRequestContext,
+                        _ action: String, _ targetType: String, _ targetID: UUID?,
+                        _ targetTitle: String?) async
+    {
+        guard !access.isPersonal, let activity, let actor = try? context.requireIdentity() else { return }
+        try? await activity.record(vaultID: access.vaultID, actor: actor, action: action,
+                                   targetType: targetType, targetID: targetID, targetTitle: targetTitle)
     }
 }

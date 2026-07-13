@@ -64,6 +64,9 @@ enum LLMRoutingContext {
     /// Validated vault attribution for analytics. Callers that do not set it
     /// intentionally fall back to the actor's personal vault.
     @TaskLocal static var analyticsVaultID: UUID?
+    /// Account charged for AI usage. Team vaults bind this to their billing
+    /// sponsor while preserving `currentUser` for personal routing/privacy.
+    @TaskLocal static var billingTenantID: UUID?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

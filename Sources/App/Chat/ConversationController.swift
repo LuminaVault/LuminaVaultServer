@@ -4,6 +4,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 // MARK: - Server-side response conformances
 
@@ -12,6 +13,7 @@ extension ConversationListResponse: @retroactive ResponseEncodable {}
 extension ConversationDetailResponse: @retroactive ResponseEncodable {}
 extension ConversationPrepareResponse: @retroactive ResponseEncodable {}
 extension ConversationCommitResponse: @retroactive ResponseEncodable {}
+extension LocalToolInvokeResponse: @retroactive ResponseEncodable {}
 
 /// HER-37 — multi-turn chat persistence + streaming assistant turns.
 /// Owns `/v1/conversations` (CRUD) and
@@ -37,8 +39,10 @@ struct ConversationController {
     let urlExtractor: URLExtractionService
     let parallelEnabled: Bool
     let hybridExecutionEnabled: Bool
+    let localExecutionToolBrokerEnabled: Bool
     let defaultModel: String
     let logger: Logger
+    let vaultAccess: VaultAccessService
 
     init(
         fluent: Fluent,
@@ -50,8 +54,10 @@ struct ConversationController {
         urlExtractor: URLExtractionService = URLExtractionService(),
         parallelEnabled: Bool = false,
         hybridExecutionEnabled: Bool = false,
+        localExecutionToolBrokerEnabled: Bool = false,
         defaultModel: String,
-        logger: Logger
+        logger: Logger,
+        vaultAccess: VaultAccessService
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -62,8 +68,10 @@ struct ConversationController {
         self.urlExtractor = urlExtractor
         self.parallelEnabled = parallelEnabled
         self.hybridExecutionEnabled = hybridExecutionEnabled
+        self.localExecutionToolBrokerEnabled = localExecutionToolBrokerEnabled
         self.defaultModel = defaultModel
         self.logger = logger
+        self.vaultAccess = vaultAccess
     }
 
     func addRoutes(
@@ -79,6 +87,9 @@ struct ConversationController {
             router.post("/:id/messages/prepare", use: prepareLocalReply)
             router.post("/:id/messages/commit", use: commitLocalReply)
             router.delete("/:id/local-executions/:executionID", use: cancelLocalReply)
+            if localExecutionToolBrokerEnabled {
+                router.post("/:id/local-executions/:executionID/tools", use: invokeLocalTool)
+            }
         }
     }
 
@@ -89,6 +100,7 @@ struct ConversationController {
         let user = try ctx.requireIdentity()
         let body = try await req.decode(as: ConversationCreateRequest.self, context: ctx)
         let tenantID = try user.requireID()
+        let analyticsAccess = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read)
         let pinnedMemoryIDs = Array(body.pinnedMemoryIDs.prefix(5))
         for memoryID in pinnedMemoryIDs {
             guard try await memories.find(tenantID: tenantID, id: memoryID) != nil else {
@@ -110,6 +122,14 @@ struct ConversationController {
             routeOverride: body.routeOverride
         )
         try await conversation.save(on: fluent.db())
+        if !analyticsAccess.isPersonal {
+            try? await recordAnalyticsEvent(
+                vaultID: analyticsAccess.vaultID,
+                actorUserID: tenantID,
+                name: "conversation_created",
+                idempotencyKey: try "conversation-created:\(conversation.requireID())"
+            )
+        }
         return try conversation.toDTO()
     }
 
@@ -154,6 +174,11 @@ struct ConversationController {
     func prepareLocalReply(_ req: Request, ctx: AppRequestContext) async throws -> ConversationPrepareResponse {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
+        let analyticsVaultID = try await vaultAccess.resolve(
+            request: req,
+            context: ctx,
+            requiring: .read
+        ).vaultID
         let conversationID = try Self.parseID(ctx)
         let conversation = try await fetch(tenantID: tenantID, id: conversationID)
         let body = try await req.decode(as: ConversationPrepareRequest.self, context: ctx)
@@ -186,6 +211,11 @@ struct ConversationController {
         }
         let pinnedIDs = Set(pinnedHits.map(\.id))
         let hits = pinnedHits + semanticHits.filter { !pinnedIDs.contains($0.id) }.prefix(max(0, 5 - pinnedHits.count))
+        try? await recordMemoryRetrievals(
+            vaultID: analyticsVaultID,
+            actorUserID: tenantID,
+            count: hits.count
+        )
         let timezone = TimeZone(identifier: user.timezone) ?? .gmt
         let prompt = await Self.buildPrompt(history: history, hits: Array(hits), schedule: scheduleContext(tenantID: tenantID, timezone: timezone))
         let expiresAt = Date().addingTimeInterval(15 * 60)
@@ -202,8 +232,63 @@ struct ConversationController {
             executionID: execution.requireID(),
             messages: prompt,
             sources: hits.map { QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt) },
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            allowedTools: localExecutionToolBrokerEnabled
+                ? [LocalExecutionToolDTO(
+                    name: .memorySearch,
+                    description: "Search the caller's LuminaVault memories for read-only grounding context."
+                )]
+                : []
         )
+    }
+
+    @Sendable
+    func invokeLocalTool(_ req: Request, ctx: AppRequestContext) async throws -> LocalToolInvokeResponse {
+        guard localExecutionToolBrokerEnabled else {
+            throw HTTPError(.notFound, message: "local execution tool broker is disabled")
+        }
+        let tenantID = try ctx.requireTenantID()
+        let conversationID = try Self.parseID(ctx)
+        guard let rawExecutionID = ctx.parameters.get("executionID"),
+              let executionID = UUID(uuidString: rawExecutionID),
+              let execution = try await PreparedLocalExecution.query(on: fluent.db(), tenantID: tenantID)
+              .filter(\.$id == executionID)
+              .filter(\.$conversationID == conversationID)
+              .first()
+        else {
+            throw HTTPError(.notFound, message: "local execution not found")
+        }
+        guard execution.committedMessageID == nil else {
+            throw HTTPError(.conflict, message: "local execution already committed")
+        }
+        guard execution.expiresAt > Date() else {
+            throw HTTPError(.gone, message: "local execution expired")
+        }
+
+        let body = try await req.decode(as: LocalToolInvokeRequest.self, context: ctx)
+        let query = body.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { throw HTTPError(.badRequest, message: "tool query required") }
+        let limit = max(1, min(body.limit ?? 5, 10))
+
+        switch body.name {
+        case .memorySearch:
+            let embedding = try await embeddings.embed(query, tenantID: tenantID)
+            let hits = try await memories.semanticSearch(
+                tenantID: tenantID,
+                queryEmbedding: embedding,
+                limit: limit
+            )
+            let sources = hits.map {
+                QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
+            }
+            return LocalToolInvokeResponse(
+                name: .memorySearch,
+                content: sources.isEmpty
+                    ? "No relevant memories found."
+                    : sources.map(\.content).joined(separator: "\n\n"),
+                sources: sources
+            )
+        }
     }
 
     @Sendable
@@ -301,6 +386,31 @@ struct ConversationController {
         }
     }
 
+    private func recordMemoryRetrievals(vaultID: UUID, actorUserID: UUID, count: Int) async throws {
+        guard count > 0, let sql = fluent.db() as? any SQLDatabase else { return }
+        try await sql.raw("""
+        INSERT INTO analytics_events (vault_id, actor_user_id, event_name, source, dimensions)
+        SELECT \(bind: vaultID), \(bind: actorUserID), 'memory_retrieved', 'server', '{}'::jsonb
+        FROM generate_series(1, \(bind: count))
+        """).run()
+    }
+
+    private func recordAnalyticsEvent(
+        vaultID: UUID,
+        actorUserID: UUID,
+        name: String,
+        idempotencyKey: String
+    ) async throws {
+        guard let sql = fluent.db() as? any SQLDatabase else { return }
+        try await sql.raw("""
+        INSERT INTO analytics_events
+            (vault_id, actor_user_id, event_name, source, dimensions, idempotency_key)
+        VALUES (\(bind: vaultID), \(bind: actorUserID), \(bind: name), 'server', '{}'::jsonb,
+                \(bind: idempotencyKey))
+        ON CONFLICT (actor_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+        """).run()
+    }
+
     /// Persists the user's message immediately, then opens an SSE stream
     /// that yields `.source` events for retrieved memories, forwarded
     /// `.token` deltas from the LLM, an empty `.followUps([])` (Slice C
@@ -312,6 +422,11 @@ struct ConversationController {
         let user = try ctx.requireIdentity()
         let conversationID = try Self.parseID(ctx)
         let tenantID = try user.requireID()
+        let analyticsVaultID = try await vaultAccess.resolve(
+            request: req,
+            context: ctx,
+            requiring: .read
+        ).vaultID
         let conversation = try await fetch(tenantID: tenantID, id: conversationID)
         let body = try await req.decode(as: MessageStreamRequest.self, context: ctx)
         let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -379,6 +494,11 @@ struct ConversationController {
             .filter { !pinnedIDs.contains($0.id) }
             .prefix(5 - min(5, pinnedHits.count))
         let hits = pinnedHits + Array(semanticRemainder)
+        try? await recordMemoryRetrievals(
+            vaultID: analyticsVaultID,
+            actorUserID: tenantID,
+            count: hits.count
+        )
         log.info("chat grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         // HER-340 — inject lightweight schedule awareness (today + next).
@@ -452,37 +572,39 @@ struct ConversationController {
                     // stream in one structured block. Creating the AsyncStream
                     // outside this Task and then pushing a second @TaskLocal
                     // here segfaults on Linux (swift_task_localValuePush).
-                    try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                        try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
-                            try await CerberusStreamContext.$sink.withValue(cerberusSink) {
-                                try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
-                                    try await LLMRoutingContext.$cerberusScope.withValue(
-                                        CerberusRequestScope(
-                                            surface: .chat,
-                                            spaceID: conversation.spaceID,
-                                            conversationID: conversationID
-                                        )
-                                    ) {
-                                        try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                                            try await LLMRoutingContext.$currentUser.withValue(user) {
-                                                try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                                    let chunks = streamService.chatStream(
-                                                        sessionKey: sessionKey,
-                                                        sessionID: sessionID,
-                                                        request: chatRequest
-                                                    )
-                                                    for try await chunk in chunks {
-                                                        if Task.isCancelled {
-                                                            break
-                                                        }
-                                                        if !chunk.delta.isEmpty {
-                                                            if firstTokenMs == nil {
-                                                                firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                                                logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                    try await LLMRoutingContext.$analyticsVaultID.withValue(analyticsVaultID) {
+                        try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
+                            try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
+                                try await CerberusStreamContext.$sink.withValue(cerberusSink) {
+                                    try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
+                                        try await LLMRoutingContext.$cerberusScope.withValue(
+                                            CerberusRequestScope(
+                                                surface: .chat,
+                                                spaceID: conversation.spaceID,
+                                                conversationID: conversationID
+                                            )
+                                        ) {
+                                            try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                                                try await LLMRoutingContext.$currentUser.withValue(user) {
+                                                    try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                                        let chunks = streamService.chatStream(
+                                                            sessionKey: sessionKey,
+                                                            sessionID: sessionID,
+                                                            request: chatRequest
+                                                        )
+                                                        for try await chunk in chunks {
+                                                            if Task.isCancelled {
+                                                                break
                                                             }
-                                                            tokenCount += 1
-                                                            assistantBuffer.append(chunk.delta)
-                                                            continuation.yield(.token(chunk.delta))
+                                                            if !chunk.delta.isEmpty {
+                                                                if firstTokenMs == nil {
+                                                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                                                }
+                                                                tokenCount += 1
+                                                                assistantBuffer.append(chunk.delta)
+                                                                continuation.yield(.token(chunk.delta))
+                                                            }
                                                         }
                                                     }
                                                 }

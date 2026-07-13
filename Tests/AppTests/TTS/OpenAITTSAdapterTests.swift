@@ -150,7 +150,7 @@ struct OpenAITTSAdapterTests {
     @Test
     func `unknown voice falls through to alloy`() async throws {
         StubProtocol.handler = { request in
-            let body = request.httpBody ?? Data()
+            let body = request.httpBody ?? (request.httpBodyStream.map { Data(reading: $0) } ?? Data())
             let parsed = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
             #expect(parsed["voice"] as? String == "alloy")
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
