@@ -16,7 +16,7 @@ real reply from the LLM.
 |---|---|---|---|
 | `hummingbird` (this server) | local Dockerfile | `8080` | `./data/luminavault`, `./data/hermes`, `./secrets` |
 | `postgres` | `pgvector/pgvector:pg18` | `5433` → `5432` | `./data/postgres18` |
-| `hermes-agent` | `nousresearch/hermes-agent:latest` | `8642` (OpenAI gateway) | `./data/hermes` |
+| `hermes-agent` | digest-pinned `ghcr.io/luminavault/luminavault-hermes-agent` | `8642` (OpenAI + ingestion gateway) | `./data/hermes` |
 | `jaeger` | `jaegertracing/all-in-one:latest` | `16686` (UI), `4317`/`4318` (OTLP) | none (in-memory) |
 
 > Redis is intentionally **not** in the stack. See §1.4.

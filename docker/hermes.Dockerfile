@@ -15,7 +15,7 @@
 # Pinned by digest (was `:latest`) — `:latest` drift moved the hermes binary
 # layout on 2026-05-29 and broke startup (exit 127). Digest maps to the
 # `:latest` tag as of that date. Bump deliberately after verifying startup.
-FROM nousresearch/hermes-agent:latest@sha256:b6e41c155d6bfce5ad83c5d0fec670086db8a43250e4511c9474134be5482d33
+FROM ghcr.io/luminavault/luminavault-hermes-agent@sha256:715a4f77305970cdf8f521eceff3de89761ab629c8f1949d0b13ef2b0fe01f39
 
 # HER-XXX — bake Mnemosyne (Hermes Agent's native memory provider) into the
 # image so every tenant gets persistent agent memory out of the box. It is

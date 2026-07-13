@@ -7,8 +7,11 @@ so every deployment ships them without depending on the host's
 
 ## How it works
 
-`docker/hermes.Dockerfile` extends `nousresearch/hermes-agent:latest`
-and `COPY`s this directory into `/opt/baked-skills/` inside the
+`docker/hermes.Dockerfile` extends the digest-pinned `LuminaVaultHermesAgent`
+image from GHCR. That fork owns the `/v1/ingestions` API and its advertised
+remote-source capability fields; this server layer adds LuminaVault skills,
+Mnemosyne, and the runtime entrypoint. It `COPY`s this directory into
+`/opt/baked-skills/` inside the
 container image. The runtime entrypoint (`docker/hermes-entrypoint.sh`)
 seeds `/opt/data/skills/` from `/opt/baked-skills/` on each container
 start using `cp -Rn` (no-clobber), so:
