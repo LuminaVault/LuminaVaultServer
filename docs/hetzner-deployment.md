@@ -412,8 +412,8 @@ afford to discover problems under stress.
 
 ## 7. Observability
 
-LuminaVaultServer exports OpenTelemetry traces and Prometheus metrics out
-of the box. Three terminations:
+LuminaVaultServer exports OpenTelemetry traces and metrics over OTLP when
+`OTEL_ENABLED=true`. Three terminations:
 
 1. **Self-hosted Jaeger (default).** The shipped `compose.yaml` includes
    a `jaeger` service on `:16686` (UI) and `:4317` (OTLP gRPC). Set
@@ -425,6 +425,12 @@ of the box. Three terminations:
    50 GB logs / 50 GB metrics / 50 GB traces free, no credit card.
 3. **Self-hosted SigNoz / Tempo.** Drop on a CCX13; same OTLP gRPC endpoint
    contract. Worth the extra €13.49/mo at Org tier.
+
+The k3s manifests set `OTEL_EXPORTER_OTLP_ENDPOINT` to the in-cluster Alloy
+service. Alloy forwards traces to Tempo and converts OTLP metrics to Prometheus
+series for Mimir. Do not use `OBS_OTLP_ENDPOINT`; the Swift server does not read
+it, and annotating the API for `/metrics` scraping is ineffective because the
+server exports metrics through OTLP rather than a Prometheus HTTP endpoint.
 
 Specific signals to watch:
 
