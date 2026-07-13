@@ -8,7 +8,12 @@ enum IngestionMetrics {
     static let retried = Counter(label: "luminavault.ingestion.retried")
     static let deduplicated = Counter(label: "luminavault.ingestion.deduplicated")
     static let apnsFailures = Counter(label: "luminavault.ingestion.apns.failures")
-    static let queueLatency = Timer(label: "luminavault.ingestion.queue_latency")
+    /// Swift OTel treats the reserved `unit` dimension as instrument metadata,
+    /// so Alloy exports this as `*_queue_latency_seconds_{bucket,sum,count}`.
+    static let queueLatency = Timer(
+        label: "luminavault.ingestion.queue_latency",
+        dimensions: [("unit", "s")]
+    )
 
     static func recordQueueLatency(createdAt: Date?) {
         guard let createdAt else { return }
