@@ -136,7 +136,10 @@ See **[byo-hermes.md](byo-hermes.md)** for the end-user guide to exposing a self
 
 The XAI OAuth and Grok proxy surfaces can spin up per-tenant Hermes containers. Keep these defaults unless the VPS topology changes:
 
-- `HERMES_PER_TENANT_IMAGE=nousresearch/hermes-agent:latest`
+- `HERMES_PER_TENANT_IMAGE=luminavault-hermes:local` uses the locally built,
+  digest-pinned LuminaVault Hermes overlay. Registry deployments may instead
+  publish that overlay and pin its digest; do not point production tenants at
+  upstream `latest`, which lacks LuminaVault's ingestion capability contract.
 - `HERMES_PER_TENANT_NETWORK=luminavault-hermes-net`
 - `HERMES_PER_TENANT_DATA_ROOT_BASE=/app/data/hermes-tenants`
 - `HERMES_PER_TENANT_PORT_RANGE_START=9000`
