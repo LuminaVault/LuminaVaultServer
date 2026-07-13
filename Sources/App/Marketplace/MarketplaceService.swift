@@ -37,6 +37,7 @@ struct MarketplaceService {
     let fluent: Fluent
     let logger: Logger
     let runner: any PluginRunnerClienting
+    let capabilityBroker: any MarketplaceCapabilityBrokering
     let artifactRoot: String
     let artifactSigningKey: String
 
@@ -44,12 +45,14 @@ struct MarketplaceService {
         fluent: Fluent,
         logger: Logger,
         runner: any PluginRunnerClienting = DisabledPluginRunnerClient(),
+        capabilityBroker: any MarketplaceCapabilityBrokering = DisabledMarketplaceCapabilityBroker(),
         artifactRoot: String = "/tmp/luminavault-plugin-artifacts",
         artifactSigningKey: String = ""
     ) {
         self.fluent = fluent
         self.logger = logger
         self.runner = runner
+        self.capabilityBroker = capabilityBroker
         self.artifactRoot = artifactRoot
         self.artifactSigningKey = artifactSigningKey
     }
@@ -448,7 +451,10 @@ struct MarketplaceService {
         try await row.create(on: db)
         let started = ContinuousClock.now
         do {
-            let result = try await runner.execute(module: data, toolName: toolName, permissions: granted, input: input)
+            let result = try await executeWithCapabilities(
+                module: data, toolName: toolName, tenantID: tenantID, pluginSlug: slug,
+                permissions: granted, networkHosts: version.networkHosts, input: input
+            )
             row.status = "succeeded"
             row.durationMS = Int(started.duration(to: .now).components.seconds * 1000)
             try await row.save(on: db)
@@ -460,6 +466,53 @@ struct MarketplaceService {
             try? await row.save(on: db)
             throw error
         }
+    }
+
+    func executeWithCapabilities(
+        module: Data,
+        toolName: String,
+        tenantID: UUID,
+        pluginSlug: String,
+        permissions: [PluginPermission],
+        networkHosts: [String],
+        input: [String: String]
+    ) async throws -> (output: [String: String], fuelConsumed: Int) {
+        let maxCapabilityRounds = 4
+        var originalInput = input
+        originalInput.removeValue(forKey: "_capabilityRequests")
+        originalInput.removeValue(forKey: "_capabilityResults")
+        originalInput.removeValue(forKey: "_capabilityRound")
+        var roundInput = originalInput
+        var totalFuel = 0
+        for round in 0 ... maxCapabilityRounds {
+            let result = try await runner.execute(
+                module: module, toolName: toolName, permissions: permissions, input: roundInput
+            )
+            totalFuel += result.fuelConsumed
+            var output = result.output
+            guard let encodedRequests = output.removeValue(forKey: "_capabilityRequests") else {
+                return (output, totalFuel)
+            }
+            guard let data = encodedRequests.data(using: .utf8),
+                  let requests = try? JSONDecoder().decode([MarketplaceCapabilityRequest].self, from: data),
+                  !requests.isEmpty
+            else { throw HTTPError(.unprocessableContent, message: "invalid_capability_requests") }
+            guard round < maxCapabilityRounds else {
+                throw HTTPError(.unprocessableContent, message: "capability_round_limit_exceeded")
+            }
+            let results = await capabilityBroker.execute(
+                requests, tenantID: tenantID, pluginSlug: pluginSlug,
+                permissions: Set(permissions), networkHosts: Set(networkHosts)
+            )
+            let encodedResults = try JSONEncoder().encode(results)
+            guard encodedResults.count <= 1_048_576,
+                  let resultsJSON = String(data: encodedResults, encoding: .utf8)
+            else { throw HTTPError(.unprocessableContent, message: "capability_results_too_large") }
+            roundInput = originalInput
+            roundInput["_capabilityResults"] = resultsJSON
+            roundInput["_capabilityRound"] = String(round + 1)
+        }
+        throw HTTPError(.unprocessableContent, message: "capability_round_limit_exceeded")
     }
 
     private func detail(row: MarketplaceListing, versionOverride: MarketplaceVersion? = nil) async throws -> MarketplacePluginDTO {

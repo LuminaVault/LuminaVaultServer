@@ -66,8 +66,14 @@ The runner must remain non-root with a read-only root filesystem, all Linux
 capabilities dropped, `no-new-privileges`, PID/memory/CPU limits, and no host
 port. Guest modules receive no WASI environment, filesystem, socket, clock, or
 process imports. Only reviewed `luminavault.*_allowed` grant checks are linked;
-unknown imports fail closed. Rotate `PLUGIN_RUNNER_TOKEN` by restarting the API and runner
-in the same deployment.
+unknown imports fail closed. Tenant resources are available only through the
+API capability broker: modules request one of `memory.read`, `memory.write`,
+`vault.read`, `vault.write`, `network.fetch`, or `output.emit`, and the API
+rechecks the current install grant before every operation. Network access is
+limited to HTTPS GETs against exact hostnames recorded during review; private
+and reserved destinations and redirects are rejected. See
+`plugin-runner/README.md` for the request/result protocol and limits. Rotate
+`PLUGIN_RUNNER_TOKEN` by restarting the API and runner in the same deployment.
 Rotating `PLUGIN_ARTIFACT_SIGNING_KEY` invalidates existing third-party WASM
 versions. Re-sign and republish them before rotation, or keep the previous key
 available until all installed versions have migrated.

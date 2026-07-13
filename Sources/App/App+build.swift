@@ -2024,6 +2024,11 @@ func buildRouter(
             fluent: services.fluent,
             logger: Logger(label: "lv.marketplace"),
             runner: pluginRunner,
+            capabilityBroker: MarketplaceCapabilityBroker(
+                fluent: services.fluent,
+                vaultPaths: VaultPathService(rootPath: services.vaultRootPath),
+                logger: Logger(label: "lv.marketplace-capabilities")
+            ),
             artifactRoot: services.pluginArtifactRoot,
             artifactSigningKey: services.pluginArtifactSigningKey
         )
