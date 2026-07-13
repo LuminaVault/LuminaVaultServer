@@ -202,7 +202,7 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
-    func `ingestion notification includes batch deep link payload`() async throws {
+    func `ingestion notifications include terminal state and batch deep link payload`() async throws {
         try await Self.withFluent { fluent in
             let slug = "apnsingestion\(UUID().uuidString.prefix(6).lowercased())"
             let user = try await Self.makeUser(slug, on: fluent.db())
@@ -231,6 +231,17 @@ struct APNSNotificationServiceTests {
             #expect(send.payload["batchID"] == batchID.uuidString)
             #expect(send.payload["itemID"] == itemID.uuidString)
             #expect(send.payload["state"] == "completed")
+
+            try await service.notifyIngestion(
+                userID: userID,
+                batchID: batchID,
+                itemID: itemID,
+                completed: false,
+                fileName: "source.pdf"
+            )
+            let failureSend = try #require(await recorder.sends.last)
+            #expect(failureSend.title == "Capture needs attention")
+            #expect(failureSend.payload["state"] == "failed")
         }
     }
 

@@ -1940,6 +1940,7 @@ func buildRouter(
         ),
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
+        push: pushService,
         logger: Logger(label: "lv.ingestion"),
         ingestionCapabilities: { tenantID in
             guard let ingestionCapabilitiesService else { return .managedDefault }

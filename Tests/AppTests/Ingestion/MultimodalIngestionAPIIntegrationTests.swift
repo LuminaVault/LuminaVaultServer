@@ -147,6 +147,7 @@ struct MultimodalIngestionAPIIntegrationTests {
                 item.leaseExpiresAt = Date().addingTimeInterval(300)
                 item.sourceTokenHash = String(repeating: "f", count: 64)
                 item.sourceTokenExpiresAt = Date().addingTimeInterval(300)
+                item.terminalNotifiedAt = Date()
                 try await item.save(on: fluent.db())
             }
 
@@ -168,6 +169,7 @@ struct MultimodalIngestionAPIIntegrationTests {
                 #expect(row.leaseExpiresAt == nil)
                 #expect(row.sourceTokenHash == nil)
                 #expect(row.sourceTokenExpiresAt == nil)
+                #expect(row.terminalNotifiedAt == nil)
             }
         }
     }

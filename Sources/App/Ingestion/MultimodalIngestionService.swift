@@ -144,6 +144,7 @@ struct MultimodalIngestionService {
     let processor: HermesMultimodalProcessor
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
+    let push: APNSNotificationService?
     let logger: Logger
     let ingestionCapabilities: @Sendable (UUID) async -> HermesCapabilities
     let publicBaseURL: URL?
@@ -235,6 +236,7 @@ struct MultimodalIngestionService {
         item.leaseExpiresAt = nil
         item.sourceTokenHash = nil
         item.sourceTokenExpiresAt = nil
+        item.terminalNotifiedAt = nil
         try await item.save(on: fluent.db())
         try await refreshBatch(tenantID: tenantID, batchID: batchID)
         return try await detail(tenantID: tenantID, batchID: batchID)
@@ -331,6 +333,33 @@ struct MultimodalIngestionService {
     }
 
     private func process(item: IngestionItem, tenantID: UUID, spaceID: UUID?) async throws {
+        if item.kind == IngestionSourceKindDTO.url.rawValue, let url = item.url {
+            do {
+                if item.vaultFileID == nil {
+                    let captured = try await linkCapture.captureLink(
+                        tenantID: tenantID,
+                        url: url,
+                        note: nil,
+                        spaceID: spaceID
+                    )
+                    item.vaultFileID = captured.fileID
+                }
+                if let vaultFileID = item.vaultFileID,
+                   let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID)
+                   .filter(\.$id == vaultFileID).first()
+                {
+                    item.contentSHA256 = row.sha256
+                    try await item.save(on: fluent.db())
+                }
+            } catch {
+                item.state = IngestionItemStateDTO.failed.rawValue
+                item.leaseExpiresAt = nil
+                item.errorMessage = "Could not capture URL source: \(String(describing: error).prefix(400))"
+                try await item.save(on: fluent.db())
+                try await finishTerminalFailure(item: item)
+                return
+            }
+        }
         if try await reuseCompletedAnalysisIfAvailable(item: item, tenantID: tenantID, spaceID: spaceID) {
             return
         }
@@ -342,7 +371,7 @@ struct MultimodalIngestionService {
                 ? "Connected Hermes advertises remote sources but not multimodal ingestion. Upgrade or enable its ingestion API."
                 : "Connected Hermes does not advertise multimodal ingestion with remote source URLs. Upgrade Hermes or use managed processing."
             try await item.save(on: fluent.db())
-            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            try await finishTerminalFailure(item: item)
             return
         }
         if let maximum = capabilities.ingestionMaxSourceBytes,
@@ -352,7 +381,7 @@ struct MultimodalIngestionService {
             item.leaseExpiresAt = nil
             item.errorMessage = "Connected Hermes accepts sources up to \(maximum) bytes."
             try await item.save(on: fluent.db())
-            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            try await finishTerminalFailure(item: item)
             return
         }
         if let supported = capabilities.ingestionSupportedMimeTypes,
@@ -363,16 +392,12 @@ struct MultimodalIngestionService {
             item.leaseExpiresAt = nil
             item.errorMessage = "Connected Hermes does not support \(contentType)."
             try await item.save(on: fluent.db())
-            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            try await finishTerminalFailure(item: item)
             return
         }
         let source: String
         do {
             if item.kind == IngestionSourceKindDTO.url.rawValue, let url = item.url {
-                if item.vaultFileID == nil {
-                    let captured = try await linkCapture.captureLink(tenantID: tenantID, url: url, note: nil, spaceID: spaceID)
-                    item.vaultFileID = captured.fileID
-                }
                 source = url
             } else if let vaultFileID = item.vaultFileID,
                       let row = try await VaultFile.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == vaultFileID).first()
@@ -402,7 +427,7 @@ struct MultimodalIngestionService {
             item.sourceTokenExpiresAt = nil
             item.errorMessage = "Could not prepare source: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
-            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            try await finishTerminalFailure(item: item)
             return
         }
 
@@ -430,7 +455,11 @@ struct MultimodalIngestionService {
                 : "Hermes multimodal ingestion unavailable after \(item.attempts) attempts: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             logger.warning("ingestion blocked tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
-            try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            if shouldRetry {
+                try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
+            } else {
+                try await finishTerminalFailure(item: item)
+            }
             return
         }
 
@@ -468,6 +497,8 @@ struct MultimodalIngestionService {
             item.errorMessage = "Could not save derived memory: \(String(describing: error).prefix(400))"
             try await item.save(on: fluent.db())
             logger.warning("ingestion save failed tenant=\(tenantID) item=\(String(describing: item.id)): \(error)")
+            try await finishTerminalFailure(item: item)
+            return
         }
         try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
     }
@@ -614,6 +645,8 @@ struct MultimodalIngestionService {
         item.reusedFromItemID = try source.requireID()
         item.state = IngestionItemStateDTO.analyzing.rawValue
         item.leaseExpiresAt = nil
+        item.sourceTokenHash = nil
+        item.sourceTokenExpiresAt = nil
         item.errorMessage = nil
         try await item.save(on: fluent.db())
         try await recordEvent(item: item, type: .stateChanged)
@@ -676,19 +709,82 @@ struct MultimodalIngestionService {
     }
 
     private func expireAbandonedUploads(sql: any SQLDatabase) async throws {
-        struct StaleUpload: Decodable { let id: UUID; let tenant_id: UUID; let batch_id: UUID }
+        struct StaleUpload: Decodable {
+            let id: UUID
+            let tenant_id: UUID
+            let batch_id: UUID
+            let file_name: String?
+        }
         let stale = try await sql.raw("""
         UPDATE ingestion_items
         SET state = 'failed', error_message = 'Upload expired after 24 hours', updated_at = NOW()
         WHERE state = 'awaiting_upload'
           AND updated_at < NOW() - (\(bind: Self.abandonedUploadHours) * INTERVAL '1 hour')
-        RETURNING id, tenant_id, batch_id
+        RETURNING id, tenant_id, batch_id, file_name
         """).all(decoding: StaleUpload.self)
         for item in stale {
             try? FileManager.default.removeItem(at: chunkDirectory(tenantID: item.tenant_id, itemID: item.id))
+            do {
+                try await sql.raw("""
+                INSERT INTO ingestion_events (tenant_id, batch_id, item_id, type, state)
+                VALUES (\(bind: item.tenant_id), \(bind: item.batch_id), \(bind: item.id), 'terminal', 'failed')
+                """).run()
+            } catch {
+                logger.warning("ingestion terminal event failed item=\(item.id): \(error)")
+            }
+            await notifyTerminalFailure(
+                tenantID: item.tenant_id,
+                batchID: item.batch_id,
+                itemID: item.id,
+                fileName: item.file_name
+            )
         }
         for item in Dictionary(grouping: stale, by: \.batch_id).values.compactMap(\.first) {
             try await refreshBatch(tenantID: item.tenant_id, batchID: item.batch_id)
+        }
+    }
+
+    private func finishTerminalFailure(item: IngestionItem) async throws {
+        do {
+            try await recordEvent(item: item, type: .terminal)
+        } catch {
+            logger.warning("ingestion terminal event failed item=\(String(describing: item.id)): \(error)")
+        }
+        if item.terminalNotifiedAt == nil, let itemID = item.id {
+            await notifyTerminalFailure(
+                tenantID: item.tenantID,
+                batchID: item.batchID,
+                itemID: itemID,
+                fileName: item.fileName
+            )
+        }
+        try await refreshBatch(tenantID: item.tenantID, batchID: item.batchID)
+    }
+
+    private func notifyTerminalFailure(
+        tenantID: UUID,
+        batchID: UUID,
+        itemID: UUID,
+        fileName: String?
+    ) async {
+        guard let push else { return }
+        do {
+            try await push.notifyIngestion(
+                userID: tenantID,
+                batchID: batchID,
+                itemID: itemID,
+                completed: false,
+                fileName: fileName
+            )
+            guard let sql = fluent.db() as? any SQLDatabase else { return }
+            try await sql.raw("""
+            UPDATE ingestion_items SET terminal_notified_at = NOW()
+            WHERE id = \(bind: itemID) AND tenant_id = \(bind: tenantID)
+              AND terminal_notified_at IS NULL
+            """).run()
+        } catch {
+            IngestionMetrics.apnsFailures.increment()
+            logger.warning("ingestion terminal push failed item=\(itemID): \(error)")
         }
     }
 

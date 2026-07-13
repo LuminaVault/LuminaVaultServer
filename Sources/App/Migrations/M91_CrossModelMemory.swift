@@ -5,7 +5,7 @@ import SQLKit
 struct M91_CrossModelMemory: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
+        try await runMigrationScript(#"""
         ALTER TABLE memories
             ADD COLUMN IF NOT EXISTS origin_kind TEXT NOT NULL DEFAULT 'legacy',
             ADD COLUMN IF NOT EXISTS origin_source_id TEXT,
@@ -76,12 +76,12 @@ struct M91_CrossModelMemory: AsyncMigration {
         JOIN conversations c ON c.id = m.conversation_id
         WHERE m.role = 'assistant' AND length(trim(m.content)) > 0
         ON CONFLICT (tenant_id, source_kind, source_id) DO NOTHING;
-        """#).run()
+        """#, on: sql)
     }
 
     func revert(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
+        try await runMigrationScript(#"""
         ALTER TABLE conversations
             DROP COLUMN IF EXISTS route_model,
             DROP COLUMN IF EXISTS route_provider,
@@ -96,6 +96,6 @@ struct M91_CrossModelMemory: AsyncMigration {
             DROP COLUMN IF EXISTS origin_provider,
             DROP COLUMN IF EXISTS origin_source_id,
             DROP COLUMN IF EXISTS origin_kind;
-        """#).run()
+        """#, on: sql)
     }
 }

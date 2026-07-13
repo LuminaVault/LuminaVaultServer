@@ -4,7 +4,7 @@ import SQLKit
 struct M100_CreateWorkflowWebhooks: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
+        try await runMigrationScript(#"""
         CREATE TABLE IF NOT EXISTS workflow_webhooks (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -14,7 +14,7 @@ struct M100_CreateWorkflowWebhooks: AsyncMigration {
             UNIQUE (workflow_id)
         );
         CREATE INDEX IF NOT EXISTS workflow_webhooks_tenant_idx ON workflow_webhooks(tenant_id);
-        """#).run()
+        """#, on: sql)
     }
 
     func revert(on database: any Database) async throws {

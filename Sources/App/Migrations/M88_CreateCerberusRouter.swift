@@ -19,9 +19,10 @@ struct M88_CreateCerberusRouter: AsyncMigration {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, name)
-        );
-        CREATE INDEX IF NOT EXISTS router_profiles_tenant_idx ON router_profiles(tenant_id);
-
+        )
+        """#).run()
+        try await sql.raw("CREATE INDEX IF NOT EXISTS router_profiles_tenant_idx ON router_profiles(tenant_id)").run()
+        try await sql.raw(#"""
         CREATE TABLE IF NOT EXISTS router_bindings (
             id UUID PRIMARY KEY,
             tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -31,9 +32,10 @@ struct M88_CreateCerberusRouter: AsyncMigration {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tenant_id, scope, scope_id)
-        );
-        CREATE INDEX IF NOT EXISTS router_bindings_profile_idx ON router_bindings(profile_id);
-
+        )
+        """#).run()
+        try await sql.raw("CREATE INDEX IF NOT EXISTS router_bindings_profile_idx ON router_bindings(profile_id)").run()
+        try await sql.raw(#"""
         CREATE TABLE IF NOT EXISTS router_executions (
             id UUID PRIMARY KEY,
             tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -52,10 +54,10 @@ struct M88_CreateCerberusRouter: AsyncMigration {
             usage_estimated BOOLEAN NOT NULL DEFAULT TRUE,
             fallback_count INTEGER NOT NULL DEFAULT 0,
             occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS router_executions_tenant_time_idx
-            ON router_executions(tenant_id, occurred_at DESC);
-
+        )
+        """#).run()
+        try await sql.raw("CREATE INDEX IF NOT EXISTS router_executions_tenant_time_idx ON router_executions(tenant_id, occurred_at DESC)").run()
+        try await sql.raw(#"""
         CREATE TABLE IF NOT EXISTS router_attempts (
             id UUID PRIMARY KEY,
             execution_id UUID NOT NULL REFERENCES router_executions(id) ON DELETE CASCADE,
@@ -71,9 +73,10 @@ struct M88_CreateCerberusRouter: AsyncMigration {
             latency_ms BIGINT NOT NULL DEFAULT 0,
             usage_estimated BOOLEAN NOT NULL DEFAULT TRUE,
             occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS router_attempts_execution_idx ON router_attempts(execution_id, ordinal);
-
+        )
+        """#).run()
+        try await sql.raw("CREATE INDEX IF NOT EXISTS router_attempts_execution_idx ON router_attempts(execution_id, ordinal)").run()
+        try await sql.raw(#"""
         CREATE TABLE IF NOT EXISTS router_monthly_usage (
             tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             month DATE NOT NULL,
@@ -88,18 +91,16 @@ struct M88_CreateCerberusRouter: AsyncMigration {
             latency_ms_total BIGINT NOT NULL DEFAULT 0,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (tenant_id, month)
-        );
+        )
         """#).run()
     }
 
     func revert(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
-        DROP TABLE IF EXISTS router_monthly_usage;
-        DROP TABLE IF EXISTS router_attempts;
-        DROP TABLE IF EXISTS router_executions;
-        DROP TABLE IF EXISTS router_bindings;
-        DROP TABLE IF EXISTS router_profiles;
-        """#).run()
+        try await sql.raw("DROP TABLE IF EXISTS router_monthly_usage").run()
+        try await sql.raw("DROP TABLE IF EXISTS router_attempts").run()
+        try await sql.raw("DROP TABLE IF EXISTS router_executions").run()
+        try await sql.raw("DROP TABLE IF EXISTS router_bindings").run()
+        try await sql.raw("DROP TABLE IF EXISTS router_profiles").run()
     }
 }

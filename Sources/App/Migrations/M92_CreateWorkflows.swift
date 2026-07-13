@@ -4,7 +4,7 @@ import SQLKit
 struct M92_CreateWorkflows: AsyncMigration {
     func prepare(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
+        try await runMigrationScript(#"""
         CREATE TABLE IF NOT EXISTS workflows (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             name TEXT NOT NULL, description_text TEXT, enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -47,15 +47,15 @@ struct M92_CreateWorkflows: AsyncMigration {
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (run_id, node_id)
         );
         CREATE INDEX IF NOT EXISTS workflow_approvals_pending_idx ON workflow_approvals(tenant_id, status, expires_at);
-        """#).run()
+        """#, on: sql)
     }
 
     func revert(on database: any Database) async throws {
         guard let sql = database as? any SQLDatabase else { return }
-        try await sql.raw(#"""
+        try await runMigrationScript(#"""
         DROP TABLE IF EXISTS workflow_approvals; DROP TABLE IF EXISTS workflow_node_runs; DROP TABLE IF EXISTS workflow_runs;
         ALTER TABLE workflows DROP CONSTRAINT IF EXISTS workflows_published_version_fk;
         DROP TABLE IF EXISTS workflow_versions; DROP TABLE IF EXISTS workflows;
-        """#).run()
+        """#, on: sql)
     }
 }

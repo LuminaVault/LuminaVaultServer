@@ -6,6 +6,7 @@ import HummingbirdFluent
 import JWTKit
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 protocol AuthService: Sendable {
     func register(email: String, username: String, password: String) async throws -> AuthResponse
@@ -74,6 +75,7 @@ struct DefaultAuthService: AuthService {
         let hash = await hasher.hash(password)
         let user = try await repo.createUser(email: email, username: username, passwordHash: hash)
         try await Self.applyTrialDefaults(to: user, on: fluent.db())
+        try await Self.ensurePersonalVault(for: user, on: fluent.db())
         // HER-29 — Hermes provisioning is soft-fail. A degraded gateway
         // leaves a `status="error"` row that the daily reconciler heals;
         // signup itself still succeeds and the JWT issues without `hpid`.
@@ -98,6 +100,33 @@ struct DefaultAuthService: AuthService {
             user.tierExpiresAt = now.addingTimeInterval(TimeInterval(trialDays) * 86400)
         }
         try await user.save(on: db)
+    }
+
+    /// M90 keeps personal vault IDs equal to user IDs so existing tenant-scoped
+    /// rows remain valid. The migration backfills existing users; registration
+    /// must mirror that invariant for users created after M90 has run.
+    static func ensurePersonalVault(for user: User, on db: any Database) async throws {
+        guard let sql = db as? any SQLDatabase else { return }
+        struct TableAvailability: Decodable { let available: Bool }
+        guard try await sql.raw("SELECT to_regclass('public.vaults') IS NOT NULL AS available")
+            .first(decoding: TableAvailability.self)?.available == true
+        else { return }
+
+        let userID = try user.requireID()
+        try await db.transaction { transaction in
+            guard let sql = transaction as? any SQLDatabase else { return }
+            try await sql.raw("""
+            INSERT INTO vaults (id, personal_owner_user_id, name, created_at, updated_at)
+            VALUES (\(bind: userID), \(bind: userID), \(bind: "\(user.username)'s Vault"), NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+            """).run()
+            try await sql.raw("""
+            INSERT INTO vault_memberships
+                (id, vault_id, user_id, role, can_use_ai, created_by_user_id, created_at, updated_at)
+            VALUES (gen_random_uuid(), \(bind: userID), \(bind: userID), 'admin', TRUE, \(bind: userID), NOW(), NOW())
+            ON CONFLICT (vault_id, user_id) DO NOTHING
+            """).run()
+        }
     }
 
     func login(email: String, password: String, requireMFA: Bool) async throws -> AuthResponse {
@@ -319,6 +348,7 @@ struct DefaultAuthService: AuthService {
         let username = try await uniquePlaceholderUsername()
         let user = try await repo.createUser(email: email, username: username, passwordHash: randomHash)
         try await Self.applyTrialDefaults(to: user, on: fluent.db())
+        try await Self.ensurePersonalVault(for: user, on: fluent.db())
         let identity = try OAuthIdentity(
             tenantID: user.requireID(),
             provider: provider,
