@@ -293,6 +293,9 @@ struct APNSNotificationService {
                 try await row.save(on: db)
                 logger.debug("apns delivered to \(row.token.prefix(8))… category=\(category.rawValue)")
             } catch {
+                if category == .ingestion {
+                    IngestionMetrics.apnsFailures.increment()
+                }
                 if Self.shouldReap(error) {
                     try? await row.delete(on: db)
                     logger.info("apns reaped dead token \(row.token.prefix(8))…: \(error)")
