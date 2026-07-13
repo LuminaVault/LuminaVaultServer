@@ -20,7 +20,8 @@ PR ──► CI (lint + test)  ──merge──►  push to main
               build ──► push ghcr.io/luminavault/luminavaultserver:<sha> + :latest
                                          │
                                          ▼
-                 SSH to VPS: pull image, write .env.production, compose up app
+                 SSH to VPS: pull image, write .env.production,
+                 build/start plugin-runner, compose up app
                                          │
                                          ▼
                  on-server health pre-gate (http://127.0.0.1:8080/health)
@@ -42,6 +43,10 @@ Key properties:
   `test` job means CI fails, so the deploy never starts.
 - **Image is immutable.** Built once in CI, tagged with the commit SHA,
   pulled (not rebuilt) on the VPS.
+- **Plugin execution is fail-closed.** The deploy builds the reviewed
+  `plugin-runner` source at the same commit, waits for its healthcheck, and
+  only then recreates the API container. Runner build or health failure stops
+  the deploy before marketplace tools can execute.
 - **Smoke test is authoritative and runs from the GitHub runner** against
   the public HTTPS endpoint. It hits **`/health`** (public liveness probe,
   returns `"ok"`) — **not** `/v1/health`, which is the JWT-authed

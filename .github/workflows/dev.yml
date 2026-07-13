@@ -136,6 +136,10 @@ jobs:
             APP_PORT=8081 APP_IMAGE="${APP_IMAGE}" docker compose -p dev \
               -f docker-compose.production.yml \
               --env-file .env.development \
+              up -d --build --no-deps --wait plugin-runner
+            APP_PORT=8081 APP_IMAGE="${APP_IMAGE}" docker compose -p dev \
+              -f docker-compose.production.yml \
+              --env-file .env.development \
               up -d --no-deps app
             HEALTHY=0
             for ATTEMPT in $(seq 1 30); do

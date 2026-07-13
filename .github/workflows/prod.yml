@@ -247,6 +247,14 @@ jobs:
               --env-file .env.production \
               up -d --no-deps otel-collector
 
+            # Marketplace WASM execution is isolated in a local, non-root
+            # sidecar. Build it from the reviewed source at this commit and
+            # wait for its healthcheck before recreating the API container.
+            APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              up -d --build --no-deps --wait plugin-runner
+
             # Deploy
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
               -f docker-compose.production.yml \
