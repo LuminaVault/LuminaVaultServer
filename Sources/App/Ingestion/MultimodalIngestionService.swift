@@ -175,6 +175,7 @@ struct MultimodalIngestionService {
             throw HTTPError(.contentTooLarge, message: "uploaded bytes exceed declared size")
         }
         try await item.save(on: fluent.db())
+        try await recordEvent(item: item, type: .progress)
     }
 
     func complete(tenantID: UUID, batchID: UUID, itemID: UUID) async throws -> IngestionBatchDTO {
