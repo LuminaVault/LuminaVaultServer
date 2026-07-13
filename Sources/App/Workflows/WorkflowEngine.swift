@@ -334,6 +334,6 @@ actor WorkflowEngine: Service {
     }
 }
 
-private struct WorkflowNodeExecution: Sendable { let node: WorkflowNodeDTO; let output: [String: String] }
+private struct WorkflowNodeExecution { let node: WorkflowNodeDTO; let output: [String: String] }
 enum WorkflowExecutionBounds { static let maxIterations = 20; static let maxParallelNodes = 8 }
 private enum WorkflowEngineError: Error { case missingVersion, invalidGraph, invalidLLMResponse, executorUnavailable(String), iterationLimitExceeded(Int), cancelled }

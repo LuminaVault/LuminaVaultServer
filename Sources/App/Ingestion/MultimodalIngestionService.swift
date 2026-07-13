@@ -7,7 +7,7 @@ import Logging
 import LuminaVaultShared
 import SQLKit
 
-struct HermesIngestionResult: Sendable {
+struct HermesIngestionResult {
     let title: String
     let markdown: String
     let summary: String

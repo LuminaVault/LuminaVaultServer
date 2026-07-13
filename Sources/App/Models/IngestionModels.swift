@@ -21,7 +21,7 @@ final class IngestionBatch: Model, TenantModel, @unchecked Sendable {
     }
 }
 
-struct IngestionCredibilityRecord: Codable, Sendable {
+struct IngestionCredibilityRecord: Codable {
     let score: Int?
     let confidence: Double
     let signals: [String]

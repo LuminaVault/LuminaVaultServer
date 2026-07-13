@@ -8,13 +8,13 @@ import Logging
 import LuminaVaultShared
 import NIOCore
 
-struct MarketplaceCapabilityRequest: Codable, Sendable, Equatable {
+struct MarketplaceCapabilityRequest: Codable, Equatable {
     let id: String
     let operation: String
     let arguments: [String: String]
 }
 
-struct MarketplaceCapabilityResult: Codable, Sendable, Equatable {
+struct MarketplaceCapabilityResult: Codable, Equatable {
     let id: String
     let ok: Bool
     let values: [String: String]

@@ -21,7 +21,7 @@ struct KnowledgeExtractionWorkerTests {
         #expect(values.contains("Project Atlas"))
         #expect(values.contains("LuminaVault"))
         #expect(values.contains("Hermes Agent"))
-        #expect(values.filter { $0 == "Project Atlas" }.count == 1)
+        #expect(values.count(where: { $0 == "Project Atlas" }) == 1)
     }
 
     @Test(

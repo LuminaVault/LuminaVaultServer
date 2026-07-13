@@ -5,14 +5,14 @@ import HummingbirdFluent
 import LuminaVaultShared
 import SQLKit
 
-struct KnowledgeGraphFilter: Sendable {
+struct KnowledgeGraphFilter {
     var kinds: Set<KnowledgeNodeKindDTO> = []
     var predicates: Set<KnowledgeEdgePredicateDTO> = []
     var states: Set<KnowledgeEdgeStateDTO> = [.asserted, .suggested, .confirmed]
     var minimumConfidence: Double = 0
 }
 
-struct KnowledgeGraphService: Sendable {
+struct KnowledgeGraphService {
     let fluent: Fluent
 
     static let defaultLimit = 800

@@ -118,8 +118,8 @@ struct QueryStreamTests {
         #expect(messages[0].role == "system")
         #expect(messages[1].role == "user")
         #expect(messages[1].content == "what runs did I do?")
-        #expect(messages[0].content.contains("[1] ran 5k Monday"))
-        #expect(messages[0].content.contains("[2] skipped run Tuesday"))
+        #expect(messages[0].content.contains("[1] [legacy] ran 5k Monday"))
+        #expect(messages[0].content.contains("[2] [legacy] skipped run Tuesday"))
     }
 
     @Test
