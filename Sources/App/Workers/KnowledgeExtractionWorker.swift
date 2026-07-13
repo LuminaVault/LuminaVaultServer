@@ -9,6 +9,26 @@ import SQLKit
 /// Durable graph extraction. The deterministic extractor is intentionally the
 /// correctness baseline; an LLM extractor can enrich the same schema later.
 actor KnowledgeExtractionWorker: Service {
+    private struct NodeInput {
+        let tenantID: UUID
+        let kind: String
+        let key: String
+        let label: String
+        let summary: String?
+        let confidence: Double
+    }
+
+    private struct EdgeInput {
+        let tenantID: UUID
+        let from: UUID
+        let to: UUID
+        let predicate: String
+        let state: String
+        let confidence: Double
+        let rationale: String
+        let fingerprint: String
+    }
+
     let fluent: Fluent
     let logger: Logger
     let tickInterval: Duration
@@ -111,40 +131,55 @@ actor KnowledgeExtractionWorker: Service {
         var claims: [(id: UUID, text: String, entities: [String])] = []
         for statement in statements {
             let claimID = try await upsertNode(
-                sql: sql, tenantID: job.tenant_id, kind: "claim",
-                key: Self.fingerprint(statement.lowercased()), label: statement,
-                summary: nil, confidence: 1
+                sql: sql,
+                node: NodeInput(
+                    tenantID: job.tenant_id, kind: "claim",
+                    key: Self.fingerprint(statement.lowercased()), label: statement,
+                    summary: nil, confidence: 1
+                )
             )
             try await addEvidence(sql: sql, job: job, nodeID: claimID, edgeID: nil, quote: statement)
             let entities = Self.entities(in: statement)
             claims.append((claimID, statement, entities))
             for entity in entities {
                 let entityID = try await upsertNode(
-                    sql: sql, tenantID: job.tenant_id, kind: "entity",
-                    key: Self.canonical(entity), label: entity,
-                    summary: nil, confidence: 0.85
+                    sql: sql,
+                    node: NodeInput(
+                        tenantID: job.tenant_id, kind: "entity",
+                        key: Self.canonical(entity), label: entity,
+                        summary: nil, confidence: 0.85
+                    )
                 )
                 try await addEvidence(sql: sql, job: job, nodeID: entityID, edgeID: nil, quote: statement)
                 let edgeID = try await upsertEdge(
-                    sql: sql, tenantID: job.tenant_id, from: claimID, to: entityID,
-                    predicate: "mentions", state: "asserted", confidence: 1,
-                    rationale: "The source statement explicitly mentions \(entity).",
-                    fingerprint: job.content_fingerprint
+                    sql: sql,
+                    edge: EdgeInput(
+                        tenantID: job.tenant_id, from: claimID, to: entityID,
+                        predicate: "mentions", state: "asserted", confidence: 1,
+                        rationale: "The source statement explicitly mentions \(entity).",
+                        fingerprint: job.content_fingerprint
+                    )
                 )
                 try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: statement)
             }
             if Self.looksLikeEvent(statement) {
                 let eventID = try await upsertNode(
-                    sql: sql, tenantID: job.tenant_id, kind: "event",
-                    key: Self.fingerprint(statement.lowercased()), label: statement,
-                    summary: "Dated or time-qualified event", confidence: 0.8
+                    sql: sql,
+                    node: NodeInput(
+                        tenantID: job.tenant_id, kind: "event",
+                        key: Self.fingerprint(statement.lowercased()), label: statement,
+                        summary: "Dated or time-qualified event", confidence: 0.8
+                    )
                 )
                 try await addEvidence(sql: sql, job: job, nodeID: eventID, edgeID: nil, quote: statement)
                 let edgeID = try await upsertEdge(
-                    sql: sql, tenantID: job.tenant_id, from: claimID, to: eventID,
-                    predicate: "derived_from", state: "asserted", confidence: 1,
-                    rationale: "The event is derived directly from this statement.",
-                    fingerprint: job.content_fingerprint
+                    sql: sql,
+                    edge: EdgeInput(
+                        tenantID: job.tenant_id, from: claimID, to: eventID,
+                        predicate: "derived_from", state: "asserted", confidence: 1,
+                        rationale: "The event is derived directly from this statement.",
+                        fingerprint: job.content_fingerprint
+                    )
                 )
                 try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: statement)
             }
@@ -172,43 +207,61 @@ actor KnowledgeExtractionWorker: Service {
     ) async throws {
         guard let relation = Self.explicitRelation(in: statement) else { return }
         let fromID = try await upsertNode(
-            sql: sql, tenantID: job.tenant_id, kind: "claim",
-            key: Self.fingerprint(relation.from.lowercased()), label: relation.from,
-            summary: nil, confidence: 1
+            sql: sql,
+            node: NodeInput(
+                tenantID: job.tenant_id, kind: "claim",
+                key: Self.fingerprint(relation.from.lowercased()), label: relation.from,
+                summary: nil, confidence: 1
+            )
         )
         let toID = try await upsertNode(
-            sql: sql, tenantID: job.tenant_id, kind: "claim",
-            key: Self.fingerprint(relation.to.lowercased()), label: relation.to,
-            summary: nil, confidence: 1
+            sql: sql,
+            node: NodeInput(
+                tenantID: job.tenant_id, kind: "claim",
+                key: Self.fingerprint(relation.to.lowercased()), label: relation.to,
+                summary: nil, confidence: 1
+            )
         )
         try await addEvidence(sql: sql, job: job, nodeID: fromID, edgeID: nil, quote: statement)
         try await addEvidence(sql: sql, job: job, nodeID: toID, edgeID: nil, quote: statement)
         let edgeID = try await upsertEdge(
-            sql: sql, tenantID: job.tenant_id, from: fromID, to: toID,
-            predicate: relation.predicate, state: "asserted", confidence: 1,
-            rationale: "The source explicitly states this \(relation.predicate.replacingOccurrences(of: "_", with: " ")) relationship.",
-            fingerprint: Self.fingerprint("\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
+            sql: sql,
+            edge: EdgeInput(
+                tenantID: job.tenant_id, from: fromID, to: toID,
+                predicate: relation.predicate, state: "asserted", confidence: 1,
+                rationale: "The source explicitly states this \(relation.predicate.replacingOccurrences(of: "_", with: " ")) relationship.",
+                fingerprint: Self.fingerprint("\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
+            )
         )
         try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: statement)
 
         let fromEntityID = try await upsertNode(
-            sql: sql, tenantID: job.tenant_id, kind: "entity",
-            key: Self.canonical(relation.from), label: relation.from,
-            summary: nil, confidence: 0.9
+            sql: sql,
+            node: NodeInput(
+                tenantID: job.tenant_id, kind: "entity",
+                key: Self.canonical(relation.from), label: relation.from,
+                summary: nil, confidence: 0.9
+            )
         )
         let toEntityID = try await upsertNode(
-            sql: sql, tenantID: job.tenant_id, kind: "entity",
-            key: Self.canonical(relation.to), label: relation.to,
-            summary: nil, confidence: 0.9
+            sql: sql,
+            node: NodeInput(
+                tenantID: job.tenant_id, kind: "entity",
+                key: Self.canonical(relation.to), label: relation.to,
+                summary: nil, confidence: 0.9
+            )
         )
         try await addEvidence(sql: sql, job: job, nodeID: fromEntityID, edgeID: nil, quote: statement)
         try await addEvidence(sql: sql, job: job, nodeID: toEntityID, edgeID: nil, quote: statement)
         if fromEntityID != toEntityID {
             let entityEdgeID = try await upsertEdge(
-                sql: sql, tenantID: job.tenant_id, from: fromEntityID, to: toEntityID,
-                predicate: relation.predicate, state: "asserted", confidence: 0.9,
-                rationale: "The source explicitly relates these entities.",
-                fingerprint: Self.fingerprint("entity|\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
+                sql: sql,
+                edge: EdgeInput(
+                    tenantID: job.tenant_id, from: fromEntityID, to: toEntityID,
+                    predicate: relation.predicate, state: "asserted", confidence: 0.9,
+                    rationale: "The source explicitly relates these entities.",
+                    fingerprint: Self.fingerprint("entity|\(job.content_fingerprint)|\(statement)|\(relation.predicate)")
+                )
             )
             try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: entityEdgeID, quote: statement)
         }
@@ -272,9 +325,12 @@ actor KnowledgeExtractionWorker: Service {
                     : "These statements share a named entity."
                 let evidenceFingerprint = Self.fingerprint([job.content_fingerprint, left.text, right.text, predicate].joined(separator: "|"))
                 let edgeID = try await upsertEdge(
-                    sql: sql, tenantID: job.tenant_id, from: left.id, to: right.id,
-                    predicate: predicate, state: "suggested", confidence: confidence,
-                    rationale: rationale, fingerprint: evidenceFingerprint
+                    sql: sql,
+                    edge: EdgeInput(
+                        tenantID: job.tenant_id, from: left.id, to: right.id,
+                        predicate: predicate, state: "suggested", confidence: confidence,
+                        rationale: rationale, fingerprint: evidenceFingerprint
+                    )
                 )
                 try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: left.text)
                 try await addEvidence(sql: sql, job: job, nodeID: nil, edgeID: edgeID, quote: right.text)
@@ -322,10 +378,13 @@ actor KnowledgeExtractionWorker: Service {
                 ? "Claims from different memories concern the same entity but use opposing polarity; review both sources."
                 : "Claims from different memories share a named entity."
             let edgeID = try await upsertEdge(
-                sql: sql, tenantID: job.tenant_id, from: ordered.0, to: ordered.1,
-                predicate: predicate, state: "suggested",
-                confidence: predicate == "contradicts" ? 0.6 : 0.65,
-                rationale: rationale, fingerprint: fingerprint
+                sql: sql,
+                edge: EdgeInput(
+                    tenantID: job.tenant_id, from: ordered.0, to: ordered.1,
+                    predicate: predicate, state: "suggested",
+                    confidence: predicate == "contradicts" ? 0.6 : 0.65,
+                    rationale: rationale, fingerprint: fingerprint
+                )
             )
             try await addEvidenceFromNodes(
                 sql: sql, tenantID: job.tenant_id,
@@ -336,18 +395,16 @@ actor KnowledgeExtractionWorker: Service {
 
     private func upsertNode(
         sql: any SQLDatabase,
-        tenantID: UUID,
-        kind: String,
-        key: String,
-        label: String,
-        summary: String?,
-        confidence: Double
+        node: NodeInput
     ) async throws -> UUID {
         struct IDRow: Decodable { let id: UUID }
         let id = UUID()
         let row = try await sql.raw("""
         INSERT INTO knowledge_nodes (id, tenant_id, kind, canonical_key, label, summary, confidence)
-        VALUES (\(bind: id), \(bind: tenantID), \(bind: kind), \(bind: key), \(bind: label), \(bind: summary), \(bind: confidence))
+        VALUES (
+            \(bind: id), \(bind: node.tenantID), \(bind: node.kind), \(bind: node.key),
+            \(bind: node.label), \(bind: node.summary), \(bind: node.confidence)
+        )
         ON CONFLICT (tenant_id, kind, canonical_key) DO UPDATE
         SET label = EXCLUDED.label, summary = COALESCE(EXCLUDED.summary, knowledge_nodes.summary),
             confidence = GREATEST(knowledge_nodes.confidence, EXCLUDED.confidence), updated_at = NOW()
@@ -359,14 +416,7 @@ actor KnowledgeExtractionWorker: Service {
 
     private func upsertEdge(
         sql: any SQLDatabase,
-        tenantID: UUID,
-        from: UUID,
-        to: UUID,
-        predicate: String,
-        state: String,
-        confidence: Double,
-        rationale: String,
-        fingerprint: String
+        edge: EdgeInput
     ) async throws -> UUID {
         struct IDRow: Decodable { let id: UUID }
         let row = try await sql.raw("""
@@ -374,8 +424,9 @@ actor KnowledgeExtractionWorker: Service {
             id, tenant_id, from_node_id, to_node_id, predicate, state,
             confidence, rationale, evidence_fingerprint
         ) VALUES (
-            \(bind: UUID()), \(bind: tenantID), \(bind: from), \(bind: to), \(bind: predicate), \(bind: state),
-            \(bind: confidence), \(bind: rationale), \(bind: fingerprint)
+            \(bind: UUID()), \(bind: edge.tenantID), \(bind: edge.from), \(bind: edge.to),
+            \(bind: edge.predicate), \(bind: edge.state), \(bind: edge.confidence),
+            \(bind: edge.rationale), \(bind: edge.fingerprint)
         )
         ON CONFLICT (tenant_id, from_node_id, to_node_id, predicate, evidence_fingerprint) DO UPDATE
         SET confidence = EXCLUDED.confidence, rationale = EXCLUDED.rationale, updated_at = NOW(),
