@@ -16,15 +16,35 @@ struct HermesIngestionResult: Sendable {
 }
 
 actor HermesMultimodalProcessor {
-    let transport: any HermesChatTransport
+    let chatTransport: any HermesChatTransport
+    let ingestionTransport: (any HermesIngestionTransport)?
     let model: String
 
-    init(transport: any HermesChatTransport, model: String) {
-        self.transport = transport
+    init(
+        chatTransport: any HermesChatTransport,
+        ingestionTransport: (any HermesIngestionTransport)? = nil,
+        model: String
+    ) {
+        self.chatTransport = chatTransport
+        self.ingestionTransport = ingestionTransport
         self.model = model
     }
 
     func process(tenantID: UUID, source: String, contentType: String) async throws -> HermesIngestionResult {
+        if let sourceURL = URL(string: source),
+           ["http", "https"].contains(sourceURL.scheme?.lowercased() ?? ""),
+           let ingestionTransport
+        {
+            let raw = try await ingestionTransport.ingest(
+                tenantID: tenantID,
+                sourceURL: sourceURL,
+                contentType: contentType,
+                instructions: "Include OCR, transcript, page or timestamp references, and important facts in markdown when applicable."
+            )
+            let envelope = try JSONDecoder().decode(IngestionEnvelope.self, from: raw)
+            return Self.result(from: envelope.analysis)
+        }
+
         let prompt = """
         Analyze the source below using your available vision, document, audio, video, and web tools.
         The source is already in the user's LuminaVault and must remain the source of truth.
@@ -41,13 +61,17 @@ actor HermesMultimodalProcessor {
             stream: false
         )
         let payload = try JSONEncoder().encode(request)
-        let raw = try await transport.chatCompletions(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
+        let raw = try await chatTransport.chatCompletions(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
         let envelope = try JSONDecoder().decode(ChatResponse.self, from: raw)
         guard let content = envelope.choices.first?.message.content,
               let data = Self.jsonData(from: content)
         else { throw HTTPError(.badGateway, message: "Hermes returned no ingestion result") }
         let result = try JSONDecoder().decode(ResultPayload.self, from: data)
-        return HermesIngestionResult(
+        return Self.result(from: result)
+    }
+
+    private static func result(from result: ResultPayload) -> HermesIngestionResult {
+        HermesIngestionResult(
             title: result.title,
             markdown: result.markdown,
             summary: result.summary,
@@ -81,6 +105,10 @@ actor HermesMultimodalProcessor {
     private struct ChatResponse: Decodable {
         struct Choice: Decodable { let message: Message }
         let choices: [Choice]
+    }
+
+    private struct IngestionEnvelope: Decodable {
+        let analysis: ResultPayload
     }
 
     private struct ResultPayload: Decodable {

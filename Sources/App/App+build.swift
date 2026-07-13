@@ -650,6 +650,7 @@ func buildRouter(
     // builds so the new per-user provider credential surface can reuse
     // the AES-GCM helper without a second master-key load.
     var secretBoxRef: SecretBox?
+    var hermesEndpointResolver: HermesEndpointResolver?
     // HER-240a — per-tenant Hermes container manager + xai-oauth service.
     // Gated on the same SecretBox the BYO Hermes flow depends on because
     // the tenant's encrypted `API_SERVER_KEY` is sealed with the same KDF.
@@ -724,6 +725,7 @@ func buildRouter(
                 defaultBaseURL: hermesURL,
                 logger: byoHermesLogger
             )
+            hermesEndpointResolver = resolver
             byoHermesMiddleware = HermesResolutionMiddleware(
                 resolver: resolver,
                 logger: byoHermesLogger
@@ -1926,7 +1928,14 @@ func buildRouter(
         vaultPaths: vaultPaths,
         linkCapture: linkCaptureService,
         processor: HermesMultimodalProcessor(
-            transport: routedTransport,
+            chatTransport: routedTransport,
+            ingestionTransport: URLSessionHermesIngestionTransport(
+                defaultBaseURL: hermesURL,
+                defaultAuthHeader: services.hermesAPIKey.isEmpty ? nil : "Bearer \(services.hermesAPIKey)",
+                endpointResolver: hermesEndpointResolver,
+                session: BYOHTTP.session,
+                logger: Logger(label: "lv.ingestion.hermes")
+            ),
             model: services.hermesDefaultModel
         ),
         memories: MemoryRepository(fluent: services.fluent),
