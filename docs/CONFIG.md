@@ -43,6 +43,14 @@ extraction and backfill; existing `/v1/knowledge/*` reads, explanations, and
 confirm/dismiss audit records remain available. Enable it on one deployment,
 watch queue depth and extraction failures, then expand the rollout.
 
+`KNOWLEDGE_GRAPH_MODEL_EXTRACTION_ENABLED` defaults to `false`. When enabled,
+the worker sends at most 40 entity-matched claim pairs per memory to the routed
+Hermes model for conservative relationship adjudication. The model may suggest
+`supports`, `contradicts`, `causes`, `precedes`, or `related_to` edges, but every
+result must reference a supplied candidate and clear predicate-specific
+confidence thresholds. Invalid output or provider failure falls back to the
+deterministic extractor. Suggested edges still require user confirmation.
+
 ### Multimodal ingestion source delivery
 
 `INGESTION_PUBLIC_BASE_URL` is the externally reachable API origin, normally
