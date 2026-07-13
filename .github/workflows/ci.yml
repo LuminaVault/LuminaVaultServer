@@ -9,6 +9,7 @@ on:
       - 'Package.resolved'
       - '.swiftlint.yml'
       - '.swiftformat'
+      - 'scripts/ci-test-wrapper.sh'
       - '.github/workflows/**'
   pull_request:
     branches: [main, dev]
@@ -19,6 +20,7 @@ on:
       - 'Package.resolved'
       - '.swiftlint.yml'
       - '.swiftformat'
+      - 'scripts/ci-test-wrapper.sh'
       - '.github/workflows/**'
 
 jobs:
