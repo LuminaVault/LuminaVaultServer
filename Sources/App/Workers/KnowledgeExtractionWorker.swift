@@ -225,6 +225,7 @@ actor KnowledgeExtractionWorker: Service {
         RETURNING id, tenant_id, batch_id, file_name
         """).all(decoding: FinalizedRow.self)
         for row in rows {
+            IngestionMetrics.completed.increment()
             try await sql.raw("""
             INSERT INTO ingestion_events (tenant_id, batch_id, item_id, type, state)
             VALUES (\(bind: row.tenant_id), \(bind: row.batch_id), \(bind: row.id), 'terminal', 'completed')
@@ -240,6 +241,7 @@ actor KnowledgeExtractionWorker: Service {
                     try await push.notifyIngestion(userID: row.tenant_id, completed: true, fileName: row.file_name)
                     try await sql.raw("UPDATE ingestion_items SET terminal_notified_at = NOW() WHERE id = \(bind: row.id) AND terminal_notified_at IS NULL").run()
                 } catch {
+                    IngestionMetrics.apnsFailures.increment()
                     logger.warning("ingestion terminal push failed item=\(row.id): \(error)")
                 }
             }

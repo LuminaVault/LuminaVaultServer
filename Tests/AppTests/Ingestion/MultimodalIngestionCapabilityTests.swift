@@ -11,6 +11,20 @@ struct MultimodalIngestionCapabilityTests {
         #expect(!MultimodalIngestionService.supports(contentType: "video/mp4", patterns: ["image/*", "audio/*"]))
     }
 
+    @Test("BYO ingestion source byte ranges are bounded and support suffixes")
+    func sourceRanges() throws {
+        #expect(try MultimodalIngestionController.parseRange("bytes=0-99", size: 1_000) == 0 ... 99)
+        #expect(try MultimodalIngestionController.parseRange("bytes=900-", size: 1_000) == 900 ... 999)
+        #expect(try MultimodalIngestionController.parseRange("bytes=-100", size: 1_000) == 900 ... 999)
+        #expect(try MultimodalIngestionController.parseRange("bytes=950-2000", size: 1_000) == 950 ... 999)
+        #expect(throws: (any Error).self) {
+            try MultimodalIngestionController.parseRange("bytes=1000-1001", size: 1_000)
+        }
+        #expect(throws: (any Error).self) {
+            try MultimodalIngestionController.parseRange("bytes=0-1,4-5", size: 1_000)
+        }
+    }
+
     @Test("source tokens are stored as deterministic hashes")
     func hashesSourceTokens() {
         let token = String(repeating: "a", count: 64)

@@ -252,6 +252,8 @@ struct MultimodalIngestionService {
         """).first(decoding: ClaimedItem.self),
             let item = try await IngestionItem.query(on: fluent.db()).filter(\.$id == claim.id).first()
         else { return false }
+        IngestionMetrics.claimed.increment()
+        IngestionMetrics.recordQueueLatency(createdAt: item.createdAt)
         let batch = try await requireBatch(tenantID: item.tenantID, batchID: item.batchID)
         try await process(item: item, tenantID: item.tenantID, spaceID: batch.spaceID)
         return true
@@ -384,6 +386,7 @@ struct MultimodalIngestionService {
             )
         } catch {
             let shouldRetry = item.attempts < Self.maximumAutomaticAttempts
+            if shouldRetry { IngestionMetrics.retried.increment() } else { IngestionMetrics.failed.increment() }
             item.state = shouldRetry ? IngestionItemStateDTO.queued.rawValue : IngestionItemStateDTO.blockedCapability.rawValue
             item.nextAttemptAt = shouldRetry ? Date().addingTimeInterval(Self.retryDelay(for: item.attempts)) : nil
             item.leaseExpiresAt = nil
@@ -581,6 +584,7 @@ struct MultimodalIngestionService {
         item.errorMessage = nil
         try await item.save(on: fluent.db())
         try await recordEvent(item: item, type: .stateChanged)
+        IngestionMetrics.deduplicated.increment()
         try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
         return true
     }

@@ -3241,6 +3241,36 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchListDTO' }
 
+  /v1/ingestion-sources/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string, minLength: 64, maxLength: 64 } }
+    get:
+      tags: [Ingestion]
+      operationId: ingestionSourceDownload
+      summary: Stream a short-lived BYO Hermes source with optional byte ranges.
+      security: []
+      parameters:
+        - { name: Range, in: header, required: false, schema: { type: string, example: bytes=0-1048575 } }
+      responses:
+        '200':
+          description: Complete source stream.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '206':
+          description: Requested byte range.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '416': { description: Requested range is outside the source. }
+    head:
+      tags: [Ingestion]
+      operationId: ingestionSourceHead
+      summary: Inspect short-lived BYO Hermes source metadata.
+      security: []
+      responses:
+        '200': { description: Source metadata headers. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/ingestions/{batchID}:
     get:
       tags: [Ingestion]

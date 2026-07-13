@@ -32,20 +32,56 @@ struct MultimodalIngestionController {
 
     func addPublicSourceRoute(to router: Router<AppRequestContext>) {
         router.get("/v1/ingestion-sources/:token", use: source)
+        router.head("/v1/ingestion-sources/:token", use: source)
     }
 
-    @Sendable private func source(_: Request, ctx: AppRequestContext) async throws -> Response {
+    @Sendable private func source(_ request: Request, ctx: AppRequestContext) async throws -> Response {
         guard let token = ctx.parameters.get("token") else { throw HTTPError(.notFound) }
         let source = try await service.source(token: token)
         var headers = HTTPFields()
         headers[.contentType] = source.contentType
-        headers[.contentLength] = String(source.size)
         headers[.cacheControl] = "private, no-store"
         headers[.acceptRanges] = "bytes"
         if let etag = source.etag { headers[.eTag] = "\"\(etag)\"" }
         headers[.contentDisposition] = "attachment; filename=\"\(source.fileName.replacingOccurrences(of: "\"", with: ""))\""
+        if request.method == .head {
+            headers[.contentLength] = String(source.size)
+            return Response(status: .ok, headers: headers)
+        }
+        if let rawRange = request.headers[.range] {
+            let range = try Self.parseRange(rawRange, size: source.size)
+            headers[.contentLength] = String(range.count)
+            headers[.contentRange] = "bytes \(range.lowerBound)-\(range.upperBound)/\(source.size)"
+            let body = try await FileIO().loadFile(path: source.path, range: range, context: ctx)
+            return Response(status: .partialContent, headers: headers, body: body)
+        }
+        headers[.contentLength] = String(source.size)
         let body = try await FileIO().loadFile(path: source.path, context: ctx)
         return Response(status: .ok, headers: headers, body: body)
+    }
+
+    static func parseRange(_ value: String, size: Int64) throws -> ClosedRange<Int> {
+        guard size > 0, value.hasPrefix("bytes="), !value.contains(",") else {
+            throw HTTPError(.rangeNotSatisfiable)
+        }
+        let parts = value.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { throw HTTPError(.rangeNotSatisfiable) }
+        let start: Int64
+        let end: Int64
+        if parts[0].isEmpty {
+            guard let suffix = Int64(parts[1]), suffix > 0 else { throw HTTPError(.rangeNotSatisfiable) }
+            start = max(0, size - suffix)
+            end = size - 1
+        } else {
+            guard let parsedStart = Int64(parts[0]), parsedStart >= 0, parsedStart < size else {
+                throw HTTPError(.rangeNotSatisfiable)
+            }
+            start = parsedStart
+            end = min(parts[1].isEmpty ? size - 1 : (Int64(parts[1]) ?? -1), size - 1)
+            guard end >= start else { throw HTTPError(.rangeNotSatisfiable) }
+        }
+        guard start <= Int.max, end <= Int.max else { throw HTTPError(.rangeNotSatisfiable) }
+        return Int(start) ... Int(end)
     }
 
     @Sendable private func create(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
