@@ -4,8 +4,10 @@
 # which keeps the test jobs permanently red and un-requirable.
 #
 # This wrapper gates on the xunit result file instead of the raw exit code:
-# a signal-death exit (status >= 128) is tolerated ONLY when the xunit report
-# exists and records zero failures/errors across a non-zero test count.
+# the known signal-4 teardown is tolerated ONLY when the test log contains
+# SwiftPM's explicit signal marker and xunit records zero failures/errors
+# across a non-zero test count. SwiftPM maps its test child's signal to exit 1,
+# so checking for a shell-style status >= 128 does not detect this crash.
 # Any real test failure, build failure, or crash before results are written
 # still fails the job.
 #
@@ -14,17 +16,13 @@ set -uo pipefail
 
 xunit_path="$1"
 shift
+log_path="${xunit_path%.xml}.log"
 
-swift test --xunit-output "$xunit_path" "$@"
-status=$?
+swift test --xunit-output "$xunit_path" "$@" 2>&1 | tee "$log_path"
+status=${PIPESTATUS[0]}
 
 if [ "$status" -eq 0 ]; then
   exit 0
-fi
-
-if [ "$status" -lt 128 ]; then
-  # Plain failure (tests failed / build broke) — never masked.
-  exit "$status"
 fi
 
 # SwiftPM writes XCTest results to <path> and swift-testing results to
@@ -41,7 +39,8 @@ for f in "$xunit_path" "${base}-swift-testing.xml"; do
   total_failures=$((total_failures + failures + errors))
 done
 
-if [ "$total_tests" -gt 0 ] && [ "$total_failures" -eq 0 ]; then
+if [ "$total_tests" -gt 0 ] && [ "$total_failures" -eq 0 ] &&
+  grep -Eq 'unexpected signal code 4|Signal 4|Illegal instruction' "$log_path"; then
   echo "::warning::swift test exited with signal status ${status} after all ${total_tests} tests passed (HER-310 teardown SIGILL) — treating as success"
   exit 0
 fi
