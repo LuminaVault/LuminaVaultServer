@@ -2,6 +2,7 @@
 import FluentKit
 import FluentPostgresDriver
 import Foundation
+import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
@@ -18,7 +19,7 @@ import Testing
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct KanbanServiceTests {
     private static func withFluent<T: Sendable>(
-        _ body: @Sendable (Fluent) async throws -> T
+        _ body: @Sendable (Fluent) async throws -> T,
     ) async throws -> T {
         let fluent = try await makeFluent()
         do {
@@ -36,7 +37,7 @@ struct KanbanServiceTests {
         let fluent = Fluent(logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
-            as: .psql
+            as: .psql,
         )
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -131,7 +132,7 @@ struct KanbanServiceTests {
             id: tenantID,
             email: "\(slug)@test.luminavault",
             username: slug,
-            passwordHash: "stub-hash-\(slug)"
+            passwordHash: "stub-hash-\(slug)",
         )
     }
 
@@ -147,13 +148,13 @@ struct KanbanServiceTests {
         let authoring = JobAuthoring(
             vaultPaths: VaultPathService(rootPath: root.path),
             fluent: fluent,
-            logger: Logger(label: "test.authoring")
+            logger: Logger(label: "test.authoring"),
         )
         return (KanbanService(fluent: fluent, authoring: authoring), root)
     }
 
     private static func seedBoardColumn(
-        _ svc: KanbanService, _ tenantID: UUID
+        _ svc: KanbanService, _ tenantID: UUID,
     ) async throws -> (boardID: UUID, columnID: UUID) {
         let board = try await svc.createBoard(tenantID: tenantID, title: "Jobs Board")
         let boardID = try board.requireID()
@@ -238,6 +239,42 @@ struct KanbanServiceTests {
         }
     }
 
+    @Test
+    func `stale shared board version cannot mutate content`() async throws {
+        try await Self.withFluent { fluent in
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "cas\(UUID().uuidString.prefix(4).lowercased())")
+                .save(on: fluent.db())
+            let service = Self.makeService(fluent)
+            let board = try await service.createBoard(tenantID: tenantID, title: "Original")
+            let boardID = try board.requireID()
+            let version = try await service.version(tenantID: tenantID, boardID: boardID)
+
+            _ = try await service.patchBoard(
+                tenantID: tenantID,
+                boardID: boardID,
+                req: BoardPatchRequest(title: "First writer"),
+                expectedVersion: version,
+            )
+
+            do {
+                _ = try await service.patchBoard(
+                    tenantID: tenantID,
+                    boardID: boardID,
+                    req: BoardPatchRequest(title: "Stale writer"),
+                    expectedVersion: version,
+                )
+                Issue.record("stale mutation unexpectedly succeeded")
+            } catch let error as HTTPError {
+                #expect(error.status == .conflict)
+            }
+
+            let snapshot = try await service.snapshot(tenantID: tenantID, boardID: boardID)
+            #expect(snapshot.title == "First writer")
+            #expect(snapshot.version == version + 1)
+        }
+    }
+
     // MARK: - Promotion (card → Job)
 
     /// Happy path: a card with structured job config promotes to a vault cron
@@ -253,7 +290,7 @@ struct KanbanServiceTests {
 
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Weekly Digest")
+                req: CardCreateRequest(columnID: columnID, title: "Weekly Digest"),
             )
             card.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * 1", domain: "life", prompt: "Summarize the week"))
             try await card.save(on: fluent.db())
@@ -294,7 +331,7 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Daily Brief")
+                req: CardCreateRequest(columnID: columnID, title: "Daily Brief"),
             )
             card.extra = CardExtra(job: CardJobConfig(cron: "0 8 * * *", prompt: "Brief me"))
             try await card.save(on: fluent.db())
@@ -317,7 +354,7 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Body Job", body: "Watch the markets")
+                req: CardCreateRequest(columnID: columnID, title: "Body Job", body: "Watch the markets"),
             )
             card.extra = CardExtra(job: CardJobConfig(cron: "*/30 * * * *"))
             try await card.save(on: fluent.db())
@@ -338,11 +375,11 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Inline Job")
+                req: CardCreateRequest(columnID: columnID, title: "Inline Job"),
             )
             let promoted = try await svc.promoteCard(
                 tenantID: tenantID, cardID: card.requireID(),
-                request: CardPromoteRequest(cron: "0 7 * * *", domain: "tech", prompt: "Scan tech news")
+                request: CardPromoteRequest(cron: "0 7 * * *", domain: "tech", prompt: "Scan tech news"),
             )
             #expect(promoted.alreadyPromoted == false)
             #expect(promoted.spec == "Scan tech news")
@@ -364,7 +401,7 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Plain Card")
+                req: CardCreateRequest(columnID: columnID, title: "Plain Card"),
             )
             await #expect(throws: (any Error).self) {
                 _ = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
@@ -382,7 +419,7 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Bad Cron")
+                req: CardCreateRequest(columnID: columnID, title: "Bad Cron"),
             )
             card.extra = CardExtra(job: CardJobConfig(cron: "not a cron", prompt: "x"))
             try await card.save(on: fluent.db())
@@ -406,7 +443,7 @@ struct KanbanServiceTests {
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "One Shot")
+                req: CardCreateRequest(columnID: columnID, title: "One Shot"),
             )
             let fireAt = Date(timeIntervalSince1970: 2_000_000_000)
             card.extra = CardExtra(job: CardJobConfig(runAt: fireAt, prompt: "Run me once"))
@@ -450,7 +487,7 @@ struct KanbanServiceTests {
             // Neither.
             let c1 = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Neither")
+                req: CardCreateRequest(columnID: columnID, title: "Neither"),
             )
             c1.extra = CardExtra(job: CardJobConfig(prompt: "x"))
             try await c1.save(on: fluent.db())
@@ -461,7 +498,7 @@ struct KanbanServiceTests {
             // Both.
             let c2 = try await svc.createCard(
                 tenantID: tenantID, boardID: boardID, columnID: columnID,
-                req: CardCreateRequest(columnID: columnID, title: "Both")
+                req: CardCreateRequest(columnID: columnID, title: "Both"),
             )
             c2.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * *", runAt: Date(), prompt: "x"))
             try await c2.save(on: fluent.db())

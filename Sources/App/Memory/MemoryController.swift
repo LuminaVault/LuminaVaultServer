@@ -269,13 +269,16 @@ struct MemoryController {
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
-        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai).vaultID
-        let answer = try await service.search(
-            tenantID: tenantID,
-            sessionKey: tenantID.uuidString,
-            query: body.query,
-            limit: body.limit ?? 5
-        )
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
+        let tenantID = access.vaultID
+        let answer = try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
+            try await service.search(
+                tenantID: tenantID,
+                sessionKey: tenantID.uuidString,
+                query: body.query,
+                limit: body.limit ?? 5
+            )
+        }
         let hits = answer.hits.map {
             MemorySearchHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
         }

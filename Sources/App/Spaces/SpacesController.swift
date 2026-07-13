@@ -27,7 +27,7 @@ extension SpaceDTO {
             category: space.category,
             noteCount: space.noteCount,
             lastCompiledAt: space.lastCompiledAt,
-            createdAt: space.createdAt
+            createdAt: space.createdAt,
         )
     }
 }
@@ -35,6 +35,7 @@ extension SpaceDTO {
 struct SpacesController {
     let service: SpacesService
     let vaultAccess: VaultAccessService
+    var activity: VaultActivityRecorder?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
@@ -62,12 +63,15 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category
+            category: body.category,
         )
         let actorID = try ctx.requireTenantID()
         space.createdByUserID = actorID
         space.updatedByUserID = actorID
         try await space.save(on: service.fluent.db())
+        try await activity?.record(vaultID: access.vaultID, actor: ctx.requireIdentity(),
+                                   action: "space.created", targetType: "space",
+                                   targetID: space.requireID(), targetTitle: space.name)
         return try SpaceDTO.fromSpace(space)
     }
 
@@ -91,10 +95,13 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category
+            category: body.category,
         )
         space.updatedByUserID = try ctx.requireTenantID()
         try await space.save(on: service.fluent.db())
+        try await activity?.record(vaultID: access.vaultID, actor: ctx.requireIdentity(),
+                                   action: "space.updated", targetType: "space",
+                                   targetID: id, targetTitle: space.name)
         return try SpaceDTO.fromSpace(space)
     }
 
@@ -102,7 +109,11 @@ struct SpacesController {
     func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write)
         let id = try Self.parseID(ctx)
+        let title = try await service.get(tenantID: access.vaultID, id: id).name
         try await service.delete(tenantID: access.vaultID, id: id)
+        try await activity?.record(vaultID: access.vaultID, actor: ctx.requireIdentity(),
+                                   action: "space.deleted", targetType: "space",
+                                   targetID: id, targetTitle: title)
         return Response(status: .noContent)
     }
 

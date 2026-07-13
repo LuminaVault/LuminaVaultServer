@@ -1511,6 +1511,8 @@ func buildRouter(
 
     // Memory agent (tool-calling Hermes loop) + protected routes.
     let vaultAccessService = VaultAccessService(fluent: services.fluent)
+    let vaultActivityPublisher = VaultActivityPublisher()
+    let vaultActivityRecorder = VaultActivityRecorder(fluent: services.fluent, publisher: vaultActivityPublisher)
     let memoryService = HermesMemoryService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
@@ -1859,13 +1861,16 @@ func buildRouter(
 
     // Spaces routes — service is constructed alongside `vaultInitService`
     // above so first-run vault create can seed defaults.
-    let spacesController = SpacesController(service: spacesService, vaultAccess: vaultAccessService)
+    let spacesController = SpacesController(
+        service: spacesService,
+        vaultAccess: vaultAccessService,
+        activity: vaultActivityRecorder,
+    )
     let spacesGroup = router.group("/v1/spaces").add(middleware: jwtAuthenticator)
     spacesController.addRoutes(to: spacesGroup)
 
     // Team/shared-vault control plane. Resource endpoints remain backwards
     // compatible: no X-Vault-ID means the caller's personal vault.
-    let vaultActivityPublisher = VaultActivityPublisher()
     let teamController = TeamController(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
@@ -2777,7 +2782,8 @@ func buildRouter(
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
     let kanbanController = KanbanController(
         service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
-        vaultAccess: vaultAccessService
+        vaultAccess: vaultAccessService,
+        activity: vaultActivityRecorder,
     )
     let boardsGroup = router.group("/v1/boards")
         .add(middleware: jwtAuthenticator)
