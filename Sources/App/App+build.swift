@@ -2255,7 +2255,17 @@ func buildRouter(
     if fluentEnabled, lvEnvironment != "test",
        reader.string(forKey: "knowledgeGraph.workerEnabled", default: "true").lowercased() == "true"
     {
-        managedServices.append(KnowledgeExtractionWorker(fluent: services.fluent, push: pushService))
+        let modelExtractionEnabled = reader.string(
+            forKey: "knowledgeGraph.modelExtractionEnabled",
+            default: "false"
+        ).lowercased() == "true"
+        managedServices.append(KnowledgeExtractionWorker(
+            fluent: services.fluent,
+            push: pushService,
+            transport: modelExtractionEnabled ? routedTransport : nil,
+            model: modelExtractionEnabled ? services.hermesDefaultModel : nil
+        ))
+        routingLogger.info("knowledge graph model adjudication \(modelExtractionEnabled ? "enabled" : "disabled")")
     } else {
         routingLogger.info("knowledge graph worker disabled (set KNOWLEDGE_GRAPH_WORKER_ENABLED=true to enable)")
     }
