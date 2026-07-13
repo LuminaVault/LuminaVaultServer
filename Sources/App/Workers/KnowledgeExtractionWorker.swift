@@ -238,7 +238,13 @@ actor KnowledgeExtractionWorker: Service {
             """).run()
             if let push {
                 do {
-                    try await push.notifyIngestion(userID: row.tenant_id, completed: true, fileName: row.file_name)
+                    try await push.notifyIngestion(
+                        userID: row.tenant_id,
+                        batchID: row.batch_id,
+                        itemID: row.id,
+                        completed: true,
+                        fileName: row.file_name
+                    )
                     try await sql.raw("UPDATE ingestion_items SET terminal_notified_at = NOW() WHERE id = \(bind: row.id) AND terminal_notified_at IS NULL").run()
                 } catch {
                     IngestionMetrics.apnsFailures.increment()

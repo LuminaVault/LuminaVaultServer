@@ -36,6 +36,7 @@ protocol APNSPushSender: Sendable {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
+        payload: [String: String],
         topic: String
     ) async throws
 }
@@ -52,6 +53,7 @@ struct LiveAPNSPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
+        payload: [String: String],
         topic: String
     ) async throws {
         let content = APNSAlertNotificationContent(
@@ -66,7 +68,7 @@ struct LiveAPNSPushSender: APNSPushSender {
             expiration: APNSNotificationExpiration.none,
             priority: .immediately,
             topic: topic,
-            payload: ["category": category.rawValue]
+            payload: payload.merging(["category": category.rawValue]) { current, _ in current }
         )
         let request = APNSRequest(
             message: notification,
@@ -227,13 +229,24 @@ struct APNSNotificationService {
         )
     }
 
-    func notifyIngestion(userID: UUID, completed: Bool, fileName: String?) async throws {
+    func notifyIngestion(
+        userID: UUID,
+        batchID: UUID,
+        itemID: UUID,
+        completed: Bool,
+        fileName: String?
+    ) async throws {
         try await notify(
             userID: userID,
             title: completed ? "Capture ready" : "Capture needs attention",
             subtitle: fileName,
             body: completed ? "Hermes finished processing and linked the new memory." : "Open LuminaVault to review the ingestion status.",
-            category: .ingestion
+            category: .ingestion,
+            payload: [
+                "batchID": batchID.uuidString,
+                "itemID": itemID.uuidString,
+                "state": completed ? "completed" : "failed",
+            ]
         )
     }
 
@@ -244,7 +257,8 @@ struct APNSNotificationService {
         title: String,
         subtitle: String?,
         body: String,
-        category: APNSPushCategory
+        category: APNSPushCategory,
+        payload: [String: String] = [:]
     ) async throws {
         guard enabled, let pushSender, !bundleID.isEmpty else { return }
 
@@ -272,6 +286,7 @@ struct APNSNotificationService {
                     subtitle: subtitle,
                     body: body,
                     category: category,
+                    payload: payload,
                     topic: bundleID
                 )
                 row.lastSeenAt = Date()

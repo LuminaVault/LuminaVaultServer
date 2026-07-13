@@ -202,6 +202,39 @@ struct APNSNotificationServiceTests {
     }
 
     @Test
+    func `ingestion notification includes batch deep link payload`() async throws {
+        try await Self.withFluent { fluent in
+            let slug = "apnsingestion\(UUID().uuidString.prefix(6).lowercased())"
+            let user = try await Self.makeUser(slug, on: fluent.db())
+            let userID = try user.requireID()
+            try await DeviceToken(tenantID: userID, token: UUID().uuidString, platform: "ios").save(on: fluent.db())
+
+            let recorder = RecordingPushSender()
+            let service = APNSNotificationService(
+                bundleID: "com.luminavault.test",
+                fluent: fluent,
+                pushSender: recorder,
+                logger: Logger(label: "test.apns")
+            )
+            let batchID = UUID()
+            let itemID = UUID()
+            try await service.notifyIngestion(
+                userID: userID,
+                batchID: batchID,
+                itemID: itemID,
+                completed: true,
+                fileName: "source.pdf"
+            )
+
+            let send = try #require(await recorder.sends.first)
+            #expect(send.category == .ingestion)
+            #expect(send.payload["batchID"] == batchID.uuidString)
+            #expect(send.payload["itemID"] == itemID.uuidString)
+            #expect(send.payload["state"] == "completed")
+        }
+    }
+
+    @Test
     func `should reap classifies every dead reason`() throws {
         for raw in APNSNotificationService.deadTokenReasons {
             let err = try Self.makeAPNSError(reason: raw)
@@ -231,6 +264,7 @@ actor RecordingPushSender: APNSPushSender {
         let subtitle: String?
         let body: String
         let category: APNSPushCategory
+        let payload: [String: String]
         let topic: String
     }
 
@@ -247,6 +281,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
+        payload: [String: String],
         topic: String
     ) async throws {
         try await record(
@@ -255,6 +290,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
+            payload: payload,
             topic: topic
         )
     }
@@ -265,6 +301,7 @@ actor RecordingPushSender: APNSPushSender {
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
+        payload: [String: String],
         topic: String
     ) throws {
         sends.append(Send(
@@ -273,6 +310,7 @@ actor RecordingPushSender: APNSPushSender {
             subtitle: subtitle,
             body: body,
             category: category,
+            payload: payload,
             topic: topic
         ))
         if let reason = failures[deviceToken] {

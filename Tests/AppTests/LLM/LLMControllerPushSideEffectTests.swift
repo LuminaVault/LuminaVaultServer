@@ -36,6 +36,7 @@ struct LLMControllerPushSideEffectTests {
             subtitle _: String?,
             body _: String,
             category _: APNSPushCategory,
+            payload _: [String: String],
             topic _: String
         ) async throws {
             calls.append(deviceToken)

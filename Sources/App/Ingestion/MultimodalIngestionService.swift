@@ -232,7 +232,7 @@ struct MultimodalIngestionService {
     @discardableResult
     func processNext() async throws -> Bool {
         guard let sql = fluent.db() as? any SQLDatabase else { return false }
-        try await recoverExpiredWork(sql: sql)
+        try await Self.recoverExpiredWork(sql: sql)
         try await expireAbandonedUploads(sql: sql)
         struct ClaimedItem: Decodable { let id: UUID }
         guard let claim = try await sql.raw("""
@@ -387,7 +387,11 @@ struct MultimodalIngestionService {
             )
         } catch {
             let shouldRetry = item.attempts < Self.maximumAutomaticAttempts
-            if shouldRetry { IngestionMetrics.retried.increment() } else { IngestionMetrics.failed.increment() }
+            if shouldRetry {
+                IngestionMetrics.retried.increment()
+            } else {
+                IngestionMetrics.failed.increment()
+            }
             item.state = shouldRetry ? IngestionItemStateDTO.queued.rawValue : IngestionItemStateDTO.blockedCapability.rawValue
             item.nextAttemptAt = shouldRetry ? Date().addingTimeInterval(Self.retryDelay(for: item.attempts)) : nil
             item.leaseExpiresAt = nil
@@ -489,7 +493,7 @@ struct MultimodalIngestionService {
             contentType: contentType, sizeBytes: item.sizeBytes ?? item.uploadedBytes, sha256: sha
         )
         try await row.save(on: fluent.db())
-        return (try row.requireID(), sha)
+        return try (row.requireID(), sha)
     }
 
     private func validate(_ item: IngestionCreateItemRequest) throws {
@@ -633,7 +637,7 @@ struct MultimodalIngestionService {
         vaultPaths.tenantRoot(for: tenantID).appendingPathComponent("tmp/ingestion/\(itemID.uuidString)")
     }
 
-    private func recoverExpiredWork(sql: any SQLDatabase) async throws {
+    static func recoverExpiredWork(sql: any SQLDatabase) async throws {
         try await sql.raw("""
         UPDATE ingestion_items
         SET state = 'queued', next_attempt_at = NOW(), lease_expires_at = NULL,
