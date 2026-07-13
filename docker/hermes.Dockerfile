@@ -12,9 +12,9 @@
 #
 # Rebuild via `docker compose build hermes` after editing
 # `hermes-skills/`.
-# Pinned by digest (was `:latest`) — `:latest` drift moved the hermes binary
-# layout on 2026-05-29 and broke startup (exit 127). Digest maps to the
-# `:latest` tag as of that date. Bump deliberately after verifying startup.
+# Pinned to the successful LuminaVaultHermesAgent build for source commit
+# 24cac9200f35b261694f91dd873507c9eec9792a. Bump deliberately only after its
+# API tests and GHCR image workflow pass.
 FROM ghcr.io/luminavault/luminavault-hermes-agent@sha256:715a4f77305970cdf8f521eceff3de89761ab629c8f1949d0b13ef2b0fe01f39
 
 # HER-XXX — bake Mnemosyne (Hermes Agent's native memory provider) into the
