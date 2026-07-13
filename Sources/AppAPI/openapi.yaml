@@ -3597,6 +3597,20 @@ paths:
       responses:
         '200': { description: Installed., content: { application/json: { schema: { $ref: '#/components/schemas/PluginInstallDTO' } } } }
 
+  /v1/marketplace/plugins/{slug}/upgrade:
+    post:
+      tags: [Marketplace]
+      operationId: marketplaceUpgrade
+      summary: Upgrade an installed plugin with an optimistic version lock and renewed permission consent.
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MarketplaceUpgradeRequest' } } }
+      responses:
+        '200': { description: Upgraded., content: { application/json: { schema: { $ref: '#/components/schemas/PluginInstallDTO' } } } }
+        '409': { description: The installed version changed or is already current. }
+
   /v1/marketplace/plugins/{slug}/tools/{toolName}/run:
     post:
       tags: [Marketplace]
@@ -8903,6 +8917,14 @@ components:
         versionId: { type: string, format: uuid }
         grantedPermissions: { type: array, items: { $ref: '#/components/schemas/PluginPermission' } }
         config: { type: object, additionalProperties: { type: string } }
+    MarketplaceUpgradeRequest:
+      type: object
+      required: [fromVersionId, toVersionId, grantedPermissions, config]
+      properties:
+        fromVersionId: { type: string, format: uuid }
+        toVersionId: { type: string, format: uuid }
+        grantedPermissions: { type: array, items: { $ref: '#/components/schemas/PluginPermission' } }
+        config: { type: object, additionalProperties: { type: string } }
     PublisherApplicationRequest:
       type: object
       required: [handle, displayName]
@@ -8934,6 +8956,7 @@ components:
         changelog: { type: string }
         artifactKey: { type: string }
         artifactSHA256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        artifactSignature: { type: string, pattern: '^[0-9a-f]{64}$' }
         manifestJSON: { type: string }
     MarketplaceSubmissionDTO:
       type: object
@@ -8983,11 +9006,12 @@ components:
         bytesBase64: { type: string, format: byte }
     MarketplaceArtifactUploadResponse:
       type: object
-      required: [artifactKey, sha256, sizeBytes]
+      required: [artifactKey, sha256, sizeBytes, signature]
       properties:
         artifactKey: { type: string }
         sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
         sizeBytes: { type: integer, minimum: 1, maximum: 10485760 }
+        signature: { type: string, pattern: '^[0-9a-f]{64}$' }
 
     KBCompileStartedDTO:
       type: object

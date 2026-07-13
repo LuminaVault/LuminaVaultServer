@@ -197,4 +197,5 @@ struct ServiceContainer {
     let pluginRunnerURL: String
     let pluginRunnerToken: String
     let pluginArtifactRoot: String
+    let pluginArtifactSigningKey: String
 }

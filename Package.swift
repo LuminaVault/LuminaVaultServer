@@ -22,7 +22,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         // v3.3.0 — Chat inbox, connections, diagnostics, and chat preference contracts.
-        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "3.11.0"),
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "3.12.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),

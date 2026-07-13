@@ -25,6 +25,7 @@ struct MarketplaceVersionCreateRequest: Codable {
     let changelog: String?
     let artifactKey: String?
     let artifactSHA256: String?
+    let artifactSignature: String?
     let manifestJSON: String?
 }
 
@@ -37,17 +38,20 @@ struct MarketplaceService {
     let logger: Logger
     let runner: any PluginRunnerClienting
     let artifactRoot: String
+    let artifactSigningKey: String
 
     init(
         fluent: Fluent,
         logger: Logger,
         runner: any PluginRunnerClienting = DisabledPluginRunnerClient(),
-        artifactRoot: String = "/tmp/luminavault-plugin-artifacts"
+        artifactRoot: String = "/tmp/luminavault-plugin-artifacts",
+        artifactSigningKey: String = ""
     ) {
         self.fluent = fluent
         self.logger = logger
         self.runner = runner
         self.artifactRoot = artifactRoot
+        self.artifactSigningKey = artifactSigningKey
     }
 
     private var db: any Database {
@@ -218,7 +222,12 @@ struct MarketplaceService {
         }
         if request.runtimeKind == .wasm {
             guard let digest = request.artifactSHA256, digest.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
-                  let artifactKey = request.artifactKey, !artifactKey.isEmpty
+                  let artifactKey = request.artifactKey, !artifactKey.isEmpty,
+                  let signature = request.artifactSignature,
+                  MarketplaceArtifactIntegrity.verify(
+                      signature: signature, artifactKey: artifactKey, sha256: digest,
+                      signingKey: artifactSigningKey
+                  )
             else { throw HTTPError(.unprocessableContent, message: "wasm_artifact_required") }
             try verifyArtifact(key: artifactKey, expectedSHA256: digest)
         }
@@ -233,6 +242,7 @@ struct MarketplaceService {
         row.changelog = request.changelog
         row.artifactKey = request.artifactKey
         row.artifactSHA256 = request.artifactSHA256
+        row.artifactSignature = request.artifactSignature
         row.manifestJSON = request.manifestJSON.map { Data($0.utf8) }
         do { try await row.create(on: db) }
         catch { throw HTTPError(.conflict, message: "version_already_exists") }
@@ -252,6 +262,9 @@ struct MarketplaceService {
         }
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let key = "\(publisher.handle)/\(slug)/\(digest).wasm"
+        guard artifactSigningKey.utf8.count >= 32 else {
+            throw HTTPError(.serviceUnavailable, message: "plugin_artifact_signing_unavailable")
+        }
         let root = URL(fileURLWithPath: artifactRoot, isDirectory: true).standardizedFileURL
         let url = root.appendingPathComponent(key).standardizedFileURL
         guard url.path.hasPrefix(root.path + "/") else { throw HTTPError(.unprocessableContent, message: "invalid_artifact_key") }
@@ -259,7 +272,12 @@ struct MarketplaceService {
         if !FileManager.default.fileExists(atPath: url.path) {
             try data.write(to: url, options: .atomic)
         }
-        return MarketplaceArtifactUploadResponse(artifactKey: key, sha256: digest, sizeBytes: data.count)
+        return MarketplaceArtifactUploadResponse(
+            artifactKey: key, sha256: digest, sizeBytes: data.count,
+            signature: MarketplaceArtifactIntegrity.sign(
+                artifactKey: key, sha256: digest, signingKey: artifactSigningKey
+            )
+        )
     }
 
     func submit(userID: UUID, slug: String, versionID: UUID) async throws -> MarketplaceSubmissionDTO {
@@ -270,7 +288,12 @@ struct MarketplaceService {
         guard version.status == MarketplaceVersionStatus.draft.rawValue || version.status == MarketplaceVersionStatus.rejected.rawValue else {
             throw HTTPError(.conflict, message: "version_not_submittable")
         }
-        let errors = Self.validate(version: version)
+        var errors = Self.validate(version: version)
+        if version.runtimeKind == MarketplaceRuntimeKind.wasm.rawValue,
+           artifactIntegrityIsValid(version) == false
+        {
+            errors.append("plugin_artifact_integrity_invalid")
+        }
         version.status = errors.isEmpty ? MarketplaceVersionStatus.inReview.rawValue : MarketplaceVersionStatus.draft.rawValue
         try await version.save(on: db)
         let row = try await MarketplaceSubmission.query(on: db).filter(\.$versionID == versionID).first() ?? MarketplaceSubmission()
@@ -315,6 +338,11 @@ struct MarketplaceService {
             throw HTTPError(.conflict, message: "submission_not_in_review")
         }
         let status: MarketplaceVersionStatus = request.approved ? .approved : .rejected
+        if request.approved, version.runtimeKind == MarketplaceRuntimeKind.wasm.rawValue,
+           artifactIntegrityIsValid(version) == false
+        {
+            throw HTTPError(.unprocessableContent, message: "plugin_artifact_integrity_invalid")
+        }
         submission.status = status.rawValue
         submission.reviewNote = request.note
         submission.reviewedByUserID = adminUserID
@@ -397,6 +425,12 @@ struct MarketplaceService {
         guard let expected = version.artifactSHA256,
               SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == expected
         else { throw HTTPError(.unprocessableContent, message: "plugin_artifact_digest_mismatch") }
+        guard let signature = version.artifactSignature,
+              MarketplaceArtifactIntegrity.verify(
+                  signature: signature, artifactKey: artifactKey, sha256: expected,
+                  signingKey: artifactSigningKey
+              )
+        else { throw HTTPError(.unprocessableContent, message: "plugin_artifact_signature_mismatch") }
 
         let manifest = try Self.manifest(version)
         guard manifest.tools.contains(where: { $0.name == toolName }) else {
@@ -609,7 +643,7 @@ struct MarketplaceService {
             errors.append("invalid_semver")
         }
         if version.runtimeKind == MarketplaceRuntimeKind.wasm.rawValue,
-           version.artifactKey == nil || version.artifactSHA256 == nil
+           version.artifactKey == nil || version.artifactSHA256 == nil || version.artifactSignature == nil
         {
             errors.append("wasm_artifact_required")
         }
@@ -646,6 +680,61 @@ struct MarketplaceService {
         guard digest == expectedSHA256 else {
             throw HTTPError(.unprocessableContent, message: "plugin_artifact_digest_mismatch")
         }
+    }
+
+    private func artifactIntegrityIsValid(_ version: MarketplaceVersion) -> Bool {
+        guard let artifactKey = version.artifactKey,
+              let sha256 = version.artifactSHA256,
+              let signature = version.artifactSignature,
+              MarketplaceArtifactIntegrity.verify(
+                  signature: signature, artifactKey: artifactKey, sha256: sha256,
+                  signingKey: artifactSigningKey
+              )
+        else { return false }
+        do {
+            try verifyArtifact(key: artifactKey, expectedSHA256: sha256)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
+enum MarketplaceArtifactIntegrity {
+    static func sign(artifactKey: String, sha256: String, signingKey: String) -> String {
+        let key = SymmetricKey(data: Data(signingKey.utf8))
+        let authenticationCode = HMAC<SHA256>.authenticationCode(
+            for: Data("\(artifactKey):\(sha256)".utf8), using: key
+        )
+        return authenticationCode.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func verify(signature: String, artifactKey: String, sha256: String, signingKey: String) -> Bool {
+        guard signingKey.utf8.count >= 32,
+              signature.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
+              let authenticationCode = Data(hexString: signature)
+        else { return false }
+        return HMAC<SHA256>.isValidAuthenticationCode(
+            authenticationCode,
+            authenticating: Data("\(artifactKey):\(sha256)".utf8),
+            using: SymmetricKey(data: Data(signingKey.utf8))
+        )
+    }
+}
+
+private extension Data {
+    init?(hexString: String) {
+        guard hexString.count.isMultiple(of: 2) else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(hexString.count / 2)
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let next = hexString.index(index, offsetBy: 2)
+            guard let byte = UInt8(hexString[index ..< next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self.init(bytes)
     }
 }
 

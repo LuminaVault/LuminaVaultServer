@@ -25,6 +25,7 @@ struct MarketplaceController {
         router.get("plugins/:slug/reviews", use: reviews)
         router.put("plugins/:slug/rating", use: rate)
         router.post("plugins/:slug/install", use: install)
+        router.post("plugins/:slug/upgrade", use: upgrade)
         router.post("plugins/:slug/tools/:toolName/run", use: runTool)
 
         router.post("publisher/apply", use: applyPublisher)
@@ -73,6 +74,13 @@ struct MarketplaceController {
         return try await plugins.installMarketplace(
             tenantID: ctx.requireTenantID(), slug: Self.path(ctx, "slug"),
             versionID: body.versionId, grantedPermissions: body.grantedPermissions, config: body.config
+        )
+    }
+
+    @Sendable private func upgrade(_ req: Request, ctx: AppRequestContext) async throws -> PluginInstallDTO {
+        let body = try await req.decode(as: MarketplaceUpgradeRequest.self, context: ctx)
+        return try await plugins.upgradeMarketplace(
+            tenantID: ctx.requireTenantID(), slug: Self.path(ctx, "slug"), request: body
         )
     }
 

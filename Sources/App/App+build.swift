@@ -212,7 +212,8 @@ func buildApplication(
         photonSidecarToken: reader.string(forKey: "photon.sidecarToken", isSecret: true, default: ""),
         pluginRunnerURL: reader.string(forKey: "plugin.runnerUrl", default: "http://plugin-runner:8090"),
         pluginRunnerToken: reader.string(forKey: "plugin.runnerToken", isSecret: true, default: ""),
-        pluginArtifactRoot: reader.string(forKey: "plugin.artifactRoot", default: "/app/data/plugin-artifacts")
+        pluginArtifactRoot: reader.string(forKey: "plugin.artifactRoot", default: "/app/data/plugin-artifacts"),
+        pluginArtifactSigningKey: reader.string(forKey: "plugin.artifactSigningKey", isSecret: true, default: "")
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -598,6 +599,17 @@ func buildRouter(
         }
         Logger(label: "lv.hermes").warning(
             "HERMES_API_KEY not set — outbound Hermes gateway calls will be unauthenticated (dev only). Run `make hermes-bootstrap` and restart the stack."
+        )
+    }
+    if !services.pluginRunnerToken.isEmpty, services.pluginArtifactSigningKey.utf8.count < 32 {
+        if lvEnvironment != "dev" {
+            fatalError(
+                "PLUGIN_ARTIFACT_SIGNING_KEY must contain at least 32 bytes when the plugin runner is enabled. "
+                    + "Use a secret independent from PLUGIN_RUNNER_TOKEN."
+            )
+        }
+        Logger(label: "lv.marketplace").warning(
+            "PLUGIN_ARTIFACT_SIGNING_KEY is missing or too short; third-party WASM publishing is disabled."
         )
     }
 
@@ -2003,7 +2015,8 @@ func buildRouter(
             fluent: services.fluent,
             logger: Logger(label: "lv.marketplace"),
             runner: pluginRunner,
-            artifactRoot: services.pluginArtifactRoot
+            artifactRoot: services.pluginArtifactRoot,
+            artifactSigningKey: services.pluginArtifactSigningKey
         )
         let marketplaceGroup = router.group("/v1/marketplace")
             .add(middleware: jwtAuthenticator)

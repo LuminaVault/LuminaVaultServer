@@ -138,14 +138,17 @@ struct PluginService {
         guard config.keys.allSatisfy(allowed.contains) else {
             throw HTTPError(.badRequest, message: ErrorCode.unknownField.rawValue)
         }
+        let existing = try await loadInstall(tenantID: tenantID, slug: slug)
+        var effectiveConfig = try existing.map { try openConfig($0, tenantID: tenantID) } ?? [:]
+        effectiveConfig.merge(config) { _, replacement in replacement }
         for field in version.configFields where field.isRequired {
-            guard let value = config[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            guard let value = effectiveConfig[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
                 throw HTTPError(.badRequest, message: "\(ErrorCode.missingField.rawValue):\(field.key)")
             }
         }
 
-        let sealed = try seal(config, tenantID: tenantID)
-        let row = try await loadInstall(tenantID: tenantID, slug: slug) ?? PluginInstall(
+        let sealed = try seal(effectiveConfig, tenantID: tenantID)
+        let row = existing ?? PluginInstall(
             tenantID: tenantID, pluginSlug: slug,
             configCiphertext: sealed.ciphertext, configNonce: sealed.nonce
         )
@@ -157,6 +160,37 @@ struct PluginService {
         try await row.save(on: fluent.db())
         logger.info("marketplace plugin installed tenant=\(tenantID) slug=\(slug) version=\(version.version)")
         return try Self.dto(row)
+    }
+
+    /// Upgrades an existing marketplace install with an optimistic version
+    /// lock. Existing sealed configuration is retained unless the user
+    /// explicitly supplies replacement values. The target version's complete
+    /// permission set must be consented to again, preventing permission creep.
+    func upgradeMarketplace(
+        tenantID: UUID,
+        slug: String,
+        request: MarketplaceUpgradeRequest
+    ) async throws -> PluginInstallDTO {
+        let row = try await loadInstall(tenantID: tenantID, slug: slug)
+        guard let row else {
+            throw HTTPError(.notFound, message: ErrorCode.installNotFound.rawValue)
+        }
+        guard row.marketplaceVersionID == request.fromVersionId else {
+            throw HTTPError(.conflict, message: "marketplace_install_version_changed")
+        }
+        guard request.fromVersionId != request.toVersionId else {
+            throw HTTPError(.conflict, message: "marketplace_version_already_installed")
+        }
+
+        var config = try openConfig(row, tenantID: tenantID)
+        config.merge(request.config) { _, replacement in replacement }
+        return try await installMarketplace(
+            tenantID: tenantID,
+            slug: slug,
+            versionID: request.toVersionId,
+            grantedPermissions: request.grantedPermissions,
+            config: config
+        )
     }
 
     func update(

@@ -141,6 +141,7 @@ services:
       PLUGIN_RUNNER_URL: http://plugin-runner:8090
       PLUGIN_RUNNER_TOKEN: ${PLUGIN_RUNNER_TOKEN:-dev-plugin-runner-token-change-me-32}
       PLUGIN_ARTIFACT_ROOT: /app/data/plugin-artifacts
+      PLUGIN_ARTIFACT_SIGNING_KEY: ${PLUGIN_ARTIFACT_SIGNING_KEY:-dev-artifact-signing-key-change-me-32}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       # OAuth providers — interpolated from .env so dev matches configured IDs.
       OAUTH_APPLE_CLIENTID: ${OAUTH_APPLE_CLIENTID:-}

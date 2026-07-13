@@ -60,6 +60,7 @@ environments reject a non-HTTPS base URL.
 | `PLUGIN_RUNNER_URL` | When WASM execution is enabled | `http://plugin-runner:8090` | Internal runner base URL. Never expose it publicly. |
 | `PLUGIN_RUNNER_TOKEN` | Production | none | Random API-to-runner bearer secret, minimum 32 characters. |
 | `PLUGIN_ARTIFACT_ROOT` | When publishing WASM | `/app/data/plugin-artifacts` | Persistent reviewed-artifact cache mounted only into the API. |
+| `PLUGIN_ARTIFACT_SIGNING_KEY` | Production | none | Independent 32+ byte HMAC key used to sign immutable artifacts. Do not reuse the runner or JWT secret. |
 
 The runner must remain non-root with a read-only root filesystem, all Linux
 capabilities dropped, `no-new-privileges`, PID/memory/CPU limits, and no host
@@ -67,6 +68,9 @@ port. Guest modules receive no WASI environment, filesystem, socket, clock, or
 process imports. Only reviewed `luminavault.*_allowed` grant checks are linked;
 unknown imports fail closed. Rotate `PLUGIN_RUNNER_TOKEN` by restarting the API and runner
 in the same deployment.
+Rotating `PLUGIN_ARTIFACT_SIGNING_KEY` invalidates existing third-party WASM
+versions. Re-sign and republish them before rotation, or keep the previous key
+available until all installed versions have migrated.
 
 ### Hermes gateway authentication
 

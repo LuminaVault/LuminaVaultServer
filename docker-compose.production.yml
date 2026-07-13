@@ -93,6 +93,7 @@ services:
       PLUGIN_RUNNER_URL: http://plugin-runner:8090
       PLUGIN_RUNNER_TOKEN: ${PLUGIN_RUNNER_TOKEN:?PLUGIN_RUNNER_TOKEN required}
       PLUGIN_ARTIFACT_ROOT: /app/data/plugin-artifacts
+      PLUGIN_ARTIFACT_SIGNING_KEY: ${PLUGIN_ARTIFACT_SIGNING_KEY:?PLUGIN_ARTIFACT_SIGNING_KEY required}
       BYO_HERMES_ALLOW_PRIVATE: ${BYO_HERMES_ALLOW_PRIVATE:-false}
       # Must be VAULT_ROOT_PATH (swift-configuration maps `vault.rootPath` →
       # VAULT_ROOT_PATH). The old `VAULT_ROOTPATH` never matched, so the app
