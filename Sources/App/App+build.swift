@@ -1554,7 +1554,12 @@ func buildRouter(
     // Evidence-backed claim/entity/event graph. Kept on a separate contract
     // so older clients continue decoding the legacy memory graph unchanged.
     let knowledgeController = KnowledgeGraphController(
-        service: KnowledgeGraphService(fluent: services.fluent)
+        service: KnowledgeGraphService(
+            fluent: services.fluent,
+            transport: routedTransport,
+            model: services.hermesDefaultModel,
+            logger: Logger(label: "lv.knowledge.reasoning")
+        )
     )
     let knowledgeGroup = router.group("/v1/knowledge")
         .add(middleware: jwtAuthenticator)

@@ -61,7 +61,7 @@ struct KnowledgeGraphController {
         let (events, continuation) = AsyncThrowingStream<ReasoningStreamEventDTO, Error>.makeStream()
         let work = Task {
             do {
-                let response = try await service.reason(tenantID: tenantID, request: body)
+                let response = try await service.ground(tenantID: tenantID, request: body)
                 continuation.yield(ReasoningStreamEventDTO(
                     type: "context",
                     response: ReasoningQueryResponse(
@@ -73,24 +73,39 @@ struct KnowledgeGraphController {
                         suggestions: []
                     )
                 ))
-                let words = response.answer.split(separator: " ", omittingEmptySubsequences: false)
-                for (index, word) in words.enumerated() {
-                    guard Task.isCancelled == false else { throw CancellationError() }
-                    continuation.yield(ReasoningStreamEventDTO(
-                        type: "token",
-                        message: index == words.startIndex ? String(word) : " \(word)"
-                    ))
+                var answer = ""
+                if response.confidence > 0 {
+                    do {
+                        for try await chunk in try service.streamAnswer(
+                            tenantID: tenantID,
+                            query: body.query,
+                            grounded: response
+                        ) {
+                            guard Task.isCancelled == false else { throw CancellationError() }
+                            guard !chunk.delta.isEmpty else { continue }
+                            answer += chunk.delta
+                            continuation.yield(ReasoningStreamEventDTO(type: "token", message: chunk.delta))
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        if answer.isEmpty {
+                            answer = response.answer
+                            continuation.yield(ReasoningStreamEventDTO(type: "token", message: answer))
+                        } else {
+                            let interruption = "\n\nSynthesis was interrupted; verify the evidence below."
+                            answer += interruption
+                            continuation.yield(ReasoningStreamEventDTO(type: "token", message: interruption))
+                        }
+                    }
+                } else {
+                    answer = response.answer
+                    continuation.yield(ReasoningStreamEventDTO(type: "token", message: answer))
                 }
+                let finalResponse = response.replacingAnswer(answer)
                 continuation.yield(ReasoningStreamEventDTO(
                     type: "suggestions",
-                    response: ReasoningQueryResponse(
-                        answer: response.answer,
-                        paths: response.paths,
-                        evidence: response.evidence,
-                        confidence: response.confidence,
-                        caveats: response.caveats,
-                        suggestions: response.suggestions
-                    )
+                    response: finalResponse
                 ))
                 continuation.yield(ReasoningStreamEventDTO(type: "done"))
                 continuation.finish()
