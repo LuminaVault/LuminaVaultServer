@@ -7,7 +7,7 @@ struct M98_CreateMultimodalIngestion: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS ingestion_batches (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             space_id UUID REFERENCES spaces(id) ON DELETE SET NULL,
             state TEXT NOT NULL DEFAULT 'active',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -16,7 +16,7 @@ struct M98_CreateMultimodalIngestion: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS ingestion_items (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             batch_id UUID NOT NULL REFERENCES ingestion_batches(id) ON DELETE CASCADE,
             kind TEXT NOT NULL CHECK (kind IN ('file', 'url')),
             state TEXT NOT NULL,

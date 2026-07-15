@@ -1,6 +1,7 @@
 @testable import App
 import FluentKit
 import Foundation
+import HTTPTypes
 import Hummingbird
 import HummingbirdTesting
 import LuminaVaultShared
@@ -29,7 +30,8 @@ struct MultimodalIngestionAPIIntegrationTests {
     private static func createFileBatch(
         client: some TestClientProtocol,
         token: String,
-        bytes: Data
+        bytes: Data,
+        vaultID: UUID? = nil
     ) async throws -> IngestionBatchDTO {
         let request = IngestionCreateRequest(items: [
             IngestionCreateItemRequest(
@@ -39,14 +41,43 @@ struct MultimodalIngestionAPIIntegrationTests {
                 sizeBytes: Int64(bytes.count)
             ),
         ])
+        var headers: HTTPFields = [.authorization: "Bearer \(token)", .contentType: "application/json"]
+        if let vaultID {
+            headers[VaultAccessService.vaultHeader] = vaultID.uuidString
+        }
         return try await client.execute(
             uri: "/v1/ingestions",
             method: .post,
-            headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+            headers: headers,
             body: ByteBuffer(data: JSONEncoder().encode(request))
         ) { response in
             #expect(response.status == .ok)
             return try decode(IngestionBatchDTO.self, response.body)
+        }
+    }
+
+    private static func createTeamVault(
+        client: some TestClientProtocol,
+        token: String
+    ) async throws -> VaultResponse {
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let team = try await client.execute(
+            uri: "/v1/teams",
+            method: .post,
+            headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+            body: ByteBuffer(string: #"{"name":"Ingestion Team \#(suffix)"}"#)
+        ) { response in
+            #expect(response.status == .ok)
+            return try decode(TeamResponse.self, response.body)
+        }
+        return try await client.execute(
+            uri: "/v1/teams/\(team.id)/vaults",
+            method: .post,
+            headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+            body: ByteBuffer(string: #"{"name":"Shared Capture"}"#)
+        ) { response in
+            #expect(response.status == .ok)
+            return try decode(VaultResponse.self, response.body)
         }
     }
 
@@ -128,6 +159,61 @@ struct MultimodalIngestionAPIIntegrationTests {
                 headers: [.authorization: "Bearer \(owner.accessToken)"]
             ) { try Self.decode(IngestionBatchDTO.self, $0.body) }
             #expect(ownerDetail.items.first?.state == .awaitingUpload)
+        }
+    }
+
+    @Test
+    func `shared vault ingestion uses requested vault partition`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let owner = try await Self.register(client: client, prefix: "ing-shared")
+            let vault = try await Self.createTeamVault(client: client, token: owner.accessToken)
+            let bytes = Data("team vault upload".utf8)
+            let batch = try await Self.createFileBatch(
+                client: client,
+                token: owner.accessToken,
+                bytes: bytes,
+                vaultID: vault.id
+            )
+            let item = try #require(batch.items.first)
+            let vaultHeaders: HTTPFields = [
+                .authorization: "Bearer \(owner.accessToken)",
+                VaultAccessService.vaultHeader: vault.id.uuidString,
+            ]
+
+            try await client.execute(
+                uri: "/v1/ingestions/\(batch.id)/items/\(item.id)/chunks/0",
+                method: .put,
+                headers: vaultHeaders,
+                body: ByteBuffer(data: bytes)
+            ) { response in
+                #expect(response.status == .noContent)
+            }
+            let completed = try await client.execute(
+                uri: "/v1/ingestions/\(batch.id)/items/\(item.id)/complete",
+                method: .post,
+                headers: vaultHeaders
+            ) { response in
+                #expect(response.status == .ok)
+                return try Self.decode(IngestionBatchDTO.self, response.body)
+            }
+            let completedItem = try #require(completed.items.first)
+            let vaultFileID = try #require(completedItem.vaultFileID)
+
+            try await withTestFluent(label: "ingestion.shared-vault.assert") { fluent in
+                let storedBatch = try #require(try await IngestionBatch.find(batch.id, on: fluent.db()))
+                #expect(storedBatch.tenantID == vault.id)
+                let storedFile = try #require(try await VaultFile.find(vaultFileID, on: fluent.db()))
+                #expect(storedFile.tenantID == vault.id)
+            }
+
+            try await client.execute(
+                uri: "/v1/ingestions/\(batch.id)",
+                method: .get,
+                headers: [.authorization: "Bearer \(owner.accessToken)"]
+            ) { response in
+                #expect(response.status == .notFound)
+            }
         }
     }
 
