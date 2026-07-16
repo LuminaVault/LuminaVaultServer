@@ -27,7 +27,7 @@ extension SpaceDTO {
             category: space.category,
             noteCount: space.noteCount,
             lastCompiledAt: space.lastCompiledAt,
-            createdAt: space.createdAt,
+            createdAt: space.createdAt
         )
     }
 }
@@ -63,7 +63,7 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category,
+            category: body.category
         )
         let actorID = try ctx.requireTenantID()
         space.createdByUserID = actorID
@@ -95,7 +95,7 @@ struct SpacesController {
             description: body.description,
             color: body.color,
             icon: body.icon,
-            category: body.category,
+            category: body.category
         )
         space.updatedByUserID = try ctx.requireTenantID()
         try await space.save(on: service.fluent.db())

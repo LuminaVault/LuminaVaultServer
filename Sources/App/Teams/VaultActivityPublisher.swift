@@ -33,7 +33,7 @@ actor VaultActivityPublisher {
     }
 }
 
-struct VaultActivityRecorder: Sendable {
+struct VaultActivityRecorder {
     let fluent: Fluent
     let publisher: VaultActivityPublisher
 
