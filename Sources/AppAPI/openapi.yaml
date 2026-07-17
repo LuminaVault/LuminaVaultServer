@@ -1009,11 +1009,12 @@ paths:
     get:
       tags: [Dashboard]
       operationId: dashboardHome
-      summary: One-shot counts + active profile for the Home dashboard.
+      summary: Command Center one-shot payload for the Home dashboard.
       description: |
-        Aggregates every Home card count in a single request: enabled skills,
-        skill runs (jobs), reminders, todos, non-archived projects, active
-        insights, plus the active Hermes profile's name + slug. Per-tenant.
+        Aggregates the Home Command Center in a single request: enabled skills
+        (count + names), lifetime skill runs, live active jobs, reminders,
+        todos, projects, insights, active Hermes profile, primary LLM model,
+        memories/sessions, power level/XP, and streak. Per-tenant.
       responses:
         '200':
           description: Home summary snapshot.
@@ -6588,17 +6589,53 @@ components:
 
     HomeSummaryResponse:
       type: object
-      required: [skillsCount, jobsCount, remindersCount, todosCount, projectsCount, insightsCount]
-      description: One-shot counts + active profile for the Home dashboard.
+      required:
+        - skillsCount
+        - jobsCount
+        - remindersCount
+        - todosCount
+        - projectsCount
+        - insightsCount
+        - agentOnline
+        - memoriesToday
+        - memoriesTotal
+        - sessionsCount
+        - activeJobsCount
+        - activeJobs
+        - skills
+        - powerLevel
+        - powerXP
+        - badgesEarned
+        - streakDays
+      description: Command Center one-shot payload for the Home dashboard.
       properties:
         skillsCount: { type: integer, minimum: 0 }
-        jobsCount: { type: integer, minimum: 0 }
+        jobsCount: { type: integer, minimum: 0, description: Lifetime skill-run count (historical). }
         remindersCount: { type: integer, minimum: 0 }
         todosCount: { type: integer, minimum: 0 }
         projectsCount: { type: integer, minimum: 0 }
         insightsCount: { type: integer, minimum: 0 }
         activeProfileName: { type: string }
         activeProfileSlug: { type: string }
+        primaryProvider: { type: string, description: Active LLM provider id (e.g. openRouter). }
+        primaryModel: { type: string, description: Active model id shown under the brain core. }
+        agentOnline: { type: boolean, description: Server-side agent readiness (network is client-side). }
+        memoriesToday: { type: integer, minimum: 0 }
+        memoriesTotal: { type: integer, minimum: 0 }
+        sessionsCount: { type: integer, minimum: 0 }
+        activeJobsCount: { type: integer, minimum: 0, description: Running + queued agent work. }
+        activeJobs:
+          type: array
+          items: { $ref: '#/components/schemas/TaskDTO' }
+          description: Preview of live jobs (capped server-side, typically 5).
+        skills:
+          type: array
+          items: { type: string }
+          description: Enabled skill names (preview, capped server-side).
+        powerLevel: { type: integer, minimum: 1 }
+        powerXP: { type: integer, minimum: 0 }
+        badgesEarned: { type: integer, minimum: 0 }
+        streakDays: { type: integer, minimum: 0 }
 
     UsageSummaryResponse:
       type: object

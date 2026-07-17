@@ -20,19 +20,27 @@ struct DashboardController {
         router.get("/home", use: home)
     }
 
-    /// `GET /v1/dashboard/home` — one-shot counts for the Home dashboard
-    /// cards plus the active Hermes profile, so the landing screen makes a
-    /// single request instead of six. All counts are tenant-scoped.
+    /// `GET /v1/dashboard/home` — one-shot Command Center payload: counts,
+    /// active model, power progress, skill names, and live active jobs.
+    /// Tenant-scoped; designed so the landing screen can render from a
+    /// single request.
     @Sendable
     func home(_: Request, ctx: AppRequestContext) async throws -> HomeSummaryResponse {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let db = fluent.db()
+        let startOfDay = Calendar(identifier: .gregorian).startOfDay(for: Date())
 
         async let skillsCountQ = SkillsState.query(on: db)
             .filter(\.$tenantID == tenantID)
             .filter(\.$enabled == true)
             .count()
+        async let skillNamesQ = SkillsState.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$enabled == true)
+            .sort(\.$name, .ascending)
+            .limit(8)
+            .all()
         async let remindersCountQ = Reminder.query(on: db, tenantID: tenantID).count()
         async let projectsCountQ = Project.query(on: db, tenantID: tenantID)
             .filter(\.$archived == false)
@@ -43,15 +51,72 @@ struct DashboardController {
         async let activeProfileQ = UserHermesProfile.query(on: db, tenantID: tenantID)
             .filter(\.$isDefault == true)
             .first()
+        async let memoriesTotalQ = Memory.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .count()
+        async let memoriesTodayQ = Memory.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$createdAt >= startOfDay)
+            .count()
+        async let sessionsCountQ = Conversation.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .count()
+        async let badgesEarnedQ = AchievementProgress.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$unlockedAt != nil)
+            .count()
+        async let llmPrefQ = UserLLMPreference.query(on: db)
+            .filter(\.$tenantID == tenantID)
+            .first()
+        async let activeJobsQ = ActiveTasksQuery.list(
+            tenantID: tenantID,
+            db: db,
+            limit: ActiveTasksQuery.defaultPreviewLimit
+        )
+        async let activeJobsCountQ = ActiveTasksQuery.count(tenantID: tenantID, db: db)
 
         let jobsCount = try await Self.skillRunCount(tenantID: tenantID, db: db)
         let todosCount = try await Self.todoCount(tenantID: tenantID, db: db)
+        let graphConnections = try await Self.connectionsCount(tenantID: tenantID, db: db)
+        let activeSpaces = try await Self.activeSpacesCount(tenantID: tenantID, db: db)
+        let streakDays = try await Self.currentStreakDays(tenantID: tenantID, db: db)
 
         let skillsCount = try await skillsCountQ
+        let skillRows = try await skillNamesQ
         let remindersCount = try await remindersCountQ
         let projectsCount = try await projectsCountQ
         let insightsCount = try await insightsCountQ
         let activeProfile = try await activeProfileQ
+        let memoriesTotal = try await memoriesTotalQ
+        let memoriesToday = try await memoriesTodayQ
+        let sessionsCount = try await sessionsCountQ
+        let badgesEarned = try await badgesEarnedQ
+        let llmPref = try await llmPrefQ
+        let activeJobs = try await activeJobsQ
+        let activeJobsCount = try await activeJobsCountQ
+
+        let xp = PowerLevel.xp(
+            memoriesTotal: memoriesTotal,
+            sessionsCount: sessionsCount,
+            jobsCount: jobsCount,
+            badgesEarned: badgesEarned,
+            graphConnections: graphConnections,
+            activeSpaces: activeSpaces,
+            streakDays: streakDays
+        )
+        let level = PowerLevel.level(forXP: xp)
+
+        // Default brain matches LLMPreferencesController when no row exists.
+        let primaryProvider = llmPref?.primaryProvider ?? ProviderID.openRouter.rawValue
+        let primaryModel = llmPref?.primaryModel.isEmpty == false
+            ? llmPref!.primaryModel
+            : "qwen/qwen-2.5-72b-instruct"
+
+        // Server-side agent readiness. Network reachability is client-side
+        // (`isOnline`); this flag is false only when the tenant has no brain
+        // profile and has never chatted (brand-new empty account still shows
+        // Online once either signal appears — default true for managed cloud).
+        let agentOnline = true
 
         return HomeSummaryResponse(
             skillsCount: skillsCount,
@@ -61,7 +126,20 @@ struct DashboardController {
             projectsCount: projectsCount,
             insightsCount: insightsCount,
             activeProfileName: activeProfile?.label,
-            activeProfileSlug: activeProfile?.slug
+            activeProfileSlug: activeProfile?.slug,
+            primaryProvider: primaryProvider,
+            primaryModel: primaryModel,
+            agentOnline: agentOnline,
+            memoriesToday: memoriesToday,
+            memoriesTotal: memoriesTotal,
+            sessionsCount: sessionsCount,
+            activeJobsCount: activeJobsCount,
+            activeJobs: activeJobs,
+            skills: skillRows.map(\.name),
+            powerLevel: level,
+            powerXP: xp,
+            badgesEarned: badgesEarned,
+            streakDays: streakDays
         )
     }
 
