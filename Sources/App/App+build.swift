@@ -1135,7 +1135,9 @@ func buildRouter(
         fallback: legacyModelRouter,
         budget: routerTelemetry,
         ensemblesEnabled: cerberusParallelEnabled,
-        logger: routingLogger
+        logger: routingLogger,
+        credentials: userCredentialStore,
+        registry: providerRegistry
     )
     let modelRouter: any ModelRouter = cerberusExecutionMode == "active"
         ? cerberusRouter

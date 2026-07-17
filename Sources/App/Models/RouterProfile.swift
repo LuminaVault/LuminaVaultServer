@@ -9,6 +9,42 @@ struct RouterProfileDocument: Codable {
     var blockedProviders: [ProviderID]
     var defaultAction: RouterActionDTO
     var rules: [RouterRuleDTO]
+    /// Task-aware routing policy. Missing in legacy rows → `autoSmart`.
+    var routingPolicy: LLMRoutingPolicy
+
+    init(
+        objective: RouterObjectiveWeightsDTO,
+        budget: RouterBudgetPolicyDTO,
+        allowedProviders: [ProviderID],
+        blockedProviders: [ProviderID],
+        defaultAction: RouterActionDTO,
+        rules: [RouterRuleDTO],
+        routingPolicy: LLMRoutingPolicy = .autoSmart
+    ) {
+        self.objective = objective
+        self.budget = budget
+        self.allowedProviders = allowedProviders
+        self.blockedProviders = blockedProviders
+        self.defaultAction = defaultAction
+        self.rules = rules
+        self.routingPolicy = routingPolicy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case objective, budget, allowedProviders, blockedProviders
+        case defaultAction, rules, routingPolicy
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        objective = try c.decode(RouterObjectiveWeightsDTO.self, forKey: .objective)
+        budget = try c.decode(RouterBudgetPolicyDTO.self, forKey: .budget)
+        allowedProviders = try c.decodeIfPresent([ProviderID].self, forKey: .allowedProviders) ?? []
+        blockedProviders = try c.decodeIfPresent([ProviderID].self, forKey: .blockedProviders) ?? []
+        defaultAction = try c.decode(RouterActionDTO.self, forKey: .defaultAction)
+        rules = try c.decodeIfPresent([RouterRuleDTO].self, forKey: .rules) ?? []
+        routingPolicy = try c.decodeIfPresent(LLMRoutingPolicy.self, forKey: .routingPolicy) ?? .autoSmart
+    }
 }
 
 final class RouterProfile: Model, TenantModel, @unchecked Sendable {

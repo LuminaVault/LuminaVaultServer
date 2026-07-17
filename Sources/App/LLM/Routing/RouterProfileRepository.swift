@@ -164,15 +164,29 @@ actor RouterProfileRepository {
         row.name = "Default"
         row.mode = mode.rawValue
         row.isPreset = true
+        // Multi-tier seed so Auto (Smart) has cheap → strong options from day one.
+        // Preference primary stays first; catalog expands further at request time.
+        var seedRoutes = [RouterModelRouteDTO(provider: primaryProvider, model: primaryModel)] + fallbacks
+        let autoSeed: [RouterModelRouteDTO] = [
+            RouterModelRouteDTO(provider: .gemini, model: "gemini-2.5-flash"),
+            RouterModelRouteDTO(provider: .anthropic, model: "claude-3-5-haiku-20241022"),
+            RouterModelRouteDTO(provider: .openai, model: "gpt-4o-mini"),
+            RouterModelRouteDTO(provider: .openRouter, model: "deepseek/deepseek-chat"),
+            RouterModelRouteDTO(provider: .anthropic, model: "claude-sonnet-4-6"),
+            RouterModelRouteDTO(provider: .openai, model: "gpt-4o"),
+            RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1"),
+        ]
+        for route in autoSeed where !seedRoutes.contains(where: { $0.id == route.id }) {
+            seedRoutes.append(route)
+        }
         row.document = RouterProfileDocument(
-            objective: .init(),
+            objective: .init(quality: 50, cost: 25, latency: 25),
             budget: .init(),
             allowedProviders: legacy?.allowedProviders.compactMap { $0.toShared() } ?? [],
             blockedProviders: legacy?.blockedProviders.compactMap { $0.toShared() } ?? [],
-            defaultAction: RouterActionDTO(
-                routes: [RouterModelRouteDTO(provider: primaryProvider, model: primaryModel)] + fallbacks
-            ),
-            rules: []
+            defaultAction: RouterActionDTO(routes: seedRoutes),
+            rules: [],
+            routingPolicy: .autoSmart
         )
         row.revision = 1
         do {
@@ -207,7 +221,8 @@ actor RouterProfileRepository {
             allowedProviders: request.allowedProviders,
             blockedProviders: request.blockedProviders,
             defaultAction: request.defaultAction,
-            rules: request.rules
+            rules: request.rules,
+            routingPolicy: request.routingPolicy
         )
     }
 
@@ -223,6 +238,7 @@ actor RouterProfileRepository {
             blockedProviders: row.document.blockedProviders,
             defaultAction: row.document.defaultAction,
             rules: row.document.rules,
+            routingPolicy: row.document.routingPolicy,
             revision: row.revision,
             createdAt: row.createdAt,
             updatedAt: row.updatedAt

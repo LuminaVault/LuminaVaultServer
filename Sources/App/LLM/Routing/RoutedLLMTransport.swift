@@ -80,6 +80,9 @@ struct RoutedLLMTransport: HermesChatTransport {
             )
         }
         if let cerberus = decision.cerberus {
+            if cerberus.byokKeysRequired {
+                throw BYOKKeysRequiredError()
+            }
             guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
             publishRouting(cerberus, phase: .selected, routes: cerberus.routes)
         }
@@ -113,7 +116,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 await routerTelemetry.complete(metadata: cerberus, result: result)
                 publishUsage(cerberus, result: result)
             }
-            Self.publishRouteOutcome(ensemble.route)
+            Self.publishRouteOutcome(ensemble.route, cerberus: decision.cerberus)
             return ensemble.metadata
         }
         if let cerberus = decision.cerberus,
@@ -205,7 +208,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                     await routerTelemetry.complete(metadata: cerberus, result: result)
                     publishUsage(cerberus, result: result)
                 }
-                Self.publishRouteOutcome(candidate)
+                Self.publishRouteOutcome(candidate, cerberus: decision.cerberus)
                 return metadata
             } catch let providerError as ProviderError where providerError.isRecoverable {
                 lastRecoverable = providerError
@@ -293,6 +296,10 @@ struct RoutedLLMTransport: HermesChatTransport {
                 )
             }
             if let cerberus = decision.cerberus {
+                if cerberus.byokKeysRequired {
+                    continuation.finish(throwing: BYOKKeysRequiredError())
+                    return
+                }
                 guard !cerberus.budgetDenied else {
                     continuation.finish(throwing: UsageCapExceededError(retryAfter: 3600))
                     return
@@ -332,7 +339,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                     await routerTelemetry.complete(metadata: cerberus, result: result)
                     publishUsage(cerberus, result: result)
                 }
-                Self.publishRouteOutcome(ensemble.route)
+                Self.publishRouteOutcome(ensemble.route, cerberus: decision.cerberus)
                 continuation.finish()
                 return
             }
@@ -413,7 +420,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                             await routerTelemetry.complete(metadata: cerberus, result: result)
                             publishUsage(cerberus, result: result)
                         }
-                        Self.publishRouteOutcome(candidate)
+                        Self.publishRouteOutcome(candidate, cerberus: decision.cerberus)
                         continuation.finish()
                         return
                     }
@@ -594,9 +601,16 @@ struct RoutedLLMTransport: HermesChatTransport {
         return Int64(tokensIn) * inputRate / 1_000_000 + Int64(tokensOut) * outputRate / 1_000_000
     }
 
-    private static func publishRouteOutcome(_ route: ModelRoute) {
+    private static func publishRouteOutcome(_ route: ModelRoute, cerberus: CerberusDecisionMetadata? = nil) {
         LLMRoutingContext.routeOutcomeSink?(
-            ModelProvenanceDTO(provider: route.provider.rawValue, model: route.modelID)
+            ModelProvenanceDTO(
+                provider: route.provider.rawValue,
+                model: route.modelID,
+                reason: cerberus?.reason,
+                routingPolicy: cerberus?.routingPolicy,
+                complexity: cerberus?.complexity,
+                taskType: cerberus?.taskType
+            )
         )
     }
 
