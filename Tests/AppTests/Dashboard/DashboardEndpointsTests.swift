@@ -5,19 +5,20 @@ import HummingbirdTesting
 import struct LuminaVaultShared.AuthResponse
 import struct LuminaVaultShared.DashboardProfileResponse
 import struct LuminaVaultShared.DashboardStatsResponse
+import struct LuminaVaultShared.HomeSummaryResponse
 import struct LuminaVaultShared.InsightListResponse
 import struct LuminaVaultShared.TaskListResponse
 import Testing
 
-/// HER-244 — contract tests for the OS Shell Dashboard endpoints:
+/// HER-244 / Command Center — contract tests for the OS Shell Dashboard:
 ///   - `GET /v1/dashboard/stats` (fluent-backed counters)
-///   - `GET /v1/tasks` (empty-list stub until HER-246)
-///   - `GET /v1/insights` (empty-list stub until HER-248)
+///   - `GET /v1/dashboard/profile` (power HUD)
+///   - `GET /v1/dashboard/home` (Command Center aggregate)
+///   - `GET /v1/tasks` (active workflow + gateway apply jobs)
+///   - `GET /v1/insights`
 ///
 /// Each endpoint must require a Bearer JWT and return its declared
-/// `LuminaVaultShared` DTO shape. Real data wiring for Tasks and
-/// Insights lands in their respective tickets; here we only enforce
-/// the contract.
+/// `LuminaVaultShared` DTO shape.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct DashboardEndpointsTests {
     private static func randomUser() -> (email: String, username: String) {
@@ -155,6 +156,52 @@ struct DashboardEndpointsTests {
                 )
                 #expect(body.tasks.isEmpty)
                 #expect(body.nextCursor == nil)
+            }
+        }
+    }
+
+    // MARK: - /v1/dashboard/home
+
+    @Test
+    func `dashboard home requires auth`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            try await client.execute(
+                uri: "/v1/dashboard/home",
+                method: .get
+            ) { response in
+                #expect(response.status == .unauthorized)
+            }
+        }
+    }
+
+    @Test
+    func `dashboard home returns command center defaults for a fresh tenant`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/dashboard/home",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let home = try testJSONDecoder().decode(
+                    HomeSummaryResponse.self,
+                    from: Data(buffer: response.body)
+                )
+                #expect(home.skillsCount == 0)
+                #expect(home.jobsCount == 0)
+                #expect(home.activeJobsCount == 0)
+                #expect(home.activeJobs.isEmpty)
+                #expect(home.skills.isEmpty)
+                #expect(home.memoriesTotal == 0)
+                #expect(home.sessionsCount == 0)
+                #expect(home.powerLevel == 1)
+                #expect(home.powerXP == 0)
+                #expect(home.agentOnline == true)
+                #expect(home.primaryModel != nil)
+                #expect(!(home.primaryModel ?? "").isEmpty)
             }
         }
     }

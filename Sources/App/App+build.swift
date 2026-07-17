@@ -2110,7 +2110,7 @@ func buildRouter(
         managedServices.append(AnalyticsMaintenanceService(fluent: services.fluent))
     }
 
-    let tasksController = TasksController(logger: Logger(label: "lv.tasks"))
+    let tasksController = TasksController(fluent: services.fluent, logger: Logger(label: "lv.tasks"))
     let tasksGroup = router.group("/v1/tasks").add(middleware: jwtAuthenticator)
     tasksController.addRoutes(to: tasksGroup)
 
