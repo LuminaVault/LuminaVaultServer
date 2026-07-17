@@ -1,7 +1,7 @@
 import Foundation
 
-struct LocalMemorySyncCursor: Codable, Equatable, Sendable {
-    enum Kind: Int, Codable, Sendable {
+struct LocalMemorySyncCursor: Codable, Equatable {
+    enum Kind: Int, Codable {
         case memory
         case deletion
     }
@@ -52,8 +52,8 @@ enum LocalMemorySyncCursorError: Error {
     case invalid
 }
 
-struct LocalMemorySyncEvent: Sendable {
-    enum Payload: Sendable {
+struct LocalMemorySyncEvent {
+    enum Payload {
         case memory(Memory)
         case deletion(MemorySyncTombstone)
     }

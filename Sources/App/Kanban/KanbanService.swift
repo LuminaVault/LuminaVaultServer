@@ -290,7 +290,7 @@ struct KanbanService {
                 runAt: effectiveRunAt,
                 domain: job.domain,
                 spec: spec,
-                spaceID: job.spaceID,
+                spaceID: job.spaceID
             )
             job.jobSlug = slug
             job.promotedAt = Date()
@@ -380,7 +380,7 @@ struct KanbanService {
         let jobConfig = c.extra?.job.map {
             CardJobConfigDTO(
                 source: $0.source, cron: $0.cron, runAt: $0.runAt, domain: $0.domain,
-                prompt: $0.prompt, spaceID: $0.spaceID, jobSlug: $0.jobSlug, promotedAt: $0.promotedAt,
+                prompt: $0.prompt, spaceID: $0.spaceID, jobSlug: $0.jobSlug, promotedAt: $0.promotedAt
             )
         }
         return CardDTO(id: c.id ?? UUID(), columnID: c.columnID, title: c.title, body: c.body,

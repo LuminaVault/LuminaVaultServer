@@ -111,7 +111,7 @@ struct KanbanController {
             boardID: boardID(ctx),
             columnID: id,
             title: body.title,
-            expectedVersion: expectedVersion(req, access: access),
+            expectedVersion: expectedVersion(req, access: access)
         )
         await record(access, ctx, "column.updated", "column", id, body.title)
         return result
@@ -125,7 +125,7 @@ struct KanbanController {
             tenantID: tenant,
             boardID: boardID(ctx),
             columnID: id,
-            expectedVersion: expectedVersion(req, access: access),
+            expectedVersion: expectedVersion(req, access: access)
         )
         await record(access, ctx, "column.deleted", "column", id, nil)
         return result
@@ -150,7 +150,7 @@ struct KanbanController {
             boardID: boardID(ctx),
             columnID: body.columnID,
             req: body,
-            expectedVersion: expectedVersion(req, access: access),
+            expectedVersion: expectedVersion(req, access: access)
         )
         let actorID = try ctx.requireTenantID()
         card.createdByUserID = actorID
@@ -167,7 +167,7 @@ struct KanbanController {
             rank: card.rank,
             updatedAt: card.updatedAt,
             createdByUserId: card.createdByUserID,
-            updatedByUserId: card.updatedByUserID,
+            updatedByUserId: card.updatedByUserID
         )
     }
 
@@ -218,7 +218,7 @@ struct KanbanController {
             tenantID: tenant,
             cardID: cardID(ctx),
             request: body,
-            expectedVersion: expectedVersion(req, access: access),
+            expectedVersion: expectedVersion(req, access: access)
         )
         try await record(access, ctx, "card.promoted", "card", cardID(ctx), promoted.title)
         return SkillDTO(
@@ -233,7 +233,7 @@ struct KanbanController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(promoted.spec.prefix(160)),
+            bodyExcerpt: String(promoted.spec.prefix(160))
         )
     }
 
