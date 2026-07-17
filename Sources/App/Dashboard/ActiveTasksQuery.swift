@@ -41,7 +41,9 @@ enum ActiveTasksQuery {
         tasks.sort { lhs, rhs in
             let lo = rank(lhs.state)
             let ro = rank(rhs.state)
-            if lo != ro { return lo < ro }
+            if lo != ro {
+                return lo < ro
+            }
             let lt = lhs.startedAt ?? .distantPast
             let rt = rhs.startedAt ?? .distantPast
             return lt > rt
@@ -175,24 +177,24 @@ enum ActiveTasksQuery {
     private static func mapWorkflowStatus(_ raw: String) -> TaskState {
         switch WorkflowRunStatus(rawValue: raw) {
         case .running:
-            return .running
+            .running
         case .queued, .waitingForApproval:
-            return .queued
+            .queued
         case .failed, .timedOut, .cancelled:
-            return .failed
+            .failed
         case .succeeded:
-            return .completed
+            .completed
         case .none:
-            return .queued
+            .queued
         }
     }
 
     private static func rank(_ state: TaskState) -> Int {
         switch state {
-        case .running: return 0
-        case .queued: return 1
-        case .failed: return 2
-        case .completed: return 3
+        case .running: 0
+        case .queued: 1
+        case .failed: 2
+        case .completed: 3
         }
     }
 }

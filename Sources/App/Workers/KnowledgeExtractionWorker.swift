@@ -599,7 +599,9 @@ actor KnowledgeExtractionWorker: Service {
                 bID: ordered.2,
                 bLabel: ordered.3
             ))
-            if result.count == 40 { break }
+            if result.count == 40 {
+                break
+            }
         }
         return result
     }

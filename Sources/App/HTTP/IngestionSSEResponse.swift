@@ -28,7 +28,9 @@ struct IngestionSSEResponse: ResponseGenerator {
                     try await writer.write(buffer)
                     cursor = event.id
                 }
-                if try await service.isTerminal(tenantID: tenantID, batchID: batchID) { break }
+                if try await service.isTerminal(tenantID: tenantID, batchID: batchID) {
+                    break
+                }
                 if events.isEmpty {
                     let heartbeat = ByteBuffer(string: ": heartbeat\n\n")
                     try await writer.write(heartbeat)

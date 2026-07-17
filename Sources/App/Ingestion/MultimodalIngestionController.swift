@@ -42,7 +42,9 @@ struct MultimodalIngestionController {
         headers[.contentType] = source.contentType
         headers[.cacheControl] = "private, no-store"
         headers[.acceptRanges] = "bytes"
-        if let etag = source.etag { headers[.eTag] = "\"\(etag)\"" }
+        if let etag = source.etag {
+            headers[.eTag] = "\"\(etag)\""
+        }
         headers[.contentDisposition] = "attachment; filename=\"\(source.fileName.replacingOccurrences(of: "\"", with: ""))\""
         if request.method == .head {
             headers[.contentLength] = String(source.size)
