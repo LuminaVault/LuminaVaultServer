@@ -1,6 +1,9 @@
 import Foundation
+import HTTPTypes
+import Hummingbird
 import Logging
 import LuminaVaultShared
+import NIOCore
 
 struct CerberusRequestScope: Hashable {
     let surface: RouterSurface
@@ -39,6 +42,103 @@ struct CerberusDecisionMetadata: Hashable {
     let budgetReservationUsdMicros: Int64
     let budgetDenied: Bool
     let mode: LLMBrainMode
+    let routingPolicy: LLMRoutingPolicy
+    let complexity: RouterComplexity
+    let reason: String
+    /// BYOK mode with zero usable keys — transport must fail closed.
+    let byokKeysRequired: Bool
+    /// BYO Hermes owns routing; Auto was deferred.
+    let deferredToHermes: Bool
+
+    init(
+        executionID: UUID,
+        tenantID: UUID,
+        vaultID: UUID,
+        actorUserID: UUID,
+        profileID: UUID,
+        profileName: String,
+        ruleID: UUID?,
+        taskType: RouterTaskType,
+        surface: RouterSurface,
+        spaceID: UUID?,
+        conversationID: UUID?,
+        strategy: RouterActionKind,
+        parallelStrategy: ParallelStrategyDTO?,
+        participants: [ParallelParticipantDTO]?,
+        routes: [RouterModelRouteDTO],
+        synthesisRoute: RouterModelRouteDTO?,
+        minimumSuccessfulResults: Int,
+        retryPolicy: RouterRetryPolicy,
+        predictedCostUsdMicros: Int64,
+        budgetReservationUsdMicros: Int64,
+        budgetDenied: Bool,
+        mode: LLMBrainMode,
+        routingPolicy: LLMRoutingPolicy = .autoSmart,
+        complexity: RouterComplexity = .medium,
+        reason: String = "",
+        byokKeysRequired: Bool = false,
+        deferredToHermes: Bool = false
+    ) {
+        self.executionID = executionID
+        self.tenantID = tenantID
+        self.vaultID = vaultID
+        self.actorUserID = actorUserID
+        self.profileID = profileID
+        self.profileName = profileName
+        self.ruleID = ruleID
+        self.taskType = taskType
+        self.surface = surface
+        self.spaceID = spaceID
+        self.conversationID = conversationID
+        self.strategy = strategy
+        self.parallelStrategy = parallelStrategy
+        self.participants = participants
+        self.routes = routes
+        self.synthesisRoute = synthesisRoute
+        self.minimumSuccessfulResults = minimumSuccessfulResults
+        self.retryPolicy = retryPolicy
+        self.predictedCostUsdMicros = predictedCostUsdMicros
+        self.budgetReservationUsdMicros = budgetReservationUsdMicros
+        self.budgetDenied = budgetDenied
+        self.mode = mode
+        self.routingPolicy = routingPolicy
+        self.complexity = complexity
+        self.reason = reason
+        self.byokKeysRequired = byokKeysRequired
+        self.deferredToHermes = deferredToHermes
+    }
+}
+
+/// Thrown when BYOK is selected but the tenant has no usable provider keys.
+struct BYOKKeysRequiredError: Error, Equatable, HTTPResponseError {
+    let reasonCode = "byok_keys_required"
+    let userMessage =
+        "Add an LLM API key in Settings (OpenRouter recommended for Auto) or switch to Managed mode."
+
+    var status: HTTPResponse.Status {
+        .forbidden
+    }
+
+    var bodyData: Data {
+        let envelope: [String: Any] = [
+            "error": [
+                "code": reasonCode,
+                "message": userMessage,
+                "cta": ["add_key", "switch_to_managed"],
+            ],
+        ]
+        return (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()
+    }
+
+    func response(from _: Request, context _: some RequestContext) throws -> Response {
+        var headers = HTTPFields()
+        headers[.contentType] = "application/json"
+        return Response(
+            status: status,
+            headers: headers,
+            body: .init(byteBuffer: ByteBuffer(data: bodyData))
+        )
+    }
 }
 
 enum CerberusStreamContext {
@@ -85,15 +185,87 @@ struct CerberusModelRouter: ModelRouter {
     let budget: RouterTelemetryService
     let ensemblesEnabled: Bool
     let logger: Logger
+    /// Optional credential store — enables BYOK-aware Auto pool expansion.
+    let credentials: UserCredentialStore?
+    let registry: ProviderRegistry?
+
+    init(
+        profiles: RouterProfileRepository,
+        fallback: any ModelRouter,
+        budget: RouterTelemetryService,
+        ensemblesEnabled: Bool,
+        logger: Logger,
+        credentials: UserCredentialStore? = nil,
+        registry: ProviderRegistry? = nil
+    ) {
+        self.profiles = profiles
+        self.fallback = fallback
+        self.budget = budget
+        self.ensemblesEnabled = ensemblesEnabled
+        self.logger = logger
+        self.credentials = credentials
+        self.registry = registry
+    }
 
     func pick(forModel model: String?, capability: LLMCapabilityLevel, user: User?) async -> RouteDecision {
         let table = await fallback.pick(forModel: model, capability: capability, user: user)
         guard let user, let tenantID = try? user.requireID() else { return table }
         let scope = LLMRoutingContext.cerberusScope ?? CerberusRequestScope(surface: .system)
+        let prompt = LLMRoutingContext.cerberusPrompt ?? ""
+
+        // BYO Hermes owns model choice — Auto defers (product decision).
+        if let resolution = LLMRoutingContext.currentResolution, resolution.isUserOverride {
+            let task = RouterTaskClassifier.classify(prompt, surface: scope.surface)
+            let complexity = ComplexityClassifier.classify(prompt, surface: scope.surface)
+            let hermesPrimary = table.primary
+            let selectedDTO = RouterModelRouteDTO(
+                provider: hermesPrimary.provider.toShared() ?? .openRouter,
+                model: hermesPrimary.modelID
+            )
+            let reason = AvailableModelPoolBuilder.reason(
+                policy: .locked,
+                complexity: complexity,
+                task: task,
+                selected: selectedDTO,
+                deferred: true
+            )
+            let metadata = CerberusDecisionMetadata(
+                executionID: UUID(),
+                tenantID: tenantID,
+                vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
+                actorUserID: tenantID,
+                profileID: UUID(),
+                profileName: "BYO Hermes",
+                ruleID: nil,
+                taskType: task,
+                surface: scope.surface,
+                spaceID: scope.spaceID,
+                conversationID: scope.conversationID,
+                strategy: .sequential,
+                parallelStrategy: nil,
+                participants: nil,
+                routes: [selectedDTO],
+                synthesisRoute: nil,
+                minimumSuccessfulResults: 1,
+                retryPolicy: .fast,
+                predictedCostUsdMicros: 0,
+                budgetReservationUsdMicros: 0,
+                budgetDenied: false,
+                mode: .byok,
+                routingPolicy: .locked,
+                complexity: complexity,
+                reason: reason,
+                deferredToHermes: true
+            )
+            return RouteDecision(primary: hermesPrimary, fallbacks: table.fallbacks, cerberus: metadata)
+        }
+
         do {
             let row = try await profiles.resolve(tenantID: tenantID, spaceID: scope.spaceID, jobID: scope.jobID)
             let profile = try RouterProfileRepository.toDTO(row)
-            let task = RouterTaskClassifier.classify(LLMRoutingContext.cerberusPrompt ?? "", surface: scope.surface)
+            let policy = profile.routingPolicy
+            let task = RouterTaskClassifier.classify(prompt, surface: scope.surface)
+            let complexity = ComplexityClassifier.classify(prompt, surface: scope.surface)
             let rule = profile.rules
                 .filter { rule in
                     rule.enabled
@@ -134,13 +306,81 @@ struct CerberusModelRouter: ModelRouter {
                     ? profile.defaultAction
                     : RouterActionDTO(kind: .sequential, routes: action.routes, retryPolicy: action.retryPolicy)
             }
-            let filtered = action.routes.filter { route in
+
+            // Credentialed providers for BYOK-aware pool.
+            let credentialed = await credentialedProviderIDs(tenantID: tenantID)
+            let deploymentEnabled = await deploymentEnabledProviderIDs()
+
+            // BYOK + zero keys → fail closed (confirmed product law).
+            if profile.mode == .byok, credentialed.isEmpty {
+                let metadata = CerberusDecisionMetadata(
+                    executionID: UUID(),
+                    tenantID: tenantID,
+                    vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
+                    actorUserID: tenantID,
+                    profileID: profile.id,
+                    profileName: profile.name,
+                    ruleID: rule?.id,
+                    taskType: task,
+                    surface: scope.surface,
+                    spaceID: scope.spaceID,
+                    conversationID: scope.conversationID,
+                    strategy: .sequential,
+                    parallelStrategy: nil,
+                    participants: nil,
+                    routes: [],
+                    synthesisRoute: nil,
+                    minimumSuccessfulResults: 1,
+                    retryPolicy: .fast,
+                    predictedCostUsdMicros: 0,
+                    budgetReservationUsdMicros: 0,
+                    budgetDenied: false,
+                    mode: .byok,
+                    routingPolicy: policy,
+                    complexity: complexity,
+                    reason: "Add an API key (OpenRouter recommended) or switch to Managed",
+                    byokKeysRequired: true
+                )
+                // Primary is unused — transport checks byokKeysRequired first.
+                return RouteDecision(primary: table.primary, fallbacks: [], cerberus: metadata)
+            }
+
+            let minTier: RouterModelTier = switch policy {
+            case .locked:
+                .fast // not applied — locked uses profile routes only
+            case .fastCheap:
+                .fast
+            case .balanced:
+                RouterModelTier.minimum(for: complexity)
+            case .maxQuality:
+                // Still allow cheap on trivial turns if confidence is high.
+                complexity == .low ? .fast : .max
+            case .autoSmart:
+                RouterModelTier.minimum(for: complexity)
+            }
+
+            let baseRoutes = action.routes.filter { route in
                 !profile.blockedProviders.contains(route.provider)
                     && (profile.allowedProviders.isEmpty || profile.allowedProviders.contains(route.provider))
             }
+
+            let filtered: [RouterModelRouteDTO] = if policy == .locked {
+                baseRoutes
+            } else {
+                AvailableModelPoolBuilder.build(.init(
+                    mode: profile.mode,
+                    profileRoutes: baseRoutes,
+                    allowedProviders: profile.allowedProviders,
+                    blockedProviders: profile.blockedProviders,
+                    credentialedProviders: credentialed,
+                    deploymentEnabledProviders: deploymentEnabled,
+                    minTier: minTier
+                ))
+            }
+
             guard !filtered.isEmpty else { return table }
 
-            let promptTokens = max(1, (LLMRoutingContext.cerberusPrompt?.count ?? 0) / 4)
+            let promptTokens = max(1, prompt.count / 4)
             let effectiveParallelStrategy = requestedParallelStrategy ?? action.parallelStrategy
             let predicted = predictedCost(
                 routes: filtered,
@@ -154,18 +394,26 @@ struct CerberusModelRouter: ModelRouter {
                 policy: profile.budget
             )
             let costFirst = budgetState == .softLimit
+            let weights = policy.presetObjective ?? profile.objective
             let ordered = score(
                 filtered,
                 task: task,
-                weights: profile.objective,
+                weights: weights,
                 promptTokens: promptTokens,
                 costFirst: costFirst
             )
             let mapped = ordered.compactMap(Self.toModelRoute)
-            guard let primary = mapped.first else {
+            guard let primary = mapped.first, let selectedDTO = ordered.first else {
                 await budget.release(tenantID: tenantID, reservedUsdMicros: predicted)
                 return table
             }
+            let reason = AvailableModelPoolBuilder.reason(
+                policy: policy,
+                complexity: complexity,
+                task: task,
+                selected: selectedDTO,
+                deferred: false
+            )
             let metadata = CerberusDecisionMetadata(
                 executionID: UUID(),
                 tenantID: tenantID,
@@ -190,13 +438,43 @@ struct CerberusModelRouter: ModelRouter {
                 predictedCostUsdMicros: predicted,
                 budgetReservationUsdMicros: budgetState == .denied ? 0 : predicted,
                 budgetDenied: budgetState == .denied,
-                mode: profile.mode
+                mode: profile.mode,
+                routingPolicy: policy,
+                complexity: complexity,
+                reason: reason
             )
             return RouteDecision(primary: primary, fallbacks: Array(mapped.dropFirst()), cerberus: metadata)
         } catch {
             logger.error("cerberus decision failed; using table router", metadata: ["error": .string("\(error)")])
             return table
         }
+    }
+
+    private func credentialedProviderIDs(tenantID: UUID) async -> Set<ProviderID> {
+        guard let credentials else { return [] }
+        var result = Set<ProviderID>()
+        for kind in ProviderKind.userCredentialTargets {
+            guard let shared = kind.toShared() else { continue }
+            if let cred = try? await credentials.credential(for: kind, tenantID: tenantID),
+               cred.apiKey != nil || cred.baseURL != nil
+            {
+                result.insert(shared)
+            }
+        }
+        return result
+    }
+
+    private func deploymentEnabledProviderIDs() async -> Set<ProviderID> {
+        guard let registry else {
+            // Managed path always has Hermes as last resort.
+            return []
+        }
+        var result = Set<ProviderID>()
+        for kind in ProviderKind.allCases {
+            guard await registry.isEnabled(kind), let shared = kind.toShared() else { continue }
+            result.insert(shared)
+        }
+        return result
     }
 
     private func score(
