@@ -1,14 +1,21 @@
 # TestFlight Launch — Provisioning & Cutover Checklist
 
-This is the operator checklist for taking LuminaVault to **TestFlight** (and, by
-promotion, the App Store). TestFlight and live share **one app identity**
-(`com.lumina.fernando`), **one API** (`https://api.luminavault.fyi`), and **one
-Postgres database**. Every auth method must work against the live API.
+This is the operator checklist for taking LuminaVault to **TestFlight** and
+later the **App Store**. Shipping is **dual-track**:
 
-The codebase changes (Caddy/HTTP-2, AASA endpoint, Release entitlements,
-single-identity fastlane lane) are already wired. **This doc is the
-human-provisioned half**: external accounts, keys, DNS, and the host
-`.env.production`. Code can't create these accounts for you.
+| Track | Bundle ID | ASC app | Fastlane |
+| --- | --- | --- | --- |
+| TestFlight | `com.lumina.fernando.beta` | Exists today | `fastlane beta` |
+| App Store | `com.lumina.fernando` | Create later | `fastlane release` |
+
+Both tracks hit the **same API** (`https://api.luminavault.fyi` / production host)
+and the **same Postgres**. Auth audiences / APNS topics differ per bundle ID —
+configure the server for the track you are testing (or accept both if you run
+dual OAuth/APNS setup).
+
+Client Fastlane + match details: `LuminaVaultClient/docs/TESTFLIGHT.md`.
+**This doc is the human-provisioned half**: external accounts, keys, DNS, and
+the host `.env.production`. Code can't create these accounts for you.
 
 Legend: ☐ = you do it. Each item ends with **→ where the value goes**.
 
@@ -16,28 +23,36 @@ Legend: ☐ = you do it. Each item ends with **→ where the value goes**.
 
 ## 1. Apple Developer (developer.apple.com)
 
-- ☐ **App ID** `com.lumina.fernando` (explicit) with capabilities enabled:
+- ☐ **App IDs** (explicit) with capabilities enabled on each:
   Sign in with Apple, Push Notifications, Associated Domains, HealthKit,
   App Groups (`group.com.lumina.fernando`), Keychain Sharing.
+  - TestFlight host: `com.lumina.fernando.beta`
+  - TestFlight share extension: `com.lumina.fernando.beta.LuminaVaultShareExtension`
+  - Production host (later): `com.lumina.fernando`
+  - Production share extension (later): `com.lumina.fernando.LuminaVaultShareExtension`
 - ☐ **APNs Auth Key** (Keys → +, APNs). Download the `.p8` **once**.
   → `.p8` to host `./secrets/apns-key.p8`; note **Key ID** → `APNS_KEYID`;
-  Team ID is `84X9WYBF36` → `APNS_TEAMID`.
+  Team ID is `84X9WYBF36` → `APNS_TEAMID`. Set `APNS_BUNDLE_ID` to the
+  shipping track you are testing (`…beta` for TestFlight).
 - ☐ **Associated Domain** is served by the API already
-  (`https://api.luminavault.fyi/.well-known/apple-app-site-association` →
-  `{"webcredentials":{"apps":["84X9WYBF36.com.lumina.fernando"]}}`). No portal
-  field; just confirm the entitlement (client `webcredentials:api.luminavault.fyi`)
-  matches once DNS is live.
-- ☐ **App Store Connect**: create the app record for `com.lumina.fernando`,
-  enable **TestFlight**, add internal testers.
-- ☐ **fastlane signing**: a private **match** certs repo + an **App Store
+  (`https://api.luminavault.fyi/.well-known/apple-app-site-association`).
+  Include **both** team-prefixed app IDs in `webcredentials.apps` when
+  production ships: `84X9WYBF36.com.lumina.fernando.beta` and
+  `84X9WYBF36.com.lumina.fernando`.
+- ☐ **App Store Connect**:
+  - TestFlight app for `com.lumina.fernando.beta` (exists) — internal testers.
+  - Production app for `com.lumina.fernando` — create when ready for App Store.
+- ☐ **fastlane signing**: private **match** certs repo + **App Store
   Connect API key** (.p8 + Key ID + Issuer ID).
   → GitHub secrets: `MATCH_GIT_URL`, `MATCH_PASSWORD`,
   `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID`,
   `APP_STORE_CONNECT_API_KEY_KEY` (base64), `FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD`.
+  Seed beta: `bundle exec fastlane sync_signing` in the client repo.
+  Seed production later: `SEED_PRODUCTION=1 bundle exec fastlane sync_signing`.
 
-> Sign in with Apple native flow: the identity-token `aud` is the **bundle ID**
-> `com.lumina.fernando`. The server must set `OAUTH_APPLE_CLIENTID` to exactly
-> that (see §6).
+> Sign in with Apple native flow: the identity-token `aud` is the **shipping
+> bundle ID** (beta or production). Server `OAUTH_APPLE_CLIENTID` must accept
+> the audience for the track under test (see §6).
 
 ## 2. Google Cloud (console.cloud.google.com)
 
@@ -128,14 +143,16 @@ at `/app/secrets`).
 - ☐ Firewall: 80 + 443 (tcp **and** udp/443 for HTTP/3) open. Caddy mints the
   cert on first request once DNS resolves.
 
-## 8. iOS Release config (client repo)
+## 8. iOS shipping configs (client repo)
 
-Fill `LuminaVaultClient/Config/Config.Release.xcconfig` (placeholders today):
-`GID_CLIENT_ID`, `REVERSED_CLIENT_ID` (§2), `X_CLIENT_ID` (§3),
-`LV_RC_API_KEY` (RevenueCat). `API_BASE_URL` and `APPLE_SERVICE_ID` are already
-correct. Entitlements (`aps-environment=production`,
-`webcredentials:api.luminavault.fyi`) and the single-identity fastlane lane are
-already wired.
+- **TestFlight now**: fill `LuminaVaultClient/Config/Config.Beta.xcconfig`
+  (`GID_CLIENT_ID`, OAuth, RevenueCat public key, etc.). Ship with
+  `bundle exec fastlane beta`.
+- **App Store later**: fill `Config.Release.xcconfig`, create the ASC app,
+  seed production match profiles, then `bundle exec fastlane release`.
+
+Entitlements (`aps-environment=production` for Beta/Release archives,
+`webcredentials:…`) and dual Fastlane lanes live in the client repo.
 
 ---
 
@@ -147,8 +164,12 @@ already wired.
    `docker compose -p prod -f docker-compose.production.yml --env-file .env.production up -d`.
 3. Run migrations once: `docker compose -p prod -f docker-compose.production.yml run --rm app migrate`.
 4. Point DNS (§7); wait for Caddy `certificate obtained successfully`.
-5. `fastlane beta` (builds **Release** / `com.lumina.fernando`, uploads to TestFlight).
+5. In the client repo: `bundle exec fastlane sync_signing` then
+   `bundle exec fastlane beta` (builds **Beta** / `com.lumina.fernando.beta`,
+   uploads to TestFlight).
 6. Install via TestFlight; smoke every auth (§10).
+7. When the production ASC app exists: `SEED_PRODUCTION=1 bundle exec fastlane sync_signing`
+   then `bundle exec fastlane release` for an App Store draft.
 
 ## 10. Auth smoke matrix (TestFlight build, live API)
 
