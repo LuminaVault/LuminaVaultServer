@@ -8,6 +8,7 @@ extension IngestionBatchListDTO: @retroactive ResponseEncodable {}
 
 struct MultimodalIngestionController {
     let service: MultimodalIngestionService
+    let vaultAccess: VaultAccessService
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: create)
@@ -22,7 +23,7 @@ struct MultimodalIngestionController {
 
     @Sendable private func events(_ request: Request, ctx: AppRequestContext) async throws -> IngestionSSEResponse {
         let batchID: UUID = try parameter("batchID", ctx: ctx)
-        let tenantID = try ctx.requireTenantID()
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .read).vaultID
         _ = try await service.detail(tenantID: tenantID, batchID: batchID)
         let query = request.uri.queryParameters
         let headerCursor = request.headers[HTTPField.Name("Last-Event-ID")!].flatMap { Int64($0) }
@@ -87,21 +88,23 @@ struct MultimodalIngestionController {
     }
 
     @Sendable private func create(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
-        let tenantID = try ctx.requireTenantID()
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .write).vaultID
         let body = try await request.decode(as: IngestionCreateRequest.self, context: ctx)
         return try await service.create(tenantID: tenantID, request: body)
     }
 
-    @Sendable private func list(_: Request, ctx: AppRequestContext) async throws -> IngestionBatchListDTO {
-        try await service.list(tenantID: ctx.requireTenantID())
+    @Sendable private func list(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchListDTO {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .read).vaultID
+        return try await service.list(tenantID: tenantID)
     }
 
-    @Sendable private func detail(_: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
-        try await service.detail(tenantID: ctx.requireTenantID(), batchID: parameter("batchID", ctx: ctx))
+    @Sendable private func detail(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .read).vaultID
+        return try await service.detail(tenantID: tenantID, batchID: parameter("batchID", ctx: ctx))
     }
 
     @Sendable private func uploadChunk(_ request: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
-        let tenantID = try ctx.requireTenantID()
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .write).vaultID
         let batchID = try parameter("batchID", ctx: ctx)
         let itemID = try parameter("itemID", ctx: ctx)
         guard let rawIndex = ctx.parameters.get("index"), let index = Int(rawIndex) else { throw HTTPError(.badRequest) }
@@ -111,21 +114,24 @@ struct MultimodalIngestionController {
         return .noContent
     }
 
-    @Sendable private func complete(_: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
-        try await service.complete(
-            tenantID: ctx.requireTenantID(), batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
+    @Sendable private func complete(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .write).vaultID
+        return try await service.complete(
+            tenantID: tenantID, batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
         )
     }
 
-    @Sendable private func retry(_: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
-        try await service.retry(
-            tenantID: ctx.requireTenantID(), batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
+    @Sendable private func retry(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .write).vaultID
+        return try await service.retry(
+            tenantID: tenantID, batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
         )
     }
 
-    @Sendable private func cancel(_: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
-        try await service.cancel(
-            tenantID: ctx.requireTenantID(), batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
+    @Sendable private func cancel(_ request: Request, ctx: AppRequestContext) async throws -> IngestionBatchDTO {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .write).vaultID
+        return try await service.cancel(
+            tenantID: tenantID, batchID: parameter("batchID", ctx: ctx), itemID: parameter("itemID", ctx: ctx)
         )
     }
 

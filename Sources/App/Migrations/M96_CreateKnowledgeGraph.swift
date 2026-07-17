@@ -9,7 +9,7 @@ struct M96_CreateKnowledgeGraph: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS knowledge_nodes (
             id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             kind TEXT NOT NULL CHECK (kind IN ('claim', 'entity', 'event')),
             canonical_key TEXT NOT NULL,
             label TEXT NOT NULL,
@@ -26,7 +26,7 @@ struct M96_CreateKnowledgeGraph: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS knowledge_edges (
             id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             from_node_id UUID NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
             to_node_id UUID NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
             predicate TEXT NOT NULL CHECK (predicate IN (
@@ -49,7 +49,7 @@ struct M96_CreateKnowledgeGraph: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS knowledge_evidence (
             id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             node_id UUID REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
             edge_id UUID REFERENCES knowledge_edges(id) ON DELETE CASCADE,
             memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
@@ -66,7 +66,7 @@ struct M96_CreateKnowledgeGraph: AsyncMigration {
         try await sql.raw("""
         CREATE TABLE IF NOT EXISTS knowledge_extraction_jobs (
             id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
             memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
             content_fingerprint TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'retry', 'completed')),

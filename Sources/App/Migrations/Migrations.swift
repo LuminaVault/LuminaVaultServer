@@ -110,4 +110,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M104_CompleteMultimodalIngestion())
     await fluent.migrations.add(M105_OptimizeKnowledgeReasoning())
     await fluent.migrations.add(M106_IndexHybridSyncTombstones())
+    await fluent.migrations.add(M107_ScopeIngestionAndKnowledgeToVaults())
 }

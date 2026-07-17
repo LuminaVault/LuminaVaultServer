@@ -1563,7 +1563,8 @@ func buildRouter(
             transport: routedTransport,
             model: services.hermesDefaultModel,
             logger: Logger(label: "lv.knowledge.reasoning")
-        )
+        ),
+        vaultAccess: vaultAccessService
     )
     let knowledgeGroup = router.group("/v1/knowledge")
         .add(middleware: jwtAuthenticator)
@@ -1965,7 +1966,7 @@ func buildRouter(
         },
         publicBaseURL: ingestionPublicBaseURL
     )
-    let ingestionController = MultimodalIngestionController(service: multimodalIngestionService)
+    let ingestionController = MultimodalIngestionController(service: multimodalIngestionService, vaultAccess: vaultAccessService)
     ingestionController.addPublicSourceRoute(to: router)
     let ingestionGroup = router.group("/v1/ingestions")
         .add(middleware: jwtAuthenticator)
