@@ -1712,6 +1712,7 @@ func buildRouter(
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
+        vaultAccess: vaultAccessService,
         retrievalTelemetry: retrievalTelemetryWorker,
         llmPreferences: userLLMPreferenceRepo
     )
