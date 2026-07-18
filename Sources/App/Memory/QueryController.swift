@@ -23,6 +23,8 @@ struct QueryController {
     let followUpGenerator: FollowUpGenerator?
     let defaultModel: String
     let logger: Logger
+    /// Additive retrieval-quality telemetry; nil = no telemetry, identical behavior.
+    let retrievalTelemetry: RetrievalTelemetryWorker?
 
     init(
         service: HermesMemoryService,
@@ -32,7 +34,8 @@ struct QueryController {
         streamService: (any HermesLLMStreamService)? = nil,
         followUpGenerator: FollowUpGenerator? = nil,
         defaultModel: String = "",
-        logger: Logger = Logger(label: "lv.query")
+        logger: Logger = Logger(label: "lv.query"),
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil
     ) {
         self.service = service
         self.achievements = achievements
@@ -42,6 +45,7 @@ struct QueryController {
         self.followUpGenerator = followUpGenerator
         self.defaultModel = defaultModel
         self.logger = logger
+        self.retrievalTelemetry = retrievalTelemetry
     }
 
     func addRoutes(
@@ -131,6 +135,10 @@ struct QueryController {
                 limit: limit
             )
         }
+        retrievalTelemetry?.enqueue(.from(
+            tenantID: tenantID, distances: hits.map(\.distance),
+            source: .query, spaceID: nil, limit: limit
+        ))
         log.info("query grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         if let achievements {

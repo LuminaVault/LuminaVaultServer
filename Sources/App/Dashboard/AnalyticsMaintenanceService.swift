@@ -39,5 +39,8 @@ actor AnalyticsMaintenanceService: Service {
         guard let sql = fluent.db() as? any SQLDatabase else { return }
         try await sql.raw("DELETE FROM analytics_events WHERE occurred_at < NOW() - interval '90 days'").run()
         try await sql.raw("DELETE FROM analytics_daily_rollups WHERE day < CURRENT_DATE - interval '13 months'").run()
+        // Retrieval telemetry is raw per-event; the weekly leak reports are the
+        // durable roll-up, so events past 90 days can be dropped.
+        try await sql.raw("DELETE FROM retrieval_telemetry_events WHERE created_at < NOW() - interval '90 days'").run()
     }
 }

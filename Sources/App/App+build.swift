@@ -428,6 +428,17 @@ func buildRouter(
     if fluentEnabled {
         managedServices.append(achievementsWorker)
     }
+    // Retrieval-quality telemetry (additive). Registered AFTER `fluent` (via
+    // `achievementsWorker` ordering) so it drains before DB teardown. Wired
+    // into the chat/query/agentic grounding paths below; nil when disabled.
+    let retrievalTelemetryEnabled = reader.string(forKey: "retrieval.telemetry.enabled", default: "true").lowercased() != "false"
+    let retrievalTelemetryWorker: RetrievalTelemetryWorker? = (fluentEnabled && retrievalTelemetryEnabled)
+        ? RetrievalTelemetryWorker(fluent: services.fluent, logger: Logger(label: "lv.retrieval.telemetry"))
+        : nil
+    if let retrievalTelemetryWorker {
+        managedServices.append(retrievalTelemetryWorker)
+    }
+    let vaultMapToolEnabled = reader.string(forKey: "hermes.tool.vaultMap.enabled", default: "true").lowercased() != "false"
     let authRepo = DatabaseAuthRepository(fluent: services.fluent)
     let soulService = SOULService(
         vaultPaths: vaultPaths,
@@ -1521,7 +1532,9 @@ func buildRouter(
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         eventBus: eventBus,
-        logger: Logger(label: "lv.memory")
+        logger: Logger(label: "lv.memory"),
+        vaultMapEnabled: vaultMapToolEnabled,
+        retrievalTelemetry: retrievalTelemetryWorker
     )
     let memoryController = MemoryController(
         vaultAccess: vaultAccessService,
@@ -1649,7 +1662,8 @@ func buildRouter(
         embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
-        defaultModel: services.hermesDefaultModel
+        defaultModel: services.hermesDefaultModel,
+        retrievalTelemetry: retrievalTelemetryWorker
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
@@ -1690,7 +1704,8 @@ func buildRouter(
         ).lowercased() == "true",
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations"),
-        vaultAccess: VaultAccessService(fluent: services.fluent)
+        vaultAccess: VaultAccessService(fluent: services.fluent),
+        retrievalTelemetry: retrievalTelemetryWorker
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -2245,6 +2260,20 @@ func buildRouter(
         managedServices.append(synthesisWorker)
     } else {
         routingLogger.info("synthesis worker disabled (set SYNTHESIS_WORKER_ENABLED=true to enable)")
+    }
+
+    // Retrieval leak report — weekly per-tenant roll-up of retrieval telemetry
+    // (Sun 05:00 GMT). Pure DB read + summary write, no external traffic, on by
+    // default outside test. Kill via `RETRIEVAL_LEAKREPORT_ENABLED=false`.
+    if fluentEnabled, lvEnvironment != "test",
+       reader.string(forKey: "retrieval.leakReport.enabled", default: "true").lowercased() != "false"
+    {
+        let surfaceInsight = reader.string(forKey: "retrieval.leakReport.surfaceInsight", default: "false").lowercased() == "true"
+        managedServices.append(RetrievalLeakReportWorker(
+            fluent: services.fluent,
+            logger: Logger(label: "lv.retrieval.leakreport"),
+            surfaceInsight: surfaceInsight
+        ))
     }
 
     // HER-235 3D viz — graph layout worker. Recomputes each tenant's persisted
