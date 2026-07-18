@@ -1671,6 +1671,7 @@ func buildRouter(
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
+        vaultAccess: vaultAccess,
         retrievalTelemetry: retrievalTelemetryWorker
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
