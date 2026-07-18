@@ -27,10 +27,35 @@ struct AnalyticsEndpointsTests {
     func requiresAuthentication() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
-            for uri in ["/v1/analytics/overview", "/v1/analytics/models", "/v1/analytics/team"] {
+            for uri in ["/v1/analytics/overview", "/v1/analytics/models", "/v1/analytics/team",
+                        "/v1/analytics/retrieval-health"]
+            {
                 try await client.execute(uri: uri, method: .get) { response in
                     #expect(response.status == .unauthorized)
                 }
+            }
+        }
+    }
+
+    @Test("Fresh retrieval health returns empty-window defaults")
+    func freshRetrievalHealth() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/analytics/retrieval-health",
+                method: .get,
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let health = try testJSONDecoder().decode(
+                    RetrievalHealthResponse.self,
+                    from: Data(buffer: response.body)
+                )
+                #expect(health.eventsCount == 0)
+                #expect(health.hitRate == nil)
+                #expect(health.leakCount == 0)
+                #expect(health.trend == .steady)
             }
         }
     }
