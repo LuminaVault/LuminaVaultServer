@@ -9,12 +9,14 @@ struct CerberusRequestScope: Hashable {
     let surface: RouterSurface
     let spaceID: UUID?
     let jobID: String?
+    let workflowID: String?
     let conversationID: UUID?
 
-    init(surface: RouterSurface, spaceID: UUID? = nil, jobID: String? = nil, conversationID: UUID? = nil) {
+    init(surface: RouterSurface, spaceID: UUID? = nil, jobID: String? = nil, workflowID: String? = nil, conversationID: UUID? = nil) {
         self.surface = surface
         self.spaceID = spaceID
         self.jobID = jobID
+        self.workflowID = workflowID
         self.conversationID = conversationID
     }
 }
@@ -261,7 +263,12 @@ struct CerberusModelRouter: ModelRouter {
         }
 
         do {
-            let row = try await profiles.resolve(tenantID: tenantID, spaceID: scope.spaceID, jobID: scope.jobID)
+            let row = try await profiles.resolve(
+                tenantID: tenantID,
+                spaceID: scope.spaceID,
+                jobID: scope.jobID,
+                workflowID: scope.workflowID
+            )
             let profile = try RouterProfileRepository.toDTO(row)
             let policy = profile.routingPolicy
             let task = RouterTaskClassifier.classify(prompt, surface: scope.surface)

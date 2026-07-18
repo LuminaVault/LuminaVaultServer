@@ -40,6 +40,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
     /// Resolve the API key for the current request — the user's stored
     /// Gemini credential when present, else the deployment env key.
     private func resolveKey() async -> String {
+        if LLMRoutingContext.credentialMode == .managed {
+            return apiKey
+        }
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()

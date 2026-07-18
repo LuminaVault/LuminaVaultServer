@@ -13,6 +13,7 @@ struct WorkflowWebhookController {
 
     let fluent: Fluent
     let secretBox: SecretBox?
+    let workflowService: WorkflowService
 
     func addPublicRoutes(to router: Router<AppRequestContext>) {
         router.post("/v1/workflow-hooks/:hookID", use: ingest)
@@ -61,8 +62,7 @@ struct WorkflowWebhookController {
             throw HTTPError(.unauthorized, message: "invalid_workflow_webhook_signature")
         }
         let input = payload(body)
-        let service = WorkflowService(fluent: fluent)
-        return try await service.enqueue(
+        return try await workflowService.enqueue(
             tenantID: hook.tenantID,
             workflowID: hook.workflowID,
             trigger: .webhook,

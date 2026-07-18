@@ -21,7 +21,7 @@ PR ──► CI (lint + test)  ──merge──►  push to main
                                          │
                                          ▼
                  SSH to VPS: pull image, write .env.production,
-                 build/start plugin-runner, compose up app
+                 build/start plugin-runner, run app migrate, compose up app
                                          │
                                          ▼
                  on-server health pre-gate (http://127.0.0.1:8080/health)
@@ -47,6 +47,12 @@ Key properties:
   `plugin-runner` source at the same commit, waits for its healthcheck, and
   only then recreates the API container. Runner build or health failure stops
   the deploy before marketplace tools can execute.
+- **Migrations are fail-fast.** After PostgreSQL and the plugin runner are
+  healthy, the workflow runs the new image's `app migrate` command before it
+  replaces the live API. A migration error stops the deploy and leaves the
+  currently running API container untouched. Migrations shipped through this
+  path must remain compatible with the last-known-good image because an
+  application rollback does not revert database schema.
 - **Smoke test is authoritative and runs from the GitHub runner** against
   the public HTTPS endpoint. It hits **`/health`** (public liveness probe,
   returns `"ok"`) — **not** `/v1/health`, which is the JWT-authed
@@ -81,6 +87,11 @@ If the deploy step errors or the smoke test does not return `200` within
 
 The workflow run stays **red** so the failure is visible, even though the
 service has been restored to the last good image.
+
+Schema rollback is intentionally not automatic. M109 is additive, so the
+previous application image can run against it. Any future destructive or
+semantic migration needs a staged expand/migrate/contract release rather than
+the normal single-release rollback path.
 
 ## Manual rollback
 
@@ -148,6 +159,9 @@ echo "$TARGET" > .green_image
 | Name | Used by | Purpose |
 |------|---------|---------|
 | `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY` | deploy/rollback | SSH to VPS |
+| `PLUGIN_RUNNER_TOKEN` | deploy | Shared API-to-runner authentication secret; minimum 32 random characters |
+| `PLUGIN_ARTIFACT_SIGNING_KEY` | deploy | Independent artifact signature secret; minimum 32 random characters |
+| `LLM_PROVIDER_OPENROUTER_APIKEY` | deploy | Platform OpenRouter credential for managed Studio and `openrouter/free` fallback |
 | `POSTHOG_OTEL_TOKEN` | deploy | otel-collector log export |
 | `SENTRY_*` | deploy | Sentry release + env wiring |
 | `SLACK_WEBHOOK_URL` | notify (optional) | deploy notifications (deferred) |

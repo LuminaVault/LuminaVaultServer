@@ -51,9 +51,13 @@ final class WorkflowRun: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "dedupe_key") var dedupeKey: String?
     @OptionalField(key: "lease_owner") var leaseOwner: String?
     @OptionalField(key: "lease_expires_at") var leaseExpiresAt: Date?
+    @OptionalField(key: "lease_heartbeat_at") var leaseHeartbeatAt: Date?
     @OptionalField(key: "started_at") var startedAt: Date?
     @OptionalField(key: "ended_at") var endedAt: Date?
     @OptionalField(key: "error_message") var errorMessage: String?
+    @OptionalField(key: "pause_reason") var pauseReason: String?
+    @Field(key: "managed_spend_usd_micros") var managedSpendUsdMicros: Int64
+    @Field(key: "managed_spend_limit_usd_micros") var managedSpendLimitUsdMicros: Int64
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
     init() {}
@@ -70,6 +74,11 @@ final class WorkflowNodeRun: Model, @unchecked Sendable {
     @OptionalField(key: "input_snapshot") var inputSnapshot: [String: String]?
     @OptionalField(key: "output_snapshot") var outputSnapshot: [String: String]?
     @OptionalField(key: "error_message") var errorMessage: String?
+    @OptionalField(key: "selected_provider") var selectedProvider: String?
+    @OptionalField(key: "selected_model") var selectedModel: String?
+    @OptionalField(key: "tokens_in") var tokensIn: Int64?
+    @OptionalField(key: "tokens_out") var tokensOut: Int64?
+    @OptionalField(key: "managed_cost_usd_micros") var managedCostUsdMicros: Int64?
     @OptionalField(key: "started_at") var startedAt: Date?
     @OptionalField(key: "ended_at") var endedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
@@ -87,6 +96,7 @@ final class WorkflowApproval: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "message") var message: String?
     @Field(key: "status") var status: String
     @OptionalField(key: "decision_note") var decisionNote: String?
+    @Field(key: "memory_ids") var memoryIDs: [UUID]
     @Field(key: "expires_at") var expiresAt: Date
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?

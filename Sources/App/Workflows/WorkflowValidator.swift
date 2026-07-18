@@ -2,6 +2,8 @@ import Foundation
 import LuminaVaultShared
 
 enum WorkflowValidationError: Error, Equatable {
+    case unsupportedSchemaVersion(Int)
+    case unsupportedNodeKind(WorkflowNodeKind)
     case missingTrigger
     case duplicateNodeID
     case unknownEdgeNode
@@ -15,6 +17,12 @@ enum WorkflowValidationError: Error, Equatable {
 
 enum WorkflowValidator {
     static func validate(_ definition: WorkflowDefinitionDTO) throws {
+        guard definition.schemaVersion == 1 else {
+            throw WorkflowValidationError.unsupportedSchemaVersion(definition.schemaVersion)
+        }
+        if let unsupported = definition.nodes.first(where: { [.parallel, .forEach, .whileLoop].contains($0.kind) }) {
+            throw WorkflowValidationError.unsupportedNodeKind(unsupported.kind)
+        }
         let ids = Set(definition.nodes.map(\.id))
         guard ids.count == definition.nodes.count else { throw WorkflowValidationError.duplicateNodeID }
         guard definition.nodes.count(where: { $0.kind == .trigger }) == 1 else { throw WorkflowValidationError.missingTrigger }
@@ -56,10 +64,5 @@ enum WorkflowValidator {
             }
         }
         guard visited == definition.nodes.count else { throw WorkflowValidationError.cycle }
-        for node in definition.nodes where node.kind == .parallel {
-            guard definition.edges.count(where: { $0.sourceNodeID == node.id }) >= 2 else {
-                throw WorkflowValidationError.invalidParallelConfiguration
-            }
-        }
     }
 }

@@ -1015,6 +1015,13 @@ func buildRouter(
         )
     }
     var providerAdapters: [any ProviderAdapter] = [gatewayAdapter]
+    // Canonical platform-funded OpenRouter pool. `OPENROUTER_API_KEY` remains
+    // a compatibility alias for the Hermes sidecar and older deployments.
+    let platformOpenRouterKey = reader.string(
+        forKey: ConfigKey("llm.provider.openRouter.apiKey"),
+        isSecret: true,
+        default: reader.string(forKey: ConfigKey("openrouter.api_key"), isSecret: true, default: "")
+    )
     // HER-199 — register Gemini provider when API key is configured.
     if !services.geminiAPIKey.isEmpty {
         providerAdapters.append(GeminiContentsAdapter(
@@ -1054,7 +1061,8 @@ func buildRouter(
     // base URL; both are resolved per-user from `user_provider_credentials`
     // on every call. Registered unconditionally so any tenant can attach one.
     for kind in [ProviderKind.xai, .openai, .openRouter, .nous, .custom] {
-        let envKey = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).apiKey"), isSecret: true, default: "")
+        let configuredKey = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).apiKey"), isSecret: true, default: "")
+        let envKey = kind == .openRouter && configuredKey.isEmpty ? platformOpenRouterKey : configuredKey
         let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).baseURL"), default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let baseURL = rawBaseURL.isEmpty
@@ -2703,39 +2711,65 @@ func buildRouter(
 
     // Automation 2.0 — durable, versioned visual workflows. Execution is
     // claimed from Postgres so the API can scale beyond one replica safely.
-    let workflowService = WorkflowService(fluent: services.fluent)
-    let workflowWebhookController = WorkflowWebhookController(fluent: services.fluent, secretBox: secretBoxRef)
-    workflowWebhookController.addPublicRoutes(to: router)
-    let workflowsGroup = router.group("/v1/workflows")
-        .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(
-            requires: .workflowAutomation,
-            enforcementEnabled: services.billingEnforcementEnabled
-        ))
-    WorkflowController(service: workflowService, webhookController: workflowWebhookController).addRoutes(to: workflowsGroup)
-    if fluentEnabled, lvEnvironment != "test" {
-        managedServices.append(WorkflowEngine(
+    let workflowStudioEnabled = reader.bool(forKey: ConfigKey("cerberus.studio.enabled"), default: true)
+    if workflowStudioEnabled {
+        let workflowEvents = WorkflowEventStore(
             fluent: services.fluent,
-            transport: routedTransport,
-            defaultModel: services.hermesDefaultModel,
-            skillRunner: skillRunner,
-            skillCatalog: skillCatalog,
-            embeddings: embeddingService,
-            logger: Logger(label: "lv.workflows.worker")
-        ))
-        managedServices.append(WorkflowScheduler(
+            logger: Logger(label: "lv.workflows.events")
+        )
+        let workflowSpend = WorkflowSpendService(
             fluent: services.fluent,
-            logger: Logger(label: "lv.workflows.scheduler")
-        ))
-        managedServices.append(WorkflowMaintenanceService(
+            logger: Logger(label: "lv.workflows.spend"),
+            globalDailyUsdMicros: Int64(reader.int(forKey: "cerberus.studio.globalDailyUsdMicros", default: 10_000_000)),
+            globalMonthlyUsdMicros: Int64(reader.int(forKey: "cerberus.studio.globalMonthlyUsdMicros", default: 100_000_000)),
+            managedInferenceAvailable: platformOpenRouterKey.isEmpty == false
+        )
+        let workflowService = WorkflowService(fluent: services.fluent, spend: workflowSpend, events: workflowEvents)
+        let workflowWebhookController = WorkflowWebhookController(
             fluent: services.fluent,
-            logger: Logger(label: "lv.workflows.maintenance")
-        ))
-        managedServices.append(LegacyJobWorkflowMigrator(
-            fluent: services.fluent,
-            catalog: skillCatalog,
-            logger: Logger(label: "lv.workflows.legacy-migrator")
-        ))
+            secretBox: secretBoxRef,
+            workflowService: workflowService
+        )
+        workflowWebhookController.addPublicRoutes(to: router)
+        let workflowsGroup = router.group("/v1/workflows").add(middleware: jwtAuthenticator)
+        WorkflowController(
+            service: workflowService,
+            webhookController: workflowWebhookController,
+            eventStore: workflowEvents
+        ).addRoutes(to: workflowsGroup)
+        let templatesGroup = router.group("/v1/workflow-templates").add(middleware: jwtAuthenticator)
+        WorkflowTemplateController(service: workflowService).addRoutes(to: templatesGroup)
+        if fluentEnabled, lvEnvironment != "test" {
+            managedServices.append(WorkflowEngine(
+                fluent: services.fluent,
+                transport: routedTransport,
+                defaultModel: services.hermesDefaultModel,
+                skillRunner: skillRunner,
+                skillCatalog: skillCatalog,
+                embeddings: embeddingService,
+                profiles: routerProfileRepo,
+                spend: workflowSpend,
+                events: workflowEvents,
+                push: pushService,
+                logger: Logger(label: "lv.workflows.worker"),
+                workerCount: reader.int(forKey: "cerberus.studio.workerCount", default: 4)
+            ))
+            managedServices.append(WorkflowScheduler(
+                fluent: services.fluent,
+                workflowService: workflowService,
+                logger: Logger(label: "lv.workflows.scheduler")
+            ))
+            managedServices.append(WorkflowMaintenanceService(
+                fluent: services.fluent,
+                events: workflowEvents,
+                logger: Logger(label: "lv.workflows.maintenance")
+            ))
+            managedServices.append(LegacyJobWorkflowMigrator(
+                fluent: services.fluent,
+                catalog: skillCatalog,
+                logger: Logger(label: "lv.workflows.legacy-migrator")
+            ))
+        }
     }
 
     // Apple Ecosystem Integration P0 — per-domain data-access consent.

@@ -142,6 +142,10 @@ services:
       LLM_PROVIDER_OLLAMA_BASEURL: ${LLM_PROVIDER_OLLAMA_BASEURL:-}
       # --- Cerberus model orchestration ---
       CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
+      CERBERUS_STUDIO_ENABLED: ${CERBERUS_STUDIO_ENABLED:-true}
+      CERBERUS_STUDIO_WORKER_COUNT: ${CERBERUS_STUDIO_WORKER_COUNT:-4}
+      CERBERUS_STUDIO_GLOBAL_DAILY_USD_MICROS: ${CERBERUS_STUDIO_GLOBAL_DAILY_USD_MICROS:-10000000}
+      CERBERUS_STUDIO_GLOBAL_MONTHLY_USD_MICROS: ${CERBERUS_STUDIO_GLOBAL_MONTHLY_USD_MICROS:-100000000}
       CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}
       CERBERUS_PARALLEL_ENABLED: ${CERBERUS_PARALLEL_ENABLED:-false}
       HYBRID_EXECUTION_ENABLED: ${HYBRID_EXECUTION_ENABLED:-true}
@@ -206,7 +210,6 @@ services:
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
-    pids_limit: 64
     tmpfs:
       - /tmp:size=16m,mode=1777
     environment:
@@ -219,6 +222,7 @@ services:
         limits:
           cpus: "1.0"
           memory: 256M
+          pids: 64
         reservations:
           memory: 64M
     healthcheck:

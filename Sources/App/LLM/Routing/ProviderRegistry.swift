@@ -108,6 +108,12 @@ actor ProviderRegistry: Service {
         [
             loadConfig(kind: .anthropic, key: "anthropic", reader: reader),
             loadConfig(kind: .openai, key: "openai", reader: reader),
+            loadConfig(
+                kind: .openRouter,
+                key: "openRouter",
+                fallbackAPIKey: reader.string(forKey: ConfigKey("openrouter.api_key"), isSecret: true, default: ""),
+                reader: reader
+            ),
             loadConfig(kind: .gemini, key: "gemini", reader: reader),
             loadConfig(kind: .together, key: "together", reader: reader),
             loadConfig(kind: .groq, key: "groq", reader: reader),
@@ -119,8 +125,9 @@ actor ProviderRegistry: Service {
         ].compactMap(\.self)
     }
 
-    private static func loadConfig(kind: ProviderKind, key: String, reader: ConfigReader) -> ProviderConfig? {
-        let apiKey = reader.string(forKey: ConfigKey("llm.provider.\(key).apiKey"), isSecret: true, default: "")
+    private static func loadConfig(kind: ProviderKind, key: String, fallbackAPIKey: String = "", reader: ConfigReader) -> ProviderConfig? {
+        let configured = reader.string(forKey: ConfigKey("llm.provider.\(key).apiKey"), isSecret: true, default: "")
+        let apiKey = configured.isEmpty ? fallbackAPIKey : configured
         let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(key).baseURL"), default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let baseURL = rawBaseURL.isEmpty ? nil : URL(string: rawBaseURL)

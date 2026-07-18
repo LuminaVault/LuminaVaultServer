@@ -181,6 +181,10 @@ struct RouterController {
             SELECT 1 FROM skills_state WHERE tenant_id = \(bind: tenantID) AND name = \(bind: scopeID) LIMIT 1
             """).first() != nil
             guard exists else { throw HTTPError(.notFound, message: "job_not_found") }
+        case .workflow:
+            guard let id = UUID(uuidString: scopeID),
+                  try await Workflow.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == id).first() != nil
+            else { throw HTTPError(.notFound, message: "workflow_not_found") }
         case .user:
             guard scopeID == tenantID.uuidString else {
                 throw HTTPError(.forbidden, message: "router_user_scope_mismatch")

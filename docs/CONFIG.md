@@ -196,6 +196,8 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 
+`LLM_PROVIDER_OPENROUTER_APIKEY` is also the platform-funded Cerberus Studio credential. Managed Studio execution never substitutes a tenant BYOK credential. `OPENROUTER_API_KEY` remains a temporary compatibility alias, but new deployments should set only the canonical variable. The `openrouter/free` fallback is a router selection, not anonymous access: it still needs this platform key and carries no availability SLA. OpenRouter's policy verified on 2026-07-18 limits accounts with less than $10 of purchased credits to 50 free-model requests/day and 20 requests/minute; purchasing at least $10 raises the daily free allowance to 1,000. A negative balance may return 402 even on free models. An unfunded, non-negative account is suitable for low-volume beta/failover traffic, not a paid-tier production SLA.
+
 ### Cerberus model router
 
 - `CERBERUS_EXECUTION_MODE`: `active` evaluates the resolved user, Space, or Job profile; any other value retains the legacy preference router for rollback.
@@ -203,6 +205,30 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - `CERBERUS_PARALLEL_ENABLED`: master gate for Ultimate-tier Best-of-N, Consensus, Debate, Specialist, playground, and chat multi-model execution. Defaults to `false`; when absent the server falls back to `CERBERUS_ENSEMBLES_ENABLED` for one-release compatibility.
 
 Profiles, bindings, budgets, routing attempts, and monthly usage are stored in PostgreSQL. Provider prices in the router catalog are estimates used for routing and budget reservation; actual provider invoices remain authoritative.
+
+### Cerberus Studio execution controls
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `CERBERUS_STUDIO_ENABLED` | `true` | Studio API, scheduler, durable workers, templates, and maintenance kill switch. |
+| `CERBERUS_STUDIO_WORKER_COUNT` | `4` | Process-wide durable worker slots. Tenant active-run caps still apply. |
+| `CERBERUS_STUDIO_GLOBAL_DAILY_USD_MICROS` | `10000000` | $10 platform-managed daily reservation ceiling. |
+| `CERBERUS_STUDIO_GLOBAL_MONTHLY_USD_MICROS` | `100000000` | $100 platform-managed monthly reservation ceiling. |
+
+Tier ceilings are code-owned policy contracts: Pro $0.20/run, $0.50/day, $2/month, one active run, and a 60-minute recurring schedule floor; Ultimate $1/run, $2/day, $8/month, three active runs, and a five-minute floor. Reservations are transactional and reconciled to provider-reported cost when available. When a managed tier or global allowance is exhausted—or the initially selected managed provider fails—the engine tries `openrouter/free` once; if the platform key, free capacity, or provider is unavailable, the run persists as paused instead of spending past the limit. Ultimate BYOK routing is isolated from these managed buckets.
+
+Set an OpenRouter key-level credit limit no higher than the platform monthly ceiling and alert on both application bucket utilization and provider billing. Application limits protect product policy; the provider limit protects against implementation defects or compromised credentials.
+
+Studio's durable event stream, lease metadata, approval attachments, and
+transactional spend buckets require migration M109. Production keeps
+`FLUENT_AUTOMIGRATE=false`; `.github/workflows/prod.yml` and `dev.yml` run
+`app migrate` with the release image before replacing the API. Do not deploy a
+Studio-enabled image if that step is skipped or fails.
+
+Operational metrics use the `luminavault.workflow.*` prefix. Alert on failed
+and paused runs, event-write failures, free-fallback volume, queue latency, and
+managed-spend recordings; compare the latter with OpenRouter's provider-side
+billing limit.
 
 #### Managed Hermes output cap (`model.max_tokens`)
 
