@@ -12,6 +12,16 @@ enum MemoryHealthFilter: String, CaseIterable {
     case unused
 }
 
+/// One Space (concern folder) in the tenant's vault topology. Backs the
+/// agentic `vault_map` tool and slug→id resolution for `session_search` scoping.
+struct SpaceTopologyRow: Sendable {
+    let id: UUID
+    let name: String
+    let slug: String
+    let noteCount: Int
+    let lastCompiledAt: Date?
+}
+
 struct MemoryRepository {
     let fluent: Fluent
     /// HER-234 — optional latency timer around the hot search path. Default
@@ -250,6 +260,24 @@ struct MemoryRepository {
                 model: $0.origin_model
             )
         }
+    }
+
+    /// The tenant's Space topology (concern folders) with note counts, sorted
+    /// most-populated first. Backs the agentic `vault_map` tool and resolves a
+    /// Space slug to its id for opt-in `session_search` scoping. Read-only.
+    func spaceTopology(tenantID: UUID) async throws -> [SpaceTopologyRow] {
+        try await Space.query(on: fluent.db(), tenantID: tenantID)
+            .sort(\.$noteCount, .descending)
+            .all()
+            .map {
+                try SpaceTopologyRow(
+                    id: $0.requireID(),
+                    name: $0.name,
+                    slug: $0.slug,
+                    noteCount: $0.noteCount,
+                    lastCompiledAt: $0.lastCompiledAt
+                )
+            }
     }
 
     /// HER-147 — increments `query_hit_count` and stamps

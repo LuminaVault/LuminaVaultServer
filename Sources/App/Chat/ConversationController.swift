@@ -43,6 +43,9 @@ struct ConversationController {
     let defaultModel: String
     let logger: Logger
     let vaultAccess: VaultAccessService
+    /// Additive retrieval-quality telemetry. Optional so existing
+    /// constructions/tests keep working; nil = no telemetry, identical behavior.
+    let retrievalTelemetry: RetrievalTelemetryWorker?
 
     init(
         fluent: Fluent,
@@ -57,7 +60,8 @@ struct ConversationController {
         localExecutionToolBrokerEnabled: Bool = false,
         defaultModel: String,
         logger: Logger,
-        vaultAccess: VaultAccessService
+        vaultAccess: VaultAccessService,
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -72,6 +76,7 @@ struct ConversationController {
         self.defaultModel = defaultModel
         self.logger = logger
         self.vaultAccess = vaultAccess
+        self.retrievalTelemetry = retrievalTelemetry
     }
 
     func addRoutes(
@@ -195,6 +200,10 @@ struct ConversationController {
             .all()
         let embedding = try await embeddings.embed(content, tenantID: tenantID)
         let semanticHits = try await memories.semanticSearch(tenantID: tenantID, queryEmbedding: embedding, limit: 5)
+        retrievalTelemetry?.enqueue(.from(
+            tenantID: tenantID, distances: semanticHits.map(\.distance),
+            source: .localReply, spaceID: nil, limit: 5
+        ))
         let pinnedHits = try await conversation.pinnedMemoryIDs.asyncCompactMap { id in
             try await memories.find(tenantID: tenantID, id: id).map {
                 MemorySearchResult(
@@ -278,6 +287,10 @@ struct ConversationController {
                 queryEmbedding: embedding,
                 limit: limit
             )
+            retrievalTelemetry?.enqueue(.from(
+                tenantID: tenantID, distances: hits.map(\.distance),
+                source: .agenticSearch, spaceID: nil, limit: limit
+            ))
             let sources = hits.map {
                 QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
             }
@@ -475,6 +488,10 @@ struct ConversationController {
                 limit: 5
             )
         }
+        retrievalTelemetry?.enqueue(.from(
+            tenantID: tenantID, distances: semanticHits.map(\.distance),
+            source: .localReply, spaceID: nil, limit: 5
+        ))
         let pinnedHits = try await conversation.pinnedMemoryIDs.asyncCompactMap { id in
             try await memories.find(tenantID: tenantID, id: id).map {
                 MemorySearchResult(

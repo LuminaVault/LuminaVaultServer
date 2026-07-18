@@ -248,6 +248,10 @@ private struct MemoryUpsertArgs: Decodable {
 private struct SessionSearchArgs: Decodable {
     let query: String
     let limit: Int?
+    /// Optional Space slug (concern folder) to scope the search to. Absent →
+    /// unscoped, byte-identical to the pre-`vault_map` behavior. Discover valid
+    /// slugs via the `vault_map` tool.
+    let space: String?
 }
 
 private struct TagExtractArgs: Decodable {
@@ -278,6 +282,12 @@ actor HermesMemoryService {
     let eventBus: EventBus?
     let logger: Logger
     let maxToolIterations: Int
+    /// When true, the agentic search loop offers the `vault_map` tool so the
+    /// model can scope `session_search` to a Space. Gated by
+    /// `hermes.tool.vaultMap.enabled`.
+    let vaultMapEnabled: Bool
+    /// Additive retrieval-quality telemetry; nil = no telemetry, identical behavior.
+    let retrievalTelemetry: RetrievalTelemetryWorker?
 
     init(
         transport: any HermesChatTransport,
@@ -286,7 +296,9 @@ actor HermesMemoryService {
         defaultModel: String,
         eventBus: EventBus? = nil,
         logger: Logger,
-        maxToolIterations: Int = 5
+        maxToolIterations: Int = 5,
+        vaultMapEnabled: Bool = true,
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil
     ) {
         self.transport = transport
         self.memories = memories
@@ -295,6 +307,8 @@ actor HermesMemoryService {
         self.eventBus = eventBus
         self.logger = logger
         self.maxToolIterations = maxToolIterations
+        self.vaultMapEnabled = vaultMapEnabled
+        self.retrievalTelemetry = retrievalTelemetry
     }
 
     func upsert(
@@ -344,7 +358,11 @@ actor HermesMemoryService {
             Call the `session_search` tool with the user's query and a sensible `limit`
             (default \(limit)). After the tool returns, synthesize a concise answer
             that cites the relevant memories you saw. If the search returns nothing,
-            say so plainly.
+            say so plainly.\(vaultMapEnabled ? """
+            \nIf the query clearly belongs to one topic area, you MAY first call
+            `vault_map` to see the user's Spaces (concern folders) and then pass the
+            matching Space `slug` to `session_search` to narrow the search.
+            """ : "")
             """),
             .init(role: "user", content: query),
         ]
@@ -353,7 +371,7 @@ actor HermesMemoryService {
             sessionKey: sessionKey,
             sessionID: sessionID,
             messages: messages,
-            allowedTools: [.sessionSearch]
+            allowedTools: vaultMapEnabled ? [.sessionSearch, .vaultMap] : [.sessionSearch]
         )
         return MemorySearchAnswer(hits: outcome.searchHits, summary: outcome.summary)
     }
@@ -367,7 +385,7 @@ actor HermesMemoryService {
     }
 
     private enum AvailableTool: CaseIterable {
-        case memoryUpsert, sessionSearch, tagExtract
+        case memoryUpsert, sessionSearch, tagExtract, vaultMap
     }
 
     /// HER-151: cap + normalize Hermes-supplied tags. Lowercase + trim,
@@ -496,13 +514,28 @@ actor HermesMemoryService {
         case "session_search":
             do {
                 let args = try decoder.decode(SessionSearchArgs.self, from: argsData)
+                let effectiveLimit = max(1, min(args.limit ?? 5, 20))
+                // Opt-in Space scoping: resolve the slug to an id when the model
+                // passed one. Absent/unknown → spaceID nil → identical to today.
+                var resolvedSpaceID: UUID?
+                if let slug = args.space?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !slug.isEmpty
+                {
+                    resolvedSpaceID = try await memories.spaceTopology(tenantID: tenantID)
+                        .first { $0.slug == slug }?.id
+                }
                 let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
                 let hits = try await memories.semanticSearch(
                     tenantID: tenantID,
                     queryEmbedding: embedding,
-                    limit: max(1, min(args.limit ?? 5, 20))
+                    limit: effectiveLimit,
+                    spaceID: resolvedSpaceID
                 )
                 outcome.searchHits = hits
+                retrievalTelemetry?.enqueue(.from(
+                    tenantID: tenantID, distances: hits.map(\.distance),
+                    source: .agenticSearch, spaceID: resolvedSpaceID, limit: effectiveLimit
+                ))
                 let serializable = hits.map { hit -> [String: String] in
                     [
                         "id": hit.id.uuidString,
@@ -513,6 +546,22 @@ actor HermesMemoryService {
                 return Self.encodeJSON(["status": "ok", "results": serializable])
             } catch {
                 return Self.toolErrorJSON("session_search failed: \(error)")
+            }
+
+        case "vault_map":
+            do {
+                let spaces = try await memories.spaceTopology(tenantID: tenantID)
+                let iso = ISO8601DateFormatter()
+                let list = spaces.map { s -> [String: String] in
+                    var row = ["name": s.name, "slug": s.slug, "note_count": String(s.noteCount)]
+                    if let compiled = s.lastCompiledAt {
+                        row["last_compiled_at"] = iso.string(from: compiled)
+                    }
+                    return row
+                }
+                return Self.encodeJSON(["status": "ok", "spaces": list])
+            } catch {
+                return Self.toolErrorJSON("vault_map failed: \(error)")
             }
 
         case "tag_extract":
@@ -595,8 +644,28 @@ actor HermesMemoryService {
                             type: "integer",
                             description: "Maximum number of memories to return (1-20, default 5)."
                         ),
+                        "space": PropertySchema(
+                            type: "string",
+                            description: """
+                            Optional Space slug (concern folder) to restrict the search to. \
+                            Get valid slugs from the `vault_map` tool. Omit to search all Spaces.
+                            """
+                        ),
                     ],
                     required: ["query"]
+                )
+            ))
+        case .vaultMap:
+            ToolDefinition(function: .init(
+                name: "vault_map",
+                description: """
+                List the current user's Spaces (concern folders) with their note counts, \
+                most-populated first. Call this to decide whether to scope a `session_search` \
+                to a single Space by passing its `slug`.
+                """,
+                parameters: ParameterSchema(
+                    properties: [:],
+                    required: []
                 )
             ))
         case .tagExtract:
