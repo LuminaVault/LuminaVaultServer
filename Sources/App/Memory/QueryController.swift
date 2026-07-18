@@ -23,6 +23,7 @@ struct QueryController {
     let followUpGenerator: FollowUpGenerator?
     let defaultModel: String
     let logger: Logger
+    let vaultAccess: VaultAccessService
     /// Additive retrieval-quality telemetry; nil = no telemetry, identical behavior.
     let retrievalTelemetry: RetrievalTelemetryWorker?
 
@@ -35,6 +36,7 @@ struct QueryController {
         followUpGenerator: FollowUpGenerator? = nil,
         defaultModel: String = "",
         logger: Logger = Logger(label: "lv.query"),
+        vaultAccess: VaultAccessService,
         retrievalTelemetry: RetrievalTelemetryWorker? = nil
     ) {
         self.service = service
@@ -45,6 +47,7 @@ struct QueryController {
         self.followUpGenerator = followUpGenerator
         self.defaultModel = defaultModel
         self.logger = logger
+        self.vaultAccess = vaultAccess
         self.retrievalTelemetry = retrievalTelemetry
     }
 
@@ -63,15 +66,21 @@ struct QueryController {
         guard !body.query.isEmpty else {
             throw HTTPError(.badRequest, message: "query required")
         }
-        let tenantID = try user.requireID()
-        let answer = try await service.search(
-            tenantID: tenantID,
-            sessionKey: tenantID.uuidString,
-            query: body.query,
-            limit: body.limit ?? 5
-        )
+        let actorID = try user.requireID()
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
+        let tenantID = access.vaultID
+        let answer = try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
+            try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
+                try await service.search(
+                    tenantID: tenantID,
+                    sessionKey: tenantID.uuidString,
+                    query: body.query,
+                    limit: body.limit ?? 5
+                )
+            }
+        }
         if let achievements {
-            achievements.enqueue(tenantID: tenantID, event: .queryRan)
+            achievements.enqueue(tenantID: actorID, event: .queryRan)
         }
         let hits = answer.hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -109,14 +118,18 @@ struct QueryController {
         guard let memories, let embeddings, let streamService else {
             throw HTTPError(.serviceUnavailable, message: "query streaming not configured on this server")
         }
-        let tenantID = try user.requireID()
+        let actorID = try user.requireID()
+        let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
+        let tenantID = access.vaultID
+        let billingSponsorID = access.billingSponsorUserID
         let limit = max(1, min(body.limit ?? 5, 25))
         let sessionKey = tenantID.uuidString
         let sessionID = body.sessionID
         let userQuery = body.query
 
         var log = ctx.logger
-        log[metadataKey: "tenant_id"] = .string(tenantID.uuidString)
+        log[metadataKey: "tenant_id"] = .string(actorID.uuidString)
+        log[metadataKey: "vault_id"] = .string(tenantID.uuidString)
         log.info("query stream begin", metadata: [
             "query_len": .stringConvertible(userQuery.count),
             "limit": .stringConvertible(limit),
@@ -142,7 +155,7 @@ struct QueryController {
         log.info("query grounding", metadata: ["hits": .stringConvertible(hits.count)])
 
         if let achievements {
-            achievements.enqueue(tenantID: tenantID, event: .queryRan)
+            achievements.enqueue(tenantID: actorID, event: .queryRan)
         }
 
         let chatRequest = ChatRequest(
@@ -183,27 +196,31 @@ struct QueryController {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
-                    try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                        try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                            try await LLMRoutingContext.$currentUser.withValue(user) {
-                                try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                    let chunks = streamService.chatStream(
-                                        sessionKey: sessionKey,
-                                        sessionID: sessionID,
-                                        request: chatRequest
-                                    )
-                                    for try await chunk in chunks {
-                                        if Task.isCancelled {
-                                            break
-                                        }
-                                        if !chunk.delta.isEmpty {
-                                            if firstTokenMs == nil {
-                                                firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                                logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                    try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
+                        try await LLMRoutingContext.$billingTenantID.withValue(billingSponsorID) {
+                            try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
+                                try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
+                                    try await LLMRoutingContext.$currentUser.withValue(user) {
+                                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                                            let chunks = streamService.chatStream(
+                                                sessionKey: sessionKey,
+                                                sessionID: sessionID,
+                                                request: chatRequest
+                                            )
+                                            for try await chunk in chunks {
+                                                if Task.isCancelled {
+                                                    break
+                                                }
+                                                if !chunk.delta.isEmpty {
+                                                    if firstTokenMs == nil {
+                                                        firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                                        logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
+                                                    }
+                                                    tokenCount += 1
+                                                    assistantBuffer.append(chunk.delta)
+                                                    continuation.yield(.token(chunk.delta))
+                                                }
                                             }
-                                            tokenCount += 1
-                                            assistantBuffer.append(chunk.delta)
-                                            continuation.yield(.token(chunk.delta))
                                         }
                                     }
                                 }
