@@ -23,6 +23,7 @@ enum APNSPushCategory: String {
     /// HER-Cron — a scheduled (cron) skill fired.
     case cron
     case ingestion
+    case workflow
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -250,6 +251,29 @@ struct APNSNotificationService {
         )
     }
 
+    func notifyWorkflow(
+        userID: UUID,
+        workflowID: UUID,
+        runID: UUID,
+        title: String,
+        body: String,
+        state: String
+    ) async throws {
+        try await notify(
+            userID: userID,
+            title: title,
+            subtitle: "Cerberus Studio",
+            body: body,
+            category: .workflow,
+            payload: [
+                "workflowID": workflowID.uuidString,
+                "runID": runID.uuidString,
+                "state": state,
+                "deepLink": "luminavault://studio/runs/\(runID.uuidString)",
+            ]
+        )
+    }
+
     /// Generic per-user push. Looks up every active `DeviceToken` row,
     /// sends to each, reaps tokens that APNS marks as dead.
     func notify(
@@ -329,7 +353,7 @@ struct APNSNotificationService {
         on db: any Database
     ) async throws -> Bool {
         switch category {
-        case .achievement, .reminder, .cron, .ingestion:
+        case .achievement, .reminder, .cron, .ingestion, .workflow:
             // High-signal, low-frequency surfaces — never gated by the
             // category opt-out table in v1.
             return false
@@ -343,7 +367,7 @@ struct APNSNotificationService {
         case .chat: return !prefs.chatEnabled
         case .nudge: return !prefs.nudgeEnabled
         case .digest: return !prefs.digestEnabled
-        case .achievement, .reminder, .cron, .ingestion: return false
+        case .achievement, .reminder, .cron, .ingestion, .workflow: return false
         }
     }
 

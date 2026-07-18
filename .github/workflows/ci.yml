@@ -10,6 +10,10 @@ on:
       - '.swiftlint.yml'
       - '.swiftformat'
       - 'scripts/ci-test-wrapper.sh'
+      - 'docker-compose*.yml'
+      - 'Caddyfile'
+      - '.env.example'
+      - 'otel-collector-config*.yaml'
       - '.github/workflows/**'
   pull_request:
     branches: [main, dev]
@@ -21,9 +25,36 @@ on:
       - '.swiftlint.yml'
       - '.swiftformat'
       - 'scripts/ci-test-wrapper.sh'
+      - 'docker-compose*.yml'
+      - 'Caddyfile'
+      - '.env.example'
+      - 'otel-collector-config*.yaml'
       - '.github/workflows/**'
 
 jobs:
+  config-validation:
+    name: Compose Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate development and production Compose models
+        env:
+          APP_IMAGE: example.invalid/luminavault:ci
+          CORS_ALLOWEDORIGINS: https://app.example.test
+          HERMES_API_KEY: 0123456789abcdef0123456789abcdef
+          JWT_HMAC_SECRET: ci-only-secret-at-least-32-characters
+          PLUGIN_ARTIFACT_SIGNING_KEY: ci-only-artifact-signing-key
+          PLUGIN_RUNNER_TOKEN: ci-only-plugin-runner-token
+          POSTGRES_PASSWORD: ci-only-postgres-password
+          SENTRY_AUTH_TOKEN: ci-only-sentry-token
+          SENTRY_ORG_SLUG: ci-org
+          SENTRY_PROJECT_SLUG: ci-project
+          TEAM_INVITE_BASE_URL: https://app.example.test/invites
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.production.yml config --quiet
+
   lint:
     name: SwiftFormat + SwiftLint
     runs-on: macos-latest

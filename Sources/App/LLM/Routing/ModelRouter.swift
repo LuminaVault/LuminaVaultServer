@@ -67,6 +67,10 @@ enum LLMRoutingContext {
     /// Account charged for AI usage. Team vaults bind this to their billing
     /// sponsor while preserving `currentUser` for personal routing/privacy.
     @TaskLocal static var billingTenantID: UUID?
+    /// Selects platform-managed versus user-owned provider credentials for
+    /// the current routed call. Managed mode must never silently spend a
+    /// user's BYOK balance, and BYOK mode must never fall back to the pool.
+    @TaskLocal static var credentialMode: LLMBrainMode?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

@@ -783,6 +783,21 @@ paths:
       responses:
         '200': { description: Published immutable version., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
 
+  /v1/workflows/validate:
+    post:
+      tags: [Workflows]
+      operationId: workflowValidate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDefinitionDTO' } } } }
+      responses:
+        '200': { description: Validation result., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowValidationResponse' } } } }
+
+  /v1/workflows/limits:
+    get:
+      tags: [Workflows]
+      operationId: workflowLimits
+      responses:
+        '200': { description: Tier capacity and managed-inference allowance., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowLimitsDTO' } } } }
+
   /v1/workflows/{id}/webhook/rotate:
     post:
       tags: [Workflows]
@@ -830,6 +845,35 @@ paths:
       responses:
         '200': { description: Tenant run history., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunsResponse' } } } }
 
+  /v1/workflows/runs/{runID}:
+    get:
+      tags: [Workflows]
+      operationId: workflowRunGet
+      parameters: [{ in: path, name: runID, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Run detail., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
+
+  /v1/workflows/runs/{runID}/events:
+    get:
+      tags: [Workflows]
+      operationId: workflowRunEvents
+      parameters:
+        - { in: path, name: runID, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: after, required: false, schema: { type: integer, format: int64, default: 0 } }
+      responses:
+        '200': { description: Persisted replayable run events., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunEventsResponse' } } } }
+
+  /v1/workflows/runs/{runID}/events/stream:
+    get:
+      tags: [Workflows]
+      operationId: workflowRunEventsStream
+      parameters:
+        - { in: path, name: runID, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Last-Event-ID, required: false, schema: { type: integer, format: int64 } }
+        - { in: query, name: after, required: false, schema: { type: integer, format: int64, default: 0 } }
+      responses:
+        '200': { description: Replay followed by live Server-Sent Events., content: { text/event-stream: { schema: { type: string } } } }
+
   /v1/workflows/runs/{runID}/cancel:
     post:
       tags: [Workflows]
@@ -838,6 +882,65 @@ paths:
       responses:
         '204': { description: Run cancelled or already terminal. }
         '404': { description: Workflow run not found. }
+
+  /v1/workflows/runs/{runID}/retry:
+    post:
+      tags: [Workflows]
+      operationId: workflowRunRetry
+      parameters: [{ in: path, name: runID, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: New queued run., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
+
+  /v1/workflows/runs/{runID}/resume:
+    post:
+      tags: [Workflows]
+      operationId: workflowRunResume
+      parameters: [{ in: path, name: runID, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Paused run re-queued., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
+
+  /v1/workflows/{id}/versions:
+    get:
+      tags: [Workflows]
+      operationId: workflowVersionsList
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Immutable published versions., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowVersionsResponse' } } } }
+
+  /v1/workflows/{id}/versions/{version}/restore:
+    post:
+      tags: [Workflows]
+      operationId: workflowVersionRestore
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: version, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200': { description: Version copied into a new draft revision., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
+
+  /v1/workflow-templates:
+    get:
+      tags: [Workflows]
+      operationId: workflowTemplatesList
+      responses:
+        '200': { description: Curated first-party templates., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowTemplatesResponse' } } } }
+
+  /v1/workflow-templates/{templateID}/instantiate:
+    post:
+      tags: [Workflows]
+      operationId: workflowTemplateInstantiate
+      parameters: [{ in: path, name: templateID, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowTemplateInstantiateRequest' } } } }
+      responses:
+        '200': { description: Workflow draft created from template., content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } } }
+
+  /v1/workflow-templates/{templateID}/runs:
+    post:
+      tags: [Workflows]
+      operationId: workflowTemplateRun
+      parameters: [{ in: path, name: templateID, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunRequest' } } } }
+      responses:
+        '200': { description: "Template instantiated, published, and queued.", content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowRunDTO' } } } }
 
   /v1/workflows/approvals:
     get:
@@ -6262,7 +6365,7 @@ components:
       enum: [trigger, llm, skill, memorySearch, memoryWrite, template, condition, approval, parallel, forEach, whileLoop, output]
     WorkflowRunStatus:
       type: string
-      enum: [queued, running, waitingForApproval, succeeded, failed, cancelled, timedOut]
+      enum: [queued, running, waitingForApproval, paused, succeeded, failed, cancelled, timedOut]
     WorkflowNodeRunStatus:
       type: string
       enum: [pending, running, waitingForApproval, succeeded, failed, skipped, cancelled]
@@ -6292,6 +6395,7 @@ components:
       type: object
       required: [trigger, triggerConfiguration, nodes, edges]
       properties:
+        schemaVersion: { type: integer, default: 1 }
         trigger: { $ref: '#/components/schemas/WorkflowTriggerKind' }
         triggerConfiguration: { $ref: '#/components/schemas/StringMap' }
         nodes: { type: array, items: { $ref: '#/components/schemas/WorkflowNodeDTO' } }
@@ -6358,6 +6462,11 @@ components:
         endedAt: { type: string, format: date-time }
         outputPreview: { type: string }
         error: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        managedCostUsdMicros: { type: integer, format: int64 }
     WorkflowRunDTO:
       type: object
       required: [id, workflowID, workflowName, version, status, trigger, createdAt, nodeRuns]
@@ -6372,6 +6481,9 @@ components:
         endedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         error: { type: string }
+        pauseReason: { $ref: '#/components/schemas/WorkflowPauseReason' }
+        managedSpendUsdMicros: { type: integer, format: int64 }
+        managedSpendLimitUsdMicros: { type: integer, format: int64 }
         nodeRuns: { type: array, items: { $ref: '#/components/schemas/WorkflowNodeRunDTO' } }
     WorkflowRunsResponse:
       type: object
@@ -6400,6 +6512,88 @@ components:
       properties:
         approved: { type: boolean }
         note: { type: string }
+        memoryIDs: { type: array, items: { type: string, format: uuid } }
+    WorkflowPauseReason:
+      type: string
+      enum: [runSpendLimit, dailySpendLimit, monthlySpendLimit, globalSpendLimit, providerUnavailable]
+    WorkflowRunEventKind:
+      type: string
+      enum: [runQueued, runStarted, nodeStarted, nodeOutput, nodeCompleted, approvalRequired, runPaused, runCompleted, runFailed, runCancelled]
+    WorkflowRunEventDTO:
+      type: object
+      required: [id, runID, kind, data, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        runID: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/WorkflowRunEventKind' }
+        nodeID: { type: string, format: uuid }
+        message: { type: string }
+        data: { $ref: '#/components/schemas/StringMap' }
+        createdAt: { type: string, format: date-time }
+    WorkflowRunEventsResponse:
+      type: object
+      required: [events]
+      properties: { events: { type: array, items: { $ref: '#/components/schemas/WorkflowRunEventDTO' } } }
+    WorkflowVersionDTO:
+      type: object
+      required: [id, workflowID, version, definition, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        workflowID: { type: string, format: uuid }
+        version: { type: integer }
+        definition: { $ref: '#/components/schemas/WorkflowDefinitionDTO' }
+        createdAt: { type: string, format: date-time }
+    WorkflowVersionsResponse:
+      type: object
+      required: [versions]
+      properties: { versions: { type: array, items: { $ref: '#/components/schemas/WorkflowVersionDTO' } } }
+    WorkflowValidationIssueDTO:
+      type: object
+      required: [id, code, message]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        message: { type: string }
+        nodeID: { type: string, format: uuid }
+    WorkflowValidationResponse:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues: { type: array, items: { $ref: '#/components/schemas/WorkflowValidationIssueDTO' } }
+    WorkflowTemplateDTO:
+      type: object
+      required: [id, name, descriptionText, category, definition]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        descriptionText: { type: string }
+        category: { type: string }
+        definition: { $ref: '#/components/schemas/WorkflowDefinitionDTO' }
+    WorkflowTemplatesResponse:
+      type: object
+      required: [templates]
+      properties: { templates: { type: array, items: { $ref: '#/components/schemas/WorkflowTemplateDTO' } } }
+    WorkflowTemplateInstantiateRequest:
+      type: object
+      properties:
+        name: { type: string }
+    WorkflowLimitsDTO:
+      type: object
+      required: [tier, canAuthor, activeRuns, activeRunLimit, minimumScheduleMinutes, perRunLimitUsdMicros, dailyLimitUsdMicros, dailySpentUsdMicros, monthlyLimitUsdMicros, monthlySpentUsdMicros, managedInferenceAvailable, freeFallbackActive]
+      properties:
+        tier: { type: string, enum: [trial, pro, ultimate, lapsed, archived] }
+        canAuthor: { type: boolean }
+        activeRuns: { type: integer }
+        activeRunLimit: { type: integer }
+        minimumScheduleMinutes: { type: integer }
+        perRunLimitUsdMicros: { type: integer, format: int64 }
+        dailyLimitUsdMicros: { type: integer, format: int64 }
+        dailySpentUsdMicros: { type: integer, format: int64 }
+        monthlyLimitUsdMicros: { type: integer, format: int64 }
+        monthlySpentUsdMicros: { type: integer, format: int64 }
+        managedInferenceAvailable: { type: boolean }
+        freeFallbackActive: { type: boolean }
     WorkflowWebhookCredentialDTO:
       type: object
       required: [hookID, path, secret]
@@ -7451,7 +7645,7 @@ components:
 
     RouterSurface:
       type: string
-      enum: [chat, query, knowledgeCompile, job, skill, memo, system]
+      enum: [chat, query, knowledgeCompile, job, workflow, skill, memo, system]
 
     RouterActionKind:
       type: string
@@ -7710,7 +7904,7 @@ components:
 
     RouterBindingScope:
       type: string
-      enum: [user, space, job]
+      enum: [user, space, job, workflow]
 
     RouterBindingDTO:
       type: object

@@ -118,8 +118,9 @@ actor RouterProfileRepository {
         return true
     }
 
-    func resolve(tenantID: UUID, spaceID: UUID?, jobID: String?) async throws -> RouterProfile {
+    func resolve(tenantID: UUID, spaceID: UUID?, jobID: String?, workflowID: String? = nil) async throws -> RouterProfile {
         let candidates: [(RouterBindingScope, String?)] = [
+            (.workflow, workflowID),
             (.job, jobID),
             (.space, spaceID?.uuidString),
             (.user, tenantID.uuidString),

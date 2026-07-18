@@ -178,7 +178,7 @@ enum ActiveTasksQuery {
         switch WorkflowRunStatus(rawValue: raw) {
         case .running:
             .running
-        case .queued, .waitingForApproval:
+        case .queued, .waitingForApproval, .paused:
             .queued
         case .failed, .timedOut, .cancelled:
             .failed

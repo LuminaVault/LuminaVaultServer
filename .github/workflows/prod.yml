@@ -129,11 +129,18 @@ jobs:
 
     steps:
       - name: Validate SSH secrets
+        env:
+          PLUGIN_RUNNER_TOKEN: ${{ secrets.PLUGIN_RUNNER_TOKEN }}
+          PLUGIN_ARTIFACT_SIGNING_KEY: ${{ secrets.PLUGIN_ARTIFACT_SIGNING_KEY }}
+          LLM_PROVIDER_OPENROUTER_APIKEY: ${{ secrets.LLM_PROVIDER_OPENROUTER_APIKEY }}
         run: |
           test -n "${{ secrets.SERVER_HOST }}" || (echo "SERVER_HOST is empty" && exit 1)
           test -n "${{ secrets.SERVER_USER }}" || (echo "SERVER_USER is empty" && exit 1)
           test -n "${{ secrets.SERVER_SSH_KEY }}" || (echo "SERVER_SSH_KEY is empty" && exit 1)
           test -n "${{ vars.TEAM_INVITE_BASE_URL }}" || (echo "TEAM_INVITE_BASE_URL repository variable is empty" && exit 1)
+          test "${#PLUGIN_RUNNER_TOKEN}" -ge 32 || (echo "PLUGIN_RUNNER_TOKEN must be at least 32 characters" && exit 1)
+          test "${#PLUGIN_ARTIFACT_SIGNING_KEY}" -ge 32 || (echo "PLUGIN_ARTIFACT_SIGNING_KEY must be at least 32 characters" && exit 1)
+          test -n "${LLM_PROVIDER_OPENROUTER_APIKEY}" || (echo "LLM_PROVIDER_OPENROUTER_APIKEY is empty" && exit 1)
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -185,6 +192,10 @@ jobs:
             # Admin bearer token for /v1/admin/* (e.g. tier-override comping for
             # TestFlight/review). Empty = admin endpoints stay disabled.
             ADMIN_TOKEN="${{ secrets.ADMIN_TOKEN }}"
+            PLUGIN_RUNNER_TOKEN="${{ secrets.PLUGIN_RUNNER_TOKEN }}"
+            PLUGIN_ARTIFACT_SIGNING_KEY="${{ secrets.PLUGIN_ARTIFACT_SIGNING_KEY }}"
+            LLM_PROVIDER_OPENROUTER_APIKEY="${{ secrets.LLM_PROVIDER_OPENROUTER_APIKEY }}"
+            export PLUGIN_RUNNER_TOKEN PLUGIN_ARTIFACT_SIGNING_KEY LLM_PROVIDER_OPENROUTER_APIKEY
 
             # Login to container registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -222,7 +233,8 @@ jobs:
               echo "TEAM_INVITE_BASE_URL=${TEAM_INVITE_BASE_URL}" >> .env.production
             fi
             for key in SENTRY_BASE_URL SENTRY_ORG_SLUG SENTRY_PROJECT_SLUG SENTRY_AUTH_TOKEN SENTRY_ENVIRONMENT SENTRY_RELEASE \
-                       BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK; do
+                       BACKUP_AGE_RECIPIENT BACKUP_RCLONE_REMOTE BACKUP_ALERT_WEBHOOK \
+                       PLUGIN_RUNNER_TOKEN PLUGIN_ARTIFACT_SIGNING_KEY LLM_PROVIDER_OPENROUTER_APIKEY; do
               value="$(printenv "$key" || true)"
               if [ -n "${value}" ]; then
                 if grep -q "^${key}=" .env.production; then
@@ -239,14 +251,14 @@ jobs:
             export APP_PORT=8080
 
             # Bring up the stateful/backing services the app depends_on
-            # (postgres + hermes). Idempotent: compose leaves a running
+            # (postgres + valkey + hermes). Idempotent: compose leaves a running
             # container untouched when its config is unchanged, so this does
             # NOT churn the database on routine app-only redeploys — it just
             # guarantees they exist on a fresh host (first bring-up).
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
               -f docker-compose.production.yml \
               --env-file .env.production \
-              up -d postgres hermes
+              up -d postgres valkey hermes
 
             # HER-236: bring up otel-collector before app so /v1/health logs go through.
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
@@ -261,6 +273,14 @@ jobs:
               -f docker-compose.production.yml \
               --env-file .env.production \
               up -d --build --no-deps --wait plugin-runner
+
+            # Apply forward-compatible schema changes with the new immutable
+            # image before replacing the live API. A migration failure aborts
+            # the deploy while the currently running API remains untouched.
+            APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \
+              -f docker-compose.production.yml \
+              --env-file .env.production \
+              run --rm --no-deps app migrate
 
             # Deploy
             APP_PORT=8080 APP_IMAGE="${APP_IMAGE}" docker compose -p prod \

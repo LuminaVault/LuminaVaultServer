@@ -112,4 +112,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M106_IndexHybridSyncTombstones())
     await fluent.migrations.add(M107_ScopeIngestionAndKnowledgeToVaults())
     await fluent.migrations.add(M108_CreateRetrievalTelemetry())
+    await fluent.migrations.add(M109_CerberusStudio())
 }

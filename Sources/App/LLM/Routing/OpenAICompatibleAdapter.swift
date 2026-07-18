@@ -149,6 +149,9 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     /// are logged but never thrown — a stale user credential row must
     /// not break the chat path.
     private func resolveCredentials() async -> (key: String, baseURL: URL) {
+        if LLMRoutingContext.credentialMode == .managed {
+            return (apiKey, baseURL)
+        }
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()

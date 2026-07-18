@@ -152,7 +152,14 @@ struct RoutedLLMTransport: HermesChatTransport {
             }
             let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
             do {
-                let metadata = try await adapter.chatCompletionsWithMetadata(payload: candidatePayload, sessionKey: sessionKey, sessionID: sessionID)
+                let credentialMode = decision.cerberus?.mode ?? LLMRoutingContext.credentialMode
+                let metadata = try await LLMRoutingContext.$credentialMode.withValue(credentialMode) {
+                    try await adapter.chatCompletionsWithMetadata(
+                        payload: candidatePayload,
+                        sessionKey: sessionKey,
+                        sessionID: sessionID
+                    )
+                }
                 // HER-252 — successful candidate. If we got here by falling
                 // over from a prior failure, emit + log a notice describing
                 // the transition.
@@ -374,11 +381,15 @@ struct RoutedLLMTransport: HermesChatTransport {
                 let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
                 var yieldedAny = false
                 do {
-                    for try await chunk in adapter.chatStream(
-                        payload: candidatePayload,
-                        sessionKey: sessionKey,
-                        sessionID: sessionID
-                    ) {
+                    let credentialMode = decision.cerberus?.mode ?? LLMRoutingContext.credentialMode
+                    let candidateStream = LLMRoutingContext.$credentialMode.withValue(credentialMode) {
+                        adapter.chatStream(
+                            payload: candidatePayload,
+                            sessionKey: sessionKey,
+                            sessionID: sessionID
+                        )
+                    }
+                    for try await chunk in candidateStream {
                         if !yieldedAny {
                             yieldedAny = true
                             if let prior = lastFailedCandidate {

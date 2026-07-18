@@ -242,6 +242,9 @@ struct AnthropicAdapter: ProviderAdapter {
     }
 
     private func resolveCredentials() async -> (key: String, baseURL: URL) {
+        if LLMRoutingContext.credentialMode == .managed {
+            return (apiKey, baseURL)
+        }
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()

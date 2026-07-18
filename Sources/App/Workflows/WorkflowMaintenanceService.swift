@@ -10,10 +10,11 @@ import ServiceLifecycle
 actor WorkflowMaintenanceService: Service {
     private let fluent: Fluent
     private let logger: Logger
+    private let events: WorkflowEventStore?
     private let interval: Duration
 
-    init(fluent: Fluent, logger: Logger, interval: Duration = .seconds(3600)) {
-        self.fluent = fluent; self.logger = logger; self.interval = interval
+    init(fluent: Fluent, events: WorkflowEventStore? = nil, logger: Logger, interval: Duration = .seconds(3600)) {
+        self.fluent = fluent; self.events = events; self.logger = logger; self.interval = interval
     }
 
     func run() async throws {
@@ -39,6 +40,7 @@ actor WorkflowMaintenanceService: Service {
             }
         }
         let cutoff = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        await events?.prune(before: cutoff)
         let old = try await WorkflowNodeRun.query(on: fluent.db()).filter(\.$createdAt < cutoff).all()
         for node in old where node.inputSnapshot != nil || node.outputSnapshot != nil {
             node.inputSnapshot = nil; node.outputSnapshot = nil

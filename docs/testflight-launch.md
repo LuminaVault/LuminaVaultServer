@@ -162,7 +162,10 @@ Entitlements (`aps-environment=production` for Beta/Release archives,
 2. Deploy server (push to `main` → CI → deploy). First deploy: bring up the full
    stack once so `postgres`/`hermes`/`caddy` exist:
    `docker compose -p prod -f docker-compose.production.yml --env-file .env.production up -d`.
-3. Run migrations once: `docker compose -p prod -f docker-compose.production.yml run --rm app migrate`.
+3. Confirm the Deploy workflow's `app migrate` step succeeded. It runs after
+   PostgreSQL is healthy and before the API container is replaced. For an
+   initial manual bootstrap only, run:
+   `docker compose -p prod -f docker-compose.production.yml --env-file .env.production run --rm --no-deps app migrate`.
 4. Point DNS (§7); wait for Caddy `certificate obtained successfully`.
 5. In the client repo: `bundle exec fastlane sync_signing` then
    `bundle exec fastlane beta` (builds **Beta** / `com.lumina.fernando.beta`,

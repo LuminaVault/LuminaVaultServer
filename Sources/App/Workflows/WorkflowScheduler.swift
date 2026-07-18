@@ -10,11 +10,13 @@ import ServiceLifecycle
 /// multiple application replicas evaluate the same cron expression.
 actor WorkflowScheduler: Service {
     private let fluent: Fluent
+    private let workflowService: WorkflowService
     private let logger: Logger
     private let tickInterval: Duration
 
-    init(fluent: Fluent, logger: Logger, tickInterval: Duration = .seconds(60)) {
+    init(fluent: Fluent, workflowService: WorkflowService, logger: Logger, tickInterval: Duration = .seconds(60)) {
         self.fluent = fluent
+        self.workflowService = workflowService
         self.logger = logger
         self.tickInterval = tickInterval
     }
@@ -57,20 +59,23 @@ actor WorkflowScheduler: Service {
                 .filter(\.$dedupeKey == key)
                 .first()
             guard existing == nil else { continue }
-            let run = WorkflowRun()
-            run.id = UUID(); run.tenantID = workflow.tenantID
-            run.workflowID = workflowID; run.versionID = versionID
-            run.status = WorkflowRunStatus.queued.rawValue
-            run.triggerKind = WorkflowTriggerKind.schedule.rawValue
-            run.input = ["scheduledAt": ISO8601DateFormatter().string(from: now)]
-            run.dedupeKey = key
             do {
-                try await run.create(on: fluent.db())
+                _ = try await workflowService.enqueue(
+                    tenantID: workflow.tenantID,
+                    workflowID: workflowID,
+                    trigger: .schedule,
+                    request: WorkflowRunRequest(input: ["scheduledAt": ISO8601DateFormatter().string(from: now)]),
+                    dedupeKey: key
+                )
                 enqueued += 1
                 if isOneShotDue {
                     workflow.enabled = false
                     try await workflow.save(on: fluent.db())
                 }
+            } catch WorkflowServiceError.activeRunLimit {
+                logger.info("workflow.schedule deferred by active-run limit: \(workflowID)")
+            } catch WorkflowServiceError.forbidden {
+                logger.info("workflow.schedule skipped for inactive entitlement: \(workflowID)")
             } catch {
                 // A competing replica may have won the unique key race.
                 logger.debug("workflow.schedule duplicate suppressed: \(key)")
