@@ -2381,6 +2381,25 @@ func buildRouter(
         .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
     adminController.addRoutes(to: adminGroup)
 
+    // Deep health — round-trips Hermes `GET /v1/models` via the shared
+    // gateway probe (HER-226, Bearer `hermes.apiKey`). Deliberately separate
+    // from the shallow `/health` (process liveness): a Hermes outage degrades
+    // THIS endpoint to 503 without flipping the API pod NotReady, so plain
+    // CRUD keeps serving while uptime monitors still see the AI path is down.
+    // Unauthenticated + secret-free (reports only reachability + latency).
+    router.get("/health/deep") { _, _ -> Response in
+        let result = await gatewayProbe.probe(gatewayURL: services.hermesGatewayURL)
+        let latency = result.latencyMs.map(String.init) ?? "null"
+        let json = #"{"status":"\#(result.reachable ? "ok" : "degraded")","hermes":{"reachable":\#(result.reachable),"latencyMs":\#(latency)}}"#
+        var headers = HTTPFields()
+        headers[.contentType] = "application/json"
+        return Response(
+            status: result.reachable ? .ok : .serviceUnavailable,
+            headers: headers,
+            body: .init(byteBuffer: ByteBuffer(string: json))
+        )
+    }
+
     // HER-164 — admin LLM health-check fanout. `GET /admin/llm/health`
     // pings every registered OpenAI-compatible provider concurrently
     // and returns one row per upstream with status + latency, so the
