@@ -318,38 +318,19 @@ struct CerberusModelRouter: ModelRouter {
             let credentialed = await credentialedProviderIDs(tenantID: tenantID)
             let deploymentEnabled = await deploymentEnabledProviderIDs()
 
-            // BYOK + zero keys → fail closed (confirmed product law).
+            // BYOK + zero keys -> fail closed (confirmed product law).
             if profile.mode == .byok, credentialed.isEmpty {
-                let metadata = CerberusDecisionMetadata(
-                    executionID: UUID(),
+                return Self.byokKeysRequiredDecision(
+                    table: table,
                     tenantID: tenantID,
-                    vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
-                    actorUserID: tenantID,
-                    profileID: profile.id,
-                    profileName: profile.name,
+                    profile: profile,
                     ruleID: rule?.id,
-                    taskType: task,
-                    surface: scope.surface,
-                    spaceID: scope.spaceID,
-                    conversationID: scope.conversationID,
-                    strategy: .sequential,
-                    parallelStrategy: nil,
-                    participants: nil,
-                    routes: [],
-                    synthesisRoute: nil,
-                    minimumSuccessfulResults: 1,
-                    retryPolicy: .fast,
-                    predictedCostUsdMicros: 0,
-                    budgetReservationUsdMicros: 0,
-                    budgetDenied: false,
-                    mode: .byok,
-                    routingPolicy: policy,
+                    task: task,
+                    scope: scope,
+                    policy: policy,
                     complexity: complexity,
-                    reason: "Add an API key (OpenRouter recommended) or switch to Managed",
-                    byokKeysRequired: true
+                    reason: "Add an API key (OpenRouter recommended) or switch to Managed"
                 )
-                // Primary is unused — transport checks byokKeysRequired first.
-                return RouteDecision(primary: table.primary, fallbacks: [], cerberus: metadata)
             }
 
             let minTier: RouterModelTier = switch policy {
@@ -385,7 +366,22 @@ struct CerberusModelRouter: ModelRouter {
                 ))
             }
 
-            guard !filtered.isEmpty else { return table }
+            guard !filtered.isEmpty else {
+                if profile.mode == .byok {
+                    return Self.byokKeysRequiredDecision(
+                        table: table,
+                        tenantID: tenantID,
+                        profile: profile,
+                        ruleID: rule?.id,
+                        task: task,
+                        scope: scope,
+                        policy: policy,
+                        complexity: complexity,
+                        reason: "No BYOK providers are available for this router profile"
+                    )
+                }
+                return table
+            }
 
             let promptTokens = max(1, prompt.count / 4)
             let effectiveParallelStrategy = requestedParallelStrategy ?? action.parallelStrategy
@@ -412,6 +408,19 @@ struct CerberusModelRouter: ModelRouter {
             let mapped = ordered.compactMap(Self.toModelRoute)
             guard let primary = mapped.first, let selectedDTO = ordered.first else {
                 await budget.release(tenantID: tenantID, reservedUsdMicros: predicted)
+                if profile.mode == .byok {
+                    return Self.byokKeysRequiredDecision(
+                        table: table,
+                        tenantID: tenantID,
+                        profile: profile,
+                        ruleID: rule?.id,
+                        task: task,
+                        scope: scope,
+                        policy: policy,
+                        complexity: complexity,
+                        reason: "Choose a supported BYOK provider for this router profile"
+                    )
+                }
                 return table
             }
             let reason = AvailableModelPoolBuilder.reason(
@@ -455,6 +464,49 @@ struct CerberusModelRouter: ModelRouter {
             logger.error("cerberus decision failed; using table router", metadata: ["error": .string("\(error)")])
             return table
         }
+    }
+
+    private static func byokKeysRequiredDecision(
+        table: RouteDecision,
+        tenantID: UUID,
+        profile: RouterProfileDTO,
+        ruleID: UUID?,
+        task: RouterTaskType,
+        scope: CerberusRequestScope,
+        policy: LLMRoutingPolicy,
+        complexity: RouterComplexity,
+        reason: String
+    ) -> RouteDecision {
+        let metadata = CerberusDecisionMetadata(
+            executionID: UUID(),
+            tenantID: tenantID,
+            vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
+            actorUserID: tenantID,
+            profileID: profile.id,
+            profileName: profile.name,
+            ruleID: ruleID,
+            taskType: task,
+            surface: scope.surface,
+            spaceID: scope.spaceID,
+            conversationID: scope.conversationID,
+            strategy: .sequential,
+            parallelStrategy: nil,
+            participants: nil,
+            routes: [],
+            synthesisRoute: nil,
+            minimumSuccessfulResults: 1,
+            retryPolicy: .fast,
+            predictedCostUsdMicros: 0,
+            budgetReservationUsdMicros: 0,
+            budgetDenied: false,
+            mode: .byok,
+            routingPolicy: policy,
+            complexity: complexity,
+            reason: reason,
+            byokKeysRequired: true
+        )
+        // Primary is unused: RoutedLLMTransport checks byokKeysRequired before dispatch.
+        return RouteDecision(primary: table.primary, fallbacks: [], cerberus: metadata)
     }
 
     private func credentialedProviderIDs(tenantID: UUID) async -> Set<ProviderID> {

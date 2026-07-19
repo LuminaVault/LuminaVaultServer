@@ -66,6 +66,23 @@ struct AvailableModelPoolBuilderTests {
         #expect(pool.contains { $0.model.contains("haiku") || AvailableModelPoolBuilder.tier(for: $0) == .fast })
     }
 
+    @Test func byokPoolCanBeEmptyWhenProfileExcludesCredentialedProviders() {
+        let pool = AvailableModelPoolBuilder.build(.init(
+            mode: .byok,
+            profileRoutes: [
+                RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1"),
+                RouterModelRouteDTO(provider: .openai, model: "gpt-4o"),
+            ],
+            allowedProviders: [.openRouter],
+            blockedProviders: [],
+            credentialedProviders: [.anthropic],
+            deploymentEnabledProviders: [.openRouter],
+            minTier: .fast
+        ))
+
+        #expect(pool.isEmpty)
+    }
+
     @Test func tierFloorDropsCheapWhenHigh() {
         let pool = AvailableModelPoolBuilder.build(.init(
             mode: .byok,
