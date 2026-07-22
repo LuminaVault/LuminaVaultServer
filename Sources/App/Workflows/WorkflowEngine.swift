@@ -322,18 +322,7 @@ actor WorkflowEngine: Service {
                         tier: tier
                     )
                 } catch let WorkflowSpendError.denied(reason) {
-                    guard reason != .providerUnavailable else { throw WorkflowEngineError.paused(reason) }
-                    useFreeFallback = true
-                    fallbackReason = reason
-                    WorkflowMetrics.freeFallbacks.increment()
-                    try await events.append(
-                        tenantID: run.tenantID,
-                        runID: run.requireID(),
-                        kind: .nodeOutput,
-                        nodeID: node.id,
-                        message: "Managed allowance reached; continuing on OpenRouter Free.",
-                        data: ["fallback": "openrouter/free", "reason": reason.rawValue]
-                    )
+                    throw WorkflowEngineError.paused(reason)
                 }
             }
             let payload = try JSONSerialization.data(withJSONObject: [

@@ -87,4 +87,78 @@ struct WorkflowLifecycleIntegrationTests {
             #expect(runs.runs.first?.status == .cancelled)
         }
     }
+
+    @Test func `resume respects active run limit`() async throws {
+        try await withTestFluent(label: "lv.test.workflow.resume-limit") { fluent in
+            await fluent.migrations.add(M92_CreateWorkflows())
+            await fluent.migrations.add(M93_HardenWorkflowAutomation())
+            await fluent.migrations.add(M100_CreateWorkflowWebhooks())
+            await fluent.migrations.add(M109_CerberusStudio())
+            try await fluent.migrate()
+            let suffix = UUID().uuidString.lowercased()
+            let user = User(
+                email: "workflow-resume-\(suffix)@example.test",
+                username: "wf_resume_\(suffix.prefix(8))",
+                passwordHash: "test",
+                tier: UserTier.pro.rawValue
+            )
+            try await user.create(on: fluent.db())
+            let tenantID = try user.requireID()
+
+            let trigger = WorkflowNodeDTO(kind: .trigger, name: "Manual", x: 0, y: 0)
+            let output = WorkflowNodeDTO(kind: .output, name: "Output", x: 200, y: 0, configuration: ["value": "{{event}}"])
+            let definition = WorkflowDefinitionDTO(
+                trigger: .manual,
+                nodes: [trigger, output],
+                edges: [.init(sourceNodeID: trigger.id, targetNodeID: output.id)]
+            )
+            let spend = WorkflowSpendService(
+                fluent: fluent,
+                logger: Logger(label: "lv.test.workflow.resume-limit.spend"),
+                managedInferenceAvailable: true
+            )
+            let service = WorkflowService(fluent: fluent, spend: spend)
+            let created = try await service.create(tenantID: tenantID, request: .init(name: "Resume Limit \(suffix)", definition: definition))
+            _ = try await service.publish(tenantID: tenantID, id: created.workflow.id)
+            let active = try await service.enqueue(
+                tenantID: tenantID,
+                workflowID: created.workflow.id,
+                trigger: .manual,
+                request: .init(input: ["event": "active"])
+            )
+
+            let workflow = try #require(try await Workflow.query(on: fluent.db(), tenantID: tenantID)
+                .filter(\.$id == created.workflow.id)
+                .first())
+            let versionID = try #require(workflow.publishedVersionID)
+            let paused = WorkflowRun()
+            paused.id = UUID()
+            paused.tenantID = tenantID
+            paused.workflowID = created.workflow.id
+            paused.versionID = versionID
+            paused.status = WorkflowRunStatus.paused.rawValue
+            paused.triggerKind = WorkflowTriggerKind.manual.rawValue
+            paused.input = ["event": "paused"]
+            paused.pauseReason = WorkflowPauseReason.dailySpendLimit.rawValue
+            paused.managedSpendUsdMicros = 0
+            paused.managedSpendLimitUsdMicros = WorkflowTierPolicy.policy(for: .pro).perRunUsdMicros
+            try await paused.create(on: fluent.db())
+            let pausedID = try paused.requireID()
+
+            do {
+                _ = try await service.resume(tenantID: tenantID, runID: pausedID)
+                Issue.record("resume should enforce the active run limit")
+            } catch WorkflowServiceError.activeRunLimit {
+                // Expected: Pro tenants can only have one queued/running/waiting run.
+            } catch {
+                Issue.record("expected activeRunLimit, got \(error)")
+            }
+
+            let reloaded = try #require(try await WorkflowRun.find(pausedID, on: fluent.db()))
+            #expect(reloaded.status == WorkflowRunStatus.paused.rawValue)
+            #expect(reloaded.pauseReason == WorkflowPauseReason.dailySpendLimit.rawValue)
+
+            try await service.cancel(tenantID: tenantID, runID: active.id)
+        }
+    }
 }
