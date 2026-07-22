@@ -324,12 +324,19 @@ actor WorkflowService {
     }
 
     func resume(tenantID: UUID, runID: UUID) async throws -> WorkflowRunDTO {
-        _ = try await requireAuthorTier(tenantID: tenantID)
+        let tier = try await requireAuthorTier(tenantID: tenantID)
         guard let row = try await WorkflowRun.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$id == runID).first(), row.status == WorkflowRunStatus.paused.rawValue,
             let workflow = try await Workflow.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$id == row.workflowID).first()
         else { throw WorkflowServiceError.notFound }
+        if let spend {
+            do {
+                _ = try await spend.ensureCanEnqueue(tenantID: tenantID, tier: tier)
+            } catch WorkflowSpendError.activeRunLimit {
+                throw WorkflowServiceError.activeRunLimit
+            }
+        }
         row.status = WorkflowRunStatus.queued.rawValue
         row.pauseReason = nil
         row.errorMessage = nil
