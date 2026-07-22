@@ -18,6 +18,7 @@ struct WorkflowController {
     let service: WorkflowService
     let webhookController: WorkflowWebhookController
     let eventStore: WorkflowEventStore
+    let selfImprovement: SelfImprovementService?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list); router.post("", use: create)
@@ -60,7 +61,15 @@ struct WorkflowController {
 
     @Sendable func create(_ req: Request, ctx: AppRequestContext) async throws -> WorkflowDetailDTO {
         let body = try await req.decode(as: WorkflowCreateRequest.self, context: ctx)
-        return try await mapErrors { try await service.create(tenantID: ctx.requireTenantID(), request: body) }
+        let tenantID = try ctx.requireTenantID()
+        let workflow = try await mapErrors { try await service.create(tenantID: tenantID, request: body) }
+        await selfImprovement?.noteActivity(tenantID: tenantID)
+        await selfImprovement?.triggerComplexSession(
+            tenantID: tenantID,
+            toolCallCount: 0,
+            createdWorkflow: true
+        )
+        return workflow
     }
 
     @Sendable func detail(_: Request, ctx: AppRequestContext) async throws -> WorkflowDetailDTO {

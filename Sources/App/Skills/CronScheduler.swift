@@ -224,7 +224,7 @@ actor CronScheduler: Service {
             let manifests = await (try? catalog.manifests(for: tenantID)) ?? []
             guard !manifests.isEmpty else { continue }
             let states = try await SkillsState.query(on: fluent.db())
-                .filter(\.$tenantID == tenantID)
+                .filter(\.$id == tenantID)
                 .filter(\.$enabled == true)
                 .all()
             let stateByKey: [String: SkillsState] = Dictionary(
@@ -276,7 +276,7 @@ actor CronScheduler: Service {
         let row: SkillsState
         do {
             row = try await SkillsState.query(on: fluent.db())
-                .filter(\.$tenantID == pair.tenantID)
+                .filter(\.$id == pair.tenantID)
                 .filter(\.$source == pair.source)
                 .filter(\.$name == pair.skillName)
                 .first() ?? SkillsState(

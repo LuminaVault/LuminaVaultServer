@@ -32,6 +32,8 @@ tags:
   - name: Me
   - name: Settings
     description: Per-user config — currently BYO Hermes gateway (HER-217/223).
+  - name: Self Improvement
+    description: Tenant-scoped curator, SOUL review proposals, pinning, reports, and rollback.
   - name: Onboarding
   - name: Devices
     description: APNS / FCM device-token registration (HER-214).
@@ -1413,6 +1415,192 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HermesCapabilitiesResponse' }
+
+  /v1/me/improvement:
+    get:
+      tags: [Self Improvement]
+      operationId: improvementStatusGet
+      summary: Read curator and SOUL reviewer settings and status.
+      responses:
+        '200':
+          description: Current self-improvement status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementStatusDTO' }
+    put:
+      tags: [Self Improvement]
+      operationId: improvementSettingsPut
+      summary: Replace tenant self-improvement settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImprovementSettingsUpdateRequest' }
+      responses:
+        '200':
+          description: Updated status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementStatusDTO' }
+
+  /v1/me/improvement/curator/runs:
+    post:
+      tags: [Self Improvement]
+      operationId: improvementCuratorRun
+      summary: Queue a live or dry-run curator pass.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImprovementRunRequest' }
+      responses:
+        '202':
+          description: Run queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementRunAcceptedResponse' }
+
+  /v1/me/improvement/runs:
+    get:
+      tags: [Self Improvement]
+      operationId: improvementRunsList
+      summary: List curator and SOUL review reports.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Run history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementRunsResponse' }
+
+  /v1/me/improvement/runs/{id}:
+    get:
+      tags: [Self Improvement]
+      operationId: improvementRunGet
+      summary: Read one run and its report.
+      parameters:
+        - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: Run detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementRunDTO' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/me/improvement/runs/{id}/rollback:
+    post:
+      tags: [Self Improvement]
+      operationId: improvementRunRollback
+      summary: Restore the guarded backup for a completed curator run.
+      parameters:
+        - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: Run marked rolled back.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementRollbackResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/me/improvement/resources:
+    get:
+      tags: [Self Improvement]
+      operationId: improvementResourcesList
+      summary: List curator-managed skills and jobs, including pinned state.
+      responses:
+        '200':
+          description: Curator resources.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementSkillsResponse' }
+
+  /v1/me/improvement/resources/{kind}/{name}:
+    patch:
+      tags: [Self Improvement]
+      operationId: improvementResourcePin
+      summary: Pin or unpin a skill or job. Pinning a job also protects its backing skill.
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/ImprovementResourceKind' }
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImprovementSkillPinRequest' }
+      responses:
+        '200':
+          description: Updated resource.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementSkillDTO' }
+
+  /v1/me/improvement/soul/reviews:
+    post:
+      tags: [Self Improvement]
+      operationId: improvementSoulReview
+      summary: Queue a conservative SOUL.md review. Changes always require approval.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SoulReviewRequest' }
+      responses:
+        '202':
+          description: Review queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementRunAcceptedResponse' }
+
+  /v1/me/improvement/changes:
+    get:
+      tags: [Self Improvement]
+      operationId: improvementChangesList
+      summary: List pending and historical SOUL proposals.
+      responses:
+        '200':
+          description: Change proposals.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementChangesResponse' }
+
+  /v1/me/improvement/changes/{id}/approve:
+    post:
+      tags: [Self Improvement]
+      operationId: improvementChangeApprove
+      summary: Apply a non-stale SOUL.md proposal.
+      parameters:
+        - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: Applied proposal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementDecisionResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/me/improvement/changes/{id}/reject:
+    post:
+      tags: [Self Improvement]
+      operationId: improvementChangeReject
+      summary: Reject a pending SOUL.md proposal.
+      parameters:
+        - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: Rejected proposal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImprovementDecisionResponse' }
 
   # ─────────── Me — External LLM provider credentials (HER-252) ──────────
 
@@ -6145,6 +6333,184 @@ components:
           items: { type: string }
 
     # ── Dashboard (HER-244) ──
+
+    # ── Self improvement ──
+
+    ImprovementModelMode:
+      type: string
+      enum: [economy, main]
+
+    ImprovementAvailability:
+      type: string
+      enum: [managed, compatible_byo, read_only, unavailable]
+
+    ImprovementChangeKind:
+      type: string
+      enum: [curator, soul]
+
+    ImprovementChangeState:
+      type: string
+      enum: [pending, approved, rejected, applied, stale, failed]
+
+    ImprovementTrigger:
+      type: string
+      enum: [manual, weekly, complex_session]
+
+    ImprovementRunStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, rolled_back]
+
+    ImprovementResourceKind:
+      type: string
+      enum: [skill, job]
+
+    ImprovementResourceState:
+      type: string
+      enum: [active, stale, archived]
+
+    ImprovementSettingsDTO:
+      type: object
+      required: [enabled, curatorEnabled, intervalHours, minimumIdleHours, consolidate, pruneBuiltins, backupKeep, soulReviewEnabled, reviewComplexSessions, soulReviewWindowDays, soulReviewCooldownHours, modelMode]
+      properties:
+        enabled: { type: boolean, default: true }
+        curatorEnabled: { type: boolean, default: true }
+        intervalHours: { type: integer, minimum: 24, maximum: 720, default: 168 }
+        minimumIdleHours: { type: integer, minimum: 0, maximum: 72, default: 2 }
+        consolidate: { type: boolean, default: true }
+        pruneBuiltins: { type: boolean, default: false }
+        backupKeep: { type: integer, minimum: 1, maximum: 20, default: 5 }
+        soulReviewEnabled: { type: boolean, default: true }
+        reviewComplexSessions: { type: boolean, default: true }
+        soulReviewWindowDays: { type: integer, minimum: 7, maximum: 14, default: 14 }
+        soulReviewCooldownHours: { type: integer, minimum: 1, maximum: 168, default: 24 }
+        modelMode: { $ref: '#/components/schemas/ImprovementModelMode' }
+
+    ImprovementSettingsUpdateRequest:
+      type: object
+      required: [settings]
+      properties:
+        settings: { $ref: '#/components/schemas/ImprovementSettingsDTO' }
+
+    ImprovementStatusDTO:
+      type: object
+      required: [settings, availability, economyModelAvailable, pendingChanges]
+      properties:
+        settings: { $ref: '#/components/schemas/ImprovementSettingsDTO' }
+        availability: { $ref: '#/components/schemas/ImprovementAvailability' }
+        economyModelAvailable: { type: boolean }
+        pendingChanges: { type: integer }
+        lastCuratorReviewAt: { type: string, format: date-time }
+        lastSoulReviewAt: { type: string, format: date-time }
+        nextReviewAt: { type: string, format: date-time }
+        message: { type: string }
+
+    ImprovementRunDTO:
+      type: object
+      required: [id, kind, status, trigger, dryRun, actionsApplied, actionsSkipped, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ImprovementChangeKind' }
+        status: { $ref: '#/components/schemas/ImprovementRunStatus' }
+        trigger: { $ref: '#/components/schemas/ImprovementTrigger' }
+        dryRun: { type: boolean }
+        modelUsed: { type: string }
+        reportMarkdown: { type: string }
+        actionsApplied: { type: integer }
+        actionsSkipped: { type: integer }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        failureReason: { type: string }
+
+    ImprovementRunsResponse:
+      type: object
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items: { $ref: '#/components/schemas/ImprovementRunDTO' }
+
+    ImprovementRunRequest:
+      type: object
+      required: [dryRun]
+      properties:
+        dryRun: { type: boolean, default: true }
+
+    ImprovementRunAcceptedResponse:
+      type: object
+      required: [run]
+      properties:
+        run: { $ref: '#/components/schemas/ImprovementRunDTO' }
+
+    ImprovementRollbackResponse:
+      type: object
+      required: [run]
+      properties:
+        run: { $ref: '#/components/schemas/ImprovementRunDTO' }
+
+    SoulReviewRequest:
+      type: object
+      required: [trigger]
+      properties:
+        trigger: { $ref: '#/components/schemas/ImprovementTrigger' }
+
+    ImprovementChangeDTO:
+      type: object
+      required: [id, kind, state, trigger, title, summary, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ImprovementChangeKind' }
+        state: { $ref: '#/components/schemas/ImprovementChangeState' }
+        trigger: { $ref: '#/components/schemas/ImprovementTrigger' }
+        title: { type: string }
+        summary: { type: string }
+        patch: { type: string }
+        baseSHA256: { type: string }
+        reportMarkdown: { type: string }
+        failureReason: { type: string }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+        appliedAt: { type: string, format: date-time }
+
+    ImprovementChangesResponse:
+      type: object
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/ImprovementChangeDTO' }
+
+    ImprovementDecisionResponse:
+      type: object
+      required: [change]
+      properties:
+        change: { $ref: '#/components/schemas/ImprovementChangeDTO' }
+
+    ImprovementSkillDTO:
+      type: object
+      required: [name, title, kind, state, pinned, curatorManaged]
+      properties:
+        name: { type: string }
+        title: { type: string }
+        kind: { $ref: '#/components/schemas/ImprovementResourceKind' }
+        state: { $ref: '#/components/schemas/ImprovementResourceState' }
+        pinned: { type: boolean }
+        curatorManaged: { type: boolean }
+        lastActivityAt: { type: string, format: date-time }
+
+    ImprovementSkillsResponse:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/ImprovementSkillDTO' }
+
+    ImprovementSkillPinRequest:
+      type: object
+      required: [pinned]
+      properties:
+        pinned: { type: boolean }
 
     # ── Skills (HER-247 / HER-177 / HER-178 / HER-179) ──
 

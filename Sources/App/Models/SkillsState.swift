@@ -9,11 +9,13 @@ import Foundation
 /// Fluent's `@CompositeID` is awkward with three columns + a non-`id`
 /// primary key, so this model exposes the columns directly and queries
 /// pin the relevant fields rather than relying on `find(_:on:)`.
+///
+/// `tenant_id` is the Fluent `@ID` only — never also `@Field(key: "tenant_id")`
+/// or INSERTs emit the column twice (Postgres 42701).
 final class SkillsState: Model, TenantModel, @unchecked Sendable {
     static let schema = "skills_state"
 
     @ID(custom: "tenant_id", generatedBy: .user) var id: UUID?
-    @Field(key: "tenant_id") var tenantID: UUID
     @Field(key: "source") var source: String // "builtin" | "vault"
     @Field(key: "name") var name: String
     @Field(key: "enabled") var enabled: Bool
@@ -33,8 +35,26 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     /// Automation 2.0 workflow. CronScheduler then leaves delivery to the
     /// workflow scheduler, preventing double execution during migration.
     @OptionalField(key: "workflow_id") var workflowID: UUID?
+    @Field(key: "curator_pinned") var curatorPinned: Bool
+    @Field(key: "curator_state") var curatorState: String
+    @OptionalField(key: "curator_last_activity_at") var curatorLastActivityAt: Date?
+    @OptionalField(key: "curator_archived_at") var curatorArchivedAt: Date?
 
-    init() {}
+    /// `TenantModel` surface — same column as `@ID`. Query with `\.$id`, not `\.$tenantID`.
+    var tenantID: UUID {
+        get {
+            guard let id else {
+                preconditionFailure("SkillsState.tenantID read before id was set")
+            }
+            return id
+        }
+        set { id = newValue }
+    }
+
+    init() {
+        curatorPinned = false
+        curatorState = "active"
+    }
 
     init(
         tenantID: UUID,
@@ -49,7 +69,6 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         apnsCategory: String? = nil
     ) {
         id = tenantID
-        self.tenantID = tenantID
         self.source = source
         self.name = name
         self.enabled = enabled
@@ -59,5 +78,7 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
         self.lastStatus = lastStatus
         self.lastError = lastError
         self.apnsCategory = apnsCategory
+        curatorPinned = false
+        curatorState = "active"
     }
 }

@@ -179,7 +179,7 @@ actor SkillRunner {
         var mtokOut = 0
         let routingUser: User? = await (try? User.find(tenantID, on: fluent.db())) ?? nil
         let routingState: SkillsState? = await (try? SkillsState.query(on: fluent.db())
-            .filter(\.$tenantID == tenantID)
+            .filter(\.$id == tenantID)
             .filter(\.$source == skill.source.rawValue)
             .filter(\.$name == skill.name)
             .first()) ?? nil

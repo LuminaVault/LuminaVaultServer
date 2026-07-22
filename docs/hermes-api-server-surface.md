@@ -158,6 +158,11 @@ tools, so a `/v1/runs` prompt could edit SOUL.md or config.yaml on its own host)
 is non-deterministic, unauditable, and exactly the RCE-shaped surface the upstream code
 warns about. Do not build settings UX on it.
 
+**Managed LuminaVault tenants:** vault `SOUL.md` is canonical; the Hermes profile copy is a
+server-written mirror via `SOULService`. Hermes agents must not treat local/profile
+`SOUL.md` as editable source of truth. SOUL reviewer patches apply only through
+`POST /v1/me/improvement/changes/{id}/approve`.
+
 ### Explicitly out of scope
 
 **No SSH-based product designs.** SSH was used only as the investigation tool for this

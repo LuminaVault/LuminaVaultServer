@@ -34,6 +34,49 @@ The prod compose declares these as `${VAR:?required}` — container start fails 
 
 Everything else has a safe default appropriate for a single-tenant deploy. Empty `*_APIKEY` values keep the matching provider unregistered (endpoint returns 503) — that is the intended behaviour, not an error.
 
+### Self-improvement
+
+`SELF_IMPROVEMENT_ENABLED=true` enables the LuminaVault-owned, tenant-scoped
+curator and SOUL reviewer. `SELF_IMPROVEMENT_ECONOMY_MODEL=openrouter/free`
+selects the low-cost model sent through the existing Hermes REST API. This
+feature does not require a Hermes fork endpoint, a script runner, or another
+hosted service. Curator is enabled per user by default, runs every 168 hours
+after two idle hours, consolidates only vault-authored unpinned skills, never
+prunes built-ins, and keeps five guarded backups. SOUL.md changes are always
+stored as proposals and require explicit approval through the API. Persist
+`VAULT_ROOT_PATH` across container/pod replacement so custom skills,
+`REPORT.md`, and rollback material survive restarts.
+
+#### Advisor cheat sheet (Path B vs Path A)
+
+Use **Path B** for LuminaVault tenants. Use **Path A** only for a local/pure
+Hermes install. Defaults differ — do not paste Hermes YAML as Lumina settings.
+
+| | Path B — LuminaVault (this server) | Path A — pure Hermes |
+| --- | --- | --- |
+| Owner | `SelfImprovementScheduler` in API pod | `hermes curator` + `~/.hermes/config.yaml` |
+| Hermes role | REST inference only | Native curator CLI |
+| `consolidate` default | **true** | **false** (prune-only) |
+| `pruneBuiltins` / `prune_builtins` | **false** | **true** |
+| Cheap model | `SELF_IMPROVEMENT_ECONOMY_MODEL` + `modelMode: economy` | `auxiliary.curator.{provider,model}` |
+
+**Path B APIs** (OpenAPI Self Improvement tag):
+
+- `GET/PUT /v1/me/improvement` — status and settings
+- `POST /v1/me/improvement/curator/runs` — body `{ "dryRun": true|false }` → 202
+- `PATCH /v1/me/improvement/resources/{kind}/{name}` — pin / unpin
+- `POST /v1/me/improvement/soul/reviews` — body `{ "trigger": "manual" }` → 202
+- `POST /v1/me/improvement/changes/{id}/approve` — apply SOUL proposal only
+- `POST /v1/me/improvement/changes/{id}/reject` — reject pending proposal
+
+SOUL reviewer never writes disk; it creates a pending change. Apply only via
+approve → `SOULService` (vault canonical + Hermes mirror + locked core inject).
+User `PUT /v1/soul` is an immediate editor write (not the reviewer path), still
+server-side only. Never edit Hermes profile `SOUL.md` as source of truth.
+
+Cursor rule: `.cursor/rules/hermes-self-improvement.mdc`. Upstream Hermes
+reference: `LuminaVaultHermesAgent/website/docs/user-guide/features/curator.md`.
+
 ### Knowledge graph extraction
 
 `KNOWLEDGE_GRAPH_WORKER_ENABLED` defaults to `true`. When enabled, a durable

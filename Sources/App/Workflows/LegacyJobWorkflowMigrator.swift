@@ -34,7 +34,7 @@ actor LegacyJobWorkflowMigrator: Service {
             let tenantID = try user.requireID()
             for manifest in try await catalog.manifests(for: tenantID) {
                 let state = try await SkillsState.query(on: fluent.db())
-                    .filter(\.$tenantID == tenantID)
+                    .filter(\.$id == tenantID)
                     .filter(\.$source == manifest.source.rawValue)
                     .filter(\.$name == manifest.name).first()
                 if state?.workflowID != nil {
