@@ -1210,6 +1210,44 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm")
     )
+
+    // LuminaVault-owned self-improvement. Hermes remains a REST-only
+    // inference dependency; curator state and tenant isolation live here.
+    let selfImprovementLLM = DefaultHermesLLMService(
+        baseURL: hermesURL,
+        session: .shared,
+        defaultModel: services.hermesDefaultModel,
+        logger: Logger(label: "lv.self-improvement.llm"),
+        apiKey: services.hermesAPIKey
+    )
+    let selfImprovementService = SelfImprovementService(
+        fluent: services.fluent,
+        catalog: skillCatalog,
+        vaultPaths: vaultPaths,
+        soulService: soulService,
+        llm: selfImprovementLLM,
+        capabilities: hermesCapabilitiesService,
+        economyModel: reader.string(
+            forKey: ConfigKey("selfImprovement.economyModel"),
+            default: services.usageDegradeModel
+        ),
+        mainModel: services.hermesDefaultModel,
+        globallyEnabled: reader.bool(
+            forKey: ConfigKey("selfImprovement.enabled"),
+            default: true
+        ),
+        logger: Logger(label: "lv.self-improvement")
+    )
+    if fluentEnabled, lvEnvironment != "test" {
+        managedServices.append(SelfImprovementScheduler(
+            service: selfImprovementService,
+            logger: Logger(label: "lv.self-improvement.scheduler")
+        ))
+    }
+    let selfImprovementGroup = router.group("/v1/me/improvement")
+        .add(middleware: jwtAuthenticator)
+    SelfImprovementController(service: selfImprovementService).addRoutes(to: selfImprovementGroup)
+
     // HER-240 / spec ticket #4 — pre-enrich chat messages with <context>
     // blocks for any URLs the user pasted. Reuses URLEnrichmentService's
     // lightweight enrichURL helper (no DB/disk side effects).
@@ -1713,7 +1751,8 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.conversations"),
         vaultAccess: VaultAccessService(fluent: services.fluent),
-        retrievalTelemetry: retrievalTelemetryWorker
+        retrievalTelemetry: retrievalTelemetryWorker,
+        selfImprovement: selfImprovementService
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -2754,7 +2793,8 @@ func buildRouter(
         WorkflowController(
             service: workflowService,
             webhookController: workflowWebhookController,
-            eventStore: workflowEvents
+            eventStore: workflowEvents,
+            selfImprovement: selfImprovementService
         ).addRoutes(to: workflowsGroup)
         let templatesGroup = router.group("/v1/workflow-templates").add(middleware: jwtAuthenticator)
         WorkflowTemplateController(service: workflowService).addRoutes(to: templatesGroup)

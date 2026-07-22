@@ -164,6 +164,8 @@ services:
       HERMES_APIKEY: ${HERMES_API_KEY:?HERMES_API_KEY required — run `make hermes-bootstrap` to generate}
       HERMES_DATAROOT: /app/data/hermes
       HERMES_DEFAULTMODEL: hermes-3
+      SELF_IMPROVEMENT_ENABLED: ${SELF_IMPROVEMENT_ENABLED:-true}
+      SELF_IMPROVEMENT_ECONOMY_MODEL: ${SELF_IMPROVEMENT_ECONOMY_MODEL:-openrouter/free}
       # --- Cerberus model orchestration ---
       CERBERUS_EXECUTION_MODE: ${CERBERUS_EXECUTION_MODE:-active}
       CERBERUS_ENSEMBLES_ENABLED: ${CERBERUS_ENSEMBLES_ENABLED:-false}

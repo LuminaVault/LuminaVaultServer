@@ -315,7 +315,7 @@ struct PluginService {
     private func setSkillEnabled(tenantID: UUID, name: String, enabled: Bool) async throws {
         let db = fluent.db()
         if let state = try await SkillsState.query(on: db)
-            .filter(\.$tenantID == tenantID)
+            .filter(\.$id == tenantID)
             .filter(\.$source == SkillManifest.Source.builtin.rawValue)
             .filter(\.$name == name)
             .first()

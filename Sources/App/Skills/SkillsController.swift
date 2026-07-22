@@ -45,7 +45,7 @@ struct SkillsController {
         let tenantID = try user.requireID()
         let manifests = try await catalog.manifests(for: tenantID)
         let states = try await SkillsState.query(on: fluent.db())
-            .filter(\.$tenantID == tenantID)
+            .filter(\.$id == tenantID)
             .all()
         let stateByKey: [String: SkillsState] = Dictionary(
             uniqueKeysWithValues: states.map { ("\($0.source):\($0.name)", $0) }
@@ -89,7 +89,7 @@ struct SkillsController {
 
         let db = fluent.db()
         let existing = try await SkillsState.query(on: db)
-            .filter(\.$tenantID == tenantID)
+            .filter(\.$id == tenantID)
             .filter(\.$source == manifest.source.rawValue)
             .filter(\.$name == manifest.name)
             .first()

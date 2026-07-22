@@ -46,6 +46,8 @@ struct ConversationController {
     /// Additive retrieval-quality telemetry. Optional so existing
     /// constructions/tests keep working; nil = no telemetry, identical behavior.
     let retrievalTelemetry: RetrievalTelemetryWorker?
+    /// Optional so focused controller tests do not need the scheduler stack.
+    let selfImprovement: SelfImprovementService?
 
     init(
         fluent: Fluent,
@@ -61,7 +63,8 @@ struct ConversationController {
         defaultModel: String,
         logger: Logger,
         vaultAccess: VaultAccessService,
-        retrievalTelemetry: RetrievalTelemetryWorker? = nil
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil,
+        selfImprovement: SelfImprovementService? = nil
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -77,6 +80,7 @@ struct ConversationController {
         self.logger = logger
         self.vaultAccess = vaultAccess
         self.retrievalTelemetry = retrievalTelemetry
+        self.selfImprovement = selfImprovement
     }
 
     func addRoutes(
@@ -698,6 +702,11 @@ struct ConversationController {
                     )
                     conversation.updatedAt = Date()
                     try await conversation.save(on: fluent.db())
+                    await selfImprovement?.noteActivity(tenantID: tenantID)
+                    await selfImprovement?.triggerComplexSession(
+                        tenantID: tenantID,
+                        toolCallCount: 0
+                    )
                 } catch {
                     logger.error("assistant turn persist failed: \(error)")
                 }

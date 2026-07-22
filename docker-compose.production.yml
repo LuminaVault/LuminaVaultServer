@@ -79,6 +79,8 @@ services:
       HERMES_API_KEY: ${HERMES_API_KEY:?HERMES_API_KEY required (32-byte hex; same value passed to hermes service)}
       HERMES_DATA_ROOT: /app/data/hermes
       HERMES_DEFAULT_MODEL: ${HERMES_DEFAULTMODEL:-hermes-3}
+      SELF_IMPROVEMENT_ENABLED: ${SELF_IMPROVEMENT_ENABLED:-true}
+      SELF_IMPROVEMENT_ECONOMY_MODEL: ${SELF_IMPROVEMENT_ECONOMY_MODEL:-openrouter/free}
       # HER-XXX — default to the Mnemosyne-baked image so new tenant containers
       # ship persistent memory. Build it on this host (`make hermes-image`) or
       # override with a pinned registry digest.
