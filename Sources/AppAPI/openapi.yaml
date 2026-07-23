@@ -1127,6 +1127,41 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HomeSummaryResponse' }
 
+  /v1/dashboard/activity:
+    get:
+      tags: [Dashboard]
+      operationId: dashboardActivity
+      summary: Unified recent-activity feed for the Home dashboard.
+      description: |
+        Union of recent conversations, memories, achievement unlocks, and
+        skill runs, newest first. Per-tenant, capped (default 20).
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Recent activity items, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityFeedResponse' }
+
+  /v1/analytics/retrieval-health:
+    get:
+      tags: [Analytics]
+      operationId: analyticsRetrievalHealth
+      summary: Recall-quality aggregate for the dashboard health tile.
+      description: |
+        7-day aggregate over retrieval telemetry events plus the latest weekly
+        leak report. Per-tenant.
+      responses:
+        '200':
+          description: Retrieval health snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetrievalHealthResponse' }
+
   /v1/analytics/usage-summary:
     get:
       tags: [Analytics]
@@ -7244,6 +7279,56 @@ components:
         powerXP: { type: integer, minimum: 0 }
         badgesEarned: { type: integer, minimum: 0 }
         streakDays: { type: integer, minimum: 0 }
+        graphPreview:
+          type: array
+          items: { $ref: '#/components/schemas/GraphPreviewNodeDTO' }
+          description: >
+            Small brain-graph sample (top nodes by activity, capped server-side)
+            for the Home hero preview. Absent when no layout has been computed.
+
+    GraphPreviewNodeDTO:
+      type: object
+      required: [id, label, x, y, z, activity, kind]
+      description: One node of the Home brain-graph preview (positions from the precomputed layout, roughly normalized to [-1, 1]).
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        z: { type: number, format: double }
+        activity: { type: number, format: double, minimum: 0, maximum: 1, description: Relative recall/activity weight; drives node size/glow. }
+        kind: { type: string, enum: [memory, concept] }
+
+    ActivityFeedItemDTO:
+      type: object
+      required: [id, kind, title, occurredAt]
+      description: One entry of the unified Home recent-activity stream.
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [conversation, memory, achievement, skillRun] }
+        title: { type: string }
+        subtitle: { type: string }
+        occurredAt: { type: string, format: date-time }
+
+    ActivityFeedResponse:
+      type: object
+      required: [items]
+      description: Unified recent-activity stream (conversations, memories, achievements, skill runs).
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ActivityFeedItemDTO' }
+
+    RetrievalHealthResponse:
+      type: object
+      required: [eventsCount, leakCount, trend]
+      description: Aggregate recall-quality stats for the dashboard "recall health" tile (7-day window).
+      properties:
+        hitRate: { type: number, format: double, minimum: 0, maximum: 1, description: Share of retrieval events whose results were used/grounded. Absent when no events. }
+        meanTopDistance: { type: number, format: double, minimum: 0, description: Mean cosine distance of the best hit per retrieval (lower = closer). }
+        eventsCount: { type: integer, minimum: 0 }
+        leakCount: { type: integer, minimum: 0, description: Open leaks from the latest weekly leak report. }
+        trend: { type: string, enum: [improving, steady, declining] }
 
     UsageSummaryResponse:
       type: object
@@ -8283,9 +8368,18 @@ components:
         rules:
           type: array
           items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        routingPolicy: { $ref: '#/components/schemas/LLMRoutingPolicy' }
         revision: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    LLMRoutingPolicy:
+      type: string
+      enum: [locked, fastCheap, balanced, maxQuality, autoSmart]
+      description: >
+        Routing strategy for a router profile. autoSmart (default) picks the
+        smallest sufficient model per request; locked always uses the primary
+        model. Missing values decode server-side as autoSmart.
 
     RouterProfileWriteRequest:
       type: object
@@ -8305,6 +8399,7 @@ components:
         rules:
           type: array
           items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        routingPolicy: { $ref: '#/components/schemas/LLMRoutingPolicy' }
         expectedRevision: { type: integer }
 
     RouterProfilesResponse:

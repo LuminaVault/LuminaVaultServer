@@ -9,6 +9,7 @@ import SQLKit
 extension DashboardStatsResponse: @retroactive ResponseEncodable {}
 extension DashboardProfileResponse: @retroactive ResponseEncodable {}
 extension HomeSummaryResponse: @retroactive ResponseEncodable {}
+extension ActivityFeedResponse: @retroactive ResponseEncodable {}
 
 struct DashboardController {
     let fluent: HummingbirdFluent.Fluent
@@ -28,10 +29,16 @@ struct DashboardController {
         self.managedModel = managedModel
     }
 
+    /// Node cap for the Home brain-graph preview card.
+    static let graphPreviewLimit = 30
+    static let activityDefaultLimit = 20
+    static let activityMaxLimit = 50
+
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("/stats", use: stats)
         router.get("/profile", use: profile)
         router.get("/home", use: home)
+        router.get("/activity", use: activity)
     }
 
     /// `GET /v1/dashboard/home` — one-shot Command Center payload: counts,
@@ -88,6 +95,7 @@ struct DashboardController {
             limit: ActiveTasksQuery.defaultPreviewLimit
         )
         async let activeJobsCountQ = ActiveTasksQuery.count(tenantID: tenantID, db: db)
+        async let graphPreviewQ = Self.graphPreview(tenantID: tenantID, db: db)
 
         let jobsCount = try await Self.skillRunCount(tenantID: tenantID, db: db)
         let todosCount = try await Self.todoCount(tenantID: tenantID, db: db)
@@ -108,6 +116,7 @@ struct DashboardController {
         let llmPref = try await llmPrefQ
         let activeJobs = try await activeJobsQ
         let activeJobsCount = try await activeJobsCountQ
+        let graphPreview = try await graphPreviewQ
 
         let xp = PowerLevel.xp(
             memoriesTotal: memoriesTotal,
@@ -157,8 +166,125 @@ struct DashboardController {
             powerLevel: level,
             powerXP: xp,
             badgesEarned: badgesEarned,
-            streakDays: streakDays
+            streakDays: streakDays,
+            graphPreview: graphPreview
         )
+    }
+
+    /// `GET /v1/dashboard/activity` — unified recent-activity stream: newest
+    /// conversations, memories, achievement unlocks, and skill runs, merged
+    /// and capped. Tenant-scoped.
+    @Sendable
+    func activity(_ request: Request, ctx: AppRequestContext) async throws -> ActivityFeedResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+        let rawLimit = request.uri.queryParameters.get("limit", as: Int.self)
+            ?? Self.activityDefaultLimit
+        let limit = min(max(rawLimit, 1), Self.activityMaxLimit)
+
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            return ActivityFeedResponse(items: [])
+        }
+        struct Row: Decodable {
+            let id: UUID
+            let kind: String
+            let title: String
+            let subtitle: String?
+            let occurred_at: Date
+        }
+        // Each branch is capped before the union so the merge sorts at most
+        // 4×limit rows regardless of tenant history size.
+        let rows = try await sql.raw("""
+        SELECT id, kind, title, subtitle, occurred_at FROM (
+            (SELECT id, 'conversation' AS kind,
+                    COALESCE(NULLIF(title, ''), 'Conversation') AS title,
+                    NULL AS subtitle, created_at AS occurred_at
+             FROM conversations
+             WHERE tenant_id = \(bind: tenantID) AND created_at IS NOT NULL
+             ORDER BY created_at DESC LIMIT \(bind: limit))
+            UNION ALL
+            (SELECT id, 'memory' AS kind,
+                    LEFT(content, 120) AS title, NULL AS subtitle,
+                    created_at AS occurred_at
+             FROM memories
+             WHERE tenant_id = \(bind: tenantID) AND created_at IS NOT NULL
+             ORDER BY created_at DESC LIMIT \(bind: limit))
+            UNION ALL
+            (SELECT id, 'achievement' AS kind,
+                    achievement_key AS title, NULL AS subtitle,
+                    unlocked_at AS occurred_at
+             FROM achievement_progress
+             WHERE tenant_id = \(bind: tenantID) AND unlocked_at IS NOT NULL
+             ORDER BY unlocked_at DESC LIMIT \(bind: limit))
+            UNION ALL
+            (SELECT id, 'skillRun' AS kind,
+                    name AS title, status AS subtitle,
+                    started_at AS occurred_at
+             FROM skill_run_log
+             WHERE tenant_id = \(bind: tenantID)
+             ORDER BY started_at DESC LIMIT \(bind: limit))
+        ) merged
+        ORDER BY occurred_at DESC
+        LIMIT \(bind: limit)
+        """).all(decoding: Row.self)
+
+        let items = rows.compactMap { row -> ActivityFeedItemDTO? in
+            guard let kind = ActivityFeedItemKind(rawValue: row.kind) else { return nil }
+            let title = kind == .memory
+                ? MemoryGraphService.titleFromContent(row.title)
+                : row.title
+            return ActivityFeedItemDTO(
+                id: row.id, kind: kind, title: title,
+                subtitle: row.subtitle, occurredAt: row.occurred_at
+            )
+        }
+        return ActivityFeedResponse(items: items)
+    }
+
+    /// Home brain-graph preview: the hottest laid-out memories, positions
+    /// normalized from the layout cube to roughly `[-1, 1]`. Nil (field
+    /// omitted) when the tenant has no computed layout yet.
+    private static func graphPreview(
+        tenantID: UUID, db: any Database, now: Date = Date()
+    ) async throws -> [GraphPreviewNodeDTO]? {
+        guard let sql = db as? any SQLDatabase else { return nil }
+        struct Row: Decodable {
+            let id: UUID
+            let content: String
+            let score: Double
+            let last_accessed_at: Date?
+            let created_at: Date?
+            let graph_x: Double
+            let graph_y: Double
+            let graph_z: Double
+        }
+        let rows = try await sql.raw("""
+        SELECT id, content, score, last_accessed_at, created_at,
+               graph_x, graph_y, graph_z
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID)
+          AND graph_x IS NOT NULL AND graph_y IS NOT NULL AND graph_z IS NOT NULL
+        ORDER BY last_accessed_at DESC NULLS LAST, score DESC, created_at DESC
+        LIMIT \(bind: Self.graphPreviewLimit)
+        """).all(decoding: Row.self)
+        guard !rows.isEmpty else { return nil }
+
+        let extent = GraphLayoutService.cubeExtent
+        return rows.map { row in
+            GraphPreviewNodeDTO(
+                id: row.id,
+                label: MemoryGraphService.titleFromContent(row.content),
+                x: row.graph_x / extent,
+                y: row.graph_y / extent,
+                z: row.graph_z / extent,
+                activity: MemoryGraphService.activity(
+                    score: row.score,
+                    lastAccessed: row.last_accessed_at ?? row.created_at,
+                    now: now
+                ),
+                kind: .memory
+            )
+        }
     }
 
     /// Count of note-backed todos (`vault_files.metadata.isTodo == true`).

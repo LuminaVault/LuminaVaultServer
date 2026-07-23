@@ -11,6 +11,7 @@ extension AnalyticsOverviewResponse: @retroactive ResponseEncodable {}
 extension ModelEffectivenessResponse: @retroactive ResponseEncodable {}
 extension TeamAnalyticsResponse: @retroactive ResponseEncodable {}
 extension AnalyticsMutationResponse: @retroactive ResponseEncodable {}
+extension RetrievalHealthResponse: @retroactive ResponseEncodable {}
 
 /// Vault-aware first-party usage intelligence. All queries operate on
 /// content-free metadata and enforce VaultAccessService before aggregation.
@@ -27,6 +28,69 @@ struct AnalyticsController {
         router.post("/events", use: recordEvent)
         router.post("/model-feedback", use: recordModelFeedback)
         router.patch("/recommendations", use: updateRecommendation)
+        router.get("/retrieval-health", use: retrievalHealth)
+    }
+
+    /// `GET /v1/analytics/retrieval-health` — recall-quality aggregate for the
+    /// dashboard health tile: 7-day hit rate + latency proxy over
+    /// `retrieval_telemetry_events`, leak count from the latest weekly report,
+    /// and a trend vs the preceding 7-day window.
+    @Sendable
+    func retrievalHealth(_: Request, ctx: AppRequestContext) async throws -> RetrievalHealthResponse {
+        let userID = try ctx.requireTenantID()
+        guard let sql = fluent.db() as? any SQLDatabase else { throw HTTPError(.internalServerError) }
+        let now = Date()
+        let windowStart = now.addingTimeInterval(-7 * 86400)
+        let priorStart = now.addingTimeInterval(-14 * 86400)
+
+        struct WindowRow: Decodable {
+            let events: Int
+            let hits: Int
+            let mean_top: Double?
+        }
+        func window(_ from: Date, _ to: Date) async throws -> WindowRow? {
+            try await sql.raw("""
+            SELECT COUNT(*)::int AS events,
+                   COUNT(*) FILTER (WHERE zero_hit = false)::int AS hits,
+                   AVG(top_distance) AS mean_top
+            FROM retrieval_telemetry_events
+            WHERE tenant_id = \(bind: userID)
+              AND created_at >= \(bind: from) AND created_at < \(bind: to)
+            """).first(decoding: WindowRow.self)
+        }
+        let current = try await window(windowStart, now)
+        let prior = try await window(priorStart, windowStart)
+
+        let latestReport = try await RetrievalLeakReport.query(on: fluent.db())
+            .filter(\.$tenantID == userID)
+            .sort(\.$periodEnd, .descending)
+            .first()
+
+        let events = current?.events ?? 0
+        let hitRate: Double? = events > 0 ? Double(current?.hits ?? 0) / Double(events) : nil
+
+        // Trend: compare hit rates across the two windows; ±2pp is "steady".
+        let trend: RetrievalHealthResponse.Trend
+        if let hitRate, let prior, prior.events > 0 {
+            let priorRate = Double(prior.hits) / Double(prior.events)
+            if hitRate > priorRate + 0.02 {
+                trend = .improving
+            } else if hitRate < priorRate - 0.02 {
+                trend = .declining
+            } else {
+                trend = .steady
+            }
+        } else {
+            trend = .steady
+        }
+
+        return RetrievalHealthResponse(
+            hitRate: hitRate,
+            meanTopDistance: current?.mean_top,
+            eventsCount: events,
+            leakCount: latestReport?.zeroHitCount ?? 0,
+            trend: trend
+        )
     }
 
     @Sendable

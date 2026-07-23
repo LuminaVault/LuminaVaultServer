@@ -2,6 +2,7 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
+import struct LuminaVaultShared.ActivityFeedResponse
 import struct LuminaVaultShared.AuthResponse
 import struct LuminaVaultShared.DashboardProfileResponse
 import struct LuminaVaultShared.DashboardStatsResponse
@@ -202,6 +203,42 @@ struct DashboardEndpointsTests {
                 #expect(home.agentOnline == true)
                 #expect(home.primaryModel != nil)
                 #expect(!(home.primaryModel ?? "").isEmpty)
+                #expect(home.graphPreview == nil)
+            }
+        }
+    }
+
+    // MARK: - /v1/dashboard/activity
+
+    @Test
+    func `dashboard activity requires auth`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            try await client.execute(
+                uri: "/v1/dashboard/activity",
+                method: .get
+            ) { response in
+                #expect(response.status == .unauthorized)
+            }
+        }
+    }
+
+    @Test
+    func `dashboard activity returns empty feed for a fresh tenant and accepts limit`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/dashboard/activity?limit=5",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let feed = try testJSONDecoder().decode(
+                    ActivityFeedResponse.self,
+                    from: Data(buffer: response.body)
+                )
+                #expect(feed.items.isEmpty)
             }
         }
     }

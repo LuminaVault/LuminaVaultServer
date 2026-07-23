@@ -21,8 +21,8 @@ let package = Package(
         .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.0.0"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
-        // v3.17.0 — Cerberus Studio workflow contracts.
-        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "3.17.0"),
+        // v3.19.0 — Command Center dashboard contracts (graph preview, activity feed, retrieval health).
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "3.19.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
@@ -61,7 +61,9 @@ let package = Package(
                               .product(name: "OTLPGRPC", package: "swift-otel"),
                               .product(name: "AsyncHTTPClient", package: "async-http-client"),
                               .product(name: "Valkey", package: "valkey-swift"),
-                              .product(name: "PostHog", package: "posthog-ios"),
+                              // ObjC SDK — no Linux Foundation headers; link only on Darwin.
+                              .product(name: "PostHog", package: "posthog-ios",
+                                       condition: .when(platforms: [.macOS, .iOS])),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                               .product(name: "Yams", package: "Yams"),
                               .byName(name: "AppAPI"),

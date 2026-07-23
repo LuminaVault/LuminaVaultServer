@@ -443,7 +443,7 @@ struct MemoryGraphService {
 
     // MARK: - Helpers
 
-    private static func titleFromContent(_ content: String) -> String {
+    static func titleFromContent(_ content: String) -> String {
         let raw = content.split(whereSeparator: \.isNewline).first.map(String.init) ?? content
         // Strip leading markdown markers (#, >, -, *, whitespace) so titles read
         // clean (e.g. "KB Healthcheck Report", not "# KB Healthcheck Report").

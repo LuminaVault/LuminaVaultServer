@@ -4,7 +4,15 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
-import LuminaVaultShared
+
+// Scoped imports: LuminaVaultShared ≥3.18 ships SelfImprovement DTO enums whose
+// names collide with the server's local contracts; importing the whole module
+// makes ImprovementRunStatus & co. ambiguous here.
+import struct LuminaVaultShared.ChatMessage
+import struct LuminaVaultShared.ChatRequest
+import struct LuminaVaultShared.ChatResponse
+import struct LuminaVaultShared.HermesUpstreamChoice
+import struct LuminaVaultShared.HermesUpstreamResponse
 import Testing
 
 /// SelfImprovement service flows that need Postgres + vault/SOUL filesystem.
