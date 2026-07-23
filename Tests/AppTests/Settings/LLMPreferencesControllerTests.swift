@@ -60,7 +60,7 @@ struct LLMPreferencesControllerTests {
                 // The backend owns the managed route. Clients render these
                 // effective values instead of carrying their own model policy.
                 #expect(prefs.primaryProvider == .openRouter)
-                #expect(prefs.primaryModel == ManagedLLMDefaults.model)
+                #expect(prefs.primaryModel == ModelDisclosurePolicy.genericBrainName)
             }
         }
     }
@@ -84,7 +84,7 @@ struct LLMPreferencesControllerTests {
             }
             #expect(put.mode == .managed)
             #expect(put.primaryProvider == .openRouter)
-            #expect(put.primaryModel == ManagedLLMDefaults.model)
+            #expect(put.primaryModel == ModelDisclosurePolicy.genericBrainName)
             #expect(put.fallbackChain.isEmpty)
             #expect(put.allowedProviders.isEmpty)
             #expect(put.blockedProviders.isEmpty)
@@ -97,7 +97,7 @@ struct LLMPreferencesControllerTests {
             ) { try Self.decodePrefs($0.body) }
             #expect(get.mode == .managed)
             #expect(get.primaryProvider == .openRouter)
-            #expect(get.primaryModel == ManagedLLMDefaults.model)
+            #expect(get.primaryModel == ModelDisclosurePolicy.genericBrainName)
             #expect(get.fallbackChain.isEmpty)
 
             let profiles = try await client.execute(
@@ -165,7 +165,7 @@ struct LLMPreferencesControllerTests {
             ) { try Self.decodePrefs($0.body) }
             #expect(put.mode == .managed)
             #expect(put.primaryProvider == .openRouter)
-            #expect(put.primaryModel == ManagedLLMDefaults.model)
+            #expect(put.primaryModel == ModelDisclosurePolicy.genericBrainName)
         }
     }
 
