@@ -342,8 +342,11 @@ actor SelfImprovementService {
             }
             .sort(\.$createdAt, .descending)
             .first()
-        if let active {
+        if let active, active.dryRun == dryRun {
             return try active.toDTO()
+        }
+        if active != nil {
+            throw HTTPError(.conflict, message: "self_improvement_run_already_active")
         }
         let run = ImprovementRun(tenantID: tenantID, kind: kind, trigger: trigger, dryRun: dryRun)
         try await run.save(on: fluent.db())

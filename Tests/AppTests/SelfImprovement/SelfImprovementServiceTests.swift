@@ -143,6 +143,38 @@ struct SelfImprovementServiceTests {
     }
 
     @Test
+    func `enqueue curator rejects dry-run while live run is active`() async throws {
+        try await Self.withHarness { h in
+            let tenantID = try h.user.requireID()
+            let settings = ImprovementSettings(tenantID: tenantID)
+            settings.enabled = true
+            settings.curatorEnabled = true
+            settings.consolidate = false
+            try await settings.save(on: h.fluent.db())
+
+            let live = try await h.service.enqueueCurator(for: h.user, trigger: .manual, dryRun: false)
+            #expect(live.dryRun == false)
+            #expect(live.status == .queued)
+
+            do {
+                _ = try await h.service.enqueueCurator(for: h.user, trigger: .manual, dryRun: true)
+                Issue.record("expected active live run to block dry-run enqueue")
+            } catch let error as HTTPError {
+                #expect(error.status == .conflict)
+            }
+
+            let active = try await ImprovementRun.find(live.id, on: h.fluent.db())
+            #expect(active?.dryRun == false)
+            #expect(active?.status == ImprovementRunStatus.queued.rawValue)
+
+            // Avoid leaving a queued run for later tick() claims (shared Postgres).
+            active?.status = ImprovementRunStatus.failed.rawValue
+            active?.failureReason = "test cleanup"
+            try await active?.save(on: h.fluent.db())
+        }
+    }
+
+    @Test
     func `setPinned marks vault skill curatorPinned`() async throws {
         try await Self.withHarness { h in
             let tenantID = try h.user.requireID()
