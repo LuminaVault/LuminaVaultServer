@@ -191,6 +191,18 @@ Set `BYO_HERMES_ALLOW_PRIVATE=true` only for local/dev networks where private IP
 
 `BYO_HERMES_REQUIRE_HTTPS` defaults to `false`, so self-hosters may point at a plain-`http://` or bare-IP Hermes (the iOS client shows an insecurity warning). Set it to `true` to force TLS and reject `http://` at config time. Private/loopback/link-local/metadata targets stay blocked regardless of this flag (controlled by `BYO_HERMES_ALLOW_PRIVATE`).
 
+`BYO_HERMES_ALLOW_TAILNET_HTTP` (default `true`) waives the HTTPS requirement when a BYO Hermes host resolves entirely into the Tailscale CGNAT range (`100.64.0.0/10`) or ULA (`fd7a:115c:a1e0::/48`). WireGuard already encrypts the link. Only applies to **self-hosted** LuminaVaultServer on the same tailnet as Hermes — managed SaaS cannot route to tailnet addresses.
+
+### Hermes gateway kind (profile provisioning vs chat)
+
+| Variable | Role |
+| --- | --- |
+| `HERMES_GATEWAY_URL` | REST base URL for chat/SSE (`HermesGatewayAdapter`). Required for managed Hermes. |
+| `HERMES_GATEWAY_KIND` | Profile **provisioning** only (`filesystem` writes under `HERMES_DATA_ROOT`, `logging` no-ops). Does **not** affect chat routing. |
+| `HERMES_API_KEY` | Bearer shared with Hermes `API_SERVER_KEY`. |
+
+On k3s (`LuminaVaultInfra`), API (`api-data` PVC) and Hermes (`hermes-data` PVC) do **not** share a filesystem. Use `HERMES_GATEWAY_KIND=logging` there unless you mount a shared volume. Single-host Docker Compose may keep `filesystem` when both containers share the Hermes data mount.
+
 See **[byo-hermes.md](byo-hermes.md)** for the end-user guide to exposing a self-hosted Hermes (nginx + HTTPS, Cloudflare Tunnel, SSRF behaviour, troubleshooting).
 
 ### Per-tenant Hermes containers
@@ -239,7 +251,9 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 
-`LLM_PROVIDER_OPENROUTER_APIKEY` is also the platform-funded Cerberus Studio credential. Managed Studio execution never substitutes a tenant BYOK credential. `OPENROUTER_API_KEY` remains a temporary compatibility alias, but new deployments should set only the canonical variable. The `openrouter/free` fallback is a router selection, not anonymous access: it still needs this platform key and carries no availability SLA. OpenRouter's policy verified on 2026-07-18 limits accounts with less than $10 of purchased credits to 50 free-model requests/day and 20 requests/minute; purchasing at least $10 raises the daily free allowance to 1,000. A negative balance may return 402 even on free models. An unfunded, non-negative account is suitable for low-volume beta/failover traffic, not a paid-tier production SLA.
+`LLM_PROVIDER_OPENROUTER_APIKEY` funds both ordinary managed inference and Cerberus Studio. Managed execution never substitutes a tenant BYOK credential. `HERMES_DEFAULT_MANAGED_MODEL` selects the backend-owned managed model and defaults to `deepseek/deepseek-v4-flash`; authenticated GET/PUT responses return that effective route and ignore stale provider/model policy sent by managed-mode clients. `OPENROUTER_API_KEY` remains a temporary compatibility alias, but new deployments should set only the canonical variable.
+
+The `openrouter/free` fallback is a router selection, not anonymous access: it still needs the platform key and carries no availability SLA. OpenRouter's policy verified on 2026-07-18 limits accounts with less than $10 of purchased credits to 50 free-model requests/day and 20 requests/minute; purchasing at least $10 raises the daily free allowance to 1,000. A negative balance may return 402 even on free models. An unfunded, non-negative account is suitable for low-volume beta/failover traffic, not a paid-tier production SLA.
 
 ### Cerberus model router
 
@@ -280,8 +294,8 @@ reply. It is independent of `context_length` (the input window). It is currently
 `1024`.
 
 Why it's set: OpenRouter reserves credits for `(prompt_tokens + max_tokens)`
-before generating. An unset cap makes Hermes request the model's native ceiling
-(8192 for qwen-2.5-72b), and on a low balance OpenRouter returns HTTP 402
+before generating. An unset cap can make Hermes request a model's native ceiling,
+and on a low balance OpenRouter returns HTTP 402
 (*"requires more credits, or fewer max_tokens"*) → the assistant reply is blank.
 
 To raise the cap later:
@@ -304,10 +318,9 @@ credits to cover the model's full output ceiling.
 Hermes Agent **hard-requires a ≥64K context window** for both the primary
 `model` and the `auxiliary.compression` model, and refuses to start a turn
 otherwise (`"context window of N tokens ... below the minimum 64,000 required by
-Hermes Agent"`). For `qwen/qwen-2.5-72b-instruct` Hermes auto-detects only
-**32,768**, so `model.context_length` and `auxiliary.compression.context_length`
-**must be set explicitly** (currently `131072`). This is independent of the
-`max_tokens` output cap and of OpenRouter credits.
+Hermes Agent"`). The managed `deepseek/deepseek-v4-flash` route advertises a 1M
+context window through OpenRouter. This is independent of the `max_tokens`
+output cap and of OpenRouter credits.
 
 `make hermes-sync-context` (and the optional
 `HERMES_DEFAULT_MANAGED_CONTEXT_LENGTH` /

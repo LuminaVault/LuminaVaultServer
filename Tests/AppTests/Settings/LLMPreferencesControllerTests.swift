@@ -28,6 +28,10 @@ struct LLMPreferencesControllerTests {
         try testJSONDecoder().decode(LLMPreferencesGetResponse.self, from: Data(buffer: buffer))
     }
 
+    private static func decodeProfiles(_ buffer: ByteBuffer) throws -> RouterProfilesResponse {
+        try testJSONDecoder().decode(RouterProfilesResponse.self, from: Data(buffer: buffer))
+    }
+
     private static func register(client: some TestClientProtocol) async throws -> String {
         let (email, username) = randomUser()
         let resp = try await client.execute(
@@ -53,22 +57,21 @@ struct LLMPreferencesControllerTests {
                 let prefs = try Self.decodePrefs(response.body)
                 #expect(prefs.mode == .managed)
                 #expect(prefs.fallbackChain.isEmpty)
-                // HER-300/2: default surfaced to iOS must be the managed
-                // OpenRouter route. Mirrors `hermes.defaultManagedModel`
-                // (default `qwen/qwen-2.5-72b-instruct`).
+                // The backend owns the managed route. Clients render these
+                // effective values instead of carrying their own model policy.
                 #expect(prefs.primaryProvider == .openRouter)
-                #expect(prefs.primaryModel == "qwen/qwen-2.5-72b-instruct")
+                #expect(prefs.primaryModel == ManagedLLMDefaults.model)
             }
         }
     }
 
     @Test
-    func `put persists managed mode`() async throws {
+    func `put canonicalizes managed mode to the server route`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
             let body = ByteBuffer(string: """
-            {"mode":"managed","primaryProvider":"openRouter","primaryModel":"qwen/qwen-2.5-72b-instruct","fallbackChain":[]}
+            {"mode":"managed","primaryProvider":"anthropic","primaryModel":"stale-client-model","fallbackChain":[{"provider":"openai","model":"stale-fallback"}],"allowedProviders":["anthropic"],"blockedProviders":["openRouter"]}
             """)
             let put = try await client.execute(
                 uri: "/v1/me/preferences/llm",
@@ -80,7 +83,11 @@ struct LLMPreferencesControllerTests {
                 return try Self.decodePrefs(response.body)
             }
             #expect(put.mode == .managed)
-            #expect(put.primaryModel == "qwen/qwen-2.5-72b-instruct")
+            #expect(put.primaryProvider == .openRouter)
+            #expect(put.primaryModel == ManagedLLMDefaults.model)
+            #expect(put.fallbackChain.isEmpty)
+            #expect(put.allowedProviders.isEmpty)
+            #expect(put.blockedProviders.isEmpty)
 
             // Verify persistence via GET.
             let get = try await client.execute(
@@ -89,7 +96,20 @@ struct LLMPreferencesControllerTests {
                 headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodePrefs($0.body) }
             #expect(get.mode == .managed)
-            #expect(get.primaryModel == "qwen/qwen-2.5-72b-instruct")
+            #expect(get.primaryProvider == .openRouter)
+            #expect(get.primaryModel == ManagedLLMDefaults.model)
+            #expect(get.fallbackChain.isEmpty)
+
+            let profiles = try await client.execute(
+                uri: "/v1/router",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { try Self.decodeProfiles($0.body) }
+            let active = try #require(profiles.profiles.first { $0.id == profiles.defaultProfileID })
+            #expect(active.mode == .managed)
+            #expect(active.allowedProviders == [.openRouter])
+            #expect(active.blockedProviders.isEmpty)
+            #expect(active.defaultAction.routes.map(\.id) == ["openRouter:\(ManagedLLMDefaults.model)"])
         }
     }
 
@@ -112,6 +132,18 @@ struct LLMPreferencesControllerTests {
             #expect(put.primaryModel == "claude-opus-4-7")
             #expect(put.fallbackChain.count == 1)
             #expect(put.fallbackChain[0].provider == .openai)
+
+            let profiles = try await client.execute(
+                uri: "/v1/router",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { try Self.decodeProfiles($0.body) }
+            let active = try #require(profiles.profiles.first { $0.id == profiles.defaultProfileID })
+            #expect(active.mode == .byok)
+            #expect(active.defaultAction.routes.map(\.id) == [
+                "anthropic:claude-opus-4-7",
+                "openai:gpt-4o",
+            ])
         }
     }
 
@@ -123,7 +155,7 @@ struct LLMPreferencesControllerTests {
             // No `mode` key — back-compat path on the shared DTO defaults
             // it to `.managed`.
             let body = ByteBuffer(string: """
-            {"primaryProvider":"openRouter","primaryModel":"qwen/qwen-2.5-72b-instruct","fallbackChain":[]}
+            {"primaryProvider":"anthropic","primaryModel":"legacy-client-model","fallbackChain":[]}
             """)
             let put = try await client.execute(
                 uri: "/v1/me/preferences/llm",
@@ -132,6 +164,8 @@ struct LLMPreferencesControllerTests {
                 body: body
             ) { try Self.decodePrefs($0.body) }
             #expect(put.mode == .managed)
+            #expect(put.primaryProvider == .openRouter)
+            #expect(put.primaryModel == ManagedLLMDefaults.model)
         }
     }
 

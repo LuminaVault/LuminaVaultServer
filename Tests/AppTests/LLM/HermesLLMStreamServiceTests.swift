@@ -93,6 +93,44 @@ struct HermesLLMStreamServiceTests {
     }
 
     @Test
+    func `stream parser exposes each running Hermes tool call as metadata`() throws {
+        let record = """
+        event: hermes.tool.progress
+        data: {"toolCallId":"call-search-1","tool":"web_search","status":"running"}
+        """
+        var yielded: [ChatStreamChunk] = []
+
+        let done = try DefaultHermesLLMStreamService.processRecord(
+            record,
+            decoder: JSONDecoder(),
+            yield: { yielded.append($0) },
+            logger: Logger(label: "lv.test.hermes-stream")
+        )
+
+        #expect(!done)
+        #expect(yielded == [ChatStreamChunk(delta: "", toolCallID: "call-search-1")])
+    }
+
+    @Test
+    func `stream parser ignores completed tool progress to avoid double counting`() throws {
+        let record = """
+        event: hermes.tool.progress
+        data: {"toolCallId":"call-search-1","tool":"web_search","status":"completed"}
+        """
+        var yielded: [ChatStreamChunk] = []
+
+        let done = try DefaultHermesLLMStreamService.processRecord(
+            record,
+            decoder: JSONDecoder(),
+            yield: { yielded.append($0) },
+            logger: Logger(label: "lv.test.hermes-stream")
+        )
+
+        #expect(!done)
+        #expect(yielded.isEmpty)
+    }
+
+    @Test
     func `empty assistant completion maps to stream error event`() {
         let event = ChatStreamCompletionPolicy.emptyCompletionEvent(
             assistantBuffer: "",

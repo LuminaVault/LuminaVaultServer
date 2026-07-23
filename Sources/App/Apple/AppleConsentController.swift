@@ -50,6 +50,7 @@ struct AppleConsentController {
             try await Self.purgeDomain(tenantID: tenantID, domain: body.domain, sql: sql)
         }
         logger.info("apple.consent tenant=\(tenantID) domain=\(body.domain.rawValue) allowed=\(body.allowed) writes=\(writes)")
+        PostHogAnalytics.capture("apple_data_consent_updated", properties: ["domain": body.domain.rawValue, "allowed": body.allowed, "writes_allowed": writes])
         return try await Self.snapshot(tenantID: tenantID, fluent: fluent)
     }
 

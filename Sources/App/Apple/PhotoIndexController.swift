@@ -93,6 +93,7 @@ struct PhotoIndexController {
         }
 
         logger.info("photos.index tenant=\(tenantID) inserted=\(inserted) updated=\(updated) skipped=\(skipped)")
+        PostHogAnalytics.capture("photos_indexed", properties: ["inserted_count": inserted, "updated_count": updated, "skipped_count": skipped])
         return AppleSyncResponse(inserted: inserted, updated: updated, skipped: skipped)
     }
 

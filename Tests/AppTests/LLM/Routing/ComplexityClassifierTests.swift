@@ -2,6 +2,23 @@
 import LuminaVaultShared
 import Testing
 
+@Suite("Managed model catalog")
+struct ManagedModelCatalogTests {
+    @Test
+    func `managed default has an OpenRouter catalog entry`() throws {
+        let entry = try #require(RouterModelCatalog.entry(
+            provider: ManagedLLMDefaults.provider,
+            model: ManagedLLMDefaults.model
+        ))
+
+        #expect(entry.displayName == "DeepSeek V4 Flash")
+        #expect(entry.inputPerMillionUsdMicros == 90000)
+        #expect(entry.outputPerMillionUsdMicros == 180_000)
+        #expect(entry.capabilities.contains("tools"))
+        #expect(entry.capabilities.contains("reasoning"))
+    }
+}
+
 @Suite("ComplexityClassifier")
 struct ComplexityClassifierTests {
     @Test func simpleGreetingIsLow() {

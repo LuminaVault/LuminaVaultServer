@@ -40,22 +40,26 @@ struct AuthController {
     @Sendable
     func register(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
         let body = try await req.decode(as: RegisterRequest.self, context: ctx)
-        return try await telemetry.observe("auth.register") {
+        let response = try await telemetry.observe("auth.register") {
             try await service.register(email: body.email, username: body.username, password: body.password)
         }
+        PostHogAnalytics.capture("user_registered", properties: ["auth_method": "password"])
+        return response
     }
 
     @Sendable
     func login(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
         let body = try await req.decode(as: LoginRequest.self, context: ctx)
         let requireMFA = req.headers[.init("mfa-auth-v1")!]?.lowercased() == "true"
-        return try await telemetry.observe("auth.login") {
+        let response = try await telemetry.observe("auth.login") {
             try await service.login(
                 email: body.email,
                 password: body.password,
                 requireMFA: requireMFA
             )
         }
+        PostHogAnalytics.capture("user_logged_in", properties: ["auth_method": "password", "mfa_required": requireMFA])
+        return response
     }
 
     @Sendable

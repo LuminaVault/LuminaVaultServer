@@ -348,6 +348,39 @@ The error banner maps to:
 
 ---
 
+## Production Hermes connection strategy
+
+Three distinct paths — pick based on **where LuminaVaultServer runs**:
+
+| Deployment | Managed Hermes | User BYO Hermes |
+| --- | --- | --- |
+| **Managed SaaS** (`api.luminavault.fyi`, k3s) | In-cluster REST: `HERMES_GATEWAY_URL=http://hermes.<namespace>.svc.cluster.local:8642`, Bearer `HERMES_API_KEY` ↔ Hermes `API_SERVER_KEY`. Use `HERMES_GATEWAY_KIND=logging` when API and Hermes use separate PVCs. Chat always uses REST regardless of `HERMES_GATEWAY_KIND`. | Cloudflare Tunnel or public HTTPS + Bearer. **Not Tailscale** — SaaS pods are not on the user's tailnet. |
+| **Self-hosted Compose** (single host) | `HERMES_GATEWAY_URL=http://hermes:8642`; `HERMES_GATEWAY_KIND=filesystem` when API and Hermes share the Hermes data volume. | Any transport in the table above. |
+| **Self-hosted + remote Hermes** | N/A | **Tailscale (Layer A):** join **both** LuminaVaultServer and Hermes to the same tailnet; URL `http://100.x:8642` or MagicDNS; Bearer = `API_SERVER_KEY`; keep `BYO_HERMES_ALLOW_TAILNET_HTTP=true`. Prefer `100.x` inside Docker if MagicDNS fails. |
+
+### Hermes `api_server` enablement (Nous Hermes agent)
+
+Required env on the Hermes container ([api-server docs](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/api-server.md)):
+
+```env
+API_SERVER_ENABLED=true
+API_SERVER_HOST=0.0.0.0
+API_SERVER_PORT=8642
+API_SERVER_KEY=<same as HERMES_API_KEY>
+API_SERVER_MODEL_NAME=hermes-3
+```
+
+`API_SERVER_CORS_ORIGINS` is not needed for LuminaVault — the server calls Hermes, not the browser.
+
+Verify:
+
+```sh
+curl -fsS "$HERMES_URL/health"
+curl -fsS -H "Authorization: Bearer $API_SERVER_KEY" "$HERMES_URL/v1/models"
+```
+
+---
+
 ## BYO LuminaVault server (separate from BYO Hermes)
 
 This guide covers hosting your own **Hermes**. Pointing the iOS app at your own

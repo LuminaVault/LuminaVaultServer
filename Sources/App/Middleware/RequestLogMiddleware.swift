@@ -53,7 +53,9 @@ struct RequestLogMiddleware<Context: RequestContext>: RouterMiddleware {
         } catch {
             // Thrown errors haven't been turned into a Response yet; recover the
             // status the router will emit so the log matches what the client sees.
-            let status = (error as? HTTPError)?.status ?? .internalServerError
+            // Prefer `HTTPResponseError` (e.g. `BYOKKeysRequiredError` → 403)
+            // over bare `HTTPError`; unknown throws still log as 500.
+            let status = Self.status(for: error)
             let code = status.code
             context.logger.log(level: Self.level(forStatus: code, success: successLevel), "request failed", metadata: [
                 "method": .string(method),
@@ -65,6 +67,16 @@ struct RequestLogMiddleware<Context: RequestContext>: RouterMiddleware {
             ])
             throw error
         }
+    }
+
+    private static func status(for error: Error) -> HTTPResponse.Status {
+        if let httpResponseError = error as? any HTTPResponseError {
+            return httpResponseError.status
+        }
+        if let httpError = error as? HTTPError {
+            return httpError.status
+        }
+        return .internalServerError
     }
 
     private static func level(forStatus code: Int, success: Logger.Level) -> Logger.Level {

@@ -203,9 +203,6 @@ struct RouterController {
         guard body.objective.quality >= 0, body.objective.cost >= 0, body.objective.latency >= 0,
               body.objective.quality + body.objective.cost + body.objective.latency == 100
         else { throw HTTPError(.badRequest, message: "router_objective_weights_must_total_100") }
-        if body.mode == .byok, !isUltimate(user) {
-            throw HTTPError(.forbidden, message: "router_byok_requires_ultimate")
-        }
         if let soft = body.budget.softLimitUsdMicros, let hard = body.budget.hardLimitUsdMicros,
            soft > hard
         {

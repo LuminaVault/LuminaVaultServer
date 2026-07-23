@@ -51,13 +51,13 @@ enum RouterModelCatalog {
         ),
         .init(
             provider: .openRouter,
-            model: "deepseek/deepseek-chat",
-            displayName: "DeepSeek Chat",
-            taskQuality: ratings(general: 80, reasoning: 82, coding: 84, search: 60, summarization: 78),
-            inputPerMillionUsdMicros: 140_000,
-            outputPerMillionUsdMicros: 280_000,
-            defaultLatencyMs: 900,
-            capabilities: ["chat", "tools"],
+            model: ManagedLLMDefaults.model,
+            displayName: "DeepSeek V4 Flash",
+            taskQuality: ratings(general: 88, reasoning: 90, coding: 91, search: 65, summarization: 88),
+            inputPerMillionUsdMicros: 90000,
+            outputPerMillionUsdMicros: 180_000,
+            defaultLatencyMs: 600,
+            capabilities: ["chat", "tools", "reasoning"],
             tier: .fast
         ),
         .init(

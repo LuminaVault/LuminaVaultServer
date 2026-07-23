@@ -17,10 +17,12 @@ final class ConversationMessage: Model, @unchecked Sendable {
     @Field(key: "source_memory_ids") var sourceMemoryIDs: [UUID]
     @OptionalField(key: "parallel_execution_id") var parallelExecutionID: UUID?
     @OptionalField(key: "local_execution_id") var localExecutionID: UUID?
+    @Field(key: "tool_call_count") var toolCallCount: Int
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
     init() {
         sourceMemoryIDs = []
+        toolCallCount = 0
     }
 
     init(
@@ -30,7 +32,8 @@ final class ConversationMessage: Model, @unchecked Sendable {
         content: String,
         sourceMemoryIDs: [UUID] = [],
         parallelExecutionID: UUID? = nil,
-        localExecutionID: UUID? = nil
+        localExecutionID: UUID? = nil,
+        toolCallCount: Int = 0
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -39,6 +42,7 @@ final class ConversationMessage: Model, @unchecked Sendable {
         self.sourceMemoryIDs = sourceMemoryIDs
         self.parallelExecutionID = parallelExecutionID
         self.localExecutionID = localExecutionID
+        self.toolCallCount = toolCallCount
     }
 
     /// Convert to the wire DTO. Defaults `role` to `.user` if the row
