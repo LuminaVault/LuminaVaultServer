@@ -13,6 +13,20 @@ extension HomeSummaryResponse: @retroactive ResponseEncodable {}
 struct DashboardController {
     let fluent: HummingbirdFluent.Fluent
     let logger: Logger
+    let managedProvider: ProviderID
+    let managedModel: String
+
+    init(
+        fluent: HummingbirdFluent.Fluent,
+        logger: Logger,
+        managedProvider: ProviderID = ManagedLLMDefaults.provider,
+        managedModel: String = ManagedLLMDefaults.model
+    ) {
+        self.fluent = fluent
+        self.logger = logger
+        self.managedProvider = managedProvider
+        self.managedModel = managedModel
+    }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("/stats", use: stats)
@@ -106,11 +120,15 @@ struct DashboardController {
         )
         let level = PowerLevel.level(forXP: xp)
 
-        // Default brain matches LLMPreferencesController when no row exists.
-        let primaryProvider = llmPref?.primaryProvider ?? ProviderID.openRouter.rawValue
-        let primaryModel = llmPref?.primaryModel.isEmpty == false
+        // Managed policy is backend-owned, so legacy managed rows cannot make
+        // the dashboard advertise a stale provider/model pair.
+        let isBYOK = llmPref?.mode == UserLLMPreference.Mode.byok.rawValue
+        let primaryProvider = isBYOK
+            ? llmPref?.primaryProvider ?? managedProvider.rawValue
+            : managedProvider.rawValue
+        let primaryModel = isBYOK && llmPref?.primaryModel.isEmpty == false
             ? llmPref!.primaryModel
-            : "qwen/qwen-2.5-72b-instruct"
+            : managedModel
 
         // Server-side agent readiness. Network reachability is client-side
         // (`isOnline`); this flag is false only when the tenant has no brain

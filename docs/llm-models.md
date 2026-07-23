@@ -138,15 +138,18 @@ Five-step playbook. Update both code + this doc in the same PR.
 5. **Doc update** — add row to §2 Provider matrix above. Update §3 if the
    provider lands in a default for any tier.
 
-## 6. BYO API key (v2)
+## 6. BYO API key (LLM brain mode)
 
-Not in v1. Sketch for the future:
+Shipped as `LLMBrainMode.byok` on `/v1/me/preferences/llm` and Cerberus router
+profiles. Any chat-capable tier may use LLM BYOK; Ultimate-only billing applies
+to `privacyBYOKey` (privacy settings), not LLM brain mode.
 
-- New table `user_api_keys (tenant_id UUID FK, provider TEXT, encrypted_key BYTEA, created_at, last_used_at)` — encrypted at rest with a per-server symmetric key (AWS KMS / HashiCorp Vault).
-- iOS Settings → Connections sheet: "Use my Anthropic key" → paste → POST `/v1/me/api-keys`.
-- `ProviderRegistry.providersFor(tenantID)` merges per-user keys with platform defaults; per-user takes precedence.
-- Routing: user-key call attempted first. On 401 / quota error, fall back to platform default with a `WARN` log.
-- Privacy bonus: BYO keys land in the *user's* provider account, not ours — strongest privacy story for power users.
+- Credentials: `user_provider_credentials` table, encrypted at rest; managed via
+  `PUT /v1/me/providers/{provider}`.
+- Routing: user keys take precedence; when BYOK is active and no keys exist, chat
+  fails closed with `403 byok_keys_required` (never debits the platform OpenRouter key).
+- Clients should parse `{ "error": { "code", "message", "cta" } }` and offer
+  Settings / switch-to-managed recovery.
 
 ## 7. Cost guardrails
 

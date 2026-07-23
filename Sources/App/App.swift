@@ -1,6 +1,7 @@
 import Configuration
 import Hummingbird
 import Logging
+import PostHog
 
 @main
 struct App {
@@ -15,6 +16,15 @@ struct App {
                 "http.serverName": "ObsidianClaudeBrainServer",
             ]),
         ])
+
+        let postHogToken = reader.string(forKey: "posthog.projectToken", default: "")
+        let postHogHost = reader.string(forKey: "posthog.host", default: "")
+        if !postHogToken.isEmpty, !postHogHost.isEmpty {
+            let postHogConfig = PostHogConfig(projectToken: postHogToken, host: postHogHost)
+            PostHogSDK.shared.setup(postHogConfig)
+        } else {
+            Logger(label: "lv.posthog").warning("PostHog is not configured; analytics events will not be sent")
+        }
 
         // HER-29 — CLI subcommand support. First positional argument selects
         // a one-shot command instead of booting the HTTP server. Reuses the

@@ -111,14 +111,23 @@ struct LLMController {
 
         let finalBody = body
         let finalIsDegraded = isDegraded
+        let hermesResolution = ctx.hermesResolution
 
         return try await telemetry.observe("llm.chat") {
             let userID = try user.requireID()
-            let response = try await service.chat(
-                sessionKey: userID.uuidString,
-                sessionID: finalBody.sessionID,
-                request: finalBody
-            )
+            let response = try await LLMRoutingContext.$cerberusScope.withValue(
+                CerberusRequestScope(surface: .chat)
+            ) {
+                try await LLMRoutingContext.$currentUser.withValue(user) {
+                    try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                        try await service.chat(
+                            sessionKey: userID.uuidString,
+                            sessionID: finalBody.sessionID,
+                            request: finalBody
+                        )
+                    }
+                }
+            }
             // Push delivery is best-effort: never block the chat response.
             // Capture only what the detached task needs to be Sendable.
             let username = user.username

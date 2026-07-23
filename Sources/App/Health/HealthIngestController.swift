@@ -265,6 +265,13 @@ struct HealthIngestController {
         }
 
         logger.info("health ingest tenant=\(tenantID) inserted=\(refs.count) skipped=\(skipped)")
+        if !refs.isEmpty {
+            PostHogAnalytics.capture("health_events_synced", properties: [
+                "inserted_count": refs.count,
+                "skipped_count": skipped,
+                "dominant_type": Self.dominantSampleType(refs),
+            ])
+        }
 
         // HER-171: emit a single aggregate `health_event_synced` event per
         // batch (not per sample — high-frequency HK pushes would otherwise

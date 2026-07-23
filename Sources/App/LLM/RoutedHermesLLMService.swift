@@ -89,6 +89,9 @@ struct RoutedHermesLLMService: HermesLLMService {
                     message: sanitized,
                     raw: decoded
                 )
+            } catch let responseError as any HTTPResponseError {
+                failureCounter.increment()
+                throw responseError
             } catch let httpErr as HTTPError {
                 failureCounter.increment()
                 throw httpErr

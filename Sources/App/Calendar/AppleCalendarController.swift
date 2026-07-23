@@ -134,6 +134,7 @@ struct AppleCalendarController {
         """).run()
 
         logger.info("apple.calendar.sync tenant=\(tenantID) inserted=\(inserted) updated=\(updated) skipped=\(skipped)")
+        PostHogAnalytics.capture("apple_calendar_synced", properties: ["inserted_count": inserted, "updated_count": updated, "skipped_count": skipped])
         return AppleSyncResponse(inserted: inserted, updated: updated, skipped: skipped)
     }
 

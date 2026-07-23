@@ -563,6 +563,7 @@ struct ConversationController {
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let task = Task {
                 var assistantBuffer = ""
+                var toolCallIDs: Set<String> = []
 
                 for dto in hitDTOs {
                     continuation.yield(.source(dto))
@@ -616,6 +617,9 @@ struct ConversationController {
                                                         for try await chunk in chunks {
                                                             if Task.isCancelled {
                                                                 break
+                                                            }
+                                                            if let toolCallID = chunk.toolCallID {
+                                                                toolCallIDs.insert(toolCallID)
                                                             }
                                                             if !chunk.delta.isEmpty {
                                                                 if firstTokenMs == nil {
@@ -686,7 +690,8 @@ struct ConversationController {
                         role: .assistant,
                         content: assistantBuffer,
                         sourceMemoryIDs: sourceIDs,
-                        parallelExecutionID: parallelExecutionID.value
+                        parallelExecutionID: parallelExecutionID.value,
+                        toolCallCount: toolCallIDs.count
                     )
                     try await assistantMessage.save(on: fluent.db())
                     let messageID = try assistantMessage.requireID()
@@ -705,7 +710,7 @@ struct ConversationController {
                     await selfImprovement?.noteActivity(tenantID: tenantID)
                     await selfImprovement?.triggerComplexSession(
                         tenantID: tenantID,
-                        toolCallCount: 0
+                        toolCallCount: toolCallIDs.count
                     )
                 } catch {
                     logger.error("assistant turn persist failed: \(error)")

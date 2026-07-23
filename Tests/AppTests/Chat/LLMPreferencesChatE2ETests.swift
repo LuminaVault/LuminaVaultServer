@@ -84,22 +84,22 @@ struct LLMPreferencesChatE2ETests {
         try await app.test(.router) { client in
             let token = try await Self.signUpThenSignIn(client: client)
 
-            // Set the LuminaVault default (managed) brain — the exact body the
-            // iOS "Use LuminaVault Default" button sends. This is the request
-            // that previously 500'd.
+            // Set the LuminaVault default (managed) brain — the exact body
+            // current clients send. The custom/empty pair is inert v1 wire
+            // compatibility; provider/model policy lives on the backend.
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .put,
                 headers: Self.auth(token),
                 body: ByteBuffer(string: """
-                {"mode":"managed","primaryProvider":"openRouter","primaryModel":"qwen/qwen-2.5-72b-instruct","fallbackChain":[]}
+                {"mode":"managed","primaryProvider":"custom","primaryModel":"","fallbackChain":[]}
                 """)
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
                 #expect(prefs.mode == .managed)
                 #expect(prefs.primaryProvider == .openRouter)
-                #expect(prefs.primaryModel == "qwen/qwen-2.5-72b-instruct")
+                #expect(prefs.primaryModel == ManagedLLMDefaults.model)
                 #expect(prefs.fallbackChain.isEmpty)
             }
 

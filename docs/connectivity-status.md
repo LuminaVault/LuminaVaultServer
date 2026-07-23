@@ -27,7 +27,7 @@ iPhone ──(Layer B: BackendMode)──> LuminaVault server ──(Layer A: BY
 | Cloudflare Tunnel | ✅ done | Recommended; verified e2e 2026-06-06. No domain/ports needed, free HTTPS. |
 | Raw IP + token | ✅ done | Allowed; `http://` warned in-app. Operators can hard-block via `BYO_HERMES_REQUIRE_HTTPS=true`. |
 | Domain + Nginx/Caddy | ✅ done | Cleanest for production; prod itself runs Caddy. |
-| Tailscale | ✅ self-host | Works when the **LuminaVault server** is joined to the same tailnet. `SSRFGuard` does **not** block Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48), and `BYO_HERMES_ALLOW_TAILNET_HTTP` (default `true`) waives `BYO_HERMES_REQUIRE_HTTPS` for hosts that resolve entirely into the tailnet — WireGuard already encrypts the link. Verified e2e 2026-07-05 against `hermes-vps.tail562587.ts.net:8642` (MagicDNS + Bearer, 200). The **managed** cloud server still can't use it: it isn't on your tailnet, so `100.x` is unroutable and `*.ts.net` doesn't resolve. |
+| Tailscale | ✅ self-host only | Works when **both** the LuminaVault server and Hermes are on the same tailnet. Paste `http://<magicdns>:8642` or `http://100.x:8642` + Bearer (`API_SERVER_KEY`). See [Production Hermes strategy](byo-hermes.md#production-hermes-connection-strategy). **Managed SaaS** (`api.luminavault.fyi`) cannot reach private tailnets — use Cloudflare Tunnel or public HTTPS instead. Verified e2e 2026-07-05 (self-host). |
 
 ## Layer B — `BackendMode` (iOS client → LuminaVault server)
 
@@ -46,8 +46,10 @@ old endpoint).
 
 | Item | Status | Notes |
 |---|---|---|
-| Production VPS | ✅ live | `167.233.30.48`, Caddy (TLS + HTTP/2), images from GHCR. |
-| Hermes host VPS | ✅ live | `78.46.192.73` (separate box). |
+| Production API (Compose) | ✅ live | `167.233.30.48` / `api.luminavault.fyi`, Caddy TLS, GHCR images. Primary prod path until k3s cutover. |
+| Production API (k3s) | 🔄 staging | ArgoCD stack in `LuminaVaultInfra/`; production cutover pending DNS flip per `docs/runbook-cutover.md`. |
+| Managed Hermes (in-cluster) | ✅ configured | REST `api_server` on `:8642` in `apps/hermes/hermes.yaml`; API dials `http://hermes.<ns>.svc.cluster.local:8642` via `HERMES_GATEWAY_URL`. |
+| Legacy Hermes VPS | ⚠️ decommission | `78.46.192.73` — superseded by in-cluster Hermes; destroy per incident/cutover runbooks when confirmed idle. |
 
 ## Known caveats / out of scope
 

@@ -1,4 +1,5 @@
 import Foundation
+import Hummingbird
 import Logging
 import Metrics
 import Tracing
@@ -28,7 +29,12 @@ struct RouteTelemetry {
             } catch {
                 failureCounter.increment()
                 durationTimer.recordNanoseconds(Int64(DispatchTime.now().uptimeNanoseconds - started))
-                logger.error("\(operation) failed: \(String(describing: error))")
+                // Expected client/policy errors (e.g. BYOKKeysRequiredError → 403)
+                // are not server faults — log at notice so they don't page as 5xx.
+                let level: Logger.Level = (error as? any HTTPResponseError).map { err in
+                    err.status.code >= 500 ? .error : .notice
+                } ?? .error
+                logger.log(level: level, "\(operation) failed: \(String(describing: error))")
                 throw error
             }
         }

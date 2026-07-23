@@ -173,6 +173,51 @@ struct RoutedLLMTransportTests {
     }
 
     @Test
+    func `byok with zero keys throws before calling providers`() async throws {
+        let primary = StubAdapter(kind: .openRouter, outcomes: [.success(Data("SHOULD_NOT_RUN".utf8))])
+        let registry = ProviderRegistry(adapters: [primary], logger: Logger(label: "test"))
+        let metadata = CerberusDecisionMetadata(
+            executionID: UUID(),
+            tenantID: UUID(),
+            vaultID: UUID(),
+            actorUserID: UUID(),
+            profileID: UUID(),
+            profileName: "BYOK",
+            ruleID: nil,
+            taskType: .general,
+            surface: .chat,
+            spaceID: nil,
+            conversationID: nil,
+            strategy: .sequential,
+            parallelStrategy: nil,
+            participants: nil,
+            routes: [],
+            synthesisRoute: nil,
+            minimumSuccessfulResults: 1,
+            retryPolicy: .fast,
+            predictedCostUsdMicros: 0,
+            budgetReservationUsdMicros: 0,
+            budgetDenied: false,
+            mode: .byok,
+            byokKeysRequired: true
+        )
+        let transport = RoutedLLMTransport(
+            registry: registry,
+            router: FixedRouter(decision: RouteDecision(
+                primary: Self.route(.openRouter),
+                fallbacks: [],
+                cerberus: metadata
+            )),
+            logger: Logger(label: "test")
+        )
+        await #expect(throws: BYOKKeysRequiredError.self) {
+            _ = try await transport.chatCompletions(payload: Self.payload(), sessionKey: "alice", sessionID: nil)
+        }
+        let calls = await primary.calls.count
+        #expect(calls == 0, "BYOK fail-closed must not debit platform keys")
+    }
+
+    @Test
     func `routed model id is rewritten into the payload`() async throws {
         let primary = StubAdapter(kind: .hermesGateway, outcomes: [.success(Data("OK".utf8))])
         let registry = ProviderRegistry(adapters: [primary], logger: Logger(label: "test"))

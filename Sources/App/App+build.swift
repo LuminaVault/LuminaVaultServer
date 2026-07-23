@@ -141,7 +141,10 @@ func buildApplication(
         hermesGatewayURL: reader.string(forKey: "hermes.gatewayUrl", default: "http://hermes:8642"),
         hermesDataRoot: reader.string(forKey: "hermes.dataRoot", default: "/app/data/hermes"),
         hermesDefaultModel: reader.string(forKey: "hermes.defaultModel", default: "hermes-3"),
-        hermesDefaultManagedModel: reader.string(forKey: "hermes.defaultManagedModel", default: "qwen/qwen-2.5-72b-instruct"),
+        hermesDefaultManagedModel: reader.string(
+            forKey: "hermes.defaultManagedModel",
+            default: ManagedLLMDefaults.model
+        ),
         hermesManagedProviderHint: reader.string(forKey: "hermes.managedProviderHint", default: "openrouter"),
         hermesAPIKey: reader.string(forKey: "hermes.apiKey", isSecret: true, default: ""),
         webAuthnEnabled: reader.string(forKey: "webauthn.enabled", default: "false").lowercased() == "true",
@@ -1210,7 +1213,6 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.llm")
     )
-
     // LuminaVault-owned self-improvement. Hermes remains a REST-only
     // inference dependency; curator state and tenant isolation live here.
     let selfImprovementLLM = DefaultHermesLLMService(
@@ -1247,7 +1249,6 @@ func buildRouter(
     let selfImprovementGroup = router.group("/v1/me/improvement")
         .add(middleware: jwtAuthenticator)
     SelfImprovementController(service: selfImprovementService).addRoutes(to: selfImprovementGroup)
-
     // HER-240 / spec ticket #4 — pre-enrich chat messages with <context>
     // blocks for any URLs the user pasted. Reuses URLEnrichmentService's
     // lightweight enrichURL helper (no DB/disk side effects).
@@ -2158,7 +2159,8 @@ func buildRouter(
     // until HER-246 / HER-248 land their data layers.
     let dashboardController = DashboardController(
         fluent: services.fluent,
-        logger: Logger(label: "lv.dashboard")
+        logger: Logger(label: "lv.dashboard"),
+        managedModel: services.hermesDefaultManagedModel
     )
     let dashboardGroup = router.group("/v1/dashboard").add(middleware: jwtAuthenticator)
     dashboardController.addRoutes(to: dashboardGroup)
@@ -2595,6 +2597,7 @@ func buildRouter(
     }
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,
+        routerProfiles: routerProfileRepo,
         defaultPrimaryModel: services.hermesDefaultManagedModel,
         logger: Logger(label: "lv.me.llm-prefs")
     )

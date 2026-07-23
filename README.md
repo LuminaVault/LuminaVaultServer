@@ -1,13 +1,18 @@
-# ObsidianClaudeBrainServer
+# LuminaVaultServer
 
-Backend API for ObsidianClaudeBrain — a lightweight, OpenAPI-first Hummingbird 2 server written in Swift 6.
+Backend API for **LuminaVault Agentic OS** — OpenAPI-first Hummingbird 2 server (Swift 6). Powers iOS and web clients with Hermes-backed chat, vault sync, Brain graphs, skills, jobs, and self-improvement (SOUL + curator).
+
+Monorepo context: lives beside `LuminaVaultClient/`, `LuminaVaultWebApp/`, and `LuminaVaultShared/`. Product positioning: [../docs/AGENTIC_OS.md](../docs/AGENTIC_OS.md).
 
 ## Responsibilities
 
 - User authentication & subscription management
-- Optional encrypted vault sync (multi-device)
-- LLM call proxying / orchestration (optional, user keys)
-- Analytics and memory graph computation (future)
+- Encrypted vault sync (multi-device) + kb-compile wiki pipeline
+- Hermes gateway orchestration (REST completions, per-tenant profiles)
+- Memory + knowledge graph APIs (pgvector recall, force-directed Brain)
+- Skills registry, slash commands, scheduled jobs / workflows
+- SOUL + curator self-improvement (`/v1/me/improvement/*`)
+- Messaging gateways (Telegram, Discord, Slack, WhatsApp, Matrix, …)
 
 ## Tech stack
 

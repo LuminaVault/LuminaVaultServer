@@ -64,6 +64,7 @@ struct CaptureController {
             throw HTTPError(.badRequest, message: "`space_id` does not belong to the caller")
         }
 
+        PostHogAnalytics.capture("link_captured", properties: ["has_space": body.spaceId != nil])
         let responseBody = CaptureSafariResponse(id: result.fileID, path: result.relativePath, status: "accepted")
         var res = try await responseBody.response(from: request, context: ctx)
         res.status = .accepted

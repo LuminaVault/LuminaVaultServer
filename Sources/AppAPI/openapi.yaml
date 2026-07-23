@@ -2486,6 +2486,22 @@ paths:
               schema: { $ref: '#/components/schemas/ChatResponse' }
         '402':
           description: Entitlement / billing block.
+        '403':
+          description: |
+            Policy block before upstream LLM call. When BYOK mode is active and
+            the tenant has no usable provider credentials, returns
+            `byok_keys_required` with CTA hints (`add_key`, `switch_to_managed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredAPIErrorEnvelope'
+              examples:
+                byokKeysRequired:
+                  value:
+                    error:
+                      code: byok_keys_required
+                      message: Add an LLM API key in Settings (OpenRouter recommended for Auto) or switch to Managed mode.
+                      cta: [add_key, switch_to_managed]
         '429':
           $ref: '#/components/responses/RateLimited'
         '502':
@@ -3050,6 +3066,14 @@ paths:
           content:
             text/event-stream:
               schema: { $ref: '#/components/schemas/QueryStreamEvent' }
+        '403':
+          description: |
+            BYOK mode with no provider keys — same envelope as `POST /v1/llm/chat`
+            (`byok_keys_required`). May also appear as an SSE `error` event mid-stream.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredAPIErrorEnvelope'
         '404':
           description: Conversation not found.
 
@@ -6003,6 +6027,30 @@ components:
       properties:
         error: { type: string }
         message: { type: string }
+
+    StructuredAPIErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable reason (e.g. `byok_keys_required`).
+        message:
+          type: string
+          description: User-facing copy safe to display in clients.
+        cta:
+          type: array
+          items:
+            type: string
+            enum: [add_key, switch_to_managed]
+          description: Optional recovery actions for clients.
+
+    StructuredAPIErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/StructuredAPIErrorBody'
 
     # ── HER-330 Hermes self-update ──
     HermesVersionInfo:

@@ -40,10 +40,14 @@ struct HermesStreamUpstreamError: Error, CustomStringConvertible {
 struct ChatStreamChunk: Equatable {
     let delta: String
     let finishReason: String?
+    /// Unique Hermes tool invocation observed while this stream is running.
+    /// Tool progress is metadata, never assistant transcript content.
+    let toolCallID: String?
 
-    init(delta: String, finishReason: String? = nil) {
+    init(delta: String, finishReason: String? = nil, toolCallID: String? = nil) {
         self.delta = delta
         self.finishReason = finishReason
+        self.toolCallID = toolCallID
     }
 }
 
@@ -344,6 +348,15 @@ struct DefaultHermesLLMStreamService: HermesLLMStreamService {
             if payload == "[DONE]" {
                 return true
             }
+            if eventName == "hermes.tool.progress" {
+                guard let data = payload.data(using: .utf8),
+                      let progress = try? decoder.decode(ToolProgressEnvelope.self, from: data),
+                      progress.status == "running",
+                      progress.toolCallID.isEmpty == false
+                else { continue }
+                yield(ChatStreamChunk(delta: "", toolCallID: progress.toolCallID))
+                continue
+            }
             if let eventName, eventName != "message" {
                 logger.debug("hermes stream non-content event", metadata: ["event": .string(eventName)])
                 continue
@@ -412,6 +425,16 @@ private struct UpstreamStreamChunk: Decodable {
     }
 
     let choices: [Choice]
+}
+
+private struct ToolProgressEnvelope: Decodable {
+    let toolCallID: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case toolCallID = "toolCallId"
+        case status
+    }
 }
 
 private struct UpstreamStreamErrorEnvelope: Decodable {
