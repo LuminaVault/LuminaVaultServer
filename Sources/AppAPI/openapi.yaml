@@ -8368,9 +8368,18 @@ components:
         rules:
           type: array
           items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        routingPolicy: { $ref: '#/components/schemas/LLMRoutingPolicy' }
         revision: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    LLMRoutingPolicy:
+      type: string
+      enum: [locked, fastCheap, balanced, maxQuality, autoSmart]
+      description: >
+        Routing strategy for a router profile. autoSmart (default) picks the
+        smallest sufficient model per request; locked always uses the primary
+        model. Missing values decode server-side as autoSmart.
 
     RouterProfileWriteRequest:
       type: object
@@ -8390,6 +8399,7 @@ components:
         rules:
           type: array
           items: { $ref: '#/components/schemas/RouterRuleDTO' }
+        routingPolicy: { $ref: '#/components/schemas/LLMRoutingPolicy' }
         expectedRevision: { type: integer }
 
     RouterProfilesResponse:
