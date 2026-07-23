@@ -73,9 +73,13 @@ struct AnalyticsController {
         let trend: RetrievalHealthResponse.Trend
         if let hitRate, let prior, prior.events > 0 {
             let priorRate = Double(prior.hits) / Double(prior.events)
-            if hitRate > priorRate + 0.02 { trend = .improving }
-            else if hitRate < priorRate - 0.02 { trend = .declining }
-            else { trend = .steady }
+            if hitRate > priorRate + 0.02 {
+                trend = .improving
+            } else if hitRate < priorRate - 0.02 {
+                trend = .declining
+            } else {
+                trend = .steady
+            }
         } else {
             trend = .steady
         }
