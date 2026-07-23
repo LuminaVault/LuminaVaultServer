@@ -46,7 +46,7 @@ struct LLMPreferencesController {
         return snapshot.flatMap(toWire) ?? LLMPreferencesGetResponse(
             mode: .managed,
             primaryProvider: defaultPrimaryProvider,
-            primaryModel: defaultPrimaryModel,
+            primaryModel: ModelDisclosurePolicy.genericBrainName,
             fallbackChain: []
         )
     }
@@ -156,10 +156,13 @@ struct LLMPreferencesController {
 
     private func toWire(_ snapshot: UserLLMPreferenceRepository.Snapshot) -> LLMPreferencesGetResponse? {
         if snapshot.mode == .managed {
+            // Managed tenants never see the concrete model id — the pane
+            // renders the generic brain label (ModelDisclosurePolicy). The
+            // effective model stays server-owned.
             return LLMPreferencesGetResponse(
                 mode: .managed,
                 primaryProvider: defaultPrimaryProvider,
-                primaryModel: defaultPrimaryModel,
+                primaryModel: ModelDisclosurePolicy.genericBrainName,
                 fallbackChain: []
             )
         }
