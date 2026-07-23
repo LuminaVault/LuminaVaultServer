@@ -32,6 +32,25 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     let transport: any HermesChatTransport
     let preferences: UserLLMPreferenceRepository
     let logger: Logger
+    /// Cerberus router for managed-mode per-turn model selection. When set,
+    /// the managed branch classifies the turn (task + complexity) and rides
+    /// the gateway with the picked OpenRouter model instead of the fixed
+    /// deployment default. `nil` preserves the legacy fixed-model behaviour.
+    let router: (any ModelRouter)?
+
+    init(
+        fallback: any HermesLLMStreamService,
+        transport: any HermesChatTransport,
+        preferences: UserLLMPreferenceRepository,
+        logger: Logger,
+        router: (any ModelRouter)? = nil
+    ) {
+        self.fallback = fallback
+        self.transport = transport
+        self.preferences = preferences
+        self.logger = logger
+        self.router = router
+    }
 
     private let byokCounter = Counter(label: "luminavault.llm.chat.stream.byok")
     private let byokFailureCounter = Counter(label: "luminavault.llm.chat.stream.byok.failure")
@@ -75,10 +94,13 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     }
                     continuation.finish()
                 } else {
+                    // Managed: Cerberus picks the per-turn OpenRouter model;
+                    // the gateway call itself is unchanged.
+                    let effectiveRequest = await managedAutoRequest(request) ?? request
                     for try await chunk in fallback.chatStream(
                         sessionKey: sessionKey,
                         sessionID: sessionID,
-                        request: request
+                        request: effectiveRequest
                     ) {
                         continuation.yield(chunk)
                     }
@@ -91,6 +113,64 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
         }
         continuation.onTermination = { _ in work.cancel() }
         return stream
+    }
+
+    // MARK: - Managed Auto (Smart) routing
+
+    /// Runs Cerberus for a managed streaming turn. Returns a copy of `request`
+    /// carrying the picked OpenRouter model id, or `nil` to keep the legacy
+    /// deployment default (no router wired, Auto not active, BYO-Hermes
+    /// deferral, or a non-OpenRouter pick the gateway cannot serve).
+    private func managedAutoRequest(_ request: ChatRequest) async -> ChatRequest? {
+        guard let router else { return nil }
+        let prompt = request.messages.last { $0.role == "user" }?.content ?? ""
+        let decision = await LLMRoutingContext.$cerberusPrompt.withValue(prompt) {
+            await router.pick(forModel: nil, capability: .high, user: LLMRoutingContext.currentUser)
+        }
+        guard let cerberus = decision.cerberus,
+              // Gateway rides the platform's system key — never spend it for
+              // a BYOK profile that merely fell through to this branch.
+              cerberus.mode == .managed,
+              cerberus.routingPolicy == .autoSmart,
+              !cerberus.deferredToHermes,
+              !cerberus.byokKeysRequired,
+              decision.primary.provider == .openRouter
+        else { return nil }
+
+        logger.info("managed stream auto-routed", metadata: [
+            "model": .string(decision.primary.modelID),
+            "task": .string(cerberus.taskType.rawValue),
+            "complexity": .string(cerberus.complexity.rawValue),
+        ])
+        // Surface the decision on the chat SSE sink — the controller scrubs
+        // provider/model identity for managed tenants before it reaches the
+        // wire — and record real provenance for server-side telemetry.
+        CerberusStreamContext.sink?(.routing(RouterRoutingEventDTO(
+            executionID: cerberus.executionID,
+            phase: .selected,
+            profileID: cerberus.profileID,
+            profileName: cerberus.profileName,
+            taskType: cerberus.taskType,
+            strategy: cerberus.strategy,
+            activeRoutes: cerberus.routes
+        )))
+        LLMRoutingContext.routeOutcomeSink?(ModelProvenanceDTO(
+            provider: ProviderID.openRouter.rawValue,
+            model: decision.primary.modelID,
+            reason: cerberus.reason,
+            routingPolicy: cerberus.routingPolicy,
+            complexity: cerberus.complexity,
+            taskType: cerberus.taskType
+        ))
+        return ChatRequest(
+            messages: request.messages,
+            model: decision.primary.modelID,
+            temperature: request.temperature,
+            stream: request.stream,
+            tools: request.tools,
+            tool_choice: request.tool_choice,
+            sessionID: request.sessionID
+        )
     }
 
     // MARK: - Resolution

@@ -16,6 +16,11 @@ struct RouterController {
     let repository: RouterProfileRepository
     let fluent: Fluent
     let ensemblesEnabled: Bool
+    /// Auto (Smart) gating: BYOK profiles may only save `autoSmart` when the
+    /// tenant holds an OpenRouter credential. `nil` (no SecretBox) skips the
+    /// save-time check — the route-time downgrade in `CerberusModelRouter`
+    /// still applies.
+    var credentials: UserCredentialStore?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
@@ -40,6 +45,7 @@ struct RouterController {
         guard Self.isProOrUltimate(user) else { throw HTTPError(.forbidden, message: "router_custom_profile_requires_pro") }
         let body = try await req.decode(as: RouterProfileWriteRequest.self, context: ctx)
         try Self.validate(body, user: user, ensemblesEnabled: ensemblesEnabled)
+        try await validateAutoPolicy(body, tenantID: user.requireID())
         return try await repository.create(tenantID: user.requireID(), request: body)
     }
 
@@ -49,6 +55,7 @@ struct RouterController {
         let id = try Self.pathID(ctx, name: "id")
         let body = try await req.decode(as: RouterProfileWriteRequest.self, context: ctx)
         try Self.validate(body, user: user, ensemblesEnabled: ensemblesEnabled)
+        try await validateAutoPolicy(body, tenantID: user.requireID())
         do {
             guard let result = try await repository.update(tenantID: user.requireID(), id: id, request: body) else {
                 throw HTTPError(.notFound, message: "router_profile_not_found")
@@ -167,6 +174,17 @@ struct RouterController {
             monthlySoftLimitUsdMicros: defaultProfile?.budget.softLimitUsdMicros,
             monthlyHardLimitUsdMicros: defaultProfile?.budget.hardLimitUsdMicros
         )
+    }
+
+    /// Auto (Smart) is OpenRouter-only. Managed profiles ride the shared
+    /// gateway's system key; BYOK profiles must hold their own OpenRouter
+    /// credential before `autoSmart` can be saved.
+    private func validateAutoPolicy(_ body: RouterProfileWriteRequest, tenantID: UUID) async throws {
+        guard body.routingPolicy == .autoSmart, body.mode == .byok, let credentials else { return }
+        let credential = try? await credentials.credential(for: .openRouter, tenantID: tenantID)
+        guard credential?.apiKey != nil || credential?.baseURL != nil else {
+            throw HTTPError(.badRequest, message: LLMRoutingErrorCode.autoRequiresOpenRouter)
+        }
     }
 
     private func validateScopeOwnership(tenantID: UUID, scope: RouterBindingScope, scopeID: String) async throws {

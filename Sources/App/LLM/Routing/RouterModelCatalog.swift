@@ -151,7 +151,56 @@ enum RouterModelCatalog {
             tier: .balanced
         ),
 
+        .init(
+            provider: .openRouter,
+            model: "anthropic/claude-sonnet-4.6",
+            displayName: "Claude Sonnet 4.6 (OpenRouter)",
+            taskQuality: ratings(general: 94, reasoning: 96, coding: 95, search: 76, summarization: 96),
+            inputPerMillionUsdMicros: 3_000_000,
+            outputPerMillionUsdMicros: 15_000_000,
+            defaultLatencyMs: 1550,
+            capabilities: ["chat", "tools", "reasoning"],
+            tier: .balanced
+        ),
+
         // ── Max tier ───────────────────────────────────────────────
+        // OpenRouter-namespaced frontier mirrors: the Auto (Smart) pool is
+        // OpenRouter-only, so search/coding/reasoning peaks must exist under
+        // the `openRouter` provider for Auto to ever reach them.
+        .init(
+            provider: .openRouter,
+            model: "x-ai/grok-4",
+            displayName: "Grok 4 (OpenRouter)",
+            taskQuality: ratings(general: 91, reasoning: 92, coding: 88, search: 96, summarization: 88),
+            inputPerMillionUsdMicros: 3_000_000,
+            outputPerMillionUsdMicros: 15_000_000,
+            defaultLatencyMs: 1400,
+            capabilities: ["chat", "tools", "search"],
+            tier: .max
+        ),
+        .init(
+            provider: .openRouter,
+            model: "openai/gpt-5",
+            displayName: "GPT-5 (OpenRouter)",
+            taskQuality: ratings(general: 95, reasoning: 96, coding: 96, search: 80, summarization: 94),
+            inputPerMillionUsdMicros: 1_250_000,
+            outputPerMillionUsdMicros: 10_000_000,
+            defaultLatencyMs: 1750,
+            capabilities: ["chat", "tools", "reasoning"],
+            tier: .max
+        ),
+        .init(
+            provider: .openRouter,
+            model: "anthropic/claude-opus-4.1",
+            displayName: "Claude Opus 4.1 (OpenRouter)",
+            taskQuality: ratings(general: 97, reasoning: 98, coding: 97, search: 78, summarization: 97),
+            inputPerMillionUsdMicros: 15_000_000,
+            outputPerMillionUsdMicros: 75_000_000,
+            defaultLatencyMs: 2250,
+            capabilities: ["chat", "tools", "reasoning"],
+            tier: .max
+        ),
+
         .init(
             provider: .openai,
             model: "gpt-5",

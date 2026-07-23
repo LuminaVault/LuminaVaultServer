@@ -48,6 +48,10 @@ struct ConversationController {
     let retrievalTelemetry: RetrievalTelemetryWorker?
     /// Optional so focused controller tests do not need the scheduler stack.
     let selfImprovement: SelfImprovementService?
+    /// Resolves the tenant's brain mode so the SSE surface can scrub model
+    /// identity for managed tenants (`ModelDisclosurePolicy`). Optional so
+    /// existing constructions/tests keep working; nil = treat as managed.
+    let llmPreferences: UserLLMPreferenceRepository?
 
     init(
         fluent: Fluent,
@@ -64,7 +68,8 @@ struct ConversationController {
         logger: Logger,
         vaultAccess: VaultAccessService,
         retrievalTelemetry: RetrievalTelemetryWorker? = nil,
-        selfImprovement: SelfImprovementService? = nil
+        selfImprovement: SelfImprovementService? = nil,
+        llmPreferences: UserLLMPreferenceRepository? = nil
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -81,6 +86,7 @@ struct ConversationController {
         self.vaultAccess = vaultAccess
         self.retrievalTelemetry = retrievalTelemetry
         self.selfImprovement = selfImprovement
+        self.llmPreferences = llmPreferences
     }
 
     func addRoutes(
@@ -527,8 +533,24 @@ struct ConversationController {
         let scheduleTimeZone = TimeZone(identifier: user.timezone) ?? TimeZone.gmt
         let schedule = await scheduleContext(tenantID: tenantID, timezone: scheduleTimeZone)
 
+        // Model-privacy disclosure: managed tenants never learn which model
+        // served the turn. BYOK tenants configured their own keys and keep
+        // full visibility. Nil repo / nil row both mean managed.
+        let disclosure: ModelDisclosure = await {
+            guard let llmPreferences,
+                  let pref = try? await llmPreferences.get(tenantID: tenantID),
+                  pref.mode == .byok
+            else { return .hidden }
+            return .visible
+        }()
+
         let chatRequest = ChatRequest(
-            messages: Self.buildPrompt(history: history, hits: hits, schedule: schedule),
+            messages: Self.buildPrompt(
+                history: history,
+                hits: hits,
+                schedule: schedule,
+                includeModelIdentityGuard: disclosure == .hidden
+            ),
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4
         )
@@ -574,13 +596,17 @@ struct ConversationController {
                 // credits exhausted → Qwen2.5 via OpenRouter) as a
                 // `.fallback` SSE event the client renders as a banner.
                 let fallbackSink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
-                    continuation.yield(.fallback(notice.wireDTO()))
+                    if let event = ModelDisclosurePolicy.scrub(.fallback(notice.wireDTO()), disclosure: disclosure) {
+                        continuation.yield(event)
+                    }
                 }
                 let cerberusSink: @Sendable (QueryStreamEvent) -> Void = { event in
                     if case let .parallel(progress) = event, progress.kind == .executionStarted {
                         parallelExecutionID.set(progress.executionID)
                     }
-                    continuation.yield(event)
+                    if let scrubbed = ModelDisclosurePolicy.scrub(event, disclosure: disclosure) {
+                        continuation.yield(scrubbed)
+                    }
                 }
                 let routeSink: @Sendable (ModelProvenanceDTO) -> Void = { route in
                     routeOutcome.set(route)
@@ -805,14 +831,19 @@ struct ConversationController {
     static func buildPrompt(
         history: [ConversationMessage],
         hits: [MemorySearchResult],
-        schedule: String? = nil
+        schedule: String? = nil,
+        includeModelIdentityGuard: Bool = false
     ) -> [ChatMessage] {
         let context: String = if hits.isEmpty {
             "(no relevant memories were found)"
         } else {
             hits.enumerated().map { offset, hit in
                 let provenance = if let provider = hit.provider, let model = hit.model {
-                    "prior model output from \(provider)/\(model)"
+                    // Managed tenants must not see model identity, and the
+                    // assistant would happily echo anything in its prompt.
+                    includeModelIdentityGuard
+                        ? "prior assistant output"
+                        : "prior model output from \(provider)/\(model)"
                 } else {
                     hit.source.rawValue
                 }
@@ -834,6 +865,7 @@ struct ConversationController {
 
         Prior model outputs are drafts, not authoritative user facts. Prefer
         direct user memories when sources disagree and state uncertainty.
+        \(includeModelIdentityGuard ? "\n" + ModelDisclosurePolicy.systemPromptGuard : "")
         """)
         let turns = history.map { ChatMessage(role: $0.role, content: $0.content) }
         return [system] + turns

@@ -7260,8 +7260,8 @@ components:
         insightsCount: { type: integer, minimum: 0 }
         activeProfileName: { type: string }
         activeProfileSlug: { type: string }
-        primaryProvider: { type: string, description: Active LLM provider id (e.g. openRouter). }
-        primaryModel: { type: string, description: Active model id shown under the brain core. }
+        primaryProvider: { type: string, description: Active LLM provider label. Generic ("LuminaVault") for managed tenants — concrete provider ids are BYOK-only. }
+        primaryModel: { type: string, description: Brain label shown under the brain core. Generic ("LuminaVault Brain · Auto") for managed tenants; concrete model id for BYOK. }
         agentOnline: { type: boolean, description: Server-side agent readiness (network is client-side). }
         memoriesToday: { type: integer, minimum: 0 }
         memoriesTotal: { type: integer, minimum: 0 }
@@ -8504,6 +8504,12 @@ components:
         activeRoutes:
           type: array
           items: { $ref: '#/components/schemas/RouterModelRouteDTO' }
+        displayLabel:
+          type: string
+          description: >-
+            Generic routing label for managed tenants (e.g. "Auto · coding").
+            When present and activeRoutes is empty, clients must render this
+            instead of any provider/model identity.
 
     RouterUsageDTO:
       type: object

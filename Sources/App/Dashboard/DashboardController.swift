@@ -129,15 +129,17 @@ struct DashboardController {
         )
         let level = PowerLevel.level(forXP: xp)
 
-        // Managed policy is backend-owned, so legacy managed rows cannot make
-        // the dashboard advertise a stale provider/model pair.
+        // Managed policy is backend-owned AND private: managed tenants never
+        // see the concrete provider/model (ModelDisclosurePolicy) — the hero
+        // card renders a generic brain label instead. BYOK tenants keep
+        // full visibility of the model they configured themselves.
         let isBYOK = llmPref?.mode == UserLLMPreference.Mode.byok.rawValue
         let primaryProvider = isBYOK
             ? llmPref?.primaryProvider ?? managedProvider.rawValue
-            : managedProvider.rawValue
+            : ModelDisclosurePolicy.genericProviderName
         let primaryModel = isBYOK && llmPref?.primaryModel.isEmpty == false
             ? llmPref!.primaryModel
-            : managedModel
+            : ModelDisclosurePolicy.genericBrainName
 
         // Server-side agent readiness. Network reachability is client-side
         // (`isOnline`); this flag is false only when the tenant has no brain
