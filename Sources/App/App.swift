@@ -1,7 +1,9 @@
 import Configuration
 import Hummingbird
 import Logging
-import PostHog
+#if canImport(PostHog)
+    import PostHog
+#endif
 
 @main
 struct App {
@@ -19,12 +21,18 @@ struct App {
 
         let postHogToken = reader.string(forKey: "posthog.projectToken", default: "")
         let postHogHost = reader.string(forKey: "posthog.host", default: "")
-        if !postHogToken.isEmpty, !postHogHost.isEmpty {
-            let postHogConfig = PostHogConfig(projectToken: postHogToken, host: postHogHost)
-            PostHogSDK.shared.setup(postHogConfig)
-        } else {
-            Logger(label: "lv.posthog").warning("PostHog is not configured; analytics events will not be sent")
-        }
+        #if canImport(PostHog)
+            if !postHogToken.isEmpty, !postHogHost.isEmpty {
+                let postHogConfig = PostHogConfig(projectToken: postHogToken, host: postHogHost)
+                PostHogSDK.shared.setup(postHogConfig)
+            } else {
+                Logger(label: "lv.posthog").warning("PostHog is not configured; analytics events will not be sent")
+            }
+        #else
+            // Darwin-only SDK; Linux uses the OTel log pipeline (HER-236).
+            _ = postHogToken
+            _ = postHogHost
+        #endif
 
         // HER-29 — CLI subcommand support. First positional argument selects
         // a one-shot command instead of booting the HTTP server. Reuses the

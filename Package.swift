@@ -61,7 +61,9 @@ let package = Package(
                               .product(name: "OTLPGRPC", package: "swift-otel"),
                               .product(name: "AsyncHTTPClient", package: "async-http-client"),
                               .product(name: "Valkey", package: "valkey-swift"),
-                              .product(name: "PostHog", package: "posthog-ios"),
+                              // ObjC SDK — no Linux Foundation headers; link only on Darwin.
+                              .product(name: "PostHog", package: "posthog-ios",
+                                       condition: .when(platforms: [.macOS, .iOS])),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                               .product(name: "Yams", package: "Yams"),
                               .byName(name: "AppAPI"),
