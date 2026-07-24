@@ -423,7 +423,11 @@ struct CerberusModelRouter: ModelRouter {
                 promptTokens: promptTokens,
                 costFirst: costFirst
             )
-            let mapped = ordered.compactMap(Self.toModelRoute)
+            // Managed Auto rides the shared Hermes gateway with the picked
+            // OpenRouter model id — the gateway holds the system key, the
+            // server registry does not (direct OpenRouter dispatch 401s).
+            let managedViaGateway = profile.mode == .managed && policy == .autoSmart
+            let mapped = ordered.compactMap { Self.toModelRoute($0, viaGateway: managedViaGateway) }
             guard let primary = mapped.first, let selectedDTO = ordered.first else {
                 await budget.release(tenantID: tenantID, reservedUsdMicros: predicted)
                 return table
@@ -567,7 +571,10 @@ struct CerberusModelRouter: ModelRouter {
         return workers * Int64(max(1, workerRounds)) + synthesisCost
     }
 
-    private static func toModelRoute(_ route: RouterModelRouteDTO) -> ModelRoute? {
+    static func toModelRoute(_ route: RouterModelRouteDTO, viaGateway: Bool = false) -> ModelRoute? {
+        if viaGateway, route.provider == .openRouter {
+            return ModelRoute(provider: .hermesGateway, modelID: route.model)
+        }
         guard let provider = ProviderKind(shared: route.provider) else { return nil }
         return ModelRoute(provider: provider, modelID: route.model)
     }
