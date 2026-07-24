@@ -15,6 +15,10 @@ struct RoutedHermesLLMService: HermesLLMService {
     private let transport: any HermesChatTransport
     private let defaultModel: String
     private let logger: Logger
+    /// Resolves the tenant's brain mode so managed responses never carry the
+    /// concrete upstream model id (`ModelDisclosurePolicy`). Optional so
+    /// existing constructions/tests keep working; nil = treat as managed.
+    private let preferences: UserLLMPreferenceRepository?
     private let encoder = JSONEncoder()
 
     let successCounter = Counter(label: "luminavault.llm.chat.success")
@@ -24,11 +28,13 @@ struct RoutedHermesLLMService: HermesLLMService {
     init(
         transport: any HermesChatTransport,
         defaultModel: String,
-        logger: Logger
+        logger: Logger,
+        preferences: UserLLMPreferenceRepository? = nil
     ) {
         self.transport = transport
         self.defaultModel = defaultModel
         self.logger = logger
+        self.preferences = preferences
     }
 
     func chat(sessionKey: String, sessionID: String?, request: ChatRequest) async throws -> ChatResponse {
@@ -83,6 +89,24 @@ struct RoutedHermesLLMService: HermesLLMService {
                     Int64(DispatchTime.now().uptimeNanoseconds - started)
                 )
                 logger.info("llm reply ready model=\(decoded.model) sessionKey=\(sessionKey)")
+                // Managed tenants never see the concrete model id — scrub the
+                // wire response (server logs above keep the real one).
+                if await disclosure(sessionKey: sessionKey) == .hidden {
+                    let scrubbedRaw = HermesUpstreamResponse(
+                        id: decoded.id,
+                        object: decoded.object,
+                        created: decoded.created,
+                        model: ModelDisclosurePolicy.genericModelID,
+                        choices: decoded.choices,
+                        usage: decoded.usage
+                    )
+                    return ChatResponse(
+                        id: decoded.id,
+                        model: ModelDisclosurePolicy.genericModelID,
+                        message: sanitized,
+                        raw: scrubbedRaw
+                    )
+                }
                 return ChatResponse(
                     id: decoded.id,
                     model: decoded.model,
@@ -101,6 +125,19 @@ struct RoutedHermesLLMService: HermesLLMService {
                 throw HTTPError(.badGateway, message: "llm upstream error: \(error)")
             }
         }
+    }
+}
+
+extension RoutedHermesLLMService {
+    /// `.visible` only for a tenant explicitly in BYOK mode; anything else
+    /// (no repo wired, unparsable session key, no row) stays `.hidden`.
+    private func disclosure(sessionKey: String) async -> ModelDisclosure {
+        guard let preferences,
+              let tenantID = UUID(uuidString: sessionKey),
+              let pref = try? await preferences.get(tenantID: tenantID),
+              pref.mode == .byok
+        else { return .hidden }
+        return .visible
     }
 }
 

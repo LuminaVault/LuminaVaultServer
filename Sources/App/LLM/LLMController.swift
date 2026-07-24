@@ -118,13 +118,19 @@ struct LLMController {
             let response = try await LLMRoutingContext.$cerberusScope.withValue(
                 CerberusRequestScope(surface: .chat)
             ) {
-                try await LLMRoutingContext.$currentUser.withValue(user) {
-                    try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                        try await service.chat(
-                            sessionKey: userID.uuidString,
-                            sessionID: finalBody.sessionID,
-                            request: finalBody
-                        )
+                // Bind the latest user turn so the Cerberus task/complexity
+                // classifiers see real text instead of an empty prompt.
+                try await LLMRoutingContext.$cerberusPrompt.withValue(
+                    finalBody.messages.last { $0.role == "user" }?.content ?? ""
+                ) {
+                    try await LLMRoutingContext.$currentUser.withValue(user) {
+                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                            try await service.chat(
+                                sessionKey: userID.uuidString,
+                                sessionID: finalBody.sessionID,
+                                request: finalBody
+                            )
+                        }
                     }
                 }
             }

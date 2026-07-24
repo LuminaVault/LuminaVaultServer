@@ -1211,7 +1211,8 @@ func buildRouter(
     let llmService = RoutedHermesLLMService(
         transport: routedTransport,
         defaultModel: services.hermesDefaultModel,
-        logger: Logger(label: "lv.llm")
+        logger: Logger(label: "lv.llm"),
+        preferences: userLLMPreferenceRepo
     )
     // LuminaVault-owned self-improvement. Hermes remains a REST-only
     // inference dependency; curator state and tenant isolation live here.
@@ -1730,7 +1731,8 @@ func buildRouter(
         fallback: queryStreamService,
         transport: routedTransport,
         preferences: userLLMPreferenceRepo,
-        logger: Logger(label: "lv.chat.stream.routed")
+        logger: Logger(label: "lv.chat.stream.routed"),
+        router: modelRouter
     )
 
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
@@ -1753,7 +1755,8 @@ func buildRouter(
         logger: Logger(label: "lv.conversations"),
         vaultAccess: VaultAccessService(fluent: services.fluent),
         retrievalTelemetry: retrievalTelemetryWorker,
-        selfImprovement: selfImprovementService
+        selfImprovement: selfImprovementService,
+        llmPreferences: userLLMPreferenceRepo
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -2614,7 +2617,8 @@ func buildRouter(
     RouterController(
         repository: routerProfileRepo,
         fluent: services.fluent,
-        ensemblesEnabled: cerberusParallelEnabled
+        ensemblesEnabled: cerberusParallelEnabled,
+        credentials: userCredentialStore
     ).addRoutes(to: cerberusGroup)
     ParallelController(
         transport: routedTransport,

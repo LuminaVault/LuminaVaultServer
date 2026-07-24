@@ -119,3 +119,100 @@ struct AvailableModelPoolBuilderTests {
         #expect(deferred.contains("Hermes"))
     }
 }
+
+@Suite("Auto (Smart) OpenRouter-only pool")
+struct AutoSmartPoolTests {
+    @Test func managedAutoPoolIsOpenRouterOnly() {
+        let pool = AvailableModelPoolBuilder.build(.init(
+            mode: .managed,
+            policy: .autoSmart,
+            profileRoutes: [
+                RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1"),
+                RouterModelRouteDTO(provider: .openRouter, model: ManagedLLMDefaults.model),
+            ],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [.anthropic, .gemini],
+            deploymentEnabledProviders: [.openai, .gemini],
+            minTier: .fast
+        ))
+        #expect(!pool.isEmpty)
+        #expect(pool.allSatisfy { $0.provider == .openRouter })
+    }
+
+    @Test func managedAutoWorksWithNoDeploymentKeys() {
+        // The shared gateway holds the system OpenRouter key, so Auto must
+        // build a usable pool even when the server registry has no providers.
+        let pool = AvailableModelPoolBuilder.build(.init(
+            mode: .managed,
+            policy: .autoSmart,
+            profileRoutes: [],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [],
+            deploymentEnabledProviders: [],
+            minTier: .fast
+        ))
+        #expect(!pool.isEmpty)
+        #expect(pool.allSatisfy { $0.provider == .openRouter })
+    }
+
+    @Test func managedAutoHighComplexityReachesFrontier() {
+        let pool = AvailableModelPoolBuilder.build(.init(
+            mode: .managed,
+            policy: .autoSmart,
+            profileRoutes: [],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [],
+            deploymentEnabledProviders: [],
+            minTier: .max
+        ))
+        #expect(pool.allSatisfy { $0.provider == .openRouter })
+        #expect(pool.contains { $0.model == "x-ai/grok-4" })
+        #expect(pool.contains { $0.model == "openai/gpt-5" })
+        #expect(pool.contains { $0.model == "anthropic/claude-opus-4.1" })
+    }
+
+    @Test func byokAutoRequiresOpenRouterCredential() {
+        let withoutKey = AvailableModelPoolBuilder.build(.init(
+            mode: .byok,
+            policy: .autoSmart,
+            profileRoutes: [RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1")],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [.anthropic],
+            deploymentEnabledProviders: [.openRouter],
+            minTier: .fast
+        ))
+        #expect(withoutKey.isEmpty)
+
+        let withKey = AvailableModelPoolBuilder.build(.init(
+            mode: .byok,
+            policy: .autoSmart,
+            profileRoutes: [],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [.openRouter, .anthropic],
+            deploymentEnabledProviders: [],
+            minTier: .fast
+        ))
+        #expect(!withKey.isEmpty)
+        #expect(withKey.allSatisfy { $0.provider == .openRouter })
+    }
+
+    @Test func nonAutoPoliciesKeepLegacyPoolShape() {
+        let pool = AvailableModelPoolBuilder.build(.init(
+            mode: .byok,
+            policy: .balanced,
+            profileRoutes: [RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1")],
+            allowedProviders: [],
+            blockedProviders: [],
+            credentialedProviders: [.anthropic],
+            deploymentEnabledProviders: [],
+            minTier: .fast
+        ))
+        #expect(pool.allSatisfy { $0.provider == .anthropic })
+        #expect(!pool.isEmpty)
+    }
+}

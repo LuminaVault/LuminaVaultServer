@@ -270,7 +270,7 @@ struct CerberusModelRouter: ModelRouter {
                 workflowID: scope.workflowID
             )
             let profile = try RouterProfileRepository.toDTO(row)
-            let policy = profile.routingPolicy
+            let requestedPolicy = profile.routingPolicy
             let task = RouterTaskClassifier.classify(prompt, surface: scope.surface)
             let complexity = ComplexityClassifier.classify(prompt, surface: scope.surface)
             let rule = profile.rules
@@ -318,6 +318,19 @@ struct CerberusModelRouter: ModelRouter {
             let credentialed = await credentialedProviderIDs(tenantID: tenantID)
             let deploymentEnabled = await deploymentEnabledProviderIDs()
 
+            // Auto (Smart) is OpenRouter-only: managed rides the shared
+            // gateway's system key; BYOK Auto requires the tenant's own
+            // OpenRouter credential. A BYOK profile that still carries
+            // `autoSmart` without one degrades to Balanced for this turn
+            // instead of failing the chat.
+            let policy: LLMRoutingPolicy
+            if requestedPolicy == .autoSmart, profile.mode == .byok, !credentialed.contains(.openRouter) {
+                policy = .balanced
+                logger.info("cerberus autoSmart downgraded to balanced: byok tenant has no OpenRouter credential")
+            } else {
+                policy = requestedPolicy
+            }
+
             // BYOK + zero keys → fail closed (confirmed product law).
             if profile.mode == .byok, credentialed.isEmpty {
                 let metadata = CerberusDecisionMetadata(
@@ -343,7 +356,7 @@ struct CerberusModelRouter: ModelRouter {
                     budgetReservationUsdMicros: 0,
                     budgetDenied: false,
                     mode: .byok,
-                    routingPolicy: policy,
+                    routingPolicy: requestedPolicy,
                     complexity: complexity,
                     reason: "Add an API key (OpenRouter recommended) or switch to Managed",
                     byokKeysRequired: true
@@ -376,6 +389,7 @@ struct CerberusModelRouter: ModelRouter {
             } else {
                 AvailableModelPoolBuilder.build(.init(
                     mode: profile.mode,
+                    policy: policy,
                     profileRoutes: baseRoutes,
                     allowedProviders: profile.allowedProviders,
                     blockedProviders: profile.blockedProviders,
@@ -450,7 +464,18 @@ struct CerberusModelRouter: ModelRouter {
                 complexity: complexity,
                 reason: reason
             )
-            return RouteDecision(primary: primary, fallbacks: Array(mapped.dropFirst()), cerberus: metadata)
+            var routeFallbacks = Array(mapped.dropFirst())
+            if profile.mode == .managed {
+                // Never leave managed chat without the shared gateway as the
+                // terminal fallback — the server may hold no direct provider
+                // keys (OpenRouter's system key lives in the gateway).
+                for candidate in table.candidates where candidate.provider == .hermesGateway {
+                    if candidate != primary, !routeFallbacks.contains(candidate) {
+                        routeFallbacks.append(candidate)
+                    }
+                }
+            }
+            return RouteDecision(primary: primary, fallbacks: routeFallbacks, cerberus: metadata)
         } catch {
             logger.error("cerberus decision failed; using table router", metadata: ["error": .string("\(error)")])
             return table
