@@ -25,6 +25,9 @@ struct QueryController {
     let logger: Logger
     /// Additive retrieval-quality telemetry; nil = no telemetry, identical behavior.
     let retrievalTelemetry: RetrievalTelemetryWorker?
+    /// Resolves the tenant's brain mode so managed prompts carry the model
+    /// identity guard (`ModelDisclosurePolicy`). Optional; nil = no guard.
+    let llmPreferences: UserLLMPreferenceRepository?
 
     init(
         service: HermesMemoryService,
@@ -35,7 +38,8 @@ struct QueryController {
         followUpGenerator: FollowUpGenerator? = nil,
         defaultModel: String = "",
         logger: Logger = Logger(label: "lv.query"),
-        retrievalTelemetry: RetrievalTelemetryWorker? = nil
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil,
+        llmPreferences: UserLLMPreferenceRepository? = nil
     ) {
         self.service = service
         self.achievements = achievements
@@ -46,6 +50,7 @@ struct QueryController {
         self.defaultModel = defaultModel
         self.logger = logger
         self.retrievalTelemetry = retrievalTelemetry
+        self.llmPreferences = llmPreferences
     }
 
     func addRoutes(
@@ -145,8 +150,21 @@ struct QueryController {
             achievements.enqueue(tenantID: tenantID, event: .queryRan)
         }
 
+        // Managed tenants get the model-identity guard; BYOK stays open.
+        let identityGuarded: Bool = await {
+            guard let llmPreferences,
+                  let pref = try? await llmPreferences.get(tenantID: tenantID),
+                  pref.mode == .byok
+            else { return true }
+            return false
+        }()
+
         let chatRequest = ChatRequest(
-            messages: Self.buildPrompt(query: userQuery, hits: hits),
+            messages: Self.buildPrompt(
+                query: userQuery,
+                hits: hits,
+                includeModelIdentityGuard: identityGuarded
+            ),
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4
         )
@@ -281,13 +299,21 @@ struct QueryController {
     /// hit so a future UI pass can resolve them back to the `source`
     /// events. Kept `static` so unit tests can hit it without a full
     /// controller wiring.
-    static func buildPrompt(query: String, hits: [MemorySearchResult]) -> [ChatMessage] {
+    static func buildPrompt(
+        query: String,
+        hits: [MemorySearchResult],
+        includeModelIdentityGuard: Bool = false
+    ) -> [ChatMessage] {
         let context: String = if hits.isEmpty {
             "(no relevant memories were found)"
         } else {
             hits.enumerated().map { offset, hit in
                 let provenance = if let provider = hit.provider, let model = hit.model {
-                    "prior model output from \(provider)/\(model)"
+                    // Managed tenants must not see model identity, and the
+                    // assistant would happily echo anything in its prompt.
+                    includeModelIdentityGuard
+                        ? "prior assistant output"
+                        : "prior model output from \(provider)/\(model)"
                 } else {
                     hit.source.rawValue
                 }
@@ -306,6 +332,7 @@ struct QueryController {
 
         Prior model outputs are drafts, not authoritative user facts. Prefer
         direct user memories when sources disagree and state uncertainty.
+        \(includeModelIdentityGuard ? "\n" + ModelDisclosurePolicy.systemPromptGuard : "")
         """
         return [
             ChatMessage(role: "system", content: system),

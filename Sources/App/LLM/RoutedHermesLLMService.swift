@@ -40,9 +40,22 @@ struct RoutedHermesLLMService: HermesLLMService {
     func chat(sessionKey: String, sessionID: String?, request: ChatRequest) async throws -> ChatResponse {
         let started = DispatchTime.now().uptimeNanoseconds
 
+        // Managed tenants: prepend the identity guard so the assistant never
+        // self-reports its underlying model, and scrub the response below.
+        // This endpoint receives client-authored messages, so the guard from
+        // ConversationController.buildPrompt never applies here.
+        let disclosure = await disclosure(sessionKey: sessionKey)
+        var messages = request.messages
+        if disclosure == .hidden {
+            messages.insert(
+                ChatMessage(role: "system", content: ModelDisclosurePolicy.systemPromptGuard),
+                at: 0
+            )
+        }
+
         let payload = ChatCompletionPayload(
             model: request.model ?? defaultModel,
-            messages: request.messages.map { $0.toOutbound() },
+            messages: messages.map { $0.toOutbound() },
             temperature: request.temperature,
             stream: false,
             tools: request.tools?.map { $0.toOutbound() },
@@ -91,7 +104,7 @@ struct RoutedHermesLLMService: HermesLLMService {
                 logger.info("llm reply ready model=\(decoded.model) sessionKey=\(sessionKey)")
                 // Managed tenants never see the concrete model id — scrub the
                 // wire response (server logs above keep the real one).
-                if await disclosure(sessionKey: sessionKey) == .hidden {
+                if disclosure == .hidden {
                     let scrubbedRaw = HermesUpstreamResponse(
                         id: decoded.id,
                         object: decoded.object,
