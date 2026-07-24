@@ -216,3 +216,22 @@ struct AutoSmartPoolTests {
         #expect(!pool.isEmpty)
     }
 }
+
+@Suite("Managed Auto gateway mapping")
+struct ManagedAutoGatewayMappingTests {
+    @Test func managedAutoRoutesRideTheGateway() {
+        let route = RouterModelRouteDTO(provider: .openRouter, model: "x-ai/grok-4")
+        let viaGateway = CerberusModelRouter.toModelRoute(route, viaGateway: true)
+        #expect(viaGateway?.provider == .hermesGateway)
+        #expect(viaGateway?.modelID == "x-ai/grok-4")
+
+        let direct = CerberusModelRouter.toModelRoute(route, viaGateway: false)
+        #expect(direct?.provider == .openRouter)
+    }
+
+    @Test func gatewayMappingLeavesNonOpenRouterAlone() {
+        let route = RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-1")
+        let mapped = CerberusModelRouter.toModelRoute(route, viaGateway: true)
+        #expect(mapped?.provider == .anthropic)
+    }
+}

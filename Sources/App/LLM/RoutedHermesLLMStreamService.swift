@@ -134,7 +134,9 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
               cerberus.routingPolicy == .autoSmart,
               !cerberus.deferredToHermes,
               !cerberus.byokKeysRequired,
-              decision.primary.provider == .openRouter
+              // Managed Auto decisions are mapped onto the gateway route with
+              // the picked OpenRouter model id (see CerberusModelRouter).
+              decision.primary.provider == .hermesGateway || decision.primary.provider == .openRouter
         else { return nil }
 
         logger.info("managed stream auto-routed", metadata: [
