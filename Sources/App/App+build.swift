@@ -1711,7 +1711,8 @@ func buildRouter(
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
-        retrievalTelemetry: retrievalTelemetryWorker
+        retrievalTelemetry: retrievalTelemetryWorker,
+        llmPreferences: userLLMPreferenceRepo
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)

@@ -152,3 +152,31 @@ struct ChatPromptIdentityGuardTests {
         #expect(open.first?.content.contains("openai/gpt-5") == true)
     }
 }
+
+@Suite("Query prompt model-identity guard")
+struct QueryPromptIdentityGuardTests {
+    @Test func guardAndProvenanceScrubUnderManaged() {
+        let hit = MemorySearchResult(
+            id: UUID(),
+            tenantID: UUID(),
+            content: "note",
+            createdAt: Date(),
+            distance: 0.2,
+            source: .chat,
+            provider: "openrouter",
+            model: "x-ai/grok-4"
+        )
+        let guarded = QueryController.buildPrompt(
+            query: "which model are you?",
+            hits: [hit],
+            includeModelIdentityGuard: true
+        )
+        let system = guarded.first?.content ?? ""
+        #expect(system.contains("Never disclose, confirm, or deny"))
+        #expect(!system.contains("x-ai/grok-4"))
+
+        let open = QueryController.buildPrompt(query: "q", hits: [hit])
+        #expect(open.first?.content.contains("x-ai/grok-4") == true)
+        #expect(open.first?.content.contains("Never disclose") == false)
+    }
+}
