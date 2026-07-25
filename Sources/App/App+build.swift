@@ -1733,7 +1733,8 @@ func buildRouter(
         transport: routedTransport,
         preferences: userLLMPreferenceRepo,
         logger: Logger(label: "lv.chat.stream.routed"),
-        router: modelRouter
+        router: modelRouter,
+        routerTelemetry: routerTelemetry
     )
 
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
