@@ -1,11 +1,16 @@
-# Deploy & Rollback Runbook (HER-272)
+# Deploy & Rollback Runbook
 
-Production CI/CD for `LuminaVaultServer`. This is the operational runbook:
-how a release reaches the VPS, how to roll back, and where to look when
-it breaks. For host provisioning, TLS/Caddy, and networking see
-[`hetzner-deployment.md`](./hetzner-deployment.md); for encrypted off-site
-backups and the restore procedure see [`backup.md`](./backup.md). For branch
-protection see [`cicd/branch-protection.md`](./cicd/branch-protection.md).
+Production CI/CD for `LuminaVaultServer`. This is the operational runbook: how a
+release reaches the cluster, how to promote to production, how to roll back, and
+where to look when it breaks.
+
+Deployment is **GitOps on k3s**. The old SSH-to-VPS pipeline (`prod.yml` /
+`dev.yml`) was retired (#171); the cluster is now the source of truth and
+[`LuminaVaultInfra`](https://github.com/LuminaVault/LuminaVaultInfra) holds the
+manifests ArgoCD reconciles. For host/cluster provisioning see
+[`hetzner-deployment.md`](./hetzner-deployment.md); for backups + restore see
+[`backup.md`](./backup.md); for branch protection see
+[`cicd/branch-protection.md`](./cicd/branch-protection.md).
 
 ## Pipeline overview
 
@@ -16,187 +21,128 @@ PR ──► CI (lint + test)  ──merge──►  push to main
                               CI runs again on main
                                          │  on success (workflow_run)
                                          ▼
-                        Deploy workflow (.github/workflows/prod.yml)
-              build ──► push ghcr.io/luminavault/luminavaultserver:<sha> + :latest
+                        Release workflow (.github/workflows/release.yml)
+              build ──► push ghcr.io/luminavault/luminavaultserver:<sha>
                                          │
                                          ▼
-                 SSH to VPS: pull image, write .env.production,
-                 build/start plugin-runner, run app migrate, compose up app
+                 bump-staging: commit image.tag=<sha> into
+                 LuminaVaultInfra apps/api/values-staging.yaml
                                          │
                                          ▼
-                 on-server health pre-gate (http://127.0.0.1:8080/health)
+                 ArgoCD auto-syncs the `staging` namespace (~3 min, hands-free)
                                          │
+                                         ▼   ── manual gate ──
+                 Promote to Production (LuminaVaultInfra promote.yml, dispatch)
+                 copies staging tag → values-production.yaml, opens a PR
+                                         │  merge the PR = approval
                                          ▼
-            runner smoke test (https://api.luminavault.fyi/health → 200, ≤30s)
-                                   │              │
-                              success           failure
-                                   ▼              ▼
-                         Promote release    Roll back to .green_image
-                         (.green_image,      (redeploy last good,
-                          prune images)       job stays red)
+                 ArgoCD auto-syncs the `production` namespace → prod live
 ```
 
 Key properties:
 
-- **CI gates deploy.** `prod.yml` triggers via `workflow_run` on the `CI`
-  workflow completing **successfully** on `main`. A failing `lint` or
-  `test` job means CI fails, so the deploy never starts.
-- **Image is immutable.** Built once in CI, tagged with the commit SHA,
-  pulled (not rebuilt) on the VPS.
-- **Plugin execution is fail-closed.** The deploy builds the reviewed
-  `plugin-runner` source at the same commit, waits for its healthcheck, and
-  only then recreates the API container. Runner build or health failure stops
-  the deploy before marketplace tools can execute.
-- **Migrations are fail-fast.** After PostgreSQL and the plugin runner are
-  healthy, the workflow runs the new image's `app migrate` command before it
-  replaces the live API. A migration error stops the deploy and leaves the
-  currently running API container untouched. Migrations shipped through this
-  path must remain compatible with the last-known-good image because an
-  application rollback does not revert database schema.
-- **Smoke test is authoritative and runs from the GitHub runner** against
-  the public HTTPS endpoint. It hits **`/health`** (public liveness probe,
-  returns `"ok"`) — **not** `/v1/health`, which is the JWT-authed
-  health-data domain and returns 401.
+- **CI gates the build.** `release.yml` triggers via `workflow_run` on the `CI`
+  workflow completing **successfully** on `main`. A failing `lint` or `test`
+  job means CI fails, so no image is built and staging is never bumped.
+- **Image is immutable.** Built once from the exact CI-validated commit, tagged
+  with the git SHA (`ghcr.io/luminavault/luminavaultserver:<sha>`), and the
+  *same* image is what staging runs and what gets promoted to production. No
+  rebuild between environments.
+- **Staging is automatic; production is human-gated.** Every green merge lands
+  in staging within ~3 min with no human action. Production only changes when
+  someone runs `promote.yml` and **merges** the resulting promote PR.
+- **ArgoCD is the deployer.** The `api-staging` / `api-production` Applications
+  (namespaces `staging` / `production`) track `LuminaVaultInfra@main` with
+  `automated` sync + `prune` + `selfHeal`. Merging a tag change is the deploy;
+  hand-editing cluster objects is reverted by selfHeal — the git tag wins.
+- **Migrations run at boot, fail-fast.** The app runs migrations on startup
+  (`fluent.autoMigrate`, on outside `dev`); a migration error crashes the pod
+  and ArgoCD/k8s keep the previous ReplicaSet serving. Migrations must stay
+  compatible with the last-known-good image — an **application** rollback does
+  **not** revert database schema (see Rollback).
+- **Health probe:** `https://api.luminavault.fyi/health` returns `ok` (public
+  liveness). Do **not** use `/v1/health` — that is the JWT-authed health-data
+  domain and returns 401.
 
-> **GitHub caveat:** `workflow_run` always uses the workflow definition
-> from the **default branch**. Changes to `prod.yml`/`dev.yml`/`ci.yml`
-> only take effect for gating once they are on `main`. You cannot fully
-> exercise the gate from a feature branch.
+## How a change reaches staging (automatic)
 
-## Most-recent-green pointer
+1. Merge a PR to `main`. CI re-runs on `main`.
+2. On CI success, **Release** (`release.yml`) builds + pushes
+   `…/luminavaultserver:<sha>`, then its `bump-staging` job checks out
+   `LuminaVaultInfra` (using the `INFRA_REPO_TOKEN` PAT), sets
+   `apps/api/values-staging.yaml → image.tag: <sha>`, and pushes to infra
+   `main`. A Discord line reports the result.
+3. ArgoCD reconciles `api-staging` and rolls the `staging` namespace to the new
+   image (~3 min). Verify against the staging host (see `hetzner-deployment.md`
+   for the staging URL).
 
-The VPS keeps two small files in `/opt/obsidian-claudebrain`:
+## How to promote to production (manual gate)
 
-- **`.green_image`** — the last image that passed its smoke test. Written
-  by the **Promote release** step. This is the rollback target.
-- **`.rollback_image`** — written at the *start* of each deploy as a copy
-  of `.green_image` (or the currently-live `APP_IMAGE` if no green pointer
-  exists yet). The **Roll back on failure** step redeploys this.
+1. GitHub → **LuminaVaultInfra** → Actions → **Promote to Production** → **Run
+   workflow** → `service: api`.
+2. That opens a `promote/<timestamp>` PR that copies the current
+   `values-staging.yaml` tag into `values-production.yaml`.
+3. Review (confirm the tag is the SHA you validated in staging) and **merge**.
+   Merging is the approval.
+4. ArgoCD reconciles `api-production` and rolls the `production` namespace. Watch
+   the ArgoCD UI (or `argocd app get api-production`) until `Synced` + `Healthy`,
+   then smoke `https://api.luminavault.fyi/health` → `ok`.
 
-`APP_IMAGE` in `.env.production` always reflects the *currently deployed*
-image (good or bad); `.green_image` reflects the last *known-good* image.
+## Rollback
 
-## Automatic rollback
+The git tag in `LuminaVaultInfra` is the source of truth, so rollback = point it
+back at a known-good SHA and let ArgoCD converge. selfHeal means you must change
+**git**, not the cluster.
 
-If the deploy step errors or the smoke test does not return `200` within
-~30s, the `if: failure()` **Roll back on failure** step runs:
+- **Revert the promote PR** (preferred). In `LuminaVaultInfra`, revert the merge
+  that bumped `values-production.yaml`; ArgoCD syncs production back to the
+  previous tag. `promote.yml`'s PR body notes this ("Rollback: revert this PR").
+- **Pin an explicit tag.** Open a one-line PR setting
+  `apps/api/values-production.yaml → image.tag: "<known-good-sha>"` and merge.
+  Any GHCR `:<sha>` that was previously live is a valid target.
+- **Staging rollback:** revert the `bump-staging` commit on infra `main`, or pin
+  the staging tag the same way.
 
-1. Reads `.rollback_image`.
-2. `docker pull` that image, rewrites `APP_IMAGE=` in `.env.production`.
-3. `docker compose -p prod -f docker-compose.production.yml up -d --no-deps app`.
+Schema rollback is **not** automatic. Additive migrations are safe under an
+application rollback (the previous image runs against the newer schema). Any
+destructive or semantically-breaking migration must ship as a staged
+expand/migrate/contract release, never a single-release cutover.
 
-The workflow run stays **red** so the failure is visible, even though the
-service has been restored to the last good image.
+## Force a re-sync / redeploy without a new commit
 
-Schema rollback is intentionally not automatic. M109 is additive, so the
-previous application image can run against it. Any future destructive or
-semantic migration needs a staged expand/migrate/contract release rather than
-the normal single-release rollback path.
-
-## Manual rollback
-
-SSH to the VPS and redeploy a known-good image. This is the
-`docker compose rollback` equivalent.
+ArgoCD auto-syncs, so this is rarely needed. To force reconciliation (e.g. after
+a manual secret rotation) use the ArgoCD UI **Sync**, or:
 
 ```bash
-ssh <SERVER_USER>@<SERVER_HOST>
-cd /opt/obsidian-claudebrain
-
-# 1. Pick a target image. Last known-good:
-cat .green_image
-# ...or list recent SHA tags in GHCR and choose one:
-#   ghcr.io/luminavault/luminavaultserver:<short-sha>
-
-TARGET="ghcr.io/luminavault/luminavaultserver:<sha>"
-
-# 2. Pull + redeploy.
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <user> --password-stdin
-docker pull "$TARGET"
-sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${TARGET}|" .env.production
-APP_PORT=8080 APP_IMAGE="$TARGET" docker compose -p prod \
-  -f docker-compose.production.yml \
-  --env-file .env.production \
-  up -d --no-deps app
-
-# 3. Verify.
-curl -fsS http://127.0.0.1:8080/health        # on-server
-curl -fsS https://api.luminavault.fyi/health   # public
-
-# 4. (optional) Re-point :latest to the rolled-back image so a plain
-#    `docker compose pull` elsewhere converges on the good image.
-docker tag "$TARGET" ghcr.io/luminavault/luminavaultserver:latest
-docker push ghcr.io/luminavault/luminavaultserver:latest
-
-# 5. Record it as the new green so future auto-rollbacks target it.
-echo "$TARGET" > .green_image
+argocd app sync api-production      # or api-staging
+argocd app get api-production       # confirm Synced + Healthy
 ```
 
-## Manual redeploy / re-run
+To rebuild + re-push the image for the current `main` without a new merge, run
+**Release** (`release.yml`) via `workflow_dispatch`; it re-bumps staging.
 
-- Re-run the last deploy without a new commit: GitHub → Actions → **Deploy**
-  → **Run workflow** (`workflow_dispatch`).
-- `workflow_dispatch` skips the CI gate (use only for redeploy/rollback).
+## Secrets & configuration
+
+- **Application env (~140 vars: Postgres, `JWT_HMAC_SECRET`,
+  `LV_SECRET_MASTER_KEY`, `HERMES_API_KEY`, OAuth, APNS, Sentry, LLM keys,
+  `PLUGIN_RUNNER_TOKEN`, `PLUGIN_ARTIFACT_SIGNING_KEY`, …)** live in the sealed
+  `api-env` Secret in each namespace, managed in `LuminaVaultInfra` — **not** in
+  this repo and no longer in a VPS `.env.production`. To change one, update the
+  sealed secret in the infra repo (see its README / `argocd/apps/secrets.yaml`).
+- **This repo's GitHub secrets** are only what `release.yml` needs:
+
+  | Name | Used by | Purpose |
+  |------|---------|---------|
+  | `INFRA_REPO_TOKEN` | `release.yml` bump-staging | Fine-grained PAT (contents: read/write) on `LuminaVault/LuminaVaultInfra` so CI can commit the staging tag |
+  | `DISCORD_WEBHOOK_URL` | `release.yml` notify (optional) | Release notifications |
+  | `GITHUB_TOKEN` | `release.yml` build | GHCR push (automatic) |
 
 ## Observability & on-call
 
 - **Health:** `https://api.luminavault.fyi/health` (public, returns `ok`).
-- **Sentry:** errors/traces for env `production`. Project/org are set via
-  the `SENTRY_ORG_SLUG` / `SENTRY_PROJECT_SLUG` GitHub secrets; releases
-  are tagged with the deploy commit SHA (`SENTRY_RELEASE`).
-- **Jaeger** (traces) runs on the VPS bound to localhost only — reach the
-  UI over an SSH tunnel:
-  ```bash
-  ssh -L 16686:127.0.0.1:16686 <SERVER_USER>@<SERVER_HOST>
-  # then open http://127.0.0.1:16686
-  ```
-- **PostHog:** logs are fanned out by the `otel-collector` container
-  (`POSTHOG_OTEL_TOKEN`).
-- **On-call:** Fernando Correia (<fernandocorreia316@gmail.com>). Update
-  this line when on-call rotation is established.
-
-## Required GitHub secrets / vars
-
-| Name | Used by | Purpose |
-|------|---------|---------|
-| `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY` | deploy/rollback | SSH to VPS |
-| `PLUGIN_RUNNER_TOKEN` | deploy | Shared API-to-runner authentication secret; minimum 32 random characters |
-| `PLUGIN_ARTIFACT_SIGNING_KEY` | deploy | Independent artifact signature secret; minimum 32 random characters |
-| `LLM_PROVIDER_OPENROUTER_APIKEY` | deploy | Platform OpenRouter credential for managed Studio and `openrouter/free` fallback |
-| `POSTHOG_OTEL_TOKEN` | deploy | otel-collector log export |
-| `SENTRY_*` | deploy | Sentry release + env wiring |
-| `SLACK_WEBHOOK_URL` | notify (optional) | deploy notifications (deferred) |
-| `vars.PRODUCTION_HEALTH_URL` (optional) | smoke test | override the smoke URL (default `https://api.luminavault.fyi/health`) |
-| `BACKUP_AGE_RECIPIENT` (optional) | deploy | HER-131 backup encryption recipient (age public key) |
-| `BACKUP_RCLONE_REMOTE` (optional) | deploy | HER-131 backup destination, e.g. `b2:bucket/luminavault` |
-| `BACKUP_ALERT_WEBHOOK` (optional) | deploy | HER-131 Slack webhook for backup-failure alerts |
-
-## Backups (HER-131)
-
-The deploy writes the `BACKUP_*` secrets into `.env.production` and, when both
-`BACKUP_AGE_RECIPIENT` and `BACKUP_RCLONE_REMOTE` are present **and**
-`./secrets/rclone.conf` exists on the host, brings up the `backup` profile
-sidecar. A backup-service start failure is logged but does **not** fail the
-deploy.
-
-One-time host setup is still manual (the deploy never invents keys):
-
-```bash
-ssh <SERVER_USER>@<SERVER_HOST>
-cd /opt/obsidian-claudebrain
-
-# 1. age keypair — keep the private identity safe & offline.
-age-keygen -o secrets/age-identity.txt && chmod 600 secrets/age-identity.txt
-#    note the "Public key: age1..." line → set BACKUP_AGE_RECIPIENT (GH secret
-#    or directly in .env.production).
-
-# 2. rclone remote (Backblaze B2 / AWS S3 / MinIO / SFTP).
-docker run --rm -it -v "$PWD/secrets:/config/rclone" rclone/rclone config
-
-# 3. set the remote + recipient (GH secrets, or .env.production directly):
-#    BACKUP_AGE_RECIPIENT=age1....
-#    BACKUP_RCLONE_REMOTE=b2:my-bucket/luminavault
-#    BACKUP_AGE_IDENTITY_PATH=/app/secrets/age-identity.txt
-```
-
-Next deploy auto-starts the sidecar. Full operator runbook (retention, restore,
-drill, alerting): [`backup.md`](./backup.md).
+- **Sentry:** errors/traces for env `production`; releases tagged with the
+  deploy commit SHA. Wiring lives with the cluster config in `LuminaVaultInfra`.
+- **Cluster:** inspect via ArgoCD (app health/sync) and `kubectl -n production`
+  (pods, logs, events). See `hetzner-deployment.md` for cluster access.
+- **On-call:** Fernando Correia (<fernandocorreia316@gmail.com>). Update this
+  line when a rotation is established.
