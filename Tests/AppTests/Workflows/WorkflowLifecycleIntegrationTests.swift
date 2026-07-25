@@ -128,7 +128,7 @@ struct WorkflowLifecycleIntegrationTests {
             )
 
             let workflow = try #require(try await Workflow.query(on: fluent.db(), tenantID: tenantID)
-                .filter(\.$id == created.workflow.id)
+                .filter(\.$id, .equal, created.workflow.id)
                 .first())
             let versionID = try #require(workflow.publishedVersionID)
             let paused = WorkflowRun()
