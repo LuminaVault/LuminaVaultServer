@@ -1,9 +1,38 @@
-# Hetzner Deployment (HER-31) — Optimized Docs
+# Hetzner Deployment (HER-31)
 
-Hetzner Cloud is the recommended primary host for self-hosted and small-team
-LuminaVaultServer deployments. This document is **Hetzner-specific** and
-assumes the generic Ubuntu/VPS instructions in [`integration.md`](./integration.md)
-have already been read.
+> ## ⚠️ Status: legacy single-VPS reference — NOT how LuminaVault prod runs
+>
+> This document describes the **original single-box, `docker compose`-on-a-VPS**
+> Hetzner deployment. LuminaVault's own production **no longer uses it** — the
+> SSH pipeline was retired (#171) and prod migrated to **GitOps on k3s** after
+> the 2026-07 rebuild-from-code incident.
+>
+> **Production today (authoritative source: [`LuminaVaultInfra`](https://github.com/LuminaVault/LuminaVaultInfra)):**
+>
+> - **One Hetzner `cpx32` box** (4 vCPU / 8 GB) running **k3s**, provisioned by
+>   **Terraform** (`LuminaVaultInfra/terraform/`, hcloud + decoupled primary IP
+>   + firewall + Postgres volume + cloud-init).
+> - **ArgoCD** reconciles the cluster from `LuminaVaultInfra@main`
+>   (namespaces `staging` / `production`); **Traefik** ingress; **cert-manager +
+>   Let's Encrypt** TLS; **Sealed Secrets** for the `api-env` Secret; **Alloy**
+>   ships logs/metrics off-box to **Grafana Cloud**.
+> - **URLs:** staging `https://api-staging.luminavault.fyi`, prod
+>   `https://api.luminavault.fyi` (`/health` → `ok`). The SvelteKit web app runs
+>   on **Cloudflare Workers**, not in the cluster.
+> - **Release/promote/rollback flow:** see [`deploy.md`](./deploy.md).
+> - **Cluster provisioning + first-boot + cutover:**
+>   `LuminaVaultInfra/docs/runbook-bootstrap.md` and `runbook-cutover.md`, and
+>   its top-level `README.md`.
+>
+> Everything below is retained as a **self-host / small-team single-box
+> reference** (still valid for BYO deployers running one VPS with compose) and
+> as historical context. It does **not** reflect LuminaVault's managed prod.
+> Sizing/pricing figures below are from May 2026 — re-check before quoting.
+
+Hetzner Cloud is a solid primary host for **self-hosted and small-team**
+single-box LuminaVaultServer deployments. This document is **Hetzner-specific**
+and assumes the generic Ubuntu/VPS instructions in
+[`integration.md`](./integration.md) have already been read.
 
 > **Prices in this doc are EUR (excl. VAT) and reflect the published rates
 > on [hetzner.com/cloud](https://www.hetzner.com/cloud) as of May 2026.
