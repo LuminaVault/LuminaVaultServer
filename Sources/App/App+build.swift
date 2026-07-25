@@ -3007,6 +3007,14 @@ private actor OTelLatch {
         // HER-236: OTLP log pipeline → otel-collector (JSON/HTTP) → PostHog.
         // Opt-in via OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; absent = no log shipping
         // and the stock console handler stays installed.
+        //
+        // The handler is MULTIPLEXED with stdout rather than replacing it. When
+        // this bootstrap swapped in `OTelLogHandler` alone, every application
+        // log vanished from `kubectl logs`, and if the OTLP export also failed
+        // the logs were gone entirely — which is exactly what happened in
+        // staging (Alloy publishes only otlp-grpc:4317 while this ships via
+        // `OTLPHTTPLogExporter`, so nothing was delivered and nothing was
+        // visible locally either). stdout is the floor: it must always work.
         var logsService: (any Service)?
         if let logsEndpoint = environment["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"],
            !logsEndpoint.isEmpty
@@ -3016,8 +3024,13 @@ private actor OTelLatch {
                 exporter: logExporter,
                 configuration: .init(environment: environment)
             )
-            LoggingSystem.bootstrap { _ in
-                OTelLogHandler(processor: logProcessor, logLevel: logLevel, resource: resource)
+            LoggingSystem.bootstrap { label in
+                var console = StreamLogHandler.standardOutput(label: label)
+                console.logLevel = logLevel
+                return MultiplexLogHandler([
+                    console,
+                    OTelLogHandler(processor: logProcessor, logLevel: logLevel, resource: resource),
+                ])
             }
             logsService = logProcessor
         }

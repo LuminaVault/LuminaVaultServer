@@ -468,6 +468,24 @@ struct CerberusModelRouter: ModelRouter {
                 complexity: complexity,
                 reason: reason
             )
+            // Routing observability. Managed tenants never learn which model
+            // served them (ModelDisclosurePolicy scrubs every client-facing
+            // surface), so the server log is the ONLY place a decision can be
+            // inspected — emit it structured and unconditionally.
+            logger.info("cerberus routing decision", metadata: [
+                "event": .string("cerberus.route.selected"),
+                "provider": .string(selectedDTO.provider.rawValue),
+                "model": .string(selectedDTO.model),
+                "dispatch_provider": .string(primary.provider.rawValue),
+                "task": .string(task.rawValue),
+                "complexity": .string(complexity.rawValue),
+                "policy": .string(policy.rawValue),
+                "mode": .string(profile.mode.rawValue),
+                "tier": .string(AvailableModelPoolBuilder.tier(for: selectedDTO).rawValue),
+                "pool_size": .stringConvertible(filtered.count),
+                "surface": .string(scope.surface.rawValue),
+            ])
+
             var routeFallbacks = Array(mapped.dropFirst())
             if profile.mode == .managed {
                 // Never leave managed chat without the shared gateway as the
