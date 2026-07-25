@@ -733,6 +733,12 @@ struct ConversationController {
                     )
                     conversation.updatedAt = Date()
                     try await conversation.save(on: fluent.db())
+                    // Activation metric: a turn answered while grounded in the
+                    // user's own memories — the product's magic moment.
+                    PostHogAnalytics.capture("chat_grounded_answer", properties: [
+                        "grounded_hits": sourceIDs.count,
+                        "used_tools": !toolCallIDs.isEmpty,
+                    ])
                     await selfImprovement?.noteActivity(tenantID: tenantID)
                     await selfImprovement?.triggerComplexSession(
                         tenantID: tenantID,
