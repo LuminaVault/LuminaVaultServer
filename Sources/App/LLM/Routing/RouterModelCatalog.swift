@@ -169,11 +169,11 @@ enum RouterModelCatalog {
         // the `openRouter` provider for Auto to ever reach them.
         .init(
             provider: .openRouter,
-            model: "x-ai/grok-4",
-            displayName: "Grok 4 (OpenRouter)",
+            model: "x-ai/grok-4.5",
+            displayName: "Grok 4.5 (OpenRouter)",
             taskQuality: ratings(general: 91, reasoning: 92, coding: 88, search: 96, summarization: 88),
-            inputPerMillionUsdMicros: 3_000_000,
-            outputPerMillionUsdMicros: 15_000_000,
+            inputPerMillionUsdMicros: 2_000_000,
+            outputPerMillionUsdMicros: 6_000_000,
             defaultLatencyMs: 1400,
             capabilities: ["chat", "tools", "search"],
             tier: .max

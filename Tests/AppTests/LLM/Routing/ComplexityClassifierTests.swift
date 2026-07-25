@@ -169,7 +169,7 @@ struct AutoSmartPoolTests {
             minTier: .max
         ))
         #expect(pool.allSatisfy { $0.provider == .openRouter })
-        #expect(pool.contains { $0.model == "x-ai/grok-4" })
+        #expect(pool.contains { $0.model == "x-ai/grok-4.5" })
         #expect(pool.contains { $0.model == "openai/gpt-5" })
         #expect(pool.contains { $0.model == "anthropic/claude-opus-4.1" })
     }
@@ -220,10 +220,10 @@ struct AutoSmartPoolTests {
 @Suite("Managed Auto gateway mapping")
 struct ManagedAutoGatewayMappingTests {
     @Test func managedAutoRoutesRideTheGateway() {
-        let route = RouterModelRouteDTO(provider: .openRouter, model: "x-ai/grok-4")
+        let route = RouterModelRouteDTO(provider: .openRouter, model: "x-ai/grok-4.5")
         let viaGateway = CerberusModelRouter.toModelRoute(route, viaGateway: true)
         #expect(viaGateway?.provider == .hermesGateway)
-        #expect(viaGateway?.modelID == "x-ai/grok-4")
+        #expect(viaGateway?.modelID == "x-ai/grok-4.5")
 
         let direct = CerberusModelRouter.toModelRoute(route, viaGateway: false)
         #expect(direct?.provider == .openRouter)
