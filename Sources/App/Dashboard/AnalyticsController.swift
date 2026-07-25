@@ -180,7 +180,13 @@ struct AnalyticsController {
         let range = Self.range(req)
         let scope = Self.scope(req)
         let access = try await resolve(scope: scope, request: req, context: ctx, permission: .read)
+        let userID = try ctx.requireTenantID()
         guard let sql = fluent.db() as? any SQLDatabase else { throw HTTPError(.internalServerError) }
+        let preference = try await UserLLMPreference.query(on: fluent.db())
+            .filter(\.$tenantID == userID)
+            .first()
+        let disclosure = ModelDisclosure.forBrainMode(preference.flatMap { LLMBrainMode(rawValue: $0.mode) })
+        let hideModelIdentity = disclosure == .hidden
         struct Row: Decodable {
             let provider: String
             let model: String
@@ -196,7 +202,12 @@ struct AnalyticsController {
         }
         let rows = try await sql.raw("""
         WITH feedback AS (
-            SELECT dimensions->>'provider' AS provider, dimensions->>'model' AS model,
+            SELECT CASE WHEN \(bind: hideModelIdentity)
+                        THEN \(bind: ModelDisclosurePolicy.genericProviderName)
+                        ELSE COALESCE(dimensions->>'provider', 'unknown') END AS provider,
+                   CASE WHEN \(bind: hideModelIdentity)
+                        THEN \(bind: ModelDisclosurePolicy.genericModelID)
+                        ELSE COALESCE(dimensions->>'model', 'unknown') END AS model,
                    COUNT(*) FILTER (WHERE event_name = 'model_feedback_positive') AS positive_feedback,
                    COUNT(*) FILTER (WHERE event_name = 'model_feedback_negative') AS negative_feedback
             FROM analytics_events
@@ -205,8 +216,12 @@ struct AnalyticsController {
               AND event_name IN ('model_feedback_positive', 'model_feedback_negative')
             GROUP BY 1, 2
         )
-        SELECT COALESCE(r.selected_provider, 'unknown') AS provider,
-               COALESCE(r.selected_model, 'unknown') AS model,
+        SELECT CASE WHEN \(bind: hideModelIdentity)
+                    THEN \(bind: ModelDisclosurePolicy.genericProviderName)
+                    ELSE COALESCE(r.selected_provider, 'unknown') END AS provider,
+               CASE WHEN \(bind: hideModelIdentity)
+                    THEN \(bind: ModelDisclosurePolicy.genericModelID)
+                    ELSE COALESCE(r.selected_model, 'unknown') END AS model,
                COUNT(*) AS requests,
                COUNT(*) FILTER (WHERE r.status = 'ok') AS successes,
                COUNT(*) FILTER (WHERE r.fallback_count > 0) AS fallbacks,
@@ -217,11 +232,16 @@ struct AnalyticsController {
                COALESCE(f.positive_feedback, 0) AS positive_feedback,
                COALESCE(f.negative_feedback, 0) AS negative_feedback
         FROM router_executions r
-        LEFT JOIN feedback f ON f.provider = COALESCE(r.selected_provider, 'unknown')
-                            AND f.model = COALESCE(r.selected_model, 'unknown')
+        LEFT JOIN feedback f
+          ON f.provider = CASE WHEN \(bind: hideModelIdentity)
+                               THEN \(bind: ModelDisclosurePolicy.genericProviderName)
+                               ELSE COALESCE(r.selected_provider, 'unknown') END
+         AND f.model = CASE WHEN \(bind: hideModelIdentity)
+                            THEN \(bind: ModelDisclosurePolicy.genericModelID)
+                            ELSE COALESCE(r.selected_model, 'unknown') END
         WHERE r.vault_id = \(bind: access.vaultID)
           AND r.occurred_at >= \(bind: Self.periodStart(range: range, now: Date()))
-        GROUP BY r.selected_provider, r.selected_model, f.positive_feedback, f.negative_feedback
+        GROUP BY 1, 2, f.positive_feedback, f.negative_feedback
         ORDER BY requests DESC
         """).all(decoding: Row.self)
         return ModelEffectivenessResponse(range: range, models: rows.map { row in
