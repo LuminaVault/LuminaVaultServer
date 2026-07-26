@@ -12,11 +12,18 @@ actor WorkflowService {
     private let fluent: Fluent
     private let spend: WorkflowSpendService?
     private let events: WorkflowEventStore?
+    private let llmPreferences: UserLLMPreferenceRepository?
 
-    init(fluent: Fluent, spend: WorkflowSpendService? = nil, events: WorkflowEventStore? = nil) {
+    init(
+        fluent: Fluent,
+        spend: WorkflowSpendService? = nil,
+        events: WorkflowEventStore? = nil,
+        llmPreferences: UserLLMPreferenceRepository? = nil
+    ) {
         self.fluent = fluent
         self.spend = spend
         self.events = events
+        self.llmPreferences = llmPreferences
     }
 
     func list(tenantID: UUID) async throws -> WorkflowListResponse {
@@ -305,7 +312,13 @@ actor WorkflowService {
 
     func eventList(tenantID: UUID, runID: UUID, after: Int64 = 0) async throws -> WorkflowRunEventsResponse {
         _ = try await run(tenantID: tenantID, runID: runID)
-        return try await WorkflowRunEventsResponse(events: events?.list(tenantID: tenantID, runID: runID, after: after) ?? [])
+        let listed = try await events?.list(tenantID: tenantID, runID: runID, after: after) ?? []
+        let response = WorkflowRunEventsResponse(events: listed)
+        return ModelDisclosurePolicy.scrub(response, disclosure: try await disclosure(tenantID: tenantID))
+    }
+
+    func modelDisclosure(tenantID: UUID) async throws -> ModelDisclosure {
+        try await disclosure(tenantID: tenantID)
     }
 
     func retry(tenantID: UUID, runID: UUID) async throws -> WorkflowRunDTO {
@@ -472,7 +485,7 @@ actor WorkflowService {
     private func runDTO(_ row: WorkflowRun, workflow: Workflow) async throws -> WorkflowRunDTO {
         let version = try await WorkflowVersion.find(row.versionID, on: fluent.db())?.version ?? 0
         let nodes = try await WorkflowNodeRun.query(on: fluent.db()).filter(\.$runID == row.requireID()).sort(\.$createdAt, .ascending).all()
-        return try WorkflowRunDTO(
+        let dto = try WorkflowRunDTO(
             id: row.requireID(),
             workflowID: row.workflowID,
             workflowName: workflow.name,
@@ -505,5 +518,12 @@ actor WorkflowService {
                 )
             }
         )
+        return ModelDisclosurePolicy.scrub(dto, disclosure: try await disclosure(tenantID: workflow.tenantID))
+    }
+
+    private func disclosure(tenantID: UUID) async throws -> ModelDisclosure {
+        guard let llmPreferences else { return .hidden }
+        let preference = try await llmPreferences.get(tenantID: tenantID)
+        return preference?.mode == .byok ? .visible : .hidden
     }
 }

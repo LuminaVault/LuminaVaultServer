@@ -114,6 +114,7 @@ struct MemoryController {
     /// memories the user has already rejected.
     let rejectListRepository: KBCompileRejectListRepository
     let hybridExecutionEnabled: Bool
+    let llmPreferences: UserLLMPreferenceRepository?
     var provenanceRepository: MemoryProvenanceRepository {
         MemoryProvenanceRepository(fluent: repository.fluent)
     }
@@ -349,11 +350,13 @@ struct MemoryController {
             tenantID: tenantID,
             memoryIDs: rows.map(\.savedID)
         )
-        return MemoryListResponse(
+        let response = MemoryListResponse(
             memories: rows.map { MemoryDTO.fromMemory($0, provenance: summaries[$0.savedID]) },
             limit: limit,
             offset: offset
         )
+        let disclosure = try await disclosure(ctx: ctx)
+        return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
     }
 
     @Sendable
@@ -369,7 +372,9 @@ struct MemoryController {
             tenantID: tenantID,
             memoryIDs: [row.savedID]
         )[row.savedID]
-        return MemoryDTO.fromMemory(row, provenance: summary)
+        let response = MemoryDTO.fromMemory(row, provenance: summary)
+        let disclosure = try await disclosure(ctx: ctx)
+        return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
     }
 
     @Sendable
@@ -572,7 +577,9 @@ struct MemoryController {
             tenantID: tenantID,
             memoryIDs: [row.savedID]
         )[row.savedID]
-        return MemoryDTO.fromMemory(row, provenance: summary)
+        let response = MemoryDTO.fromMemory(row, provenance: summary)
+        let disclosure = try await disclosure(ctx: ctx)
+        return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
     }
 
     @Sendable
@@ -585,13 +592,16 @@ struct MemoryController {
         ) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        return response
+        let disclosure = try await disclosure(ctx: ctx)
+        return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
     }
 
     @Sendable
     func facets(_ req: Request, ctx: AppRequestContext) async throws -> MemoryFacetsResponse {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
-        return try await provenanceRepository.facets(tenantID: tenantID)
+        let response = try await provenanceRepository.facets(tenantID: tenantID)
+        let disclosure = try await disclosure(ctx: ctx)
+        return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
     }
 
     /// HER-150: Returns the source vault file (when known) the memory was
@@ -705,6 +715,12 @@ struct MemoryController {
             throw HTTPError(.badRequest, message: "invalid memory id")
         }
         return id
+    }
+
+    private func disclosure(ctx: AppRequestContext) async throws -> ModelDisclosure {
+        guard let llmPreferences else { return .hidden }
+        let preference = try await llmPreferences.get(tenantID: ctx.requireTenantID())
+        return preference?.mode == .byok ? .visible : .hidden
     }
 
     private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {

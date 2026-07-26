@@ -16,6 +16,7 @@ struct ParallelController {
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
     let enabled: Bool
+    let llmPreferences: UserLLMPreferenceRepository?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/parallel/executions/stream", use: stream)
@@ -78,9 +79,14 @@ struct ParallelController {
         }
         let payload = try Self.payload(for: effective, grounding: grounding)
         let transport = transport
+        let disclosure = try await disclosure(for: user)
         let events = AsyncThrowingStream<QueryStreamEvent, Error> { continuation in
             let work = Task {
-                let sink: @Sendable (QueryStreamEvent) -> Void = { continuation.yield($0) }
+                let sink: @Sendable (QueryStreamEvent) -> Void = { event in
+                    if let scrubbed = ModelDisclosurePolicy.scrub(event, disclosure: disclosure) {
+                        continuation.yield(scrubbed)
+                    }
+                }
                 do {
                     try await CerberusStreamContext.$sink.withValue(sink) {
                         try await LLMRoutingContext.$parallelRequest.withValue(effective) {
@@ -128,7 +134,7 @@ struct ParallelController {
         guard let result = try await store.detail(tenantID: user.requireID(), id: id) else {
             throw HTTPError(.notFound, message: "parallel_execution_not_found")
         }
-        return result
+        return ModelDisclosurePolicy.scrub(result, disclosure: try await disclosure(for: user))
     }
 
     @Sendable
@@ -187,6 +193,12 @@ struct ParallelController {
         guard enabled, tier == .ultimate else {
             throw HTTPError(.forbidden, message: "router_parallel_requires_ultimate")
         }
+    }
+
+    private func disclosure(for user: User) async throws -> ModelDisclosure {
+        guard let llmPreferences else { return .hidden }
+        let preference = try await llmPreferences.get(tenantID: user.requireID())
+        return preference?.mode == .byok ? .visible : .hidden
     }
 
     private func validatePreset(_ request: SynthesisPresetWriteRequest) throws {

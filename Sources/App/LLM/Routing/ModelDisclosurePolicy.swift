@@ -99,4 +99,160 @@ enum ModelDisclosurePolicy {
             return event
         }
     }
+
+    static func scrub(_ run: WorkflowRunDTO, disclosure: ModelDisclosure) -> WorkflowRunDTO {
+        guard disclosure == .hidden else { return run }
+        return WorkflowRunDTO(
+            id: run.id,
+            workflowID: run.workflowID,
+            workflowName: run.workflowName,
+            version: run.version,
+            status: run.status,
+            trigger: run.trigger,
+            startedAt: run.startedAt,
+            endedAt: run.endedAt,
+            createdAt: run.createdAt,
+            error: run.error,
+            pauseReason: run.pauseReason,
+            managedSpendUsdMicros: run.managedSpendUsdMicros,
+            managedSpendLimitUsdMicros: run.managedSpendLimitUsdMicros,
+            nodeRuns: run.nodeRuns.map { node in
+                WorkflowNodeRunDTO(
+                    id: node.id,
+                    nodeID: node.nodeID,
+                    nodeName: node.nodeName,
+                    status: node.status,
+                    attempt: node.attempt,
+                    startedAt: node.startedAt,
+                    endedAt: node.endedAt,
+                    outputPreview: node.outputPreview,
+                    error: node.error,
+                    provider: nil,
+                    model: nil,
+                    tokensIn: node.tokensIn,
+                    tokensOut: node.tokensOut,
+                    managedCostUsdMicros: node.managedCostUsdMicros
+                )
+            }
+        )
+    }
+
+    static func scrub(_ response: WorkflowRunEventsResponse, disclosure: ModelDisclosure) -> WorkflowRunEventsResponse {
+        guard disclosure == .hidden else { return response }
+        return WorkflowRunEventsResponse(events: response.events.map { scrub($0, disclosure: disclosure) })
+    }
+
+    static func scrub(_ event: WorkflowRunEventDTO, disclosure: ModelDisclosure) -> WorkflowRunEventDTO {
+        guard disclosure == .hidden else { return event }
+        var data = event.data
+        data.removeValue(forKey: "provider")
+        data.removeValue(forKey: "model")
+        data.removeValue(forKey: "fallback")
+        let message = event.message == "Managed provider unavailable; retrying on OpenRouter Free."
+            ? "Managed provider unavailable; retrying on a backup route."
+            : event.message
+        return WorkflowRunEventDTO(
+            id: event.id,
+            runID: event.runID,
+            kind: event.kind,
+            nodeID: event.nodeID,
+            message: message,
+            data: data,
+            createdAt: event.createdAt
+        )
+    }
+
+    static func scrub(_ detail: ParallelExecutionDetailDTO, disclosure: ModelDisclosure) -> ParallelExecutionDetailDTO {
+        guard disclosure == .hidden else { return detail }
+        let genericRoute = RouterModelRouteDTO(provider: .openRouter, model: genericModelID)
+        return ParallelExecutionDetailDTO(
+            summary: detail.summary,
+            prompt: detail.prompt,
+            outputs: detail.outputs.map { output in
+                ParallelOutputDTO(
+                    id: output.id,
+                    participantID: output.participantID,
+                    role: output.role,
+                    route: genericRoute,
+                    stage: output.stage,
+                    round: output.round,
+                    content: output.content,
+                    status: output.status,
+                    tokensIn: output.tokensIn,
+                    tokensOut: output.tokensOut,
+                    estimatedCostUsdMicros: output.estimatedCostUsdMicros,
+                    latencyMs: output.latencyMs
+                )
+            },
+            synthesizedAnswer: detail.synthesizedAnswer
+        )
+    }
+
+    static func scrub(_ memory: MemoryDTO, disclosure: ModelDisclosure) -> MemoryDTO {
+        guard disclosure == .hidden else { return memory }
+        return MemoryDTO(
+            id: memory.id,
+            content: memory.content,
+            tags: memory.tags,
+            createdAt: memory.createdAt,
+            lat: memory.lat,
+            lng: memory.lng,
+            accuracyM: memory.accuracyM,
+            placeName: memory.placeName,
+            reviewState: memory.reviewState,
+            provenance: memory.provenance.map { scrub($0, disclosure: disclosure) },
+            createdByUserId: memory.createdByUserId,
+            updatedByUserId: memory.updatedByUserId
+        )
+    }
+
+    static func scrub(_ response: MemoryListResponse, disclosure: ModelDisclosure) -> MemoryListResponse {
+        guard disclosure == .hidden else { return response }
+        return MemoryListResponse(
+            memories: response.memories.map { scrub($0, disclosure: disclosure) },
+            limit: response.limit,
+            offset: response.offset
+        )
+    }
+
+    static func scrub(_ response: MemoryProvenanceResponse, disclosure: ModelDisclosure) -> MemoryProvenanceResponse {
+        guard disclosure == .hidden else { return response }
+        return MemoryProvenanceResponse(
+            memoryID: response.memoryID,
+            contributions: response.contributions.map { scrub($0, disclosure: disclosure) }
+        )
+    }
+
+    static func scrub(_ summary: MemoryProvenanceSummaryDTO, disclosure: ModelDisclosure) -> MemoryProvenanceSummaryDTO {
+        guard disclosure == .hidden else { return summary }
+        return MemoryProvenanceSummaryDTO(
+            createdBy: summary.createdBy.map { scrub($0, disclosure: disclosure) },
+            lastUpdatedBy: summary.lastUpdatedBy.map { scrub($0, disclosure: disclosure) },
+            contributors: []
+        )
+    }
+
+    static func scrub(_ contribution: MemoryContributionDTO, disclosure: ModelDisclosure) -> MemoryContributionDTO {
+        guard disclosure == .hidden else { return contribution }
+        return MemoryContributionDTO(
+            id: contribution.id,
+            operation: contribution.operation,
+            actor: contribution.actor,
+            source: contribution.source,
+            model: nil,
+            sourceReference: contribution.sourceReference,
+            createdAt: contribution.createdAt
+        )
+    }
+
+    static func scrub(_ response: MemoryFacetsResponse, disclosure: ModelDisclosure) -> MemoryFacetsResponse {
+        guard disclosure == .hidden else { return response }
+        return MemoryFacetsResponse(
+            providers: [],
+            models: [],
+            sources: response.sources,
+            oldestAt: response.oldestAt,
+            newestAt: response.newestAt
+        )
+    }
 }

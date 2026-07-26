@@ -121,6 +121,7 @@ struct WorkflowController {
             tenantID: tenantID,
             runID: runID,
             after: headerCursor ?? queryCursor ?? 0,
+            disclosure: try await service.modelDisclosure(tenantID: tenantID),
             isTerminal: { tenantID, runID in await service.isTerminal(tenantID: tenantID, runID: runID) }
         )
     }
