@@ -309,10 +309,11 @@ actor RouterProfileRepository {
     }
 
     static func toDTO(_ row: RouterProfile) throws -> RouterProfileDTO {
-        try RouterProfileDTO(
+        let mode = LLMBrainMode(rawValue: row.mode) ?? .managed
+        let dto = try RouterProfileDTO(
             id: row.requireID(),
             name: row.name,
-            mode: LLMBrainMode(rawValue: row.mode) ?? .managed,
+            mode: mode,
             isPreset: row.isPreset,
             objective: row.document.objective,
             budget: row.document.budget,
@@ -325,6 +326,7 @@ actor RouterProfileRepository {
             createdAt: row.createdAt,
             updatedAt: row.updatedAt
         )
+        return ModelDisclosurePolicy.scrub(dto, disclosure: ModelDisclosure.forBrainMode(mode))
     }
 
     private static func toDTO(_ row: RouterBinding) throws -> RouterBindingDTO {

@@ -109,7 +109,7 @@ struct LLMPreferencesControllerTests {
             #expect(active.mode == .managed)
             #expect(active.allowedProviders == [.openRouter])
             #expect(active.blockedProviders.isEmpty)
-            #expect(active.defaultAction.routes.map(\.id) == ["openRouter:\(ManagedLLMDefaults.model)"])
+            #expect(active.defaultAction.routes.map(\.id) == ["openRouter:\(ModelDisclosurePolicy.genericModelID)"])
         }
     }
 

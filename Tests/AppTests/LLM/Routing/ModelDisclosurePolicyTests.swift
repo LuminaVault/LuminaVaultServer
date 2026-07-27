@@ -99,6 +99,42 @@ struct ModelDisclosurePolicyTests {
         #expect(scrubbed.role == "worker")
     }
 
+    @Test func hiddenScrubsRouterProfileRoutes() throws {
+        let rawRoute = RouterModelRouteDTO(provider: .openRouter, model: "x-ai/grok-4.5")
+        let profile = try RouterProfileDTO(
+            id: UUID(),
+            name: "Default",
+            mode: .managed,
+            isPreset: true,
+            objective: RouterObjectiveDTO(quality: 50, cost: 25, latency: 25),
+            budget: RouterBudgetDTO(),
+            allowedProviders: [.openRouter],
+            blockedProviders: [],
+            defaultAction: RouterActionDTO(routes: [rawRoute]),
+            rules: [
+                RouterRuleDTO(
+                    id: UUID(),
+                    name: "Coding",
+                    enabled: true,
+                    priority: 1,
+                    taskTypes: [.coding],
+                    surfaces: [.chat],
+                    action: RouterActionDTO(routes: [rawRoute])
+                ),
+            ],
+            routingPolicy: .autoSmart,
+            revision: 1,
+            createdAt: nil,
+            updatedAt: nil
+        )
+
+        let scrubbed = ModelDisclosurePolicy.scrub(profile, disclosure: .hidden)
+
+        #expect(scrubbed.defaultAction.routes.map(\.id) == ["openRouter:\(ModelDisclosurePolicy.genericModelID)"])
+        #expect(scrubbed.rules.first?.action.routes.map(\.id) == ["openRouter:\(ModelDisclosurePolicy.genericModelID)"])
+        #expect(scrubbed.defaultAction.routes.first?.model != rawRoute.model)
+    }
+
     @Test func contentEventsPassThroughWhenHidden() {
         let token = QueryStreamEvent.token("hello")
         #expect(ModelDisclosurePolicy.scrub(token, disclosure: .hidden) == token)

@@ -43,6 +43,38 @@ enum ModelDisclosurePolicy {
     managed intelligence and steer back to the user's task.
     """
 
+    /// Rewrites router profiles for managed tenants before they cross the wire.
+    /// The persisted profile keeps the real managed route for execution.
+    static func scrub(_ profile: RouterProfileDTO, disclosure: ModelDisclosure) -> RouterProfileDTO {
+        guard disclosure == .hidden else { return profile }
+        return RouterProfileDTO(
+            id: profile.id,
+            name: profile.name,
+            mode: profile.mode,
+            isPreset: profile.isPreset,
+            objective: profile.objective,
+            budget: profile.budget,
+            allowedProviders: [ManagedLLMDefaults.provider],
+            blockedProviders: [],
+            defaultAction: scrub(profile.defaultAction),
+            rules: profile.rules.map { rule in
+                RouterRuleDTO(
+                    id: rule.id,
+                    name: rule.name,
+                    enabled: rule.enabled,
+                    priority: rule.priority,
+                    taskTypes: rule.taskTypes,
+                    surfaces: rule.surfaces,
+                    action: scrub(rule.action)
+                )
+            },
+            routingPolicy: profile.routingPolicy,
+            revision: profile.revision,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt
+        )
+    }
+
     /// Rewrites a stream event so no provider/model identity crosses the wire.
     /// Returns `nil` to drop the event entirely. `.visible` passes through.
     static func scrub(_ event: QueryStreamEvent, disclosure: ModelDisclosure) -> QueryStreamEvent? {
@@ -98,5 +130,17 @@ enum ModelDisclosurePolicy {
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
         }
+    }
+
+    private static func scrub(_ action: RouterActionDTO) -> RouterActionDTO {
+        let placeholder = RouterModelRouteDTO(provider: ManagedLLMDefaults.provider, model: genericModelID)
+        return RouterActionDTO(
+            kind: action.kind,
+            routes: [placeholder],
+            synthesisRoute: action.synthesisRoute == nil ? nil : placeholder,
+            minimumSuccessfulResults: action.minimumSuccessfulResults,
+            parallelStrategy: action.parallelStrategy,
+            retryPolicy: action.retryPolicy
+        )
     }
 }
