@@ -139,8 +139,8 @@ enum ModelDisclosurePolicy {
             routes: [placeholder],
             synthesisRoute: action.synthesisRoute == nil ? nil : placeholder,
             minimumSuccessfulResults: action.minimumSuccessfulResults,
-            parallelStrategy: action.parallelStrategy,
-            retryPolicy: action.retryPolicy
+            retryPolicy: action.retryPolicy,
+            parallelStrategy: action.parallelStrategy
         )
     }
 }
