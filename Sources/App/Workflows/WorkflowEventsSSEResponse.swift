@@ -9,6 +9,7 @@ struct WorkflowEventsSSEResponse: ResponseGenerator {
     let tenantID: UUID
     let runID: UUID
     let after: Int64
+    let disclosure: ModelDisclosure
     let isTerminal: @Sendable (UUID, UUID) async -> Bool
 
     func response(from _: Request, context _: some RequestContext) throws -> Response {
@@ -21,7 +22,10 @@ struct WorkflowEventsSSEResponse: ResponseGenerator {
                     let events = try await store.list(tenantID: tenantID, runID: runID, after: cursor)
                     for event in events {
                         cursor = max(cursor, event.id)
-                        try await writer.write(Self.encode(event, encoder: encoder))
+                        try await writer.write(Self.encode(
+                            ModelDisclosurePolicy.scrub(event, disclosure: disclosure),
+                            encoder: encoder
+                        ))
                     }
                     if await isTerminal(tenantID, runID), events.isEmpty {
                         break

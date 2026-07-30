@@ -116,11 +116,12 @@ struct WorkflowController {
         let headerName = HTTPField.Name("last-event-id")
         let headerCursor = headerName.flatMap { req.headers[$0] }.flatMap(Int64.init)
         let queryCursor = req.uri.queryParameters.get("after").flatMap(Int64.init)
-        return WorkflowEventsSSEResponse(
+        return try await WorkflowEventsSSEResponse(
             store: eventStore,
             tenantID: tenantID,
             runID: runID,
             after: headerCursor ?? queryCursor ?? 0,
+            disclosure: service.modelDisclosure(tenantID: tenantID),
             isTerminal: { tenantID, runID in await service.isTerminal(tenantID: tenantID, runID: runID) }
         )
     }

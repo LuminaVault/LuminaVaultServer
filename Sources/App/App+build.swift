@@ -1593,6 +1593,7 @@ func buildRouter(
         graphService: MemoryGraphService(fluent: services.fluent),
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
         hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
+        llmPreferences: userLLMPreferenceRepo,
         eventBus: eventBus
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
@@ -2628,7 +2629,8 @@ func buildRouter(
         fluent: services.fluent,
         memories: MemoryRepository(fluent: services.fluent),
         embeddings: embeddingService,
-        enabled: cerberusParallelEnabled
+        enabled: cerberusParallelEnabled,
+        llmPreferences: userLLMPreferenceRepo
     ).addRoutes(to: cerberusGroup)
 
     // Usability layer — one task-based settings surface for connection
@@ -2791,7 +2793,12 @@ func buildRouter(
             globalMonthlyUsdMicros: Int64(reader.int(forKey: "cerberus.studio.globalMonthlyUsdMicros", default: 100_000_000)),
             managedInferenceAvailable: platformOpenRouterKey.isEmpty == false
         )
-        let workflowService = WorkflowService(fluent: services.fluent, spend: workflowSpend, events: workflowEvents)
+        let workflowService = WorkflowService(
+            fluent: services.fluent,
+            spend: workflowSpend,
+            events: workflowEvents,
+            llmPreferences: userLLMPreferenceRepo
+        )
         let workflowWebhookController = WorkflowWebhookController(
             fluent: services.fluent,
             secretBox: secretBoxRef,

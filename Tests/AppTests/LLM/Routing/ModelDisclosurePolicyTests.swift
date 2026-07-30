@@ -104,6 +104,155 @@ struct ModelDisclosurePolicyTests {
         #expect(ModelDisclosurePolicy.scrub(token, disclosure: .hidden) == token)
         #expect(ModelDisclosurePolicy.scrub(.done, disclosure: .hidden) == .done)
     }
+
+    @Test func hiddenScrubsWorkflowRunNodeIdentity() throws {
+        let node = WorkflowNodeRunDTO(
+            id: UUID(),
+            nodeID: UUID(),
+            nodeName: "Answer",
+            status: .succeeded,
+            attempt: 1,
+            outputPreview: "done",
+            provider: .openRouter,
+            model: "openai/gpt-5",
+            tokensIn: 12,
+            tokensOut: 34,
+            managedCostUsdMicros: 56
+        )
+        let run = WorkflowRunDTO(
+            id: UUID(),
+            workflowID: UUID(),
+            workflowName: "Daily brief",
+            version: 2,
+            status: .succeeded,
+            trigger: .manual,
+            createdAt: Date(),
+            nodeRuns: [node]
+        )
+
+        let visible = ModelDisclosurePolicy.scrub(run, disclosure: .visible)
+        #expect(visible.nodeRuns.first?.provider == .openRouter)
+        #expect(visible.nodeRuns.first?.model == "openai/gpt-5")
+
+        let hidden = ModelDisclosurePolicy.scrub(run, disclosure: .hidden)
+        let scrubbed = try #require(hidden.nodeRuns.first)
+        #expect(scrubbed.provider == nil)
+        #expect(scrubbed.model == nil)
+        #expect(scrubbed.tokensIn == 12)
+        #expect(scrubbed.managedCostUsdMicros == 56)
+    }
+
+    @Test func hiddenScrubsWorkflowRunEventIdentity() {
+        let event = WorkflowRunEventDTO(
+            id: 1,
+            runID: UUID(),
+            kind: .nodeOutput,
+            nodeID: UUID(),
+            message: "Managed provider unavailable; retrying on OpenRouter Free.",
+            data: [
+                "provider": "openRouter",
+                "model": "anthropic/claude-sonnet-4.6",
+                "fallback": "openrouter/free",
+                "reason": "providerUnavailable",
+            ],
+            createdAt: Date()
+        )
+
+        let visible = ModelDisclosurePolicy.scrub(event, disclosure: .visible)
+        #expect(visible.data["model"] == "anthropic/claude-sonnet-4.6")
+
+        let hidden = ModelDisclosurePolicy.scrub(event, disclosure: .hidden)
+        #expect(hidden.data["provider"] == nil)
+        #expect(hidden.data["model"] == nil)
+        #expect(hidden.data["fallback"] == nil)
+        #expect(hidden.data["reason"] == "providerUnavailable")
+        #expect(hidden.message == "Managed provider unavailable; retrying on a backup route.")
+    }
+
+    @Test func hiddenScrubsParallelExecutionDetailRoutes() throws {
+        let summary = ParallelExecutionSummaryDTO(
+            id: UUID(),
+            strategy: .consensus,
+            status: .completed,
+            promptPreview: "compare",
+            participantCount: 2,
+            estimatedCostUsdMicros: 100,
+            latencyMs: 20,
+            createdAt: Date()
+        )
+        let output = ParallelOutputDTO(
+            id: UUID(),
+            role: "worker",
+            route: RouterModelRouteDTO(provider: .openRouter, model: "anthropic/claude-sonnet-4.6"),
+            stage: .answer,
+            round: 1,
+            content: "result",
+            status: "ok",
+            tokensIn: 10,
+            tokensOut: 5,
+            estimatedCostUsdMicros: 99,
+            latencyMs: 42
+        )
+        let detail = ParallelExecutionDetailDTO(
+            summary: summary,
+            prompt: "compare options",
+            outputs: [output],
+            synthesizedAnswer: "result"
+        )
+
+        let visible = try #require(ModelDisclosurePolicy.scrub(detail, disclosure: .visible).outputs.first)
+        #expect(visible.route.model == "anthropic/claude-sonnet-4.6")
+
+        let hidden = try #require(ModelDisclosurePolicy.scrub(detail, disclosure: .hidden).outputs.first)
+        #expect(hidden.route.provider == .openRouter)
+        #expect(hidden.route.model == ModelDisclosurePolicy.genericModelID)
+        #expect(hidden.content == "result")
+        #expect(hidden.tokensOut == 5)
+    }
+
+    @Test func hiddenScrubsMemoryProvenanceAndFacets() throws {
+        let contribution = MemoryContributionDTO(
+            id: UUID(),
+            operation: .create,
+            actor: .model,
+            source: .chat,
+            model: ModelProvenanceDTO(provider: "openrouter", model: "x-ai/grok-4"),
+            sourceReference: "message",
+            createdAt: Date()
+        )
+        let summary = MemoryProvenanceSummaryDTO(
+            createdBy: contribution,
+            contributors: [ModelProvenanceDTO(provider: "openrouter", model: "x-ai/grok-4")]
+        )
+        let memory = MemoryDTO(
+            id: UUID(),
+            content: "remember this",
+            tags: ["chat"],
+            reviewState: MemoryReviewState.auto,
+            provenance: summary
+        )
+        let response = MemoryProvenanceResponse(memoryID: memory.id, contributions: [contribution])
+        let facets = MemoryFacetsResponse(
+            providers: [MemoryFacetDTO(value: "openrouter", count: 1)],
+            models: [MemoryFacetDTO(value: "x-ai/grok-4", count: 1)],
+            sources: [MemoryFacetDTO(value: "chat", count: 1)]
+        )
+
+        let visible = ModelDisclosurePolicy.scrub(memory, disclosure: .visible)
+        #expect(visible.provenance?.createdBy?.model?.model == "x-ai/grok-4")
+
+        let hiddenMemory = ModelDisclosurePolicy.scrub(memory, disclosure: .hidden)
+        #expect(hiddenMemory.provenance?.createdBy?.model == nil)
+        #expect(hiddenMemory.provenance?.contributors.isEmpty == true)
+
+        let hiddenResponse = try #require(ModelDisclosurePolicy.scrub(response, disclosure: .hidden).contributions.first)
+        #expect(hiddenResponse.model == nil)
+
+        let hiddenFacets = ModelDisclosurePolicy.scrub(facets, disclosure: .hidden)
+        #expect(hiddenFacets.providers.isEmpty)
+        #expect(hiddenFacets.models.isEmpty)
+        #expect(hiddenFacets.sources.first?.value == "chat")
+    }
 }
 
 @Suite("Chat prompt model-identity guard")
