@@ -55,6 +55,14 @@ struct RoutedLLMTransportStreamingTests {
         }
     }
 
+    struct FixedDecisionRouter: ModelRouter {
+        let decision: RouteDecision
+
+        func pick(forModel _: String?, capability _: LLMCapabilityLevel, user _: User?) async -> RouteDecision {
+            decision
+        }
+    }
+
     struct FailingManagedFallback: HermesLLMStreamService {
         func chatStream(
             sessionKey _: String,
@@ -98,6 +106,28 @@ struct RoutedLLMTransportStreamingTests {
         }
     }
 
+    private static func withManagedHarness<T: Sendable>(
+        _ body: @Sendable (User, UserLLMPreferenceRepository) async throws -> T
+    ) async throws -> T {
+        try await withTestFluent(label: "test.routed-streaming-managed") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            let tenantID = UUID()
+            let user = User(
+                id: tenantID,
+                email: "stream-managed-\(tenantID.uuidString.prefix(8).lowercased())@test.luminavault",
+                username: "stream-managed-\(tenantID.uuidString.prefix(8).lowercased())",
+                passwordHash: "x"
+            )
+            try await user.save(on: fluent.db())
+            let preferences = UserLLMPreferenceRepository(
+                fluent: fluent,
+                logger: Logger(label: "test.routed-streaming-managed")
+            )
+            return try await body(user, preferences)
+        }
+    }
+
     private static func collect(
         _ stream: AsyncThrowingStream<ChatStreamChunk, Error>
     ) async throws -> [ChatStreamChunk] {
@@ -125,6 +155,42 @@ struct RoutedLLMTransportStreamingTests {
             transport: transport,
             preferences: preferences,
             logger: Logger(label: "test.routed-streaming")
+        )
+    }
+
+    private static func managedBudgetDeniedDecision(tenantID: UUID) -> RouteDecision {
+        let route = RouterModelRouteDTO(provider: .openRouter, model: "openrouter/auto")
+        let metadata = CerberusDecisionMetadata(
+            executionID: UUID(),
+            tenantID: tenantID,
+            vaultID: tenantID,
+            actorUserID: tenantID,
+            profileID: UUID(),
+            profileName: "Managed Auto",
+            ruleID: nil,
+            taskType: .general,
+            surface: .chat,
+            spaceID: nil,
+            conversationID: nil,
+            strategy: .sequential,
+            parallelStrategy: nil,
+            participants: nil,
+            routes: [route],
+            synthesisRoute: nil,
+            minimumSuccessfulResults: 1,
+            retryPolicy: .fast,
+            predictedCostUsdMicros: 100,
+            budgetReservationUsdMicros: 0,
+            budgetDenied: true,
+            mode: .managed,
+            routingPolicy: .autoSmart,
+            complexity: .medium,
+            reason: "hard budget exceeded"
+        )
+        return RouteDecision(
+            primary: ModelRoute(provider: .hermesGateway, modelID: route.model),
+            fallbacks: [],
+            cerberus: metadata
         )
     }
 
@@ -166,6 +232,34 @@ struct RoutedLLMTransportStreamingTests {
             let payload = try #require(try JSONSerialization.jsonObject(with: captured) as? [String: Any])
             #expect(payload["model"] as? String == "gpt-stream")
             #expect(payload["stream"] == nil)
+        }
+    }
+
+    @Test
+    func `managed Auto streaming fails closed when router budget is denied`() async throws {
+        try await Self.withManagedHarness { user, preferences in
+            let tenantID = try user.requireID()
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [], logger: Logger(label: "test.routed-streaming-managed")),
+                router: FixedDecisionRouter(decision: Self.managedBudgetDeniedDecision(tenantID: tenantID)),
+                currentUser: { user },
+                logger: Logger(label: "test.routed-streaming-managed")
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: FailingManagedFallback(),
+                transport: transport,
+                preferences: preferences,
+                logger: Logger(label: "test.routed-streaming-managed"),
+                router: FixedDecisionRouter(decision: Self.managedBudgetDeniedDecision(tenantID: tenantID))
+            )
+
+            await #expect(throws: UsageCapExceededError.self) {
+                _ = try await Self.collect(service.chatStream(
+                    sessionKey: tenantID.uuidString,
+                    sessionID: "conversation-1",
+                    request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+                ))
+            }
         }
     }
 }

@@ -37,19 +37,23 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     /// the gateway with the picked OpenRouter model instead of the fixed
     /// deployment default. `nil` preserves the legacy fixed-model behaviour.
     let router: (any ModelRouter)?
+    /// Completes or releases Cerberus reservations made by `router.pick`.
+    let routerTelemetry: RouterTelemetryService?
 
     init(
         fallback: any HermesLLMStreamService,
         transport: any HermesChatTransport,
         preferences: UserLLMPreferenceRepository,
         logger: Logger,
-        router: (any ModelRouter)? = nil
+        router: (any ModelRouter)? = nil,
+        routerTelemetry: RouterTelemetryService? = nil
     ) {
         self.fallback = fallback
         self.transport = transport
         self.preferences = preferences
         self.logger = logger
         self.router = router
+        self.routerTelemetry = routerTelemetry
     }
 
     private let byokCounter = Counter(label: "luminavault.llm.chat.stream.byok")
@@ -96,15 +100,32 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                 } else {
                     // Managed: Cerberus picks the per-turn OpenRouter model;
                     // the gateway call itself is unchanged.
-                    let effectiveRequest = await managedAutoRequest(request) ?? request
-                    for try await chunk in fallback.chatStream(
-                        sessionKey: sessionKey,
-                        sessionID: sessionID,
-                        request: effectiveRequest
-                    ) {
-                        continuation.yield(chunk)
+                    let managedRoute = try await managedAutoRequest(request)
+                    let started = DispatchTime.now().uptimeNanoseconds
+                    var outputCharacters = 0
+                    do {
+                        for try await chunk in fallback.chatStream(
+                            sessionKey: sessionKey,
+                            sessionID: sessionID,
+                            request: managedRoute?.request ?? request
+                        ) {
+                            outputCharacters += chunk.delta.count
+                            continuation.yield(chunk)
+                        }
+                        if Task.isCancelled {
+                            await releaseManagedAutoReservation(managedRoute)
+                            return
+                        }
+                        await completeManagedAutoRoute(
+                            managedRoute,
+                            outputCharacters: outputCharacters,
+                            latencyMs: Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+                        )
+                        continuation.finish()
+                    } catch {
+                        await releaseManagedAutoReservation(managedRoute)
+                        throw error
                     }
-                    continuation.finish()
                 }
             } catch {
                 byokFailureCounter.increment()
@@ -121,7 +142,15 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     /// carrying the picked OpenRouter model id, or `nil` to keep the legacy
     /// deployment default (no router wired, Auto not active, BYO-Hermes
     /// deferral, or a non-OpenRouter pick the gateway cannot serve).
-    private func managedAutoRequest(_ request: ChatRequest) async -> ChatRequest? {
+    private struct ManagedAutoRoute {
+        let request: ChatRequest
+        let metadata: CerberusDecisionMetadata
+        let prompt: String
+        let provider: ProviderKind
+        let modelID: String
+    }
+
+    private func managedAutoRequest(_ request: ChatRequest) async throws -> ManagedAutoRoute? {
         guard let router else { return nil }
         let prompt = request.messages.last { $0.role == "user" }?.content ?? ""
         let decision = await LLMRoutingContext.$cerberusPrompt.withValue(prompt) {
@@ -138,6 +167,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
               // the picked OpenRouter model id (see CerberusModelRouter).
               decision.primary.provider == .hermesGateway || decision.primary.provider == .openRouter
         else { return nil }
+        guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
 
         logger.info("managed stream auto-routed", metadata: [
             "model": .string(decision.primary.modelID),
@@ -164,14 +194,58 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             complexity: cerberus.complexity,
             taskType: cerberus.taskType
         ))
-        return ChatRequest(
-            messages: request.messages,
-            model: decision.primary.modelID,
-            temperature: request.temperature,
-            stream: request.stream,
-            tools: request.tools,
-            tool_choice: request.tool_choice,
-            sessionID: request.sessionID
+        return ManagedAutoRoute(
+            request: ChatRequest(
+                messages: request.messages,
+                model: decision.primary.modelID,
+                temperature: request.temperature,
+                stream: request.stream,
+                tools: request.tools,
+                tool_choice: request.tool_choice,
+                sessionID: request.sessionID
+            ),
+            metadata: cerberus,
+            prompt: prompt,
+            provider: .openRouter,
+            modelID: decision.primary.modelID
+        )
+    }
+
+    private func completeManagedAutoRoute(
+        _ route: ManagedAutoRoute?,
+        outputCharacters: Int,
+        latencyMs: Int
+    ) async {
+        guard let route, let routerTelemetry else { return }
+        let tokensIn = max(1, route.prompt.count / 4)
+        let tokensOut = max(1, outputCharacters / 4)
+        let cost = Self.estimatedCost(
+            provider: route.provider,
+            model: route.modelID,
+            tokensIn: tokensIn,
+            tokensOut: tokensOut,
+            metadata: route.metadata
+        )
+        let result = RouterExecutionResult(
+            provider: route.provider,
+            model: route.modelID,
+            status: "ok",
+            tokensIn: tokensIn,
+            tokensOut: tokensOut,
+            estimatedCostUsdMicros: cost,
+            latencyMs: latencyMs,
+            usageEstimated: true,
+            fallbackCount: 0
+        )
+        await routerTelemetry.complete(metadata: route.metadata, result: result)
+        publishUsage(route.metadata, result: result)
+    }
+
+    private func releaseManagedAutoReservation(_ route: ManagedAutoRoute?) async {
+        guard let route, let routerTelemetry else { return }
+        await routerTelemetry.release(
+            tenantID: route.metadata.tenantID,
+            reservedUsdMicros: route.metadata.budgetReservationUsdMicros
         )
     }
 
@@ -215,5 +289,33 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             let content = message["content"] as? String
         else { return "" }
         return content
+    }
+
+    private func publishUsage(_ metadata: CerberusDecisionMetadata, result: RouterExecutionResult) {
+        CerberusStreamContext.sink?(.usage(RouterUsageDTO(
+            executionID: metadata.executionID,
+            provider: result.provider?.toShared(),
+            model: result.model,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            estimatedCostUsdMicros: result.estimatedCostUsdMicros,
+            latencyMs: result.latencyMs,
+            usageEstimated: result.usageEstimated
+        )))
+    }
+
+    private static func estimatedCost(
+        provider: ProviderKind,
+        model: String,
+        tokensIn: Int,
+        tokensOut: Int,
+        metadata: CerberusDecisionMetadata
+    ) -> Int64 {
+        guard let shared = provider.toShared() else { return 0 }
+        let route = metadata.routes.first { $0.provider == shared && $0.model == model }
+        let catalog = RouterModelCatalog.entry(provider: shared, model: model)
+        let inputRate = route?.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
+        let outputRate = route?.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
+        return Int64(tokensIn) * inputRate / 1_000_000 + Int64(tokensOut) * outputRate / 1_000_000
     }
 }
