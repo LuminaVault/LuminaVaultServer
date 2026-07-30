@@ -314,7 +314,7 @@ actor WorkflowService {
         _ = try await run(tenantID: tenantID, runID: runID)
         let listed = try await events?.list(tenantID: tenantID, runID: runID, after: after) ?? []
         let response = WorkflowRunEventsResponse(events: listed)
-        return ModelDisclosurePolicy.scrub(response, disclosure: try await disclosure(tenantID: tenantID))
+        return try await ModelDisclosurePolicy.scrub(response, disclosure: disclosure(tenantID: tenantID))
     }
 
     func modelDisclosure(tenantID: UUID) async throws -> ModelDisclosure {
@@ -518,7 +518,7 @@ actor WorkflowService {
                 )
             }
         )
-        return ModelDisclosurePolicy.scrub(dto, disclosure: try await disclosure(tenantID: workflow.tenantID))
+        return try await ModelDisclosurePolicy.scrub(dto, disclosure: disclosure(tenantID: workflow.tenantID))
     }
 
     private func disclosure(tenantID: UUID) async throws -> ModelDisclosure {

@@ -134,7 +134,7 @@ struct ParallelController {
         guard let result = try await store.detail(tenantID: user.requireID(), id: id) else {
             throw HTTPError(.notFound, message: "parallel_execution_not_found")
         }
-        return ModelDisclosurePolicy.scrub(result, disclosure: try await disclosure(for: user))
+        return try await ModelDisclosurePolicy.scrub(result, disclosure: disclosure(for: user))
     }
 
     @Sendable
