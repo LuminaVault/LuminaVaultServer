@@ -513,6 +513,9 @@ struct CerberusModelRouter: ModelRouter {
         }
     }
 
+    // Aggregates the full BYOK-keys-required decision metadata; the wide
+    // parameter list mirrors CerberusDecisionMetadata's fields by design.
+    // swiftlint:disable:next function_parameter_count
     private static func byokKeysRequiredDecision(
         table: RouteDecision,
         tenantID: UUID,
