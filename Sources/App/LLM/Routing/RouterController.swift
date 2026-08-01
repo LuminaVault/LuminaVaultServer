@@ -36,7 +36,8 @@ struct RouterController {
 
     @Sendable
     func list(_: Request, ctx: AppRequestContext) async throws -> RouterProfilesResponse {
-        try await repository.list(tenantID: ctx.requireTenantID())
+        let response = try await repository.list(tenantID: ctx.requireTenantID())
+        return Self.scrubbed(response)
     }
 
     @Sendable
@@ -46,7 +47,8 @@ struct RouterController {
         let body = try await req.decode(as: RouterProfileWriteRequest.self, context: ctx)
         try Self.validate(body, user: user, ensemblesEnabled: ensemblesEnabled)
         try await validateAutoPolicy(body, tenantID: user.requireID())
-        return try await repository.create(tenantID: user.requireID(), request: body)
+        let profile = try await repository.create(tenantID: user.requireID(), request: body)
+        return Self.scrubbed(profile)
     }
 
     @Sendable
@@ -60,7 +62,7 @@ struct RouterController {
             guard let result = try await repository.update(tenantID: user.requireID(), id: id, request: body) else {
                 throw HTTPError(.notFound, message: "router_profile_not_found")
             }
-            return result
+            return Self.scrubbed(result)
         } catch RouterProfileRepositoryError.revisionConflict {
             throw HTTPError(.conflict, message: "router_profile_revision_conflict")
         }
@@ -208,6 +210,26 @@ struct RouterController {
                 throw HTTPError(.forbidden, message: "router_user_scope_mismatch")
             }
         }
+    }
+
+    // MARK: - Disclosure
+
+    /// Managed tenants must not see which concrete models sit behind "Auto".
+    ///
+    /// Applied HERE, at the response boundary — deliberately not inside
+    /// `RouterProfileRepository.toDTO`. `CerberusRouterService` calls that same
+    /// function to get the profile it ROUTES on, so scrubbing there would
+    /// replace the real routes with the `openRouter/auto` placeholder in the
+    /// execution path and silently change which model answers.
+    private static func scrubbed(_ profile: RouterProfileDTO) -> RouterProfileDTO {
+        ModelDisclosurePolicy.scrub(profile, disclosure: ModelDisclosure.forBrainMode(profile.mode))
+    }
+
+    private static func scrubbed(_ response: RouterProfilesResponse) -> RouterProfilesResponse {
+        RouterProfilesResponse(
+            profiles: response.profiles.map(scrubbed),
+            defaultProfileID: response.defaultProfileID
+        )
     }
 
     private static func validate(

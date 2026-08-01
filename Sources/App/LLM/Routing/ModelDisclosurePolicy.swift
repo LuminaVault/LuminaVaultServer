@@ -255,4 +255,66 @@ enum ModelDisclosurePolicy {
             newestAt: response.newestAt
         )
     }
+
+    /// Rewrites a router profile so no managed provider/model identity crosses
+    /// the wire. Apply at the RESPONSE boundary only.
+    ///
+    /// Deliberately NOT applied inside `RouterProfileRepository.toDTO`:
+    /// `CerberusRouterService` calls that same function to obtain the profile
+    /// it ROUTES on, so scrubbing there replaces the tenant's real routes with
+    /// the `openRouter/auto` placeholder in the execution path. Under `.locked`
+    /// that routes to a model literally named "auto"; under other policies the
+    /// catalog still fills the pool, so the profile's configured routes are
+    /// silently discarded with nothing failing loudly. `openrouter/auto` is a
+    /// real OpenRouter model, so it would not even error — it would quietly
+    /// hand model selection to OpenRouter's own router.
+    static func scrub(_ profile: RouterProfileDTO, disclosure: ModelDisclosure) -> RouterProfileDTO {
+        guard disclosure == .hidden else { return profile }
+        return RouterProfileDTO(
+            id: profile.id,
+            name: profile.name,
+            mode: profile.mode,
+            isPreset: profile.isPreset,
+            objective: profile.objective,
+            budget: profile.budget,
+            allowedProviders: [ManagedLLMDefaults.provider],
+            blockedProviders: [],
+            defaultAction: scrub(profile.defaultAction),
+            rules: profile.rules.map { rule in
+                RouterRuleDTO(
+                    id: rule.id,
+                    name: rule.name,
+                    enabled: rule.enabled,
+                    priority: rule.priority,
+                    taskTypes: rule.taskTypes,
+                    surfaces: rule.surfaces,
+                    action: scrub(rule.action)
+                )
+            },
+            routingPolicy: profile.routingPolicy,
+            revision: profile.revision,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt
+        )
+    }
+
+    static func scrub(_ response: RouterProfilesResponse, disclosure: ModelDisclosure) -> RouterProfilesResponse {
+        guard disclosure == .hidden else { return response }
+        return RouterProfilesResponse(
+            profiles: response.profiles.map { scrub($0, disclosure: disclosure) },
+            defaultProfileID: response.defaultProfileID
+        )
+    }
+
+    private static func scrub(_ action: RouterActionDTO) -> RouterActionDTO {
+        let placeholder = RouterModelRouteDTO(provider: ManagedLLMDefaults.provider, model: genericModelID)
+        return RouterActionDTO(
+            kind: action.kind,
+            routes: [placeholder],
+            synthesisRoute: action.synthesisRoute == nil ? nil : placeholder,
+            minimumSuccessfulResults: action.minimumSuccessfulResults,
+            retryPolicy: action.retryPolicy,
+            parallelStrategy: action.parallelStrategy
+        )
+    }
 }
