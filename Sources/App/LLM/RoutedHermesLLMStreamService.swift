@@ -261,7 +261,20 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             let pref = try? await preferences.get(tenantID: tenantID),
             pref.mode == .byok
         else { return nil }
-        return pref.primaryModel.isEmpty ? nil : pref.primaryModel
+        guard pref.primaryModel.isEmpty else { return pref.primaryModel }
+        // A BYOK tenant with no model selected falls through to the managed
+        // gateway — which means the turn runs on the PLATFORM's system key
+        // while the user believes they are on their own. That is silent
+        // mis-billing, and it was previously invisible.
+        //
+        // Kept as a fallback rather than a hard failure so nobody's chat breaks
+        // mid-session, but it is now loud. Whether this should fail closed (and
+        // force the user to pick a model) is a product call, not a code one.
+        logger.warning("byok tenant has no primary model — falling back to the MANAGED gateway key", metadata: [
+            "tenant": .string(sessionKey),
+            "billing": .string("managed_key_used_for_byok_tenant"),
+        ])
+        return nil
     }
 
     /// Encode an OpenAI-style chat payload from a `ChatRequest`, overriding the
