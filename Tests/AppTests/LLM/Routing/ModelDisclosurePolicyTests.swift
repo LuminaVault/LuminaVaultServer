@@ -328,4 +328,92 @@ struct QueryPromptIdentityGuardTests {
         #expect(open.first?.content.contains("x-ai/grok-4") == true)
         #expect(open.first?.content.contains("Never disclose") == false)
     }
+
+    // MARK: - Router profiles
+
+    private func managedProfile() -> RouterProfileDTO {
+        RouterProfileDTO(
+            id: UUID(),
+            name: "Default",
+            mode: .managed,
+            isPreset: true,
+            objective: .init(quality: 50, cost: 25, latency: 25),
+            budget: .init(),
+            allowedProviders: [.openRouter, .anthropic],
+            blockedProviders: [.xai],
+            defaultAction: RouterActionDTO(routes: [
+                RouterModelRouteDTO(provider: .openRouter, model: "deepseek/deepseek-v4-flash"),
+                RouterModelRouteDTO(provider: .anthropic, model: "claude-sonnet-4-6"),
+            ]),
+            rules: [],
+            routingPolicy: .autoSmart,
+            revision: 1,
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    @Test func managedProfileHidesConcreteModels() {
+        let scrubbed = ModelDisclosurePolicy.scrub(managedProfile(), disclosure: .hidden)
+        let models = scrubbed.defaultAction.routes.map(\.model)
+        #expect(models == [ModelDisclosurePolicy.genericModelID])
+        #expect(!models.contains("deepseek/deepseek-v4-flash"))
+        #expect(!models.contains("claude-sonnet-4-6"))
+        #expect(scrubbed.blockedProviders.isEmpty)
+        #expect(scrubbed.allowedProviders == [ManagedLLMDefaults.provider])
+    }
+
+    @Test func byokProfilePassesThroughUntouched() {
+        var profile = managedProfile()
+        profile = RouterProfileDTO(
+            id: profile.id,
+            name: profile.name,
+            mode: .byok,
+            isPreset: profile.isPreset,
+            objective: profile.objective,
+            budget: profile.budget,
+            allowedProviders: profile.allowedProviders,
+            blockedProviders: profile.blockedProviders,
+            defaultAction: profile.defaultAction,
+            rules: profile.rules,
+            routingPolicy: profile.routingPolicy,
+            revision: profile.revision,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt
+        )
+        let out = ModelDisclosurePolicy.scrub(profile, disclosure: .visible)
+        #expect(out.defaultAction.routes.map(\.model) == ["deepseek/deepseek-v4-flash", "claude-sonnet-4-6"])
+    }
+
+    /// Regression guard for the placement of this scrub.
+    ///
+    /// An earlier version applied it inside `RouterProfileRepository.toDTO`,
+    /// which `CerberusRouterService` also calls to obtain the profile it ROUTES
+    /// on — so managed tenants would have executed against the
+    /// `openRouter/auto` placeholder instead of their real routes, silently.
+    /// `toDTO` must hand back the real profile; only the controller scrubs.
+    @Test func repositoryDTOKeepsRealRoutesForExecution() throws {
+        let row = RouterProfile()
+        row.id = UUID()
+        row.tenantID = UUID()
+        row.name = "Default"
+        row.mode = LLMBrainMode.managed.rawValue
+        row.isPreset = true
+        row.document = RouterProfileDocument(
+            objective: .init(quality: 50, cost: 25, latency: 25),
+            budget: .init(),
+            allowedProviders: [.openRouter],
+            blockedProviders: [],
+            defaultAction: RouterActionDTO(routes: [
+                RouterModelRouteDTO(provider: .openRouter, model: "deepseek/deepseek-v4-flash"),
+            ]),
+            rules: [],
+            routingPolicy: .autoSmart
+        )
+        row.revision = 1
+
+        let dto = try RouterProfileRepository.toDTO(row)
+        #expect(dto.defaultAction.routes.map(\.model) == ["deepseek/deepseek-v4-flash"])
+        #expect(dto.defaultAction.routes.map(\.model) != [ModelDisclosurePolicy.genericModelID])
+    }
 }
