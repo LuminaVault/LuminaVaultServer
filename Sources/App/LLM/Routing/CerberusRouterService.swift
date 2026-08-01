@@ -365,7 +365,7 @@ struct CerberusModelRouter: ModelRouter {
                     && (profile.allowedProviders.isEmpty || profile.allowedProviders.contains(route.provider))
             }
 
-            let filtered: [RouterModelRouteDTO] = if policy == .locked {
+            let initialPool: [RouterModelRouteDTO] = if policy == .locked {
                 baseRoutes
             } else {
                 AvailableModelPoolBuilder.build(.init(
@@ -380,7 +380,43 @@ struct CerberusModelRouter: ModelRouter {
                 ))
             }
 
-            guard !filtered.isEmpty else {
+            // An empty pool for a tenant that HAS credentials is a profile
+            // misconfiguration, not a missing key. The common shape: the
+            // profile was seeded while managed (allowedProviders == [openRouter])
+            // and later switched to BYOK with, say, an Anthropic key — every
+            // candidate is then filtered out by allowedProviders and the user
+            // gets a 403 while holding a perfectly valid key.
+            //
+            // Retry once ignoring allowedProviders before failing closed. The
+            // product law is "BYOK + zero keys → fail closed"; it is not
+            // "punish the user for a stale allow-list they never set".
+            var usable = initialPool
+            if usable.isEmpty, profile.mode == .byok, !credentialed.isEmpty, policy != .locked {
+                let relaxed = AvailableModelPoolBuilder.build(.init(
+                    mode: profile.mode,
+                    policy: policy,
+                    profileRoutes: action.routes.filter { !profile.blockedProviders.contains($0.provider) },
+                    allowedProviders: [],
+                    blockedProviders: profile.blockedProviders,
+                    credentialedProviders: credentialed,
+                    deploymentEnabledProviders: deploymentEnabled,
+                    minTier: minTier
+                ))
+                if !relaxed.isEmpty {
+                    logger.warning(
+                        """
+                        cerberus.route.allowlist_bypassed tenant=\(tenantID) \
+                        allowed=\(profile.allowedProviders.map(\.rawValue).joined(separator: ",")) \
+                        credentialed=\(credentialed.map(\.rawValue).sorted().joined(separator: ",")) \
+                        — profile allow-list excludes every credentialed provider; \
+                        routing anyway to avoid a false byok_keys_required
+                        """
+                    )
+                    usable = relaxed
+                }
+            }
+
+            guard !usable.isEmpty else {
                 if profile.mode == .byok {
                     return Self.byokKeysRequiredDecision(
                         table: table,
@@ -391,11 +427,14 @@ struct CerberusModelRouter: ModelRouter {
                         scope: scope,
                         policy: policy,
                         complexity: complexity,
-                        reason: "No BYOK providers are available for this router profile"
+                        reason: credentialed.isEmpty
+                            ? "Add an API key (OpenRouter recommended) or switch to Managed"
+                            : "No BYOK providers are available for this router profile"
                     )
                 }
                 return table
             }
+            let filtered = usable
 
             let promptTokens = max(1, prompt.count / 4)
             let effectiveParallelStrategy = requestedParallelStrategy ?? action.parallelStrategy
@@ -560,15 +599,40 @@ struct CerberusModelRouter: ModelRouter {
     }
 
     private func credentialedProviderIDs(tenantID: UUID) async -> Set<ProviderID> {
-        guard let credentials else { return [] }
+        // An empty set here makes a BYOK tenant fail closed with
+        // `byok_keys_required`. That verdict must never be reached silently:
+        // it is indistinguishable, from the user's side, between "you added no
+        // key" and "we could not read the key you added" — and the second case
+        // has a very different fix.
+        guard let credentials else {
+            // The store is only constructed when a SecretBox exists, so a nil
+            // store means EVERY BYOK tenant on this deployment 403s despite
+            // holding valid keys. That is a deployment fault, not a user one.
+            logger.error("credential store unavailable (no SecretBox?) — every BYOK tenant will fail closed")
+            return []
+        }
         var result = Set<ProviderID>()
+        var readFailures: [String] = []
         for kind in ProviderKind.userCredentialTargets {
             guard let shared = kind.toShared() else { continue }
-            if let cred = try? await credentials.credential(for: kind, tenantID: tenantID),
-               cred.apiKey != nil || cred.baseURL != nil
-            {
-                result.insert(shared)
+            do {
+                if let cred = try await credentials.credential(for: kind, tenantID: tenantID),
+                   cred.apiKey != nil || cred.baseURL != nil
+                {
+                    result.insert(shared)
+                }
+            } catch {
+                // Decrypt failure / DB blip / schema drift. Previously swallowed
+                // by `try?`, which turned a readable key into an absent one.
+                readFailures.append("\(kind.rawValue): \(error)")
             }
+        }
+        if !readFailures.isEmpty {
+            logger.error("credential reads failed — keys may exist but be unreadable", metadata: [
+                "tenant": .string(tenantID.uuidString),
+                "failures": .string(readFailures.joined(separator: "; ")),
+                "resolved": .string(result.map(\.rawValue).sorted().joined(separator: ",")),
+            ])
         }
         return result
     }
