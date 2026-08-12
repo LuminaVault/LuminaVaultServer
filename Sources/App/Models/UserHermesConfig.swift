@@ -8,7 +8,7 @@ import Foundation
 /// stored plaintext, never echoed in responses.
 ///
 /// `verified_at` is bumped by `POST /v1/settings/hermes/test` when the
-/// configured endpoint replies 2xx to `GET /v1/models` (or `/healthz`).
+/// configured endpoint replies 2xx to `GET /v1/models` (or `/health`).
 /// Reset to `nil` on every `PUT` so iOS surfaces the unverified state.
 final class UserHermesConfig: Model, TenantModel, @unchecked Sendable {
     static let schema = "user_hermes_config"

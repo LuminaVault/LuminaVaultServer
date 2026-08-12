@@ -150,6 +150,17 @@ enum RouterModelCatalog {
             capabilities: ["chat", "tools"],
             tier: .balanced
         ),
+        .init(
+            provider: .nvidia,
+            model: "nvidia/nemotron-3-super-120b-a12b",
+            displayName: "Nemotron 3 Super 120B",
+            taskQuality: ratings(general: 88, reasoning: 90, coding: 91, search: 62, summarization: 86),
+            inputPerMillionUsdMicros: 200_000,
+            outputPerMillionUsdMicros: 200_000,
+            defaultLatencyMs: 900,
+            capabilities: ["chat", "tools", "reasoning"],
+            tier: .balanced
+        ),
 
         .init(
             provider: .openRouter,
@@ -232,6 +243,28 @@ enum RouterModelCatalog {
             outputPerMillionUsdMicros: 40_000_000,
             defaultLatencyMs: 3000,
             capabilities: ["chat", "reasoning"],
+            tier: .max
+        ),
+        .init(
+            provider: .nvidia,
+            model: "nvidia/nemotron-3-ultra",
+            displayName: "Nemotron 3 Ultra (NVIDIA)",
+            taskQuality: ratings(general: 92, reasoning: 94, coding: 93, search: 64, summarization: 90),
+            inputPerMillionUsdMicros: 400_000,
+            outputPerMillionUsdMicros: 400_000,
+            defaultLatencyMs: 1100,
+            capabilities: ["chat", "tools", "reasoning"],
+            tier: .max
+        ),
+        .init(
+            provider: .openRouter,
+            model: "nvidia/nemotron-3-ultra:free",
+            displayName: "Nemotron 3 Ultra (OpenRouter free)",
+            taskQuality: ratings(general: 92, reasoning: 94, coding: 93, search: 64, summarization: 90),
+            inputPerMillionUsdMicros: 0,
+            outputPerMillionUsdMicros: 0,
+            defaultLatencyMs: 1400,
+            capabilities: ["chat", "tools", "reasoning"],
             tier: .max
         ),
     ]

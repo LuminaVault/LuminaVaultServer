@@ -15,12 +15,13 @@ proxying a user's remote VPS Hermes settings live over HTTP).
 - All line numbers below refer to `gateway/platforms/api_server.py` at that commit.
 
 **Headline:** the real surface is far larger than the three endpoints documented in
-`byo-hermes.md` (`/v1/chat/completions`, `/v1/models`, `/healthz`). There are **35 routes**
+`byo-hermes.md` (`/v1/chat/completions`, `/v1/models`, `/health`). There are **35 routes**
 across health, discovery, chat, Responses API, structured runs, sessions/history, and
 **full cron-job CRUD**. There are **zero** routes for SOUL, memory, config.yaml/providers,
 or gateway settings — those remain file-on-disk only.
 
-Note: `/healthz` does **not** exist (it's `/health`); that's a doc bug in `byo-hermes.md`.
+Note: `/healthz` does **not** exist on Hermes `api_server` — the live route is `/health`
+(and `/v1/health`). LuminaVault's save/verify probe falls back to `/health`.
 
 ## Complete route table
 

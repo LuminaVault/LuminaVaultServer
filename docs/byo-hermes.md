@@ -333,7 +333,7 @@ The header is forwarded to your Hermes verbatim. Use HTTPS so it isn't exposed.
 
 ## Troubleshooting (Save & verify failures)
 
-After saving, the app probes `<your-url>/v1/models` (falling back to `/healthz`).
+After saving, the app probes `<your-url>/v1/models` (falling back to `/health`).
 The error banner maps to:
 
 | Error | Meaning | Fix |
@@ -342,7 +342,7 @@ The error banner maps to:
 | `tls_error` | TLS handshake/cert failed | Fix the cert (valid chain, not expired, matches host); avoid bare-IP TLS |
 | `timeout` | No response in time | Check the box is up, firewall/port open, proxy reachable |
 | `unreachable` | Connection failed | Verify DNS, port, that Hermes listens on `0.0.0.0` |
-| `http_4xx` | Auth rejected / endpoint missing | Check the token; confirm Hermes exposes `/v1/models` or `/healthz` |
+| `http_4xx` | Auth rejected / endpoint missing | Check the token; confirm Hermes exposes `/v1/models` or `/health` |
 | `http_5xx` | Hermes errored | Check Hermes logs |
 | `decrypt_failed` | Server couldn't decrypt the stored token | Re-enter the token and save again |
 

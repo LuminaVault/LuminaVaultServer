@@ -17,6 +17,28 @@ struct ManagedModelCatalogTests {
         #expect(entry.capabilities.contains("tools"))
         #expect(entry.capabilities.contains("reasoning"))
     }
+
+    @Test
+    func `nvidia and openRouter catalogs include Nemotron offline`() throws {
+        let super120 = try #require(RouterModelCatalog.entry(
+            provider: .nvidia,
+            model: "nvidia/nemotron-3-super-120b-a12b"
+        ))
+        #expect(super120.tier == .balanced)
+
+        let ultra = try #require(RouterModelCatalog.entry(
+            provider: .nvidia,
+            model: "nvidia/nemotron-3-ultra"
+        ))
+        #expect(ultra.tier == .max)
+
+        let openRouterFree = try #require(RouterModelCatalog.entry(
+            provider: .openRouter,
+            model: "nvidia/nemotron-3-ultra:free"
+        ))
+        #expect(openRouterFree.tier == .max)
+        #expect(openRouterFree.inputPerMillionUsdMicros == 0)
+    }
 }
 
 @Suite("ComplexityClassifier")
