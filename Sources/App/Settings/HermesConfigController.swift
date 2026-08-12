@@ -18,7 +18,7 @@ import Logging
 /// `verified_at`. `GET` reports only `{ baseUrl, hasAuthHeader,
 /// verifiedAt }` — the cleartext header is never echoed. `DELETE`
 /// drops the row. `POST .../test` issues a probe request to
-/// `<baseUrl>/v1/models` (fallback `/healthz`); on 2xx it sets
+/// `<baseUrl>/v1/models` (fallback `/health`); on 2xx it sets
 /// `verified_at = NOW()`.
 struct HermesConfigController {
     struct GetResponse: Codable, ResponseEncodable {
@@ -232,9 +232,10 @@ struct HermesConfigController {
             .first()
     }
 
-    /// Probes `<baseURL>/v1/models` first, then `<baseURL>/healthz` on
-    /// 404. Returns `nil` on 2xx (verified) or a stable error code.
+    /// Probes `<baseURL>/v1/models` first, then `<baseURL>/health` on
+    /// 4xx. Returns `nil` on 2xx (verified) or a stable error code.
     /// Upstream response bodies are never forwarded.
+    /// Hermes `api_server` exposes `/health` (and `/v1/health`), not `/healthz`.
     private func probe(baseURL: URL, authHeader: String?) async -> TestError? {
         if let err = await probeOne(
             url: baseURL.appendingPathComponent("v1/models"),
@@ -245,7 +246,7 @@ struct HermesConfigController {
                 // Models endpoint may not exist on a minimal Hermes — try the
                 // health endpoint before giving up.
                 return await probeOne(
-                    url: baseURL.appendingPathComponent("healthz"),
+                    url: baseURL.appendingPathComponent("health"),
                     authHeader: authHeader
                 )
             default:
