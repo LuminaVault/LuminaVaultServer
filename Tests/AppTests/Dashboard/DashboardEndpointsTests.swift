@@ -6,6 +6,7 @@ import struct LuminaVaultShared.ActivityFeedResponse
 import struct LuminaVaultShared.AuthResponse
 import struct LuminaVaultShared.DashboardProfileResponse
 import struct LuminaVaultShared.DashboardStatsResponse
+import enum LuminaVaultShared.DashboardPeriod
 import struct LuminaVaultShared.HomeSummaryResponse
 import struct LuminaVaultShared.InsightListResponse
 import struct LuminaVaultShared.TaskListResponse
@@ -204,6 +205,31 @@ struct DashboardEndpointsTests {
                 #expect(home.primaryModel != nil)
                 #expect(!(home.primaryModel ?? "").isEmpty)
                 #expect(home.graphPreview == nil)
+                #expect(home.period == .today)
+                #expect(home.cronJobs.isEmpty)
+                #expect(home.tools.isEmpty)
+                #expect(home.periodSeries.isEmpty)
+            }
+        }
+    }
+
+    @Test
+    func `dashboard home accepts period query and still returns defaults`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/dashboard/home?period=week",
+                method: .get,
+                headers: [.authorization: "Bearer \(token)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let home = try testJSONDecoder().decode(
+                    HomeSummaryResponse.self,
+                    from: Data(buffer: response.body)
+                )
+                #expect(home.period == .week)
+                #expect(home.periodStats.captures == 0)
             }
         }
     }
