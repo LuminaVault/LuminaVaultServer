@@ -16,23 +16,28 @@ struct DashboardController {
     let logger: Logger
     let managedProvider: ProviderID
     let managedModel: String
+    let cronPreview: (any DashboardCronPreviewing)?
 
     init(
         fluent: HummingbirdFluent.Fluent,
         logger: Logger,
         managedProvider: ProviderID = ManagedLLMDefaults.provider,
-        managedModel: String = ManagedLLMDefaults.model
+        managedModel: String = ManagedLLMDefaults.model,
+        cronPreview: (any DashboardCronPreviewing)? = nil
     ) {
         self.fluent = fluent
         self.logger = logger
         self.managedProvider = managedProvider
         self.managedModel = managedModel
+        self.cronPreview = cronPreview
     }
 
     /// Node cap for the Home brain-graph preview card.
     static let graphPreviewLimit = 30
     static let activityDefaultLimit = 20
     static let activityMaxLimit = 50
+    static let cronPreviewLimit = 5
+    static let toolsPreviewLimit = 8
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("/stats", use: stats)
@@ -46,11 +51,13 @@ struct DashboardController {
     /// Tenant-scoped; designed so the landing screen can render from a
     /// single request.
     @Sendable
-    func home(_: Request, ctx: AppRequestContext) async throws -> HomeSummaryResponse {
+    func home(_ request: Request, ctx: AppRequestContext) async throws -> HomeSummaryResponse {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let db = fluent.db()
         let startOfDay = Calendar(identifier: .gregorian).startOfDay(for: Date())
+        let period = DashboardPeriodQuery.parsePeriod(request.uri.queryParameters.get("period"))
+        let window = DashboardPeriodQuery.window(period: period)
 
         async let skillsCountQ = SkillsState.query(on: db)
             .filter(\.$id == tenantID)
@@ -96,6 +103,8 @@ struct DashboardController {
         )
         async let activeJobsCountQ = ActiveTasksQuery.count(tenantID: tenantID, db: db)
         async let graphPreviewQ = Self.graphPreview(tenantID: tenantID, db: db)
+        async let toolsQ = Self.toolsPreview(tenantID: tenantID, db: db)
+        async let cronQ = cronPreview(tenantID: tenantID)
 
         let jobsCount = try await Self.skillRunCount(tenantID: tenantID, db: db)
         let todosCount = try await Self.todoCount(tenantID: tenantID, db: db)
@@ -117,6 +126,9 @@ struct DashboardController {
         let activeJobs = try await activeJobsQ
         let activeJobsCount = try await activeJobsCountQ
         let graphPreview = try await graphPreviewQ
+        let tools = await toolsQ
+        let cronJobs = await cronQ
+        let cockpit = await periodCockpit(tenantID: tenantID, window: window, db: db)
 
         let xp = PowerLevel.xp(
             memoriesTotal: memoriesTotal,
@@ -169,8 +181,83 @@ struct DashboardController {
             powerXP: xp,
             badgesEarned: badgesEarned,
             streakDays: streakDays,
-            graphPreview: graphPreview
+            graphPreview: graphPreview,
+            cronJobsCount: cronJobs.count,
+            cronJobs: cronJobs,
+            toolsCount: tools.count,
+            tools: Array(tools.prefix(Self.toolsPreviewLimit)),
+            period: period,
+            periodStats: cockpit.stats,
+            periodSeries: cockpit.series,
+            periodMix: cockpit.mix
         )
+    }
+
+    private func cronPreview(tenantID: UUID) async -> [DashboardCronJobDTO] {
+        guard let cronPreview else { return [] }
+        let jobs = await cronPreview.cronPreview(tenantID: tenantID)
+        return Array(jobs.prefix(Self.cronPreviewLimit))
+    }
+
+    private func periodCockpit(
+        tenantID: UUID,
+        window: DashboardPeriodQuery.Window,
+        db: any Database
+    ) async -> (stats: DashboardPeriodStats, series: [DashboardSeriesPoint], mix: DashboardPeriodMix) {
+        guard let sql = db as? any SQLDatabase else {
+            return (DashboardPeriodStats(), [], DashboardPeriodMix())
+        }
+        do {
+            async let currentQ = DashboardPeriodQuery.counts(
+                tenantID: tenantID, start: window.start, end: window.end, sql: sql
+            )
+            async let previousQ = DashboardPeriodQuery.counts(
+                tenantID: tenantID, start: window.previousStart, end: window.previousEnd, sql: sql
+            )
+            async let seriesQ = DashboardPeriodQuery.series(tenantID: tenantID, window: window, sql: sql)
+            let current = try await currentQ
+            let previous = try await previousQ
+            let series = try await seriesQ
+            return (
+                DashboardPeriodStats(
+                    done: current.done,
+                    captures: current.captures,
+                    skillRuns: current.skillRuns,
+                    tokens: current.tokens,
+                    previousDone: previous.done,
+                    previousCaptures: previous.captures,
+                    previousSkillRuns: previous.skillRuns,
+                    previousTokens: previous.tokens
+                ),
+                series,
+                DashboardPeriodMix(
+                    captures: current.captures,
+                    jobs: current.jobs,
+                    skills: current.skillRuns,
+                    chats: current.chats
+                )
+            )
+        } catch {
+            logger.warning("dashboard period cockpit failed", metadata: [
+                "error": "\(String(reflecting: error))",
+                "period": "\(window.period.rawValue)",
+            ])
+            return (DashboardPeriodStats(), [], DashboardPeriodMix())
+        }
+    }
+
+    private static func toolsPreview(tenantID: UUID, db: any Database) async -> [String] {
+        do {
+            let rows = try await PluginInstall.query(on: db)
+                .filter(\.$tenantID == tenantID)
+                .filter(\.$status == PluginInstallState.enabled)
+                .sort(\.$pluginSlug, .ascending)
+                .limit(toolsPreviewLimit)
+                .all()
+            return rows.map(\.pluginSlug)
+        } catch {
+            return []
+        }
     }
 
     /// `GET /v1/dashboard/activity` — unified recent-activity stream: newest

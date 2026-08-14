@@ -2167,7 +2167,8 @@ func buildRouter(
     let dashboardController = DashboardController(
         fluent: services.fluent,
         logger: Logger(label: "lv.dashboard"),
-        managedModel: services.hermesDefaultManagedModel
+        managedModel: services.hermesDefaultManagedModel,
+        cronPreview: cronBridgeService.map { CronBridgePreview(bridge: $0) }
     )
     let dashboardGroup = router.group("/v1/dashboard").add(middleware: jwtAuthenticator)
     dashboardController.addRoutes(to: dashboardGroup)

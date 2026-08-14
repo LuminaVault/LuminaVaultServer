@@ -1119,7 +1119,14 @@ paths:
         Aggregates the Home Command Center in a single request: enabled skills
         (count + names), lifetime skill runs, live active jobs, reminders,
         todos, projects, insights, active Hermes profile, primary LLM model,
-        memories/sessions, power level/XP, and streak. Per-tenant.
+        memories/sessions, power level/XP, streak, Hermes cron/tools preview,
+        and period cockpit stats. Per-tenant.
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: [today, yesterday, week, month], default: today }
+          description: Time window for period stats, series, and mix.
       responses:
         '200':
           description: Home summary snapshot.
@@ -7285,6 +7292,57 @@ components:
           description: >
             Small brain-graph sample (top nodes by activity, capped server-side)
             for the Home hero preview. Absent when no layout has been computed.
+        cronJobsCount: { type: integer, minimum: 0 }
+        cronJobs:
+          type: array
+          items: { $ref: '#/components/schemas/DashboardCronJobDTO' }
+        toolsCount: { type: integer, minimum: 0 }
+        tools:
+          type: array
+          items: { type: string }
+        period: { type: string, enum: [today, yesterday, week, month] }
+        periodStats: { $ref: '#/components/schemas/DashboardPeriodStats' }
+        periodSeries:
+          type: array
+          items: { $ref: '#/components/schemas/DashboardSeriesPoint' }
+        periodMix: { $ref: '#/components/schemas/DashboardPeriodMix' }
+
+    DashboardPeriodStats:
+      type: object
+      properties:
+        done: { type: integer, minimum: 0 }
+        captures: { type: integer, minimum: 0 }
+        skillRuns: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        previousDone: { type: integer, minimum: 0 }
+        previousCaptures: { type: integer, minimum: 0 }
+        previousSkillRuns: { type: integer, minimum: 0 }
+        previousTokens: { type: integer, minimum: 0 }
+
+    DashboardSeriesPoint:
+      type: object
+      required: [at, value]
+      properties:
+        at: { type: string, format: date-time }
+        value: { type: integer }
+
+    DashboardPeriodMix:
+      type: object
+      properties:
+        captures: { type: integer, minimum: 0 }
+        jobs: { type: integer, minimum: 0 }
+        skills: { type: integer, minimum: 0 }
+        chats: { type: integer, minimum: 0 }
+
+    DashboardCronJobDTO:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        schedule: { type: string }
+        lastRun: { type: string }
+        status: { type: string }
 
     GraphPreviewNodeDTO:
       type: object
