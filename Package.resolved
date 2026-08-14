@@ -119,6 +119,15 @@
       }
     },
     {
+      "identity" : "luminavaultshared",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
+      "state" : {
+        "revision" : "a47d0773e4f7a424af58fe16cdd3cd1e0eddaeeb",
+        "version" : "3.23.0"
+      }
+    },
+    {
       "identity" : "openapikit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattpolzin/OpenAPIKit",
