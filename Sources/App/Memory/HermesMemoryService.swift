@@ -288,6 +288,9 @@ actor HermesMemoryService {
     let vaultMapEnabled: Bool
     /// Additive retrieval-quality telemetry; nil = no telemetry, identical behavior.
     let retrievalTelemetry: RetrievalTelemetryWorker?
+    /// Citation-bearing retrieval for the `session_search` tool. Optional; nil
+    /// falls back to `memories.semanticSearch` — same hits, no locators.
+    var hybridSearch: HybridMemorySearch?
 
     init(
         transport: any HermesChatTransport,
@@ -298,7 +301,8 @@ actor HermesMemoryService {
         logger: Logger,
         maxToolIterations: Int = 5,
         vaultMapEnabled: Bool = true,
-        retrievalTelemetry: RetrievalTelemetryWorker? = nil
+        retrievalTelemetry: RetrievalTelemetryWorker? = nil,
+        hybridSearch: HybridMemorySearch? = nil
     ) {
         self.transport = transport
         self.memories = memories
@@ -309,6 +313,7 @@ actor HermesMemoryService {
         self.maxToolIterations = maxToolIterations
         self.vaultMapEnabled = vaultMapEnabled
         self.retrievalTelemetry = retrievalTelemetry
+        self.hybridSearch = hybridSearch
     }
 
     func upsert(
@@ -525,23 +530,47 @@ actor HermesMemoryService {
                         .first { $0.slug == slug }?.id
                 }
                 let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
-                let hits = try await memories.semanticSearch(
-                    tenantID: tenantID,
-                    queryEmbedding: embedding,
-                    limit: effectiveLimit,
-                    spaceID: resolvedSpaceID
-                )
+                let hits: [MemorySearchResult]
+                if let hybridSearch {
+                    hits = try await hybridSearch.search(
+                        tenantID: tenantID,
+                        query: args.query,
+                        queryEmbedding: embedding,
+                        limit: effectiveLimit,
+                        spaceID: resolvedSpaceID
+                    )
+                } else {
+                    hits = try await memories.semanticSearch(
+                        tenantID: tenantID,
+                        queryEmbedding: embedding,
+                        limit: effectiveLimit,
+                        spaceID: resolvedSpaceID
+                    )
+                }
                 outcome.searchHits = hits
                 retrievalTelemetry?.enqueue(.from(
                     tenantID: tenantID, distances: hits.map(\.distance),
                     source: .agenticSearch, spaceID: resolvedSpaceID, limit: effectiveLimit
                 ))
+                // The agent gets the locator too. Without it the model can only
+                // say "your notes mention X"; with it, it can tell the user
+                // which file and lines to open — and we can check whether the
+                // claim it made is actually there.
                 let serializable = hits.map { hit -> [String: String] in
-                    [
+                    var row = [
                         "id": hit.id.uuidString,
                         "content": hit.content,
                         "distance": String(hit.distance),
                     ]
+                    if let citation = hit.citation {
+                        row["source"] = citation.displayTrail
+                        row["chunk_id"] = citation.chunkID
+                        row["document_id"] = citation.documentID
+                        row["start_line"] = String(citation.startLine)
+                        row["end_line"] = String(citation.endLine)
+                        if let path = citation.path { row["path"] = path }
+                    }
+                    return row
                 }
                 return Self.encodeJSON(["status": "ok", "results": serializable])
             } catch {

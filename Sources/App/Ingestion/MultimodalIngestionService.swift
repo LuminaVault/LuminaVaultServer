@@ -148,6 +148,10 @@ struct MultimodalIngestionService {
     let logger: Logger
     let ingestionCapabilities: @Sendable (UUID) async -> HermesCapabilities
     let publicBaseURL: URL?
+    /// Optional for the same reason as on `VaultIngestService`: when nil the
+    /// derived memory is still written and still searchable, just without
+    /// line-level citations.
+    var chunkIndexer: DocumentChunkIndexer?
 
     func create(tenantID: UUID, request: IngestionCreateRequest) async throws -> IngestionBatchDTO {
         guard !request.items.isEmpty, request.items.count <= Self.maxItems else {
@@ -479,6 +483,14 @@ struct MultimodalIngestionService {
                 sourceVaultFileID: sourceFileID, spaceID: spaceID, reviewState: "auto"
             )
             item.memoryID = try memory.requireID()
+            await chunkIndexer?.indexBestEffort(
+                tenantID: tenantID,
+                memoryID: try memory.requireID(),
+                vaultFileID: sourceFileID,
+                spaceID: spaceID,
+                sourcePath: await sourcePath(tenantID: tenantID, vaultFileID: sourceFileID),
+                content: content
+            )
             item.summary = result.summary
             item.credibility = result.credibility
             item.state = IngestionItemStateDTO.analyzing.rawValue
@@ -640,6 +652,16 @@ struct MultimodalIngestionService {
             spaceID: spaceID, reviewState: "auto"
         )
         item.memoryID = try memory.requireID()
+        // The dedupe path clones another item's analysis, so it needs its own
+        // chunk rows: chunks are keyed by memory, and this is a new memory.
+        await chunkIndexer?.indexBestEffort(
+            tenantID: tenantID,
+            memoryID: try memory.requireID(),
+            vaultFileID: item.vaultFileID,
+            spaceID: spaceID,
+            sourcePath: await sourcePath(tenantID: tenantID, vaultFileID: item.vaultFileID),
+            content: sourceMemory.content
+        )
         item.summary = source.summary
         item.credibility = source.credibility
         item.reusedFromItemID = try source.requireID()
@@ -653,6 +675,15 @@ struct MultimodalIngestionService {
         IngestionMetrics.deduplicated.increment()
         try await refreshBatch(tenantID: tenantID, batchID: item.batchID)
         return true
+    }
+
+    /// Vault-relative path for a citation, or nil when the item has no backing
+    /// file. A lookup failure degrades the citation to heading + lines rather
+    /// than failing the ingest.
+    private func sourcePath(tenantID: UUID, vaultFileID: UUID?) async -> String? {
+        guard let vaultFileID else { return nil }
+        return try? await VaultFile.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == vaultFileID).first()?.path
     }
 
     private func recordEvent(item: IngestionItem, type: IngestionEventTypeDTO) async throws {

@@ -19,6 +19,11 @@ struct VaultIngestService {
     let memories: MemoryRepository
     let embeddings: any EmbeddingService
     let logger: Logger
+    /// Optional so existing `VaultIngestService(...)` constructions in tests and
+    /// the migration CLI keep compiling; when nil the document-level memory is
+    /// still written and remains searchable through the document arm, just
+    /// without line-level citations.
+    var chunkIndexer: DocumentChunkIndexer?
 
     struct FileInput: Decodable {
         let path: String
@@ -124,14 +129,28 @@ struct VaultIngestService {
 
         // Embed + create/update the recall memory (grounding + graph source).
         let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let memoryID: UUID
         if let memID = try await memories.idBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: savedID) {
             _ = try await memories.updateContent(tenantID: tenantID, id: memID, content: content, embedding: embedding)
+            memoryID = memID
         } else {
-            _ = try await memories.create(
+            let created = try await memories.create(
                 tenantID: tenantID, content: content, embedding: embedding,
                 tags: nil, sourceVaultFileID: savedID, spaceID: spaceID, reviewState: "auto"
             )
+            memoryID = try created.requireID()
         }
+
+        // Line-level chunks for citable retrieval. Best-effort by design: the
+        // memory above is already written and searchable without them.
+        await chunkIndexer?.indexBestEffort(
+            tenantID: tenantID,
+            memoryID: memoryID,
+            vaultFileID: savedID,
+            spaceID: spaceID,
+            sourcePath: safeRelative,
+            content: content
+        )
         return true
     }
 

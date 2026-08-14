@@ -29,6 +29,10 @@ struct QueryController {
     /// Resolves the tenant's brain mode so managed prompts carry the model
     /// identity guard (`ModelDisclosurePolicy`). Optional; nil = no guard.
     let llmPreferences: UserLLMPreferenceRepository?
+    /// Citation-bearing retrieval (chunk arm ∪ document arm). Optional: when
+    /// nil the stream falls back to `memories.semanticSearch` alone, which is
+    /// the pre-chunking behavior — same answers, no line-level citations.
+    let hybridSearch: HybridMemorySearch?
 
     init(
         service: HermesMemoryService,
@@ -41,7 +45,8 @@ struct QueryController {
         logger: Logger = Logger(label: "lv.query"),
         vaultAccess: VaultAccessService,
         retrievalTelemetry: RetrievalTelemetryWorker? = nil,
-        llmPreferences: UserLLMPreferenceRepository? = nil
+        llmPreferences: UserLLMPreferenceRepository? = nil,
+        hybridSearch: HybridMemorySearch? = nil
     ) {
         self.service = service
         self.achievements = achievements
@@ -54,6 +59,7 @@ struct QueryController {
         self.vaultAccess = vaultAccess
         self.retrievalTelemetry = retrievalTelemetry
         self.llmPreferences = llmPreferences
+        self.hybridSearch = hybridSearch
     }
 
     func addRoutes(
@@ -87,9 +93,7 @@ struct QueryController {
         if let achievements {
             achievements.enqueue(tenantID: actorID, event: .queryRan)
         }
-        let hits = answer.hits.map {
-            QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
-        }
+        let hits = answer.hits.map(\.queryHitDTO)
         // HER-37 Slice C — best-effort follow-ups. Generator is defensive
         // (returns [] on any failure) so this never bumps the response
         // latency floor by more than one bounded Hermes round-trip.
@@ -147,7 +151,18 @@ struct QueryController {
             try await embeddings.embed(userQuery, tenantID: tenantID)
         }
         let hits = try await loggedStage("query.search", logger: log) {
-            try await memories.semanticSearch(
+            if let hybridSearch {
+                // Chunk arm gives line-level citations; document arm keeps
+                // memories whose chunks are missing (backfill not yet reached,
+                // no source file) retrievable.
+                return try await hybridSearch.search(
+                    tenantID: tenantID,
+                    query: userQuery,
+                    queryEmbedding: queryEmbedding,
+                    limit: limit
+                )
+            }
+            return try await memories.semanticSearch(
                 tenantID: tenantID,
                 queryEmbedding: queryEmbedding,
                 limit: limit
@@ -184,9 +199,7 @@ struct QueryController {
         let hermesResolution = ctx.hermesResolution
         let logger = log
         let followUpGenerator = followUpGenerator
-        let hitDTOs = hits.map {
-            QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
-        }
+        let hitDTOs = hits.map(\.queryHitDTO)
         let outputID = UUID()
         let routeOutcome = QueryRouteOutcomeBox()
         let provenanceRepository = MemoryProvenanceRepository(fluent: memories.fluent)
@@ -312,9 +325,14 @@ struct QueryController {
     }
 
     /// Build the prompt that grounds the streaming reply in retrieved
-    /// memories. Citations use `[n]` brackets matching the index of the
-    /// hit so a future UI pass can resolve them back to the `source`
-    /// events. Kept `static` so unit tests can hit it without a full
+    /// memories.
+    ///
+    /// Each hit is labelled `[n]` and, when the hit came from the chunk index,
+    /// its source locator — `projects/hermes.md › Routing (L40-58)`. The
+    /// bracket number still matches the ordering of the `.source` SSE events so
+    /// the client can resolve a citation to the chip it already rendered; the
+    /// locator is what makes the citation checkable by a human who never sees
+    /// the prompt. Kept `static` so unit tests can hit it without a full
     /// controller wiring.
     static func buildPrompt(
         query: String,
@@ -334,7 +352,8 @@ struct QueryController {
                 } else {
                     hit.source.rawValue
                 }
-                return "[\(offset + 1)] [\(provenance)] \(hit.content)"
+                let locator = hit.citation.map { " [\($0.displayTrail)]" } ?? ""
+                return "[\(offset + 1)] [\(provenance)]\(locator) \(hit.content)"
             }.joined(separator: "\n\n")
         }
         let system = """
@@ -343,6 +362,10 @@ struct QueryController {
         bracket number when relevant (e.g. "[1]"). Keep the reply concise
         and conversational. If the memories do not cover the question,
         say so plainly rather than inventing detail.
+
+        Some memories carry a source locator in a second bracket — the file,
+        heading trail, and line range they were read from. Never invent a
+        locator, and never cite one that is not listed below.
 
         Retrieved memories:
         \(context)
