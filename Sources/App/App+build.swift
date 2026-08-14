@@ -1135,15 +1135,6 @@ func buildRouter(
         logger: routingLogger
     )
     managedServices.append(providerRegistry)
-    // Self-reporting guard for the env-name class of bug: a provider whose key
-    // failed to load is silently absent here rather than failing the boot, so
-    // this line is the only cheap way to notice. `openRouter` and `nvidia` must
-    // both appear for the free lane to have any capacity.
-    routingLogger.info("llm providers enabled", metadata: [
-        "providers": .string(
-            await providerRegistry.enabledProviders().map(\.rawValue).sorted().joined(separator: ",")
-        ),
-    ])
     // HER-161 — capability-tier table router. Picks `(provider, model)`
     // from a static matrix keyed on `(tier, capability)`, honors the
     // user's `privacy_no_cn_origin` flag, and always falls back to the
@@ -1185,6 +1176,34 @@ func buildRouter(
         forKey: ConfigKey("cerberus.parallelEnabled"),
         default: cerberusEnsemblesEnabled
     )
+    // Free fallback lane. `FREELANE_ENABLED=false` leaves `freeLaneRuntime` nil,
+    // which restores pre-lane routing exactly — the kill switch is the absence
+    // of the runtime, not a branch inside it.
+    let freeLaneEnabled = reader.bool(forKey: ConfigKey("freelane.enabled"), default: true)
+    let freeLaneRuntime: FreeLaneRuntime? = freeLaneEnabled ? FreeLaneRuntime(
+        gate: FreeLaneGate(
+            fluent: services.fluent,
+            limits: FreeLaneGate.Limits(
+                perUserDaily: Int64(reader.int(forKey: ConfigKey("freelane.perUserDailyRequests"), default: 20)),
+                perLegDaily: [
+                    // OpenRouter's free-model limits are account-wide: 50/day
+                    // until $10 of credit has ever been purchased, 1000/day
+                    // after. Keep this under whichever ceiling applies.
+                    .openRouterFree: Int64(reader.int(forKey: ConfigKey("freelane.openRouterDailyRequests"), default: 45)),
+                    .nvidiaDirect: Int64(reader.int(forKey: ConfigKey("freelane.nvidiaDailyRequests"), default: 900)),
+                ]
+            ),
+            logger: routingLogger
+        ),
+        openRouterModel: reader.string(
+            forKey: ConfigKey("freelane.openRouterModel"),
+            default: FreeLaneCatalog.defaultOpenRouterModel
+        ),
+        nvidiaModel: reader.string(
+            forKey: ConfigKey("freelane.nvidiaModel"),
+            default: FreeLaneCatalog.defaultNvidiaModel
+        )
+    ) : nil
     let cerberusRouter: any ModelRouter = CerberusModelRouter(
         profiles: routerProfileRepo,
         fallback: legacyModelRouter,
@@ -1192,7 +1211,8 @@ func buildRouter(
         ensemblesEnabled: cerberusParallelEnabled,
         logger: routingLogger,
         credentials: userCredentialStore,
-        registry: providerRegistry
+        registry: providerRegistry,
+        freeLane: freeLaneRuntime
     )
     let modelRouter: any ModelRouter = cerberusExecutionMode == "active"
         ? cerberusRouter
@@ -2669,11 +2689,29 @@ func buildRouter(
             .add(middleware: SidecarTokenMiddleware<AppRequestContext>(expectedToken: services.photonSidecarToken))
         photonWebhook.post("inbound", use: hermesGatewaysController.handlePhotonInbound)
     }
+    // `userCredentialStore` is a `var` (assigned conditionally during setup), and
+    // a `var` cannot be captured by an escaping @Sendable closure. Bind the
+    // final value once so the closure captures an immutable copy.
+    let resolvedCredentialStore = userCredentialStore
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,
         routerProfiles: routerProfileRepo,
         defaultPrimaryModel: services.hermesDefaultManagedModel,
-        logger: Logger(label: "lv.me.llm-prefs")
+        logger: Logger(label: "lv.me.llm-prefs"),
+        // Same three inputs the router feeds `FreeLanePolicy`, so GET/PUT report
+        // the route the next turn will actually take.
+        freeLaneEnabled: freeLaneEnabled,
+        platformPaidManagedAvailable: { await providerRegistry.isEnabled(.openRouter) },
+        hasUsableCredential: { tenantID in
+            guard let store = resolvedCredentialStore else { return false }
+            for kind in ProviderKind.userCredentialTargets {
+                guard let creds = try? await store.credential(for: kind, tenantID: tenantID) else { continue }
+                if creds.apiKey?.isEmpty == false || creds.baseURL != nil {
+                    return true
+                }
+            }
+            return false
+        }
     )
     let llmPrefsGroup = router.group("/v1/me/preferences/llm")
         .add(middleware: jwtAuthenticator)

@@ -25,11 +25,30 @@ struct RouteDecision: Hashable {
     let primary: ModelRoute
     let fallbacks: [ModelRoute]
     let cerberus: CerberusDecisionMetadata?
+    /// Who pays for this request. Adapters use it to decide whether the
+    /// deployment key is legal (`.managed`) or whether a missing tenant
+    /// credential must fail closed (`.byok`).
+    ///
+    /// `CerberusDecisionMetadata.mode` already carries this, but that metadata
+    /// is absent whenever `CERBERUS_EXECUTION_MODE != "active"`, which left
+    /// `credentialMode` nil on every chat call under the legacy router and
+    /// silently degraded the fail-closed guard back to fail-open. Routers that
+    /// know the mode publish it here regardless of which one is active.
+    ///
+    /// `nil` still means "nobody declared an intent" — internal and cron work
+    /// with no user attached — and keeps managed semantics.
+    let credentialMode: LLMBrainMode?
 
-    init(primary: ModelRoute, fallbacks: [ModelRoute], cerberus: CerberusDecisionMetadata? = nil) {
+    init(
+        primary: ModelRoute,
+        fallbacks: [ModelRoute],
+        cerberus: CerberusDecisionMetadata? = nil,
+        credentialMode: LLMBrainMode? = nil
+    ) {
         self.primary = primary
         self.fallbacks = fallbacks
         self.cerberus = cerberus
+        self.credentialMode = credentialMode
     }
 
     var candidates: [ModelRoute] {
@@ -137,16 +156,23 @@ struct TableModelRouter: ModelRouter {
                 ModelRoute(provider: .anthropic, modelID: "claude-sonnet-4-6"),
                 ModelRoute(provider: .gemini, modelID: "gemini-2.5-pro"),
             ]
-        case (.free, .high):
-            [
-                ModelRoute(provider: .together, modelID: "deepseek-v3.2"),
-                ModelRoute(provider: .groq, modelID: "kimi-k2"),
-            ]
-        case (.free, .medium), (.free, .low):
-            [
-                ModelRoute(provider: .gemini, modelID: "gemini-flash"),
-                ModelRoute(provider: .together, modelID: "deepseek"),
-            ]
+        // Non-entitled users get the free lane at every capability level.
+        // The rows that used to sit here named Together/Groq/Gemini models
+        // whose keys are unset in every deployment, so they were filtered out
+        // and collapsed to `hermesRoute` — i.e. the "free" tier was silently
+        // billing the gateway's key. Both legs below cost $0.
+        //
+        // This path has no `FreeLaneGate` metering: there is no
+        // `CerberusDecisionMetadata` here to carry an exhaustion error through,
+        // and this router is only reachable as the documented
+        // `CERBERUS_EXECUTION_MODE` rollback. The structural cost fix still
+        // holds because neither leg is billable.
+        case (.free, .high), (.free, .medium), (.free, .low):
+            FreeLaneCatalog.routes().compactMap { route in
+                ProviderKind(shared: route.provider).map {
+                    ModelRoute(provider: $0, modelID: route.model)
+                }
+            }
         }
     }
 

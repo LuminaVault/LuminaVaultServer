@@ -332,7 +332,10 @@ actor WorkflowEngine: Service {
                 "stream": false,
             ])
             let routeCapture = WorkflowRouteCapture()
-            let freeRoute = RouterModelRouteDTO(provider: .openRouter, model: "openrouter/free")
+            // `openrouter/free` is a router *slug*, not a model id — this retry has
+            // been failing silently. Use the real free-lane primary instead.
+            let freeLaneRoute = FreeLaneCatalog.routes()[0]
+            let freeRoute = RouterModelRouteDTO(provider: freeLaneRoute.provider, model: freeLaneRoute.model)
             func send(forcedRoute: RouterModelRouteDTO?) async throws -> Data {
                 try await LLMRoutingContext.$currentUser.withValue(user) {
                     try await LLMRoutingContext.$cerberusScope.withValue(.init(
@@ -376,8 +379,8 @@ actor WorkflowEngine: Service {
                     runID: run.requireID(),
                     kind: .nodeOutput,
                     nodeID: node.id,
-                    message: "Managed provider unavailable; retrying on OpenRouter Free.",
-                    data: ["fallback": "openrouter/free", "reason": WorkflowPauseReason.providerUnavailable.rawValue]
+                    message: "Managed provider unavailable; retrying on a backup route.",
+                    data: ["fallback": "free_lane", "reason": WorkflowPauseReason.providerUnavailable.rawValue]
                 )
                 do {
                     response = try await send(forcedRoute: freeRoute)

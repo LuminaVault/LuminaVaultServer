@@ -131,12 +131,20 @@ actor UsageMeterService {
     ///
     /// - Pro / Ultimate: always `.allow`.
     /// - Trial / free: `.allow` < 80% → `.degrade` at 80% → `.deny` at 100%.
-    /// - Lapsed / archived: always `.deny` (0 cap).
+    /// - Lapsed: `.allow` — see below.
+    /// - Archived: always `.deny` (read-only, 0 cap).
     func checkBudget(tenantID: UUID, tier: UserTier) async -> BudgetDecision {
         switch tier {
         case .pro, .ultimate:
             return .allow
-        case .lapsed, .archived:
+        case .lapsed:
+            // Lapsed users are now degraded onto the free lane by
+            // `FreeLanePolicy` inside the router, which costs nothing. Denying
+            // here would 429 them before the lane is ever reachable, so the
+            // metering decision has to defer to the routing decision. The lane's
+            // own per-user daily grace (`FreeLaneGate`) is what bounds them.
+            return .allow
+        case .archived:
             return .deny(retryAfter: Self.hoursUntilUTCMidnight())
         case .trial:
             break // continue to DB check

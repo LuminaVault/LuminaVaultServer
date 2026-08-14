@@ -251,13 +251,48 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 
-`LLM_PROVIDER_OPENROUTER_APIKEY` funds both ordinary managed inference and Cerberus Studio. Managed execution never substitutes a tenant BYOK credential. `HERMES_DEFAULT_MANAGED_MODEL` selects the backend-owned managed model and defaults to `deepseek/deepseek-v4-flash`; authenticated GET/PUT responses return that effective route and ignore stale provider/model policy sent by managed-mode clients. `OPENROUTER_API_KEY` remains a temporary compatibility alias, but new deployments should set only the canonical variable.
+**Variable naming — read this before adding one.** `ConfigReader` resolves a
+dotted key against the environment by splitting on `.`, inserting `_` at every
+camelCase boundary, and uppercasing. So `llm.provider.openRouter.apiKey` reads
+**`LLM_PROVIDER_OPEN_ROUTER_API_KEY`**, not the `LLM_PROVIDER_OPENROUTER_APIKEY`
+that shipped in every .env and compose file for months and therefore never
+loaded. Multi-word kinds split too: `deepInfra` → `DEEP_INFRA`, `deepseekDirect`
+→ `DEEPSEEK_DIRECT`. The old `..._APIKEY` / `..._BASEURL` spellings are still
+accepted as legacy aliases (`ProviderRegistry.legacyAPIKeyConfigKey`) so existing
+deployments heal without an ops step, but new variables must use the canonical
+form. `llm providers enabled` in the boot log is the check.
+
+`LLM_PROVIDER_OPEN_ROUTER_API_KEY` funds both ordinary managed inference and Cerberus Studio. Managed execution never substitutes a tenant BYOK credential. `HERMES_DEFAULT_MANAGED_MODEL` selects the backend-owned managed model and defaults to `deepseek/deepseek-v4-flash`; authenticated GET/PUT responses return that effective route and ignore stale provider/model policy sent by managed-mode clients. `OPENROUTER_API_KEY` remains a temporary compatibility alias, but new deployments should set only the canonical variable.
 
 The `openrouter/free` fallback is a router selection, not anonymous access: it still needs the platform key and carries no availability SLA. OpenRouter's policy verified on 2026-07-18 limits accounts with less than $10 of purchased credits to 50 free-model requests/day and 20 requests/minute; purchasing at least $10 raises the daily free allowance to 1,000. A negative balance may return 402 even on free models. An unfunded, non-negative account is suitable for low-volume beta/failover traffic, not a paid-tier production SLA.
 
+### Free fallback lane
+
+Forced route for users who are neither paying nor bringing a key, and the
+emergency route when platform managed inference is unavailable. Leg 1 is a
+zero-rated OpenRouter slug and cannot bill us; **leg 2 is a normal billable NIM
+model that is free only while NVIDIA's signup credits last**, so
+`FREELANE_NVIDIA_DAILY_REQUESTS` is a spend ceiling, not just a rate limit. Full
+contract in `docs/llm-models.md` §4a — this table is the env reference only.
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `FREELANE_ENABLED` | `true` | Kill switch. `false` restores pre-lane routing exactly. |
+| `FREELANE_OPEN_ROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Leg 1, on the platform OpenRouter key. 1M context, $0. |
+| `FREELANE_NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Leg 2, on the platform NIM key. No `:free` suffix — NIM 404s on it. |
+| `FREELANE_PER_USER_DAILY_REQUESTS` | `20` | Per-tenant grace, so one user cannot starve the platform allowance. |
+| `FREELANE_OPEN_ROUTER_DAILY_REQUESTS` | `45` | Platform-wide. OpenRouter free limits are account-wide: 50/day until $10 of credit has ever been bought, 1000/day after. Raise to ~900 once funded. |
+| `FREELANE_NVIDIA_DAILY_REQUESTS` | `900` | Platform-wide. NIM free tier is ~40 req/min on a **finite** credit pool — NVIDIA bills at list price once it is spent, so treat this as a spend cap. |
+| `LLM_PROVIDER_NVIDIA_API_KEY` | `""` | Platform NIM key (`nvapi-…`). Alias: `NVIDIA_API_KEY`. |
+
+Counters live in `workflow_spend_buckets` under a `freelane:` scope-key
+namespace — **the stored unit is requests, not micro-dollars.** No migration.
+Per-minute limits are not metered; they surface as upstream 429s and fail over to
+the other leg.
+
 ### Cerberus model router
 
-- `CERBERUS_EXECUTION_MODE`: `active` evaluates the resolved user, Space, or Job profile; any other value retains the legacy preference router for rollback.
+- `CERBERUS_EXECUTION_MODE`: `active` evaluates the resolved user, Space, or Job profile; any other value retains the legacy preference router for rollback. The legacy router serves the same free-lane legs but **without** the per-user grace counter (it has no decision metadata to carry an exhaustion error through). Both legs are still $0, so this is a metering gap, not a cost gap.
 - `CERBERUS_ENSEMBLES_ENABLED`: enables profile actions that run models in parallel and synthesize their outputs. Defaults to `false` because an ensemble can multiply provider usage.
 - `CERBERUS_PARALLEL_ENABLED`: master gate for Ultimate-tier Best-of-N, Consensus, Debate, Specialist, playground, and chat multi-model execution. Defaults to `false`; when absent the server falls back to `CERBERUS_ENSEMBLES_ENABLED` for one-release compatibility.
 

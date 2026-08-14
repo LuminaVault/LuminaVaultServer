@@ -51,6 +51,10 @@ struct CerberusDecisionMetadata: Hashable {
     let byokKeysRequired: Bool
     /// BYO Hermes owns routing; Auto was deferred.
     let deferredToHermes: Bool
+    /// Free lane selected but its daily allowance is spent — transport 429s.
+    let freeLaneExhausted: Bool
+    /// Seconds until the free-lane buckets roll (UTC midnight).
+    let freeLaneRetryAfterSeconds: Int
 
     init(
         executionID: UUID,
@@ -79,7 +83,9 @@ struct CerberusDecisionMetadata: Hashable {
         complexity: RouterComplexity = .medium,
         reason: String = "",
         byokKeysRequired: Bool = false,
-        deferredToHermes: Bool = false
+        deferredToHermes: Bool = false,
+        freeLaneExhausted: Bool = false,
+        freeLaneRetryAfterSeconds: Int = 0
     ) {
         self.executionID = executionID
         self.tenantID = tenantID
@@ -108,6 +114,8 @@ struct CerberusDecisionMetadata: Hashable {
         self.reason = reason
         self.byokKeysRequired = byokKeysRequired
         self.deferredToHermes = deferredToHermes
+        self.freeLaneExhausted = freeLaneExhausted
+        self.freeLaneRetryAfterSeconds = freeLaneRetryAfterSeconds
     }
 }
 
@@ -190,6 +198,9 @@ struct CerberusModelRouter: ModelRouter {
     /// Optional credential store — enables BYOK-aware Auto pool expansion.
     let credentials: UserCredentialStore?
     let registry: ProviderRegistry?
+    /// Free fallback lane. `nil` disables it entirely (`freelane.enabled=false`),
+    /// restoring pre-lane routing exactly.
+    let freeLane: FreeLaneRuntime?
 
     init(
         profiles: RouterProfileRepository,
@@ -198,7 +209,8 @@ struct CerberusModelRouter: ModelRouter {
         ensemblesEnabled: Bool,
         logger: Logger,
         credentials: UserCredentialStore? = nil,
-        registry: ProviderRegistry? = nil
+        registry: ProviderRegistry? = nil,
+        freeLane: FreeLaneRuntime? = nil
     ) {
         self.profiles = profiles
         self.fallback = fallback
@@ -207,6 +219,7 @@ struct CerberusModelRouter: ModelRouter {
         self.logger = logger
         self.credentials = credentials
         self.registry = registry
+        self.freeLane = freeLane
     }
 
     func pick(forModel model: String?, capability: LLMCapabilityLevel, user: User?) async -> RouteDecision {
@@ -259,7 +272,7 @@ struct CerberusModelRouter: ModelRouter {
                 reason: reason,
                 deferredToHermes: true
             )
-            return RouteDecision(primary: hermesPrimary, fallbacks: table.fallbacks, cerberus: metadata)
+            return RouteDecision(primary: hermesPrimary, fallbacks: table.fallbacks, cerberus: metadata, credentialMode: metadata.mode)
         }
 
         do {
@@ -317,6 +330,32 @@ struct CerberusModelRouter: ModelRouter {
             // Credentialed providers for BYOK-aware pool.
             let credentialed = await credentialedProviderIDs(tenantID: tenantID)
             let deploymentEnabled = await deploymentEnabledProviderIDs()
+
+            // Free lane. Evaluated before the autoSmart downgrade and before
+            // the BYOK fail-closed below, because for a non-entitled user the
+            // lane is a better answer than either: they get a working reply
+            // instead of a degraded pool or a 403 dead end.
+            let platformPaidManagedAvailable = await registry?.isEnabled(.openRouter) ?? false
+            let laneVerdict = FreeLanePolicy.evaluate(.init(
+                effectiveTier: effectiveTier,
+                requestedMode: profile.mode,
+                hasUsableUserCredential: !credentialed.isEmpty,
+                platformPaidManagedAvailable: platformPaidManagedAvailable,
+                freeLaneEnabled: freeLane != nil
+            ))
+            if let laneVerdict, let freeLane {
+                return await freeLaneDecision(
+                    table: table,
+                    tenantID: tenantID,
+                    profile: profile,
+                    ruleID: rule?.id,
+                    task: task,
+                    scope: scope,
+                    complexity: complexity,
+                    verdict: laneVerdict,
+                    runtime: freeLane
+                )
+            }
 
             // Auto (Smart) is OpenRouter-only: managed rides the shared
             // gateway's system key; BYOK Auto requires the tenant's own
@@ -545,7 +584,7 @@ struct CerberusModelRouter: ModelRouter {
                     }
                 }
             }
-            return RouteDecision(primary: primary, fallbacks: routeFallbacks, cerberus: metadata)
+            return RouteDecision(primary: primary, fallbacks: routeFallbacks, cerberus: metadata, credentialMode: metadata.mode)
         } catch {
             logger.error("cerberus decision failed; using table router", metadata: ["error": .string("\(error)")])
             return table
@@ -555,6 +594,123 @@ struct CerberusModelRouter: ModelRouter {
     // Aggregates the full BYOK-keys-required decision metadata; the wide
     // parameter list mirrors CerberusDecisionMetadata's fields by design.
     // swiftlint:disable:next function_parameter_count
+    /// Build the forced free-lane decision.
+    ///
+    /// Deliberately: `mode: .managed` (the lane is platform-funded, so adapters
+    /// must use the env keys — and `ModelDisclosure.forBrainMode(.managed)` is
+    /// `.hidden`, so the concrete slug never reaches the client); all cost
+    /// fields zero and no `budget.reserve` call (nothing to reserve, and
+    /// reserving would pollute `router_monthly_usage`); `viaGateway: false` so
+    /// the request hits the platform's own OpenRouter/NIM keys rather than
+    /// being rewritten onto the Hermes gateway; and `fallbacks` limited to the
+    /// other free leg — never the terminal `hermesGateway` cascade, which is
+    /// precisely the unbounded-cost path this lane exists to close.
+    private func freeLaneDecision(
+        table: RouteDecision,
+        tenantID: UUID,
+        profile: RouterProfileDTO,
+        ruleID: UUID?,
+        task: RouterTaskType,
+        scope: CerberusRequestScope,
+        complexity: RouterComplexity,
+        verdict: FreeLaneVerdict,
+        runtime: FreeLaneRuntime
+    ) async -> RouteDecision {
+        // Only offer legs whose platform key actually loaded.
+        var legs: [FreeLaneCatalog.Leg] = []
+        for leg in FreeLaneCatalog.Leg.allCases {
+            let provider: ProviderKind = leg == .openRouterFree ? .openRouter : .nvidia
+            if await registry?.isEnabled(provider) ?? false { legs.append(leg) }
+        }
+
+        let outcome: FreeLaneGate.Outcome = legs.isEmpty
+            ? .exhausted(retryAfter: CostLedgerService.secondsUntilUTCMidnight())
+            : await runtime.gate.claim(tenantID: tenantID, legs: legs)
+
+        func metadata(
+            routes: [RouterModelRouteDTO],
+            exhausted: Bool,
+            retryAfter: Int,
+            reason: String
+        ) -> CerberusDecisionMetadata {
+            CerberusDecisionMetadata(
+                executionID: UUID(),
+                tenantID: tenantID,
+                vaultID: LLMRoutingContext.analyticsVaultID ?? tenantID,
+                actorUserID: tenantID,
+                profileID: profile.id,
+                profileName: profile.name,
+                ruleID: ruleID,
+                taskType: task,
+                surface: scope.surface,
+                spaceID: scope.spaceID,
+                conversationID: scope.conversationID,
+                strategy: .sequential,
+                parallelStrategy: nil,
+                participants: nil,
+                routes: routes,
+                synthesisRoute: nil,
+                minimumSuccessfulResults: 1,
+                retryPolicy: .fast,
+                predictedCostUsdMicros: 0,
+                budgetReservationUsdMicros: 0,
+                budgetDenied: false,
+                mode: .managed,
+                routingPolicy: .locked,
+                complexity: complexity,
+                reason: reason,
+                freeLaneExhausted: exhausted,
+                freeLaneRetryAfterSeconds: retryAfter
+            )
+        }
+
+        switch outcome {
+        case let .exhausted(retryAfter):
+            logger.info("cerberus.route.free_lane trigger=\(verdict.trigger.rawValue) leg=none outcome=exhausted tenant=\(tenantID)")
+            let meta = metadata(
+                routes: [],
+                exhausted: true,
+                retryAfter: Int(retryAfter),
+                reason: "Free lane exhausted"
+            )
+            // Primary is unused: the transport checks freeLaneExhausted first.
+            return RouteDecision(primary: table.primary, fallbacks: [], cerberus: meta, credentialMode: meta.mode)
+
+        case let .granted(leg):
+            if verdict.trigger == .platformUnavailable {
+                // Loud on purpose: this degrades paying users. Alert on it.
+                logger.warning("cerberus.route.free_lane trigger=platformUnavailable leg=\(leg.rawValue) tenant=\(tenantID)")
+            } else {
+                logger.info("cerberus.route.free_lane trigger=\(verdict.trigger.rawValue) leg=\(leg.rawValue) tenant=\(tenantID)")
+            }
+            let laneRoutes = runtime.routes(preferring: leg)
+            let mapped = laneRoutes.compactMap {
+                Self.toModelRoute(RouterModelRouteDTO(provider: $0.provider, model: $0.model), viaGateway: false)
+            }
+            guard let primary = mapped.first else {
+                let meta = metadata(
+                    routes: [],
+                    exhausted: true,
+                    retryAfter: Int(CostLedgerService.secondsUntilUTCMidnight()),
+                    reason: "Free lane has no routable leg"
+                )
+                return RouteDecision(primary: table.primary, fallbacks: [], cerberus: meta, credentialMode: meta.mode)
+            }
+            let meta = metadata(
+                routes: laneRoutes.map { RouterModelRouteDTO(provider: $0.provider, model: $0.model) },
+                exhausted: false,
+                retryAfter: 0,
+                reason: "Free lane \(verdict.trigger.rawValue)"
+            )
+            return RouteDecision(
+                primary: primary,
+                fallbacks: Array(mapped.dropFirst()),
+                cerberus: meta,
+                credentialMode: meta.mode
+            )
+        }
+    }
+
     private static func byokKeysRequiredDecision(
         table: RouteDecision,
         tenantID: UUID,
@@ -595,7 +751,7 @@ struct CerberusModelRouter: ModelRouter {
             byokKeysRequired: true
         )
         // Primary is unused: RoutedLLMTransport checks byokKeysRequired before dispatch.
-        return RouteDecision(primary: table.primary, fallbacks: [], cerberus: metadata)
+        return RouteDecision(primary: table.primary, fallbacks: [], cerberus: metadata, credentialMode: metadata.mode)
     }
 
     private func credentialedProviderIDs(tenantID: UUID) async -> Set<ProviderID> {

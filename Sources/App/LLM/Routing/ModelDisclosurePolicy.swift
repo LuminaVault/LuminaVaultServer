@@ -148,7 +148,10 @@ enum ModelDisclosurePolicy {
         data.removeValue(forKey: "provider")
         data.removeValue(forKey: "model")
         data.removeValue(forKey: "fallback")
-        let message = event.message == "Managed provider unavailable; retrying on OpenRouter Free."
+        // Prefix match, not equality: the fallback message names a provider,
+        // and pinning the exact string means any reword silently starts
+        // leaking the provider name to managed tenants.
+        let message = (event.message ?? "").hasPrefix("Managed provider unavailable")
             ? "Managed provider unavailable; retrying on a backup route."
             : event.message
         return WorkflowRunEventDTO(

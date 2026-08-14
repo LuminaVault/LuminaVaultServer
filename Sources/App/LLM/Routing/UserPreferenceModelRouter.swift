@@ -48,7 +48,12 @@ struct UserPreferenceModelRouter: ModelRouter {
         // row's `primaryModel` is preserved for the iOS UI but doesn't
         // steer routing — Hermes' own default model wins for managed.
         if pref.mode == .managed {
-            return tableDecision
+            return RouteDecision(
+                primary: tableDecision.primary,
+                fallbacks: tableDecision.fallbacks,
+                cerberus: tableDecision.cerberus,
+                credentialMode: .managed
+            )
         }
 
         let primary = ModelRoute(provider: pref.primaryProvider, modelID: pref.primaryModel)
@@ -82,9 +87,20 @@ struct UserPreferenceModelRouter: ModelRouter {
         guard let newPrimary = allowed.first else {
             // Lists filtered everything out — never hand back an empty
             // candidate list; fall through to the unfiltered table cascade.
+            // Still publish the mode: this user chose BYOK, so the adapters
+            // must fail closed rather than spend the deployment key.
             logger.warning("llm allow/block lists filtered out all routes; using table cascade")
-            return tableDecision
+            return RouteDecision(
+                primary: tableDecision.primary,
+                fallbacks: tableDecision.fallbacks,
+                cerberus: tableDecision.cerberus,
+                credentialMode: .byok
+            )
         }
-        return RouteDecision(primary: newPrimary, fallbacks: Array(allowed.dropFirst()))
+        return RouteDecision(
+            primary: newPrimary,
+            fallbacks: Array(allowed.dropFirst()),
+            credentialMode: .byok
+        )
     }
 }

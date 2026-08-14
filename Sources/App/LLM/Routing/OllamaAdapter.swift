@@ -77,7 +77,7 @@ struct OllamaAdapter: ProviderAdapter {
         }
 
         // 3. Resolve per-user base URL (required for any sensible deploy).
-        let baseURL = await resolveBaseURL()
+        let baseURL = try await resolveBaseURL()
         let url = baseURL.appendingPathComponent("api").appendingPathComponent("chat")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -145,7 +145,7 @@ struct OllamaAdapter: ProviderAdapter {
                     "stream": true,
                 ]
                 let bodyData = try JSONSerialization.data(withJSONObject: body)
-                let baseURL = await resolveBaseURL()
+                let baseURL = try await resolveBaseURL()
                 return ProviderStreamRequest(
                     url: baseURL.appendingPathComponent("api").appendingPathComponent("chat"),
                     body: bodyData
@@ -178,24 +178,41 @@ struct OllamaAdapter: ProviderAdapter {
         )
     }
 
-    private func resolveBaseURL() async -> URL {
+    /// No API key is involved, so this is not a cost leak — but proxying a
+    /// BYOK-declared call to the *deployment's* own Ollama (localhost:11434)
+    /// when the tenant has no endpoint of their own is a cross-tenant
+    /// correctness and privacy bug. Same fail-closed rule as the other
+    /// adapters; managed and unattributed calls keep the default.
+    private func resolveBaseURL() async throws -> URL {
+        let mode = LLMRoutingContext.credentialMode
+        if mode == .managed { return defaultBaseURL }
+
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()
         else {
+            if mode == .byok {
+                logger.error("byok request for ollama has no resolvable tenant; failing closed")
+                throw BYOKKeysRequiredError()
+            }
             return defaultBaseURL
         }
+
+        let creds: UserCredentialStore.ResolvedCredential?
         do {
-            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID),
-                  let url = creds.baseURL
-            else {
-                return defaultBaseURL
-            }
-            return url
+            creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
             logger.error("user credential lookup failed for ollama: \(error)")
+            if mode == .byok { throw BYOKKeysRequiredError() }
             return defaultBaseURL
         }
+
+        if let url = creds?.baseURL { return url }
+        if mode == .byok {
+            logger.error("byok request for ollama has no endpoint configured; failing closed")
+            throw BYOKKeysRequiredError()
+        }
+        return defaultBaseURL
     }
 
     /// Translate Ollama `/api/chat` response → OpenAI chat completions

@@ -39,23 +39,40 @@ struct GeminiContentsAdapter: ProviderAdapter {
 
     /// Resolve the API key for the current request — the user's stored
     /// Gemini credential when present, else the deployment env key.
-    private func resolveKey() async -> String {
-        if LLMRoutingContext.credentialMode == .managed {
-            return apiKey
-        }
+    ///
+    /// Managed mode spends the platform key; BYOK mode spends the tenant's key
+    /// or throws. See `OpenAICompatibleAdapter.resolveCredentials` for why the
+    /// old fall-through to `apiKey` was a cost leak.
+    private func resolveKey() async throws -> String {
+        let mode = LLMRoutingContext.credentialMode
+        if mode == .managed { return apiKey }
+
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()
-        else { return apiKey }
-        do {
-            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID),
-                  let key = creds.apiKey, !key.isEmpty
-            else { return apiKey }
-            return key
-        } catch {
-            logger.error("user credential lookup failed for gemini: \(error)")
+        else {
+            if mode == .byok {
+                logger.error("byok request for gemini has no resolvable tenant; failing closed")
+                throw BYOKKeysRequiredError()
+            }
             return apiKey
         }
+
+        let creds: UserCredentialStore.ResolvedCredential?
+        do {
+            creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
+        } catch {
+            logger.error("user credential lookup failed for gemini: \(error)")
+            if mode == .byok { throw BYOKKeysRequiredError() }
+            return apiKey
+        }
+
+        if let key = creds?.apiKey, !key.isEmpty { return key }
+        if mode == .byok {
+            logger.error("byok request for gemini has no usable credential; failing closed")
+            throw BYOKKeysRequiredError()
+        }
+        return apiKey
     }
 
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
@@ -84,7 +101,7 @@ struct GeminiContentsAdapter: ProviderAdapter {
         // user's own key when they stored one — HER-252).
         let rawModel = openAI["model"] as? String ?? ""
         let geminiModel = resolveGeminiModel(from: rawModel)
-        let url = await Self.makeURL(for: geminiModel, apiKey: resolveKey())
+        let url = try await Self.makeURL(for: geminiModel, apiKey: resolveKey())
 
         // 3. Translate messages → Gemini shape
         let translated = Self.translateToGemini(

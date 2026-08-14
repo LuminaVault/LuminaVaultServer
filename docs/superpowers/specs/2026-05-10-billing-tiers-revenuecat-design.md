@@ -1,6 +1,21 @@
 # Billing, Tiers, and RevenueCat Paywall — Design
 
-**Status:** Approved 2026-05-10
+**Status:** Approved 2026-05-10 · **PARTIALLY SUPERSEDED 2026-08-14**
+
+> Two decisions in this spec are wrong as shipped. `LuminaVaultServer/docs/llm-models.md`
+> is the authority on both:
+>
+> 1. **"No Free tier"** still holds as written — there is no `free` `UserTier` and
+>    no migration — but non-entitled users are no longer 402'd off chat. They are
+>    routed to a zero-cost **free lane** (`llm-models.md` §4a). The tier enum,
+>    the `M15` CHECK constraint, and the entitlement matrix are unchanged.
+> 2. **"BYO key = Ultimate-only"** (the gating matrix and `privacyBYOKey`) is
+>    wrong for LLM brain mode. `LLMBrainMode.byok` is available on **any
+>    chat-capable tier**. The Ultimate gate applies only to the `privacyBYOKey`
+>    privacy setting, which is a different thing.
+>
+> Everything else here — RevenueCat wiring, product ids, webhook secret,
+> `billing.enforcementEnabled` — is still the only record of it and still current.
 **Supersedes:** HER-174 Free+Pro Stripe tier design in `gentle-humming-pumpkin.md` (Commercial cluster) — kept open until replaced by tickets filed from this spec.
 **Owner:** Backend (Hummingbird) + iOS (Client)
 

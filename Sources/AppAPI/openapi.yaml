@@ -9280,6 +9280,41 @@ components:
         query: { type: string }
         limit: { type: integer, default: 10 }
 
+    MemoryCitationDTO:
+      type: object
+      required: [chunkID, documentID, headingPath, startLine, endLine]
+      description: |
+        Where a retrieval hit physically came from, precise enough to re-read
+        by hand. Present when the hit came from the chunk index; absent on the
+        document-level retrieval path, which has no line information.
+
+        Clients should treat it as optional and render the hit unchanged when
+        it is missing.
+      properties:
+        chunkID:
+          type: string
+          description: Stable while the chunk's text and position are unchanged.
+        documentID:
+          type: string
+          description: |
+            Stable across edits and reindexing — safe to persist in a saved
+            answer and resolve later.
+        path:
+          type: string
+          description: |
+            Vault-relative source path. Absent for memories with no backing
+            file (direct API upserts, chat-derived memories).
+        headingPath:
+          type: array
+          description: 'Heading ancestry, outermost first: ["Routing", "Fallbacks"].'
+          items: { type: string }
+        startLine:
+          type: integer
+          description: 1-based inclusive first line within `path`.
+        endLine:
+          type: integer
+          description: 1-based inclusive last line within `path`.
+
     QueryHitDTO:
       type: object
       required: [id, content, distance]
@@ -9289,6 +9324,14 @@ components:
         content: { type: string }
         distance: { type: number, format: float }
         createdAt: { type: string, format: date-time }
+        snippet:
+          type: string
+          description: |
+            Match-highlighted excerpt with `[` / `]` around matched terms.
+            Absent when the hit came from a path that produces no highlight.
+        citation:
+          allOf: [{ $ref: '#/components/schemas/MemoryCitationDTO' }]
+          description: Absent on the document-level retrieval path.
 
     QueryResponse:
       type: object

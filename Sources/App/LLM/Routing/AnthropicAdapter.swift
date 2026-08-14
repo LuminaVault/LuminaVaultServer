@@ -69,7 +69,7 @@ struct AnthropicAdapter: ProviderAdapter {
         }
 
         // 3. Resolve credentials + dispatch.
-        let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+        let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
         let url = resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -178,7 +178,7 @@ struct AnthropicAdapter: ProviderAdapter {
             makeRequest: {
                 let (body, _) = try Self.translateRequest(payload: payload, stream: true)
                 let bodyData = try JSONSerialization.data(withJSONObject: body)
-                let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+                let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
                 return ProviderStreamRequest(
                     url: resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages"),
                     headers: [
@@ -241,25 +241,41 @@ struct AnthropicAdapter: ProviderAdapter {
         return false
     }
 
-    private func resolveCredentials() async -> (key: String, baseURL: URL) {
-        if LLMRoutingContext.credentialMode == .managed {
-            return (apiKey, baseURL)
-        }
+    /// Managed mode spends the platform key; BYOK mode spends the tenant's key
+    /// or throws. See `OpenAICompatibleAdapter.resolveCredentials` for the full
+    /// rationale — this is the same rule for Anthropic.
+    private func resolveCredentials() async throws -> (key: String, baseURL: URL) {
+        let mode = LLMRoutingContext.credentialMode
+        if mode == .managed { return (apiKey, baseURL) }
+
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()
         else {
+            if mode == .byok {
+                logger.error("byok request for anthropic has no resolvable tenant; failing closed")
+                throw BYOKKeysRequiredError()
+            }
             return (apiKey, baseURL)
         }
+
+        let creds: UserCredentialStore.ResolvedCredential?
         do {
-            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID) else {
-                return (apiKey, baseURL)
-            }
-            return (creds.apiKey ?? apiKey, creds.baseURL ?? baseURL)
+            creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
             logger.error("user credential lookup failed for anthropic: \(error)")
+            if mode == .byok { throw BYOKKeysRequiredError() }
             return (apiKey, baseURL)
         }
+
+        if let key = creds?.apiKey, !key.isEmpty {
+            return (key, creds?.baseURL ?? baseURL)
+        }
+        if mode == .byok {
+            logger.error("byok request for anthropic has no usable credential; failing closed")
+            throw BYOKKeysRequiredError()
+        }
+        return (apiKey, baseURL)
     }
 
     /// Translate Anthropic `/v1/messages` response → OpenAI chat

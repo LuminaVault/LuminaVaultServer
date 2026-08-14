@@ -76,12 +76,19 @@ struct RoutedLLMTransport: HermesChatTransport {
         {
             decision = RouteDecision(
                 primary: ModelRoute(provider: provider, modelID: forced.model),
-                fallbacks: []
+                fallbacks: [],
+                // Preserve who pays. Dropping this would reset the request to
+                // "no declared intent" — i.e. managed — and let an "Ask another
+                // model" turn from a BYOK user spend the platform key.
+                credentialMode: decision.credentialMode ?? decision.cerberus?.mode
             )
         }
         if let cerberus = decision.cerberus {
             if cerberus.byokKeysRequired {
                 throw BYOKKeysRequiredError()
+            }
+            if cerberus.freeLaneExhausted {
+                throw FreeLaneExhaustedError(retryAfterSeconds: cerberus.freeLaneRetryAfterSeconds)
             }
             guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
             publishRouting(cerberus, phase: .selected, routes: cerberus.routes)
@@ -152,7 +159,9 @@ struct RoutedLLMTransport: HermesChatTransport {
             }
             let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
             do {
-                let credentialMode = decision.cerberus?.mode ?? LLMRoutingContext.credentialMode
+                let credentialMode = decision.credentialMode
+                    ?? decision.cerberus?.mode
+                    ?? LLMRoutingContext.credentialMode
                 let metadata = try await LLMRoutingContext.$credentialMode.withValue(credentialMode) {
                     try await adapter.chatCompletionsWithMetadata(
                         payload: candidatePayload,
@@ -236,6 +245,20 @@ struct RoutedLLMTransport: HermesChatTransport {
                     userMessage: providerError.userMessage,
                     retryAfterMs: Self.retryHint(for: providerError.reasonCode)
                 )
+            } catch let fatal as BYOKKeysRequiredError {
+                // Fail closed. Not a `ProviderError`, so without this branch it
+                // would land in the generic catch below, be treated as
+                // recoverable, and the loop would advance — turning the 403
+                // `byok_keys_required` envelope (with its add_key /
+                // switch_to_managed CTAs) into a generic `upstream_error`.
+                // Every remaining candidate has the same missing credential.
+                if let cerberus = decision.cerberus, let routerTelemetry {
+                    await routerTelemetry.release(
+                        tenantID: cerberus.tenantID,
+                        reservedUsdMicros: cerberus.budgetReservationUsdMicros
+                    )
+                }
+                throw fatal
             } catch {
                 lastRecoverable = error
                 logger.warning("provider \(candidate.provider.rawValue) unclassified error: \(error)")
@@ -299,12 +322,20 @@ struct RoutedLLMTransport: HermesChatTransport {
             {
                 decision = RouteDecision(
                     primary: ModelRoute(provider: provider, modelID: forced.model),
-                    fallbacks: []
+                    fallbacks: [],
+                    // Preserve who pays — see the buffered path.
+                    credentialMode: decision.credentialMode ?? decision.cerberus?.mode
                 )
             }
             if let cerberus = decision.cerberus {
                 if cerberus.byokKeysRequired {
                     continuation.finish(throwing: BYOKKeysRequiredError())
+                    return
+                }
+                if cerberus.freeLaneExhausted {
+                    continuation.finish(throwing: FreeLaneExhaustedError(
+                        retryAfterSeconds: cerberus.freeLaneRetryAfterSeconds
+                    ))
                     return
                 }
                 guard !cerberus.budgetDenied else {
@@ -381,7 +412,9 @@ struct RoutedLLMTransport: HermesChatTransport {
                 let candidatePayload = Self.rewriteModel(candidate.modelID, in: payload)
                 var yieldedAny = false
                 do {
-                    let credentialMode = decision.cerberus?.mode ?? LLMRoutingContext.credentialMode
+                    let credentialMode = decision.credentialMode
+                    ?? decision.cerberus?.mode
+                    ?? LLMRoutingContext.credentialMode
                     let candidateStream = LLMRoutingContext.$credentialMode.withValue(credentialMode) {
                         adapter.chatStream(
                             payload: candidatePayload,
@@ -459,6 +492,18 @@ struct RoutedLLMTransport: HermesChatTransport {
                         userMessage: providerError.userMessage,
                         retryAfterMs: Self.retryHint(for: providerError.reasonCode)
                     ))
+                    return
+                } catch let fatal as BYOKKeysRequiredError {
+                    // Fail closed — see the buffered loop. Every remaining
+                    // candidate is missing the same credential, so failing over
+                    // only converts a precise 403 into a generic upstream error.
+                    if let cerberus = decision.cerberus, let routerTelemetry {
+                        await routerTelemetry.release(
+                            tenantID: cerberus.tenantID,
+                            reservedUsdMicros: cerberus.budgetReservationUsdMicros
+                        )
+                    }
+                    continuation.finish(throwing: fatal)
                     return
                 } catch {
                     if yieldedAny {

@@ -19,19 +19,71 @@ struct LLMPreferencesController {
     let defaultPrimaryProvider: ProviderID
     let defaultPrimaryModel: String
     let logger: Logger
+    /// Free-lane inputs. Both default to "lane off", so every existing test
+    /// construction keeps its current behaviour.
+    let freeLaneEnabled: Bool
+    let platformPaidManagedAvailable: @Sendable () async -> Bool
+    let hasUsableCredential: @Sendable (UUID) async -> Bool
 
     init(
         repository: UserLLMPreferenceRepository,
         routerProfiles: RouterProfileRepository,
         defaultPrimaryProvider: ProviderID = ManagedLLMDefaults.provider,
         defaultPrimaryModel: String = ManagedLLMDefaults.model,
-        logger: Logger
+        logger: Logger,
+        freeLaneEnabled: Bool = false,
+        platformPaidManagedAvailable: @escaping @Sendable () async -> Bool = { true },
+        hasUsableCredential: @escaping @Sendable (UUID) async -> Bool = { _ in false }
     ) {
         self.repository = repository
         self.routerProfiles = routerProfiles
         self.defaultPrimaryProvider = defaultPrimaryProvider
         self.defaultPrimaryModel = defaultPrimaryModel
         self.logger = logger
+        self.freeLaneEnabled = freeLaneEnabled
+        self.platformPaidManagedAvailable = platformPaidManagedAvailable
+        self.hasUsableCredential = hasUsableCredential
+    }
+
+    /// The managed shape. What a forced-free-lane user is told, and it is true:
+    /// the lane *is* managed, so `ModelDisclosurePolicy` hides the model id and
+    /// the pane renders the generic brain label.
+    private var managedWire: LLMPreferencesGetResponse {
+        LLMPreferencesGetResponse(
+            mode: .managed,
+            primaryProvider: defaultPrimaryProvider,
+            primaryModel: ModelDisclosurePolicy.genericBrainName,
+            fallbackChain: []
+        )
+    }
+
+    /// Report the *effective* route rather than the stored one.
+    ///
+    /// The router is the sole authority on who pays (`FreeLanePolicy`), so no
+    /// write path rejects anything — a lapsed user's stored BYOK preference is
+    /// persisted intact and takes effect the moment they upgrade or add a key.
+    /// Reads canonicalise instead, so the pane never claims a route the user
+    /// will not actually get.
+    private func effectiveWire(
+        _ snapshot: UserLLMPreferenceRepository.Snapshot?,
+        user: User
+    ) async -> LLMPreferencesGetResponse {
+        guard let snapshot else { return managedWire }
+        let requestedMode = Self.toWireMode(snapshot.mode)
+        guard freeLaneEnabled, let tenantID = try? user.requireID() else {
+            return toWire(snapshot) ?? managedWire
+        }
+        let honoured = FreeLanePolicy.honoursUserChoice(.init(
+            effectiveTier: EntitlementChecker.effectiveTier(
+                tier: user.tierEnum,
+                override: user.tierOverrideEnum
+            ),
+            requestedMode: requestedMode,
+            hasUsableUserCredential: await hasUsableCredential(tenantID),
+            platformPaidManagedAvailable: await platformPaidManagedAvailable(),
+            freeLaneEnabled: freeLaneEnabled
+        ))
+        return honoured ? (toWire(snapshot) ?? managedWire) : managedWire
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -41,14 +93,12 @@ struct LLMPreferencesController {
 
     @Sendable
     func get(_: Request, ctx: AppRequestContext) async throws -> LLMPreferencesGetResponse {
-        let tenantID = try ctx.requireTenantID()
+        // requireIdentity, not requireTenantID: the effective route depends on
+        // the user's tier and override, not just their tenant.
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
         let snapshot = try await repository.get(tenantID: tenantID)
-        return snapshot.flatMap(toWire) ?? LLMPreferencesGetResponse(
-            mode: .managed,
-            primaryProvider: defaultPrimaryProvider,
-            primaryModel: ModelDisclosurePolicy.genericBrainName,
-            fallbackChain: []
-        )
+        return await effectiveWire(snapshot, user: user)
     }
 
     @Sendable
@@ -114,14 +164,18 @@ struct LLMPreferencesController {
             logger.error("llm preference upsert failed: \(error)")
             throw HTTPError(.internalServerError, message: "preference_save_failed")
         }
-        guard let response = toWire(snapshot) else {
+        guard toWire(snapshot) != nil else {
             // Should be unreachable: PUT path goes through `toKind` which
             // round-trips a valid ProviderID. A nil here means the row's
             // primary provider isn't in the user-facing set, which only
             // happens if the schema is hand-edited.
             throw HTTPError(.internalServerError, message: "preference_unmappable")
         }
-        return response
+        // The write is persisted verbatim above; the *response* reports what
+        // the router will actually do, so a forced-free-lane user is not told
+        // their BYOK selection took effect when it did not.
+        guard let user = try? ctx.requireIdentity() else { return toWire(snapshot) ?? managedWire }
+        return await effectiveWire(snapshot, user: user)
     }
 
     // MARK: - Mapping helpers

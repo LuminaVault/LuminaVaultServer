@@ -62,7 +62,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
         // + present user key is the canonical BYO mode. Per-user base
         // URL override (e.g. Azure OpenAI proxy) takes precedence over
         // the construction-time default.
-        let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+        let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
         let url = Self.endpoint(for: kind, baseURL: resolvedBaseURL)
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -119,7 +119,7 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             framing: .sse,
             logger: logger,
             makeRequest: {
-                let (resolvedKey, resolvedBaseURL) = await resolveCredentials()
+                let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
                 var headers = [("Accept", "text/event-stream")]
                 if !resolvedKey.isEmpty {
                     headers.append(("Authorization", "Bearer \(resolvedKey)"))
@@ -142,49 +142,75 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
 
     // MARK: - Credential resolution
 
-    /// Resolve the credential + base URL for the current request. Pulls
-    /// the user from `LLMRoutingContext.currentUser`, then checks
-    /// `UserCredentialStore` for a per-tenant override; falls back to
-    /// the construction-time deployment defaults. Errors during lookup
-    /// are logged but never thrown — a stale user credential row must
-    /// not break the chat path.
-    private func resolveCredentials() async -> (key: String, baseURL: URL) {
-        if LLMRoutingContext.credentialMode == .managed {
-            return (apiKey, baseURL)
-        }
+    /// Resolve the credential + base URL for the current request.
+    ///
+    /// **Managed mode spends the platform key. BYOK mode spends the tenant's key
+    /// or nothing at all.** Every path that cannot produce a tenant credential
+    /// under `mode == .byok` throws `BYOKKeysRequiredError` rather than quietly
+    /// falling back to the deployment key — that fallback was the cost leak: a
+    /// user who selected BYOK and never added a key billed us for every message.
+    ///
+    /// `credentialMode == nil` means no caller declared an intent (internal or
+    /// cron work with no user attached). Those calls are genuinely
+    /// platform-funded, so they keep managed semantics.
+    ///
+    /// The free lane runs as `.managed` precisely so it lands on the first
+    /// branch and spends the platform key by design.
+    private func resolveCredentials() async throws -> (key: String, baseURL: URL) {
+        let mode = LLMRoutingContext.credentialMode
+        if mode == .managed { return (apiKey, baseURL) }
+
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
               let tenantID = try? user.requireID()
         else {
+            // BYOK declared with no tenant to look up is a programming error,
+            // not a user error. Fail closed rather than spend platform money on
+            // a call we cannot attribute.
+            if mode == .byok {
+                logger.error("byok request for \(kind.rawValue) has no resolvable tenant; failing closed")
+                throw BYOKKeysRequiredError()
+            }
             return (apiKey, baseURL)
         }
+
+        let creds: UserCredentialStore.ResolvedCredential?
         do {
-            guard let creds = try await userCredentials.credential(for: kind, tenantID: tenantID) else {
-                return (apiKey, baseURL)
-            }
-
-            // xAI oauth (SuperGrok) special case: the UserCredentialStore
-            // (or this resolver) returns the container's key+base when the
-            // marker row exists and the tenant is linked. Proxy through the
-            // container exactly like the dedicated Grok features do.
-            if kind == .xai,
-               creds.apiKey == nil || creds.apiKey?.isEmpty == true,
-               let resolver = xaiOAuthContainerResolver,
-               let handle = await resolver(tenantID),
-               handle.xaiConnectedAt != nil
-            {
-                if let containerBase = URL(string: handle.baseURL) {
-                    return (key: handle.apiServerKey, baseURL: containerBase)
-                }
-            }
-
-            let key = creds.apiKey ?? apiKey
-            let url = creds.baseURL ?? baseURL
-            return (key, url)
+            creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
+            // Unreadable is not the same as absent (decrypt failure, schema
+            // drift, missing SecretBox). The user-visible remedy differs, but
+            // the money decision does not.
             logger.error("user credential lookup failed for \(kind.rawValue): \(error)")
+            if mode == .byok { throw BYOKKeysRequiredError() }
             return (apiKey, baseURL)
         }
+
+        // xAI oauth (SuperGrok) special case: the UserCredentialStore
+        // (or this resolver) returns the container's key+base when the
+        // marker row exists and the tenant is linked. Proxy through the
+        // container exactly like the dedicated Grok features do.
+        if kind == .xai,
+           creds?.apiKey == nil || creds?.apiKey?.isEmpty == true,
+           let resolver = xaiOAuthContainerResolver,
+           let handle = await resolver(tenantID),
+           handle.xaiConnectedAt != nil
+        {
+            if let containerBase = URL(string: handle.baseURL) {
+                return (key: handle.apiServerKey, baseURL: containerBase)
+            }
+        }
+
+        if let key = creds?.apiKey, !key.isEmpty {
+            return (key, creds?.baseURL ?? baseURL)
+        }
+
+        // No row, or a row whose key is nil/empty.
+        if mode == .byok {
+            logger.error("byok request for \(kind.rawValue) has no usable credential; failing closed")
+            throw BYOKKeysRequiredError()
+        }
+        return (apiKey, baseURL)
     }
 
     // MARK: - Health check

@@ -58,8 +58,16 @@ actor ProviderRegistry: Service {
     /// `llm.provider.<key>.baseURL` for each of the 7 spec providers; a
     /// missing or empty key disables that provider rather than crashing.
     static func from(reader: ConfigReader, adapters: [any ProviderAdapter], logger: Logger) -> ProviderRegistry {
-        ProviderRegistry(
-            configs: loadConfigs(from: reader),
+        let configs = loadConfigs(from: reader)
+        // Self-reporting guard for the env-name class of bug: a provider whose
+        // key failed to load is silently absent rather than failing the boot, so
+        // this line is the only cheap way to notice. `openRouter` and `nvidia`
+        // must both appear for the free lane to have any capacity.
+        logger.info("llm providers enabled", metadata: [
+            "providers": .string(configs.map(\.kind.rawValue).sorted().joined(separator: ",")),
+        ])
+        return ProviderRegistry(
+            configs: configs,
             adapters: adapters,
             logger: logger
         )

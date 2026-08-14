@@ -2,7 +2,11 @@
 
 ## Current contract
 
-LuminaVaultServer owns managed-model policy. The default route is:
+> **Authority: `docs/llm-models.md` §1–2 (routing + providers) and §4a (free
+> lane).** This file is a runbook — verification steps only. When the two
+> disagree, `llm-models.md` wins and this file is the thing to fix.
+
+LuminaVaultServer owns managed-model policy. The default *paid* route is:
 
 ```text
 LuminaVaultServer → OpenRouter → deepseek/deepseek-v4-flash
@@ -82,8 +86,12 @@ managed path production-ready.
 ## BYOK regression
 
 LLM brain `mode: byok` is available on any chat-capable tier (Trial, Pro,
-Ultimate). This is separate from the Ultimate-only `privacyBYOKey` privacy
-setting in billing.
+Ultimate) — see `docs/llm-models.md` §6. This is separate from the Ultimate-only
+`privacyBYOKey` privacy setting in billing.
+
+Note step 4 below now applies only to **entitled** tiers. A `lapsed` user with
+BYOK selected and no keys gets the free lane instead of `403 byok_keys_required`;
+that is deliberate (`llm-models.md` §4a).
 
 With a test account on any tier:
 
@@ -93,6 +101,18 @@ With a test account on any tier:
 4. Remove every user key and confirm BYOK fails closed instead of using the
    platform OpenRouter key. Clients should surface `403 byok_keys_required`
    with CTA hints `add_key` and `switch_to_managed`.
+
+## Free lane verification
+
+1. `docker compose logs hummingbird | grep "llm providers enabled"` — expect both
+   `openRouter` and `nvidia`. If either is missing its platform key did not load;
+   check the env-var spellings in `docs/CONFIG.md`.
+2. Set a test user to `tier='lapsed'`, send a chat, expect **200** (not 402/429),
+   and confirm `cerberus.route.free_lane trigger=notEntitled` in the server log.
+3. Confirm no model identity reaches the client: the SSE frames and any error
+   body must not contain `nemotron`, `nvidia`, `:free`, or `openrouter`.
+4. Alert on `trigger=platformUnavailable` — that variant degrades *paying* users
+   and means the platform OpenRouter key is missing or out of credit.
 
 ## Rollback
 

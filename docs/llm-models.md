@@ -14,8 +14,26 @@ Implementation references:
 
 ## 1. Tiered hosting
 
-Three live serving postures + a lapse / archive state. No Free tier — Trial
-is the funnel surface, Pro and Ultimate are the revenue surfaces.
+Three live serving postures + a lapse / archive state. No Free *tier* — Trial
+is the funnel surface, Pro and Ultimate are the revenue surfaces. There is a
+free **lane**, which is a routing state rather than a tier; see §4a.
+
+### The routing law
+
+> **Paying (`pro`/`ultimate`, including `tier_override`) or BYOK-with-a-real-key
+> ⇒ the user's own choice is honoured. Everyone else ⇒ the free lane,
+> non-overridable.**
+
+Stated once, in code, in `FreeLanePolicy.evaluate`. Enforced at **route time
+only**: `PUT /v1/me/preferences/llm` and the router-profile writes persist
+whatever the user asked for and never reject it, so a stored preference takes
+effect the instant they upgrade or add a key. The read surfaces canonicalise
+instead — a user on the forced lane is reported as managed
+(`"LuminaVault Brain · Auto"`), which is true, and keeps the concrete model id
+off the wire per §5.
+
+Trial counts as paying (card on file). Archived is untouched: it is read-only
+and `EntitlementMiddleware` 402s before routing happens.
 
 Billing is RevenueCat + Apple StoreKit 2. See spec
 `docs/superpowers/specs/2026-05-10-billing-tiers-revenuecat-design.md`.
@@ -49,6 +67,8 @@ Authoritative list. Every entry maps to one `ProviderConfig` in
 | **Groq** | `.openAICompatible` | Kimi-K2, Llama 4 70B | $0.50 / $0.30 | $2 / $0.40 | US | Yes / No | Pro+ fallback |
 | **Fireworks** | `.openAICompatible` | DeepSeek-V3.2, Qwen3 | $0.30 / $0.50 | $1.20 / $1.50 | US | Yes (weights), No (host) | Pro+ fallback |
 | **DeepSeek-direct** | `.openAICompatible` | DeepSeek-V3.2, DeepSeek-R1 | $0.10 / $0.55 | $0.40 / $2.20 | CN | Yes (weights + host) | Disabled by default — only for users with `privacy_no_cn_origin=false` AND opt-in `prefer_lowest_cost=true` |
+| **OpenRouter** | `.openAICompatible` | Managed default (`HERMES_DEFAULT_MANAGED_MODEL`, currently `deepseek/deepseek-v4-flash`); free lane leg 1 | varies | varies | US | No | All tiers (managed default); free lane |
+| **NVIDIA NIM** | `.openAICompatible` | Nemotron 3 Nano / Super / Ultra; free lane leg 2 | $0.05 / $0.085 / $0.60 | $0.20 / $0.40 / $3.60 | US | No | BYOK any tier; free lane |
 | **Hermes gateway** *(legacy)* | `.hermesGateway` | hermes-3 | n/a | n/a | self-hosted | n/a | Dev-only; retired once routing ships in prod |
 
 Notes:
@@ -114,6 +134,109 @@ Off by default because the inference data plane is in CN jurisdiction.
 `PUT /v1/me/privacy` flips these toggles (HER-176). Effect is immediate —
 next request uses new route.
 
+## 4a. Free fallback lane
+
+The forced route for anyone who is neither paying nor bringing a key, and the
+emergency route when platform managed inference is unavailable. Not a tier: no
+`UserTier` case, no migration, no entitlement change. `FREELANE_ENABLED=false`
+removes it entirely and restores pre-lane routing exactly.
+
+### Legs, in failover order
+
+| # | Leg | Provider | Default model | Context | Why it's free |
+|---|---|---|---|---|---|
+| 1 | `openRouterFree` | platform OpenRouter key | `nvidia/nemotron-3-ultra-550b-a55b:free` | 1,000,000 | zero-rated slug — cannot bill us |
+| 2 | `nvidiaDirect` | platform NVIDIA NIM key | `nvidia/nemotron-3-super-120b-a12b` | 1,000,000 | finite signup credits |
+
+**The two legs are free for different reasons, and only one is free by
+construction.** The OpenRouter leg is a `:free` slug: zero-rated, no balance
+consumed, so no amount of use can bill us. The NIM leg is a *normal, billable*
+model id — the same one the paid provider matrix in §2 prices at $0.085 / $0.40
+per Mtok. It is free only while NVIDIA's signup credits last; **once they are
+exhausted, NVIDIA bills at list price.**
+
+That makes `freelane.nvidiaDailyRequests` a genuine spend ceiling, not just a
+rate limit. Size it against the credit balance, and treat sustained leg-2 traffic
+as a signal to buy OpenRouter credit (which raises leg 1's account-wide ceiling
+from 50/day to 1000/day) rather than to raise the NIM cap.
+
+OpenRouter goes first for the same reason: it is the renewable resource. Spend
+that before the finite one.
+
+The two legs carry **different model ids on purpose**. `:free` is an OpenRouter
+routing directive, not part of the model id — sending it to
+`integrate.api.nvidia.com` 404s the model. `FreeLaneCatalogTests` asserts this.
+
+Every free slug must clear Hermes Agent's hard **≥64K context floor** on both the
+primary model and `auxiliary.compression`, or Hermes refuses to start the turn.
+Also asserted in `FreeLaneCatalogTests`.
+
+Free slugs are deliberately **absent from `RouterModelCatalog`**.
+`AvailableModelPoolBuilder` expands every catalogue entry into the Auto pool for
+each usable provider, so a $0 entry wins cost-first scoring and hands a *paying*
+user a rate-limited free model while burning the platform's account-wide free
+allowance. That bug shipped once; a test now guards against it.
+
+### Metering
+
+OpenRouter's free-model limits are **account-wide, not per user**: 20 req/min,
+and 50 req/day until $10 of credit has ever been purchased (1000/day after). So
+the lane needs two ceilings — a per-user daily grace so one user cannot starve
+everyone, and a per-leg platform ceiling that keeps us under the provider limit.
+
+`FreeLaneGate` stores both in `workflow_spend_buckets` (`M109_CerberusStudio`)
+under a `freelane:` scope-key namespace, reusing its atomic
+`UPDATE … WHERE spent + 1 <= limit RETURNING` idiom — race-free, so N concurrent
+claims against a limit of M grant exactly M. **The unit stored in
+`spent_usd_micros` is REQUESTS, not micro-dollars**; a free request costs nothing,
+so counting money would only ever store zero. No migration was needed.
+
+The gate fails **open** if the SQL driver is unavailable: a metering outage must
+not take chat down for every non-paying user at once, and the lane it grants
+costs $0, so the blast radius is provider rate limits rather than money.
+
+Per-minute limits are not metered (`period_start` is a DATE). They surface as
+upstream 429s, which `ProviderErrorClassifier` marks recoverable, so the
+transport fails over to the other leg — correct, and free.
+
+### Config
+
+| Key | Env | Default |
+|---|---|---|
+| `freelane.enabled` | `FREELANE_ENABLED` | `true` |
+| `freelane.openRouterModel` | `FREELANE_OPEN_ROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `freelane.nvidiaModel` | `FREELANE_NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` |
+| `freelane.perUserDailyRequests` | `FREELANE_PER_USER_DAILY_REQUESTS` | `20` |
+| `freelane.openRouterDailyRequests` | `FREELANE_OPEN_ROUTER_DAILY_REQUESTS` | `45` |
+| `freelane.nvidiaDailyRequests` | `FREELANE_NVIDIA_DAILY_REQUESTS` | `900` |
+
+Buying $10 of OpenRouter credit once lifts the account ceiling from 50/day to
+1000/day. It is the cheapest capacity purchase available — do it before launch
+and raise `freelane.openRouterDailyRequests` to ~900.
+
+### Exhaustion
+
+`429` + `Retry-After`, body
+`{"error":{"code":"free_lane_exhausted","message":…,"cta":["upgrade","add_key"],"retryAfterSeconds":…}}`.
+Same envelope shape as `byok_keys_required`. The message names no model or
+provider — the lane is managed mode, so model identity is hidden (§5), and an
+error string is just another place it can leak.
+
+### Disclosure
+
+The lane sets `mode: .managed` in its decision metadata, so every existing scrub
+applies unchanged: SSE `routing` / `usage` / `fallback` frames, the
+`systemPromptGuard` injection, and the analytics labels. This is also why the
+lane must never be modelled as a BYOK mode — BYOK is the disclosed mode, and it
+would both reveal the slug and send the adapters looking for a tenant key.
+
+### Legacy router
+
+Under `CERBERUS_EXECUTION_MODE != "active"`, `TableModelRouter` serves the same
+two legs but **without** the gate — there is no decision metadata on that path to
+carry an exhaustion error. The structural cost fix still holds because neither leg
+is billable. That router is the documented rollback lane, not a supported mode.
+
 ## 5. Adding a provider
 
 Five-step playbook. Update both code + this doc in the same PR.
@@ -151,26 +274,55 @@ to `privacyBYOKey` (privacy settings), not LLM brain mode.
 - Clients should parse `{ "error": { "code", "message", "cta" } }` and offer
   Settings / switch-to-managed recovery.
 
+**Where fail-closed is enforced.** In all four credential resolvers —
+`OpenAICompatibleAdapter`, `AnthropicAdapter`, `GeminiContentsAdapter`, and
+`OllamaAdapter` — not only in Cerberus. Cerberus' own guard is bypassed whenever
+`CERBERUS_EXECUTION_MODE != "active"`, so relying on it alone left every
+non-Cerberus chat path spending the platform key for BYOK users who had no key.
+The adapters throw on four paths: no credential row, a row with a nil/empty key,
+an unreadable credential (decrypt failure or missing SecretBox), and a
+BYOK-declared request with no resolvable tenant.
+
+`RoutedLLMTransport` rethrows `BYOKKeysRequiredError` instead of advancing to the
+next candidate — every remaining candidate is missing the same credential, and
+failing over would convert the precise 403 into a generic `upstream_error`.
+
+Who pays is carried on `RouteDecision.credentialMode`, published by both the
+Cerberus and legacy routers and preserved across the forced-route ("Ask another
+model") rebuild. `nil` means no caller declared an intent — internal and cron
+work with no user attached — and keeps managed semantics, because those calls
+genuinely are platform-funded.
+
+**Non-entitled BYOK users no longer hit this error.** A lapsed user who selected
+BYOK and has no key gets the free lane (§4a) instead of a 403 dead end.
+
 ## 7. Cost guardrails
 
 The Pro tier is the largest financial risk. A misbehaving agent loop on
 Sonnet 4.6 can burn $5+ per session, and at $14.99 / mo we have ~$10
 gross-margin headroom per user-month after Apple's 15-30% cut.
 
-Three layers of defense.
+Five layers, listed with the config keys that actually exist. Earlier revisions
+of this section documented `usage.proMtokMonthly` and
+`usage.proMtokMonthlyHardStop`, and a header `X-LV-Degraded` — none of those are
+real. Check against `App+build.swift` before adding a knob here.
 
-### Monthly Mtok cap (Pro tier only)
+| Layer | Where | Scope | Notes |
+|---|---|---|---|
+| Free lane | `FreeLanePolicy` + `FreeLaneGate` | non-entitled users, and everyone during a platform outage | The floor. Costs $0 by construction. See §4a. |
+| Daily token cap | `UsageMeterService` | trial | `usage.freeMtokDaily` (1.0), `usage.perSkillMtokDaily` (0.2), degrade model `usage.degradeModel`. Degrade header is `X-LuminaVault-Degraded`. |
+| Daily USD cap | `CostLedgerService` | managed calls | `managedDailyCapUsdMicros` |
+| Monthly reservation | `RouterTelemetryService` | per profile budget | soft limit flips the router to cost-first scoring |
+| Studio spend buckets | `WorkflowSpendService` | workflow runs | per-run/day/month, hardcoded per tier; globals via `CERBERUS_STUDIO_GLOBAL_*_USD_MICROS` |
 
-`UsageMeter` (HER-175) increments after every LLM response with the
-provider's reported token counts. When the user's running 30-day total
-`(mtok_in + mtok_out)` exceeds `usage.proMtokMonthly` (default 10 M):
+**Known gap:** `UsageMeterService.checkBudget` is called from `POST /v1/chat`
+only. The app's real chat surface is SSE, which does not go through it, so the
+daily token cap does not currently bound the main path. The free lane and the
+USD-denominated layers do.
 
-- `medium` and `high` requests *degrade* to `low` automatically; response gets header `X-LV-Degraded: cap_reached`.
-- Once even `low` would push past `usage.proMtokMonthlyHardStop` (default 30 M), the call returns 429 with `Retry-After: <hours_until_next_billing_period>`.
-
-Ultimate tier has no monthly cap (per-call budget guard still applies).
-Trial users see Pro caps. Lapsed users return 402 before any cap check
-runs.
+Lapsed users are `.allow` at the meter — denying there would 429 them before the
+free lane is reachable. Archived stays `.deny`. Ultimate has no monthly token
+cap (per-call budget guard still applies); trial sees the daily cap above.
 
 ### Per-skill budget
 

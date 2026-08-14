@@ -73,13 +73,13 @@ enum RouterModelCatalog {
         ),
         .init(
             provider: .nvidia,
-            model: "meta/llama-3.1-8b-instruct",
-            displayName: "Llama 3.1 8B (NVIDIA)",
-            taskQuality: ratings(general: 70, reasoning: 66, coding: 68, search: 55, summarization: 72),
-            inputPerMillionUsdMicros: 50000,
-            outputPerMillionUsdMicros: 50000,
+            model: "nvidia/nemotron-3-nano-30b-a3b",
+            displayName: "Nemotron 3 Nano 30B (NVIDIA)",
+            taskQuality: ratings(general: 72, reasoning: 70, coding: 70, search: 58, summarization: 74),
+            inputPerMillionUsdMicros: 50_000,
+            outputPerMillionUsdMicros: 200_000,
             defaultLatencyMs: 450,
-            capabilities: ["chat"],
+            capabilities: ["chat", "tools"],
             tier: .fast
         ),
 
@@ -155,8 +155,9 @@ enum RouterModelCatalog {
             model: "nvidia/nemotron-3-super-120b-a12b",
             displayName: "Nemotron 3 Super 120B",
             taskQuality: ratings(general: 88, reasoning: 90, coding: 91, search: 62, summarization: 86),
-            inputPerMillionUsdMicros: 200_000,
-            outputPerMillionUsdMicros: 200_000,
+            // Verified 2026-08-08: $0.085 in / $0.40 out per Mtok, 1M context.
+            inputPerMillionUsdMicros: 85_000,
+            outputPerMillionUsdMicros: 400_000,
             defaultLatencyMs: 900,
             capabilities: ["chat", "tools", "reasoning"],
             tier: .balanced
@@ -247,26 +248,23 @@ enum RouterModelCatalog {
         ),
         .init(
             provider: .nvidia,
-            model: "nvidia/nemotron-3-ultra",
-            displayName: "Nemotron 3 Ultra (NVIDIA)",
+            model: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B (NVIDIA)",
             taskQuality: ratings(general: 92, reasoning: 94, coding: 93, search: 64, summarization: 90),
-            inputPerMillionUsdMicros: 400_000,
-            outputPerMillionUsdMicros: 400_000,
+            // Verified 2026-08-08: $0.60 in / $3.60 out per Mtok, 512K context.
+            inputPerMillionUsdMicros: 600_000,
+            outputPerMillionUsdMicros: 3_600_000,
             defaultLatencyMs: 1100,
             capabilities: ["chat", "tools", "reasoning"],
             tier: .max
         ),
-        .init(
-            provider: .openRouter,
-            model: "nvidia/nemotron-3-ultra:free",
-            displayName: "Nemotron 3 Ultra (OpenRouter free)",
-            taskQuality: ratings(general: 92, reasoning: 94, coding: 93, search: 64, summarization: 90),
-            inputPerMillionUsdMicros: 0,
-            outputPerMillionUsdMicros: 0,
-            defaultLatencyMs: 1400,
-            capabilities: ["chat", "tools", "reasoning"],
-            tier: .max
-        ),
+        // NOTE: zero-cost `:free` slugs deliberately do NOT belong in this
+        // catalogue. `AvailableModelPoolBuilder` expands every entry here into
+        // the Auto pool for each usable provider, so a $0 entry wins cost-first
+        // scoring and hands a *paying* user a rate-limited free model — while
+        // burning the platform's account-wide free allowance. The free lane
+        // carries its own routes in `FreeLaneCatalog`; `FreeLaneCatalogTests`
+        // asserts this file stays clean.
     ]
 
     static func entry(provider: ProviderID, model: String) -> RouterModelCatalogEntryDTO? {
