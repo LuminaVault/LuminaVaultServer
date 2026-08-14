@@ -580,6 +580,54 @@ private struct DeletedIDRow: Decodable {
     let id: UUID
 }
 
+/// Where a hit physically came from, precise enough to re-read by hand.
+///
+/// This is the difference between "the model says so" and "open
+/// `projects/hermes.md`, look at lines 40-58". Present on chunk-backed hits;
+/// nil on the legacy whole-memory path, which has no line information to give.
+struct MemoryCitation: Sendable, Equatable {
+    /// Stable while the chunk's text and position are unchanged.
+    let chunkID: String
+    /// Stable across edits and reindexing — safe to persist in a saved answer.
+    let documentID: String
+    /// Vault-relative source path. Nil for memories with no source file
+    /// (direct API upserts, chat-derived memories).
+    let path: String?
+    /// Heading ancestry, outermost first: `["Routing", "Fallbacks"]`.
+    let headingPath: [String]
+    /// 1-based inclusive line range within `path`.
+    let startLine: Int
+    let endLine: Int
+
+    /// Human-readable trail for prompts and UI: `projects/hermes.md › Routing › Fallbacks (L40-58)`.
+    var displayTrail: String { dto.displayTrail }
+
+    var dto: MemoryCitationDTO {
+        MemoryCitationDTO(
+            chunkID: chunkID,
+            documentID: documentID,
+            path: path,
+            headingPath: headingPath,
+            startLine: startLine,
+            endLine: endLine
+        )
+    }
+}
+
+extension MemorySearchResult {
+    /// Wire shape for `/v1/query` and its SSE `.source` events.
+    var queryHitDTO: QueryHitDTO {
+        QueryHitDTO(
+            id: id,
+            content: content,
+            distance: distance,
+            createdAt: createdAt,
+            snippet: snippet,
+            citation: citation?.dto
+        )
+    }
+}
+
 struct MemorySearchResult {
     let id: UUID
     let tenantID: UUID
@@ -589,6 +637,11 @@ struct MemorySearchResult {
     let source: MemorySourceKindDTO
     let provider: String?
     let model: String?
+    /// Match-highlighted excerpt from the lexical arm, `[` / `]` around terms.
+    /// Nil when the hit came from a path that produces no highlight.
+    let snippet: String?
+    /// Nil on the legacy whole-memory path. See `MemoryCitation`.
+    let citation: MemoryCitation?
 
     init(
         id: UUID,
@@ -598,7 +651,9 @@ struct MemorySearchResult {
         distance: Float,
         source: MemorySourceKindDTO = .legacy,
         provider: String? = nil,
-        model: String? = nil
+        model: String? = nil,
+        snippet: String? = nil,
+        citation: MemoryCitation? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -608,6 +663,8 @@ struct MemorySearchResult {
         self.source = source
         self.provider = provider
         self.model = model
+        self.snippet = snippet
+        self.citation = citation
     }
 }
 

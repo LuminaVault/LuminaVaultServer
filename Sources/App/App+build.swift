@@ -1020,11 +1020,30 @@ func buildRouter(
     var providerAdapters: [any ProviderAdapter] = [gatewayAdapter]
     // Canonical platform-funded OpenRouter pool. `OPENROUTER_API_KEY` remains
     // a compatibility alias for the Hermes sidecar and older deployments.
-    let platformOpenRouterKey = reader.string(
-        forKey: ConfigKey("llm.provider.openRouter.apiKey"),
-        isSecret: true,
-        default: reader.string(forKey: ConfigKey("openrouter.api_key"), isSecret: true, default: "")
-    )
+    // Provider secrets are read canonical-first (`LLM_PROVIDER_OPEN_ROUTER_API_KEY`),
+    // then via the pre-fix legacy spelling that every .env and compose file shipped
+    // (`LLM_PROVIDER_OPENROUTER_APIKEY`), then any documented alias. See
+    // `ProviderRegistry.apiKeyConfigKey` for why the two spellings differ.
+    func providerAPIKey(_ key: String, alias: String = "") -> String {
+        [
+            reader.string(forKey: ConfigKey(ProviderRegistry.apiKeyConfigKey(key)), isSecret: true, default: ""),
+            reader.string(forKey: ConfigKey(ProviderRegistry.legacyAPIKeyConfigKey(key)), isSecret: true, default: ""),
+            alias.isEmpty ? "" : reader.string(forKey: ConfigKey(alias), isSecret: true, default: ""),
+        ].first { !$0.isEmpty } ?? ""
+    }
+    func providerBaseURL(_ key: String) -> String {
+        [
+            reader.string(forKey: ConfigKey("llm.provider.\(key).baseURL"), default: ""),
+            reader.string(forKey: ConfigKey("llm.provider.\(key.lowercased()).baseurl"), default: ""),
+        ]
+        .lazy
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? ""
+    }
+    let platformOpenRouterKey = providerAPIKey("openRouter", alias: "openrouter.api_key")
+    // Free lane leg 2 — NVIDIA NIM direct. Same alias treatment; `NVIDIA_API_KEY`
+    // is what `NvidiaNIMLiveTests` already reads, so prod and the live test agree.
+    let platformNvidiaKey = providerAPIKey("nvidia", alias: "nvidia.api_key")
     // HER-199 — register Gemini provider when API key is configured.
     if !services.geminiAPIKey.isEmpty {
         providerAdapters.append(GeminiContentsAdapter(
@@ -1063,11 +1082,18 @@ func buildRouter(
     // `.custom` (P2) — generic OpenAI-compatible endpoint. No env key or
     // base URL; both are resolved per-user from `user_provider_credentials`
     // on every call. Registered unconditionally so any tenant can attach one.
-    for kind in [ProviderKind.xai, .openai, .openRouter, .nous, .custom] {
-        let configuredKey = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).apiKey"), isSecret: true, default: "")
-        let envKey = kind == .openRouter && configuredKey.isEmpty ? platformOpenRouterKey : configuredKey
-        let rawBaseURL = reader.string(forKey: ConfigKey("llm.provider.\(kind.rawValue).baseURL"), default: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    for kind in [ProviderKind.xai, .openai, .openRouter, .nous, .nvidia, .custom] {
+        let configuredKey = providerAPIKey(kind.rawValue)
+        let envKey: String = if configuredKey.isEmpty {
+            switch kind {
+            case .openRouter: platformOpenRouterKey
+            case .nvidia: platformNvidiaKey
+            default: configuredKey
+            }
+        } else {
+            configuredKey
+        }
+        let rawBaseURL = providerBaseURL(kind.rawValue)
         let baseURL = rawBaseURL.isEmpty
             ? OpenAICompatibleAdapter.defaultBaseURL(for: kind)
             : (URL(string: rawBaseURL) ?? OpenAICompatibleAdapter.defaultBaseURL(for: kind))
@@ -1082,9 +1108,8 @@ func buildRouter(
             xaiOAuthContainerResolver: xaiResolver
         ))
     }
-    let anthropicEnvKey = reader.string(forKey: ConfigKey("llm.provider.anthropic.apiKey"), isSecret: true, default: "")
-    let anthropicRawBaseURL = reader.string(forKey: ConfigKey("llm.provider.anthropic.baseURL"), default: "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let anthropicEnvKey = providerAPIKey("anthropic")
+    let anthropicRawBaseURL = providerBaseURL("anthropic")
     providerAdapters.append(AnthropicAdapter(
         apiKey: anthropicEnvKey,
         baseURL: anthropicRawBaseURL.isEmpty ? URL(string: "https://api.anthropic.com")! : (URL(string: anthropicRawBaseURL) ?? URL(string: "https://api.anthropic.com")!),
@@ -1092,8 +1117,7 @@ func buildRouter(
         logger: routingLogger,
         userCredentials: userCredentialStore
     ))
-    let ollamaRawBaseURL = reader.string(forKey: ConfigKey("llm.provider.ollama.baseURL"), default: "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let ollamaRawBaseURL = providerBaseURL("ollama")
     providerAdapters.append(OllamaAdapter(
         defaultBaseURL: ollamaRawBaseURL.isEmpty ? URL(string: "http://localhost:11434")! : (URL(string: ollamaRawBaseURL) ?? URL(string: "http://localhost:11434")!),
         session: .shared,
@@ -1111,6 +1135,15 @@ func buildRouter(
         logger: routingLogger
     )
     managedServices.append(providerRegistry)
+    // Self-reporting guard for the env-name class of bug: a provider whose key
+    // failed to load is silently absent here rather than failing the boot, so
+    // this line is the only cheap way to notice. `openRouter` and `nvidia` must
+    // both appear for the free lane to have any capacity.
+    routingLogger.info("llm providers enabled", metadata: [
+        "providers": .string(
+            await providerRegistry.enabledProviders().map(\.rawValue).sorted().joined(separator: ",")
+        ),
+    ])
     // HER-161 — capability-tier table router. Picks `(provider, model)`
     // from a static matrix keyed on `(tier, capability)`, honors the
     // user's `privacy_no_cn_origin` flag, and always falls back to the
@@ -1574,6 +1607,29 @@ func buildRouter(
     let vaultAccessService = VaultAccessService(fluent: services.fluent)
     let vaultActivityPublisher = VaultActivityPublisher()
     let vaultActivityRecorder = VaultActivityRecorder(fluent: services.fluent, publisher: vaultActivityPublisher)
+    // Heading-aware chunk index — the layer that makes retrieval citable
+    // (source path + heading trail + line range).
+    //
+    // `chunkIndexer` is shared by every ingest path and by the backfill job so
+    // chunking behavior cannot drift between them. `hybridMemorySearch` unions
+    // the chunk arm (dense + lexical RRF, carries citations) with the existing
+    // document arm (whole-memory pgvector, no citations) so a memory whose
+    // chunks are missing stays retrievable.
+    let chunkRepository = MemoryChunkRepository(
+        fluent: services.fluent,
+        telemetry: RouteTelemetry(labelPrefix: "memory", logger: Logger(label: "lv.memory.chunks"))
+    )
+    let chunkIndexer = DocumentChunkIndexer(
+        chunks: chunkRepository,
+        embeddings: embeddingService,
+        logger: Logger(label: "lv.indexing.chunks")
+    )
+    let hybridMemorySearch = HybridMemorySearch(
+        memories: MemoryRepository(fluent: services.fluent),
+        chunks: chunkRepository,
+        logger: Logger(label: "lv.memory.search")
+    )
+
     let memoryService = HermesMemoryService(
         transport: routedTransport,
         memories: MemoryRepository(fluent: services.fluent),
@@ -1582,7 +1638,8 @@ func buildRouter(
         eventBus: eventBus,
         logger: Logger(label: "lv.memory"),
         vaultMapEnabled: vaultMapToolEnabled,
-        retrievalTelemetry: retrievalTelemetryWorker
+        retrievalTelemetry: retrievalTelemetryWorker,
+        hybridSearch: hybridMemorySearch
     )
     let memoryController = MemoryController(
         vaultAccess: vaultAccessService,
@@ -1714,7 +1771,8 @@ func buildRouter(
         defaultModel: services.hermesDefaultModel,
         vaultAccess: vaultAccessService,
         retrievalTelemetry: retrievalTelemetryWorker,
-        llmPreferences: userLLMPreferenceRepo
+        llmPreferences: userLLMPreferenceRepo,
+        hybridSearch: hybridMemorySearch
     )
     // HER-223 — query fires Hermes calls under the hood via memoryService.
     let queryBase = router.group("/v1/query").add(middleware: jwtAuthenticator)
@@ -2034,7 +2092,8 @@ func buildRouter(
             guard let ingestionCapabilitiesService else { return .managedDefault }
             return await ingestionCapabilitiesService.capabilities(tenantID: tenantID).capabilities
         },
-        publicBaseURL: ingestionPublicBaseURL
+        publicBaseURL: ingestionPublicBaseURL,
+        chunkIndexer: chunkIndexer
     )
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService, vaultAccess: vaultAccessService)
     ingestionController.addPublicSourceRoute(to: router)
@@ -2056,7 +2115,8 @@ func buildRouter(
             spaces: spacesService,
             memories: MemoryRepository(fluent: services.fluent),
             embeddings: embeddingService,
-            logger: Logger(label: "lv.import.vault")
+            logger: Logger(label: "lv.import.vault"),
+            chunkIndexer: chunkIndexer
         )
     )
     vaultImportController.addRoutes(to: importGroup)
@@ -2520,7 +2580,13 @@ func buildRouter(
     MemoryAdminController(
         scoring: memoryScoringService,
         pruning: memoryPruningService,
-        job: memoryPruningJob
+        job: memoryPruningJob,
+        chunkBackfill: ChunkBackfillService(
+            fluent: services.fluent,
+            vaultPaths: vaultPaths,
+            indexer: chunkIndexer,
+            logger: Logger(label: "lv.indexing.backfill")
+        )
     ).addRoutes(to: memoryAdminGroup)
 
     // Admin: billing tier override. Shared-secret gated; used for support,

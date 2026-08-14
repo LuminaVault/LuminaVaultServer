@@ -3,6 +3,7 @@ import Hummingbird
 
 extension MemoryPruningSweepSummary: ResponseEncodable {}
 extension MemoryPruneResult: ResponseEncodable {}
+extension ChunkBackfillResult: ResponseEncodable {}
 
 /// HER-147 single-user score recompute response.
 struct MemoryRecomputeResponse: Codable, ResponseEncodable {
@@ -23,12 +24,35 @@ struct MemoryAdminController {
     let scoring: MemoryScoringService
     let pruning: MemoryPruningService
     let job: MemoryPruningJob
+    /// Optional so existing wirings that only need the pruning routes keep
+    /// compiling; the backfill routes are simply not registered when nil.
+    var chunkBackfill: ChunkBackfillService?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/recompute", use: recomputeAll)
         router.post("/recompute/:userID", use: recomputeOne)
         router.post("/prune", use: pruneAll)
         router.post("/prune/:userID", use: pruneOne)
+        if chunkBackfill != nil {
+            router.post("/chunks/backfill/:userID", use: backfillChunks)
+        }
+    }
+
+    /// Index one batch of a tenant's un-chunked memories.
+    ///
+    /// Deliberately batch-at-a-time rather than run-to-completion: each memory
+    /// costs several embedding calls, and an operator draining a large vault
+    /// should be able to watch progress and stop. Call repeatedly until
+    /// `scanned` comes back 0.
+    @Sendable
+    func backfillChunks(_ req: Request, ctx: AppRequestContext) async throws -> ChunkBackfillResult {
+        guard let chunkBackfill else {
+            throw HTTPError(.serviceUnavailable, message: "chunk backfill not configured")
+        }
+        let tenantID = try Self.parseUserID(ctx)
+        let batchSize = req.uri.queryParameters.get("batchSize").flatMap { Int($0) }
+            ?? ChunkBackfillService.defaultBatchSize
+        return try await chunkBackfill.backfill(tenantID: tenantID, batchSize: batchSize)
     }
 
     @Sendable
