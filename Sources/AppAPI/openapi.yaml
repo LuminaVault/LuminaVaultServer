@@ -2545,7 +2545,26 @@ paths:
                       message: Add an LLM API key in Settings (OpenRouter recommended for Auto) or switch to Managed mode.
                       cta: [add_key, switch_to_managed]
         '429':
-          $ref: '#/components/responses/RateLimited'
+          description: |
+            Rate-limit exceeded, or the free fallback lane's daily allowance is
+            spent (`free_lane_exhausted`). The free lane is the forced route for
+            users who are neither paying nor using their own key; the allowance
+            resets at UTC midnight. Honour `Retry-After`.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredAPIErrorEnvelope'
+              examples:
+                freeLaneExhausted:
+                  value:
+                    error:
+                      code: free_lane_exhausted
+                      message: You've used today's free messages. Upgrade for the full brain, or add your own API key in Settings to keep going now.
+                      cta: [upgrade, add_key]
+                      retryAfterSeconds: 18000
         '502':
           description: LLM upstream rejected, was unreachable, or all providers exhausted.
           content:
@@ -6084,8 +6103,16 @@ components:
           type: array
           items:
             type: string
-            enum: [add_key, switch_to_managed]
-          description: Optional recovery actions for clients.
+            enum: [add_key, switch_to_managed, upgrade]
+          description: |
+            Optional recovery actions for clients. `upgrade` accompanies
+            `free_lane_exhausted`; `add_key` / `switch_to_managed` accompany
+            `byok_keys_required`.
+        retryAfterSeconds:
+          type: integer
+          description: |
+            Present on `free_lane_exhausted`. Seconds until the free-lane daily
+            allowance resets (UTC midnight). Mirrors the `Retry-After` header.
 
     StructuredAPIErrorEnvelope:
       type: object

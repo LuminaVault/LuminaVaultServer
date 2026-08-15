@@ -17,6 +17,13 @@ struct DocumentChunkIndexer: Sendable {
     let chunks: MemoryChunkRepository
     let embeddings: any EmbeddingService
     let logger: Logger
+    /// Wikilink graph. Optional so existing constructions keep compiling; when
+    /// nil, chunks are still written and links simply are not extracted.
+    ///
+    /// Links live here rather than in their own pass because they are derived
+    /// from the same bytes at the same moment — splitting them would mean
+    /// reading and re-parsing every document twice.
+    var links: VaultLinkRepository?
 
     /// Chunk `content`, embed each chunk, and replace the memory's chunk set.
     ///
@@ -33,6 +40,17 @@ struct DocumentChunkIndexer: Sendable {
         sourcePath: String?,
         content: String
     ) async throws -> Int {
+        // Links are extracted from the same bytes, and only when the document
+        // has a backing file — a link graph needs a node to hang the edge on.
+        if let links, let vaultFileID {
+            try await links.replaceLinks(
+                tenantID: tenantID,
+                sourceVaultFileID: vaultFileID,
+                sourcePath: sourcePath,
+                links: Wikilinks.extract(from: content)
+            )
+        }
+
         let documentChunks = MarkdownChunker.chunk(content)
         guard !documentChunks.isEmpty else {
             // Whitespace-only or empty body: clear any stale chunks so a

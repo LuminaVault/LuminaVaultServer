@@ -1639,10 +1639,12 @@ func buildRouter(
         fluent: services.fluent,
         telemetry: RouteTelemetry(labelPrefix: "memory", logger: Logger(label: "lv.memory.chunks"))
     )
+    let vaultLinkRepository = VaultLinkRepository(fluent: services.fluent)
     let chunkIndexer = DocumentChunkIndexer(
         chunks: chunkRepository,
         embeddings: embeddingService,
-        logger: Logger(label: "lv.indexing.chunks")
+        logger: Logger(label: "lv.indexing.chunks"),
+        links: vaultLinkRepository
     )
     let hybridMemorySearch = HybridMemorySearch(
         memories: MemoryRepository(fluent: services.fluent),
