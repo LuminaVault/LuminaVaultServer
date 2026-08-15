@@ -251,8 +251,21 @@ struct MemoryChunkSearchTests {
                     content: "# Hermes routing\n\nOnly this remains.\n"
                 )
 
+                // Asserting "no results" would be wrong: the dense arm is a
+                // k-nearest-neighbour scan with no distance threshold, so a
+                // query always returns the closest chunks even when nothing
+                // matches lexically. The real invariant is that the removed
+                // text is gone from the index, not that the query comes back
+                // empty.
                 let stale = try await Self.search(fluent: fluent, tenantID: tenantID, query: "zarquontimeout")
-                #expect(stale.isEmpty, "the removed section must stop being searchable")
+                #expect(
+                    !stale.contains { $0.content.contains("zarquontimeout") },
+                    "the removed section must no longer be retrievable"
+                )
+                #expect(
+                    stale.allSatisfy { $0.content.contains("Only this remains") },
+                    "only the rewritten chunks may survive"
+                )
             }
         }
     }
