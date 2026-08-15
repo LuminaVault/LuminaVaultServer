@@ -3477,6 +3477,37 @@ paths:
               schema: { $ref: '#/components/schemas/VaultIndexStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/vault/lint:
+    get:
+      tags: [Vault]
+      operationId: vaultLint
+      summary: Health checks over the vault and its index
+      description: |
+        Turns "my notes feel messy" into a specific list: broken and ambiguous
+        wiki links, duplicate document names, orphans, stale index entries,
+        oversized files, empty documents, and unreadable files.
+
+        A GET because it changes nothing — the linter reads files and index
+        rows and never rewrites either.
+
+        Severities: `error` means retrieval is affected (a document is
+        unreachable or a row claims a file the vault cannot produce);
+        `warning` means worth fixing but retrieval still works — a link to a
+        note you have not written yet is intent, not damage; `pass` means the
+        check found nothing.
+
+        File-derived checks scan at most 2000 documents per call and say so in
+        their message when truncated. Each check lists at most 50 findings;
+        the counts in `message` remain exact.
+      security: [{ bearerJWT: [] }]
+      responses:
+        '200':
+          description: One entry per check, including the ones that passed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VaultLintReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/vault/context/{vaultFileID}:
     get:
       tags: [Vault]
@@ -9404,6 +9435,52 @@ components:
       properties:
         query: { type: string }
         limit: { type: integer, default: 10 }
+
+    VaultLintFinding:
+      type: object
+      required: [message]
+      properties:
+        path: { type: string }
+        line:
+          type: integer
+          description: Present for line-scoped findings (wiki links).
+        message: { type: string }
+
+    VaultLintCheck:
+      type: object
+      required: [name, severity, message, findings]
+      properties:
+        name:
+          type: string
+          enum:
+            [broken-links, ambiguous-links, duplicate-slugs, orphans, stale-index,
+             oversized-files, empty-documents, unreadable-files]
+        severity:
+          type: string
+          enum: [error, warning, pass]
+          description: |
+            `error` — retrieval is affected. `warning` — worth fixing, retrieval
+            still works. `pass` — nothing found.
+        message:
+          type: string
+          description: Summary with exact counts, even when `findings` is truncated.
+        findings:
+          type: array
+          description: At most 50 per check.
+          items: { $ref: '#/components/schemas/VaultLintFinding' }
+
+    VaultLintReport:
+      type: object
+      required: [checks, passed, warned, failed, hasFindings]
+      properties:
+        checks:
+          type: array
+          description: One entry per check, including the ones that passed.
+          items: { $ref: '#/components/schemas/VaultLintCheck' }
+        passed: { type: integer }
+        warned: { type: integer }
+        failed: { type: integer }
+        hasFindings: { type: boolean }
 
     VaultIndexStatus:
       type: object

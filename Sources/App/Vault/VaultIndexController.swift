@@ -6,6 +6,7 @@ import HummingbirdFluent
 extension VaultIndexStatus: ResponseEncodable {}
 extension VaultContextPacket: ResponseEncodable {}
 extension VaultLinksResponse: ResponseEncodable {}
+extension VaultLintReport: ResponseEncodable {}
 
 /// Outgoing and incoming links for one document.
 struct VaultLinksResponse: Codable, Sendable {
@@ -31,12 +32,24 @@ struct VaultIndexController {
     let status: VaultIndexStatusService
     let navigation: VaultNavigationService
     let links: VaultLinkRepository
+    let lint: VaultLintService
     let vaultAccess: VaultAccessService
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("/index", use: indexStatus)
         router.get("/context/:vaultFileID", use: context)
         router.get("/links/:vaultFileID", use: documentLinks)
+        router.get("/lint", use: lintVault)
+    }
+
+    /// Health checks over the vault and its index.
+    ///
+    /// A GET, not a POST, because it changes nothing — the linter reads files
+    /// and index rows and never rewrites either.
+    @Sendable
+    func lintVault(_ request: Request, ctx: AppRequestContext) async throws -> VaultLintReport {
+        let tenantID = try await vaultAccess.resolve(request: request, context: ctx, requiring: .read).vaultID
+        return try await lint.lint(tenantID: tenantID)
     }
 
     /// Is the retrievable index up to date with the vault?

@@ -1945,11 +1945,22 @@ func buildRouter(
     // wiring rather than only in the handlers.
     let vaultIndexGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
+    let vaultIndexStatusService = VaultIndexStatusService(
+        fluent: services.fluent,
+        links: vaultLinkRepository
+    )
     VaultIndexController(
         fluent: services.fluent,
-        status: VaultIndexStatusService(fluent: services.fluent, links: vaultLinkRepository),
+        status: vaultIndexStatusService,
         navigation: VaultNavigationService(fluent: services.fluent, links: vaultLinkRepository),
         links: vaultLinkRepository,
+        lint: VaultLintService(
+            fluent: services.fluent,
+            vaultPaths: vaultPaths,
+            links: vaultLinkRepository,
+            status: vaultIndexStatusService,
+            logger: Logger(label: "lv.vault.lint")
+        ),
         vaultAccess: vaultAccessService
     ).addRoutes(to: vaultIndexGroup)
 
