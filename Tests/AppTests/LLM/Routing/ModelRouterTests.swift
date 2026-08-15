@@ -62,33 +62,60 @@ struct ModelRouterTests {
         #expect(decision.fallbacks.contains(ModelRoute(provider: .gemini, modelID: "gemini-2.5-pro")))
     }
 
-    // MARK: - Free tier matrix
+    // MARK: - Free lane
+    //
+    // The free tier used to name Together/Groq/Gemini models whose API keys are
+    // unset in every deployment. Those rows were filtered out and the tier
+    // collapsed to the Hermes gateway — so "free" was quietly billing the
+    // platform's gateway key. `FreeLaneCatalog` replaced the table with two
+    // genuinely $0 legs, and these tests pin that.
 
     @Test
-    func `free high routes deepseek then kimi`() async {
-        let registry = Self.registry(enabled: [.together, .groq, .hermesGateway])
+    func `free tier routes the openrouter free leg then nvidia`() async {
+        let registry = Self.registry(enabled: [.openRouter, .nvidia, .hermesGateway])
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
         let decision = await router.pick(forModel: nil, capability: .high, user: Self.user(tier: .trial))
 
-        #expect(decision.primary == ModelRoute(provider: .together, modelID: "deepseek-v3.2"))
-        #expect(decision.fallbacks.contains(ModelRoute(provider: .groq, modelID: "kimi-k2")))
+        // OpenRouter `:free` goes first: it consumes no balance, so it is the
+        // renewable leg. NVIDIA burns finite signup credits and is the reserve.
+        #expect(decision.primary == ModelRoute(provider: .openRouter, modelID: FreeLaneCatalog.defaultOpenRouterModel))
+        #expect(decision.fallbacks.contains(ModelRoute(provider: .nvidia, modelID: FreeLaneCatalog.defaultNvidiaModel)))
     }
 
     @Test
-    func `free medium routes gemini flash then deepseek`() async {
-        let registry = Self.registry(enabled: [.gemini, .together, .hermesGateway])
+    func `the free lane is the same at every capability level`() async {
+        // Capability tiers exist to spend more on harder work. There is nothing
+        // to spend on the free lane, so all three levels resolve identically.
+        let registry = Self.registry(enabled: [.openRouter, .nvidia, .hermesGateway])
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
-        let decision = await router.pick(forModel: nil, capability: .medium, user: Self.user(tier: .trial))
 
-        #expect(decision.primary == ModelRoute(provider: .gemini, modelID: "gemini-flash"))
-        #expect(decision.fallbacks.contains(ModelRoute(provider: .together, modelID: "deepseek")))
+        for capability in [LLMCapabilityLevel.high, .medium, .low] {
+            let decision = await router.pick(forModel: nil, capability: capability, user: Self.user(tier: .trial))
+            #expect(
+                decision.primary == ModelRoute(provider: .openRouter, modelID: FreeLaneCatalog.defaultOpenRouterModel),
+                "capability \(capability)"
+            )
+        }
+    }
+
+    @Test
+    func `free tier falls back to hermes when neither free leg is configured`() async {
+        let registry = Self.registry(enabled: [.hermesGateway])
+        let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
+        let decision = await router.pick(forModel: nil, capability: .high, user: Self.user(tier: .trial))
+
+        #expect(decision.primary == ModelRoute(provider: .hermesGateway, modelID: "hermes-3"))
     }
 
     // MARK: - Privacy filter (HER-176)
 
     @Test
-    func `privacy no CN origin drops deepseek and kimi from free high`() async {
-        let registry = Self.registry(enabled: [.together, .groq, .hermesGateway])
+    func `privacy no CN origin leaves the free lane intact`() async {
+        // The old free lane was deepseek + kimi, both CN-origin, so this flag
+        // used to collapse free users onto the Hermes gateway. Both current
+        // legs are Nemotron, so a privacy-conscious free user now keeps a
+        // working zero-cost route instead of silently costing us money.
+        let registry = Self.registry(enabled: [.openRouter, .nvidia, .hermesGateway])
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
         let decision = await router.pick(
             forModel: nil,
@@ -96,8 +123,7 @@ struct ModelRouterTests {
             user: Self.user(tier: .trial, privacyNoCN: true)
         )
 
-        // deepseek-v3.2 + kimi-k2 are CN-origin; only hermes survives.
-        #expect(decision.primary == ModelRoute(provider: .hermesGateway, modelID: "hermes-3"))
+        #expect(decision.primary == ModelRoute(provider: .openRouter, modelID: FreeLaneCatalog.defaultOpenRouterModel))
         let cnRoutes = decision.candidates.filter { ModelOriginRegistry.isCNOrigin($0.modelID) }
         #expect(cnRoutes.isEmpty)
     }
@@ -158,10 +184,10 @@ struct ModelRouterTests {
 
     @Test
     func `nil user defaults to free routing`() async {
-        let registry = Self.registry(enabled: [.gemini, .together, .hermesGateway])
+        let registry = Self.registry(enabled: [.openRouter, .nvidia, .hermesGateway])
         let router = TableModelRouter(registry: registry, hermesDefaultModel: "hermes-3")
         let decision = await router.pick(forModel: nil, capability: .medium, user: nil)
 
-        #expect(decision.primary == ModelRoute(provider: .gemini, modelID: "gemini-flash"))
+        #expect(decision.primary == ModelRoute(provider: .openRouter, modelID: FreeLaneCatalog.defaultOpenRouterModel))
     }
 }

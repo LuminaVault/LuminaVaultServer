@@ -19,25 +19,32 @@ struct ManagedModelCatalogTests {
     }
 
     @Test
-    func `nvidia and openRouter catalogs include Nemotron offline`() throws {
+    func `the nvidia catalog carries the paid Nemotron entries`() throws {
         let super120 = try #require(RouterModelCatalog.entry(
             provider: .nvidia,
-            model: "nvidia/nemotron-3-super-120b-a12b"
+            model: FreeLaneCatalog.defaultNvidiaModel
         ))
         #expect(super120.tier == .balanced)
 
         let ultra = try #require(RouterModelCatalog.entry(
             provider: .nvidia,
-            model: "nvidia/nemotron-3-ultra"
+            model: "nvidia/nemotron-3-ultra-550b-a55b"
         ))
         #expect(ultra.tier == .max)
+    }
 
-        let openRouterFree = try #require(RouterModelCatalog.entry(
+    @Test
+    func `zero-cost free slugs stay out of the router catalog`() {
+        // `AvailableModelPoolBuilder` expands every catalog entry into the Auto
+        // pool for each usable provider, so a $0 entry wins cost-first scoring
+        // and hands a *paying* user a rate-limited free model — while burning
+        // the platform's account-wide free allowance. The free lane carries its
+        // own routes in `FreeLaneCatalog` precisely so this file stays clean.
+        #expect(RouterModelCatalog.entry(
             provider: .openRouter,
-            model: "nvidia/nemotron-3-ultra:free"
-        ))
-        #expect(openRouterFree.tier == .max)
-        #expect(openRouterFree.inputPerMillionUsdMicros == 0)
+            model: FreeLaneCatalog.defaultOpenRouterModel
+        ) == nil)
+        #expect(RouterModelCatalog.entries.allSatisfy { !$0.model.hasSuffix(":free") })
     }
 }
 

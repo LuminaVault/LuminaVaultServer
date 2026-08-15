@@ -16,6 +16,13 @@ let noDBTestReader = ConfigReader(providers: [
         "fluent.enabled": "false",
         "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
         "jwt.kid": "test-kid",
+        // Same reason as `dbTestConfigValuesBase`: the default
+        // `hermes.dataRoot=/app/data/hermes` is a container path. Inside the
+        // CI image it exists and these tests pass; on a macOS dev machine `/`
+        // is read-only, so boot fails and even `GET /health` goes red. Pinning
+        // both readers keeps local and CI runs agreeing.
+        "hermes.dataRoot": "/tmp/luminavault-test-hermes",
+        "vault.rootPath": "/tmp/luminavault-test",
     ]),
 ])
 
