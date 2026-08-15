@@ -3,6 +3,7 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
+import SQLKit
 import Testing
 
 /// The free lane's two ceilings.
@@ -36,11 +37,23 @@ struct FreeLaneGateTests {
 
     private static let bothLegs: [FreeLaneCatalog.Leg] = [.openRouterFree, .nvidiaDirect]
 
+    /// The per-leg buckets are **platform-wide by design** — that is the whole
+    /// point, since OpenRouter's free limits are account-wide. So unlike the
+    /// per-tenant grace, they are not isolated by using a fresh tenant UUID, and
+    /// they persist for the whole UTC day. Tests that assert on a leg ceiling
+    /// must therefore clear them first, or they inherit whatever earlier tests
+    /// in the suite already spent.
+    private static func resetLegBuckets(_ fluent: Fluent) async throws {
+        guard let sql = fluent.db() as? any SQLDatabase else { return }
+        try await sql.raw("DELETE FROM workflow_spend_buckets WHERE scope_key LIKE 'freelane:leg:%'").run()
+    }
+
     @Test
     func `per-user daily grace exhausts after the configured number of requests`() async throws {
         try await withTestFluent(label: "lv.test.freelane.grace") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 3)
             let tenant = UUID()
@@ -62,6 +75,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.failover") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 10, openRouter: 1)
             let tenant = UUID()
@@ -76,6 +90,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.bothfull") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 10, openRouter: 1, nvidia: 1)
             let tenant = UUID()
@@ -95,6 +110,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.isolation") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 1)
             let first = UUID()
@@ -116,6 +132,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.race") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 10, openRouter: 1000)
             let tenant = UUID()
@@ -142,6 +159,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.remaining") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 5)
             let tenant = UUID()
@@ -158,6 +176,7 @@ struct FreeLaneGateTests {
         try await withTestFluent(label: "lv.test.freelane.zero") { fluent in
             await registerMigrations(on: fluent)
             try await fluent.migrate()
+            try await Self.resetLegBuckets(fluent)
 
             let gate = Self.gate(fluent: fluent, perUser: 0)
             guard case .exhausted = await gate.claim(tenantID: UUID(), legs: Self.bothLegs) else {

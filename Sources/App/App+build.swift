@@ -1939,6 +1939,20 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .vaultUploadByUser, storage: rateLimitStorage))
     vaultController.addRoutes(to: vaultGroup)
 
+    // Read-only index inspection: freshness, context packets, link graph.
+    // Its own group so the upload rate-limit policy never throttles a cheap
+    // read, and so the "these routes never write" contract is visible in the
+    // wiring rather than only in the handlers.
+    let vaultIndexGroup = router.group("/v1/vault")
+        .add(middleware: jwtAuthenticator)
+    VaultIndexController(
+        fluent: services.fluent,
+        status: VaultIndexStatusService(fluent: services.fluent, links: vaultLinkRepository),
+        navigation: VaultNavigationService(fluent: services.fluent, links: vaultLinkRepository),
+        links: vaultLinkRepository,
+        vaultAccess: vaultAccessService
+    ).addRoutes(to: vaultIndexGroup)
+
     // HER-35: vault init handshake — separate group so the heavy upload
     // rate-limit policy never blocks the "Create My Vault" call.
     let vaultInitGroup = router.group("/v1/vault")
