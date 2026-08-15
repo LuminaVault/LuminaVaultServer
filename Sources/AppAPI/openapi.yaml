@@ -3477,6 +3477,76 @@ paths:
               schema: { $ref: '#/components/schemas/VaultIndexStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/mcp:
+    post:
+      tags: [Vault]
+      operationId: mcpJsonRpc
+      summary: Model Context Protocol endpoint (JSON-RPC 2.0)
+      description: |
+        Lets an MCP client — Claude Code, Cursor, or any other — ground on this
+        user's vault.
+
+        Transport is Streamable HTTP: a JSON-RPC 2.0 request per POST.
+        Supported methods are `initialize`, `ping`, `tools/list`, `tools/call`,
+        and the `notifications/*` acknowledgements. Notifications return 202
+        with no body.
+
+        Eight tools: `status`, `search`, `browse`, `read`, `recent`, `links`,
+        `context`, `index`. All are read-only except `index`, which writes
+        derived state (chunks and links) and never modifies the user's
+        markdown. Call `tools/list` for the current schemas — they are the
+        authority, and they are strict, so unknown arguments are rejected
+        rather than ignored.
+
+        Tenancy: unlike a loopback single-user MCP server, every call resolves
+        its vault from the caller's JWT (and `X-Vault-ID` for shared vaults).
+        A tool argument can never select a different tenant.
+
+        Tool-level failures — a path that does not exist, for example — come
+        back as a normal result with `isError: true` so the agent can retry,
+        not as a JSON-RPC error. JSON-RPC errors are reserved for protocol
+        problems: malformed envelope, unknown method, out-of-range argument.
+      security: [{ bearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: { type: string, enum: ['2.0'] }
+                id:
+                  description: Omit for notifications.
+                  oneOf: [{ type: string }, { type: integer }]
+                method: { type: string }
+                params: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: JSON-RPC response envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jsonrpc]
+                properties:
+                  jsonrpc: { type: string, enum: ['2.0'] }
+                  id:
+                    oneOf: [{ type: string }, { type: integer }, { type: 'null' }]
+                  result: { type: object, additionalProperties: true }
+                  error:
+                    type: object
+                    required: [code, message]
+                    properties:
+                      code:
+                        type: integer
+                        description: JSON-RPC code (-32700 parse, -32600 request, -32601 method, -32602 params, -32603 internal).
+                      message: { type: string }
+        '202':
+          description: Notification accepted; no body.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /v1/vault/lint:
     get:
       tags: [Vault]

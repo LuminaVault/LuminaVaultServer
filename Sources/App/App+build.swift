@@ -1964,6 +1964,37 @@ func buildRouter(
         vaultAccess: vaultAccessService
     ).addRoutes(to: vaultIndexGroup)
 
+    // MCP over Streamable HTTP — the surface that lets Claude Code, Cursor, or
+    // any MCP client ground on the user's own vault.
+    //
+    // Behind the same JWT authenticator as everything else, which is the
+    // point: NexusOS binds loopback and serves one unauthenticated workspace,
+    // but this is multi-tenant, so every call resolves its vault from the
+    // caller's token rather than from server state.
+    let mcpGroup = router.group("/v1/mcp")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
+    MCPController(
+        service: MCPService(
+            fluent: services.fluent,
+            vaultPaths: vaultPaths,
+            status: vaultIndexStatusService,
+            navigation: VaultNavigationService(fluent: services.fluent, links: vaultLinkRepository),
+            links: vaultLinkRepository,
+            search: hybridMemorySearch,
+            embeddings: embeddingService,
+            backfill: ChunkBackfillService(
+                fluent: services.fluent,
+                vaultPaths: vaultPaths,
+                indexer: chunkIndexer,
+                logger: Logger(label: "lv.mcp.index")
+            ),
+            logger: Logger(label: "lv.mcp")
+        ),
+        vaultAccess: vaultAccessService,
+        logger: Logger(label: "lv.mcp")
+    ).addRoutes(to: mcpGroup)
+
     // HER-35: vault init handshake — separate group so the heavy upload
     // rate-limit policy never blocks the "Create My Vault" call.
     let vaultInitGroup = router.group("/v1/vault")
