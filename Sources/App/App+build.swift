@@ -1971,8 +1971,12 @@ func buildRouter(
     let mcpPublicBaseURLRaw = reader.string(forKey: "mcp.publicBaseUrl", default: "")
     let ingestionPublicBaseURLForMCP = reader.string(forKey: "ingestion.publicBaseUrl", default: "")
     let mcpPublicBaseURL: String = {
-        if !mcpPublicBaseURLRaw.isEmpty { return mcpPublicBaseURLRaw }
-        if !ingestionPublicBaseURLForMCP.isEmpty { return ingestionPublicBaseURLForMCP }
+        if !mcpPublicBaseURLRaw.isEmpty {
+            return mcpPublicBaseURLRaw
+        }
+        if !ingestionPublicBaseURLForMCP.isEmpty {
+            return ingestionPublicBaseURLForMCP
+        }
         return "https://api.luminavault.com"
     }()
     let mcpLogger = Logger(label: "lv.mcp")
