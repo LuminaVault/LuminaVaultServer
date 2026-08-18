@@ -25,6 +25,9 @@ struct MCPController {
 
     @Sendable
     func handle(_ request: Request, ctx: AppRequestContext) async throws -> Response {
+        // Identity is a session JWT or an `lv_` agent token. Every method,
+        // including initialize/tools/list, is scoped to that account.
+        _ = try ctx.requireIdentity()
         let body = try await request.body.collect(upTo: 1024 * 1024)
         let decoder = JSONDecoder()
 

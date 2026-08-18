@@ -252,6 +252,14 @@ extension RateLimitPolicy {
     /// falls back to per-IP if auth degrades.
     static let settingsByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
 
+    /// Unauthenticated `/v1/mcp` attempts from one address. Floor so a
+    /// token-guessing loop costs a map lookup rather than a user query.
+    static let mcpAnonymousByIP = RateLimitPolicy(max: 600, window: 60) { req, _ in ipKey(req) }
+
+    /// Authenticated MCP calls per account. Generous for a human-driven
+    /// agent; low enough that a retry loop is noticed.
+    static let mcpByUser = RateLimitPolicy(max: 120, window: 60, keyBuilder: userOrIPKey)
+
     /// HER-206: `GET /v1/me/today` widget + daily-review digest. Widgets
     /// refresh on 5-15 min timelines and a cache-warm response is
     /// memory-only, so a generous per-minute budget covers worst-case

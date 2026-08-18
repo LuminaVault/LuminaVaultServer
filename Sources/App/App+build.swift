@@ -1964,16 +1964,29 @@ func buildRouter(
         vaultAccess: vaultAccessService
     ).addRoutes(to: vaultIndexGroup)
 
-    // MCP over Streamable HTTP — the surface that lets Claude Code, Cursor, or
-    // any MCP client ground on the user's own vault.
-    //
-    // Behind the same JWT authenticator as everything else, which is the
-    // point: NexusOS binds loopback and serves one unauthenticated workspace,
-    // but this is multi-tenant, so every call resolves its vault from the
-    // caller's token rather than from server state.
+    // MCP over Streamable HTTP — Claude Code, Codex, Hermes, or any MCP
+    // client grounds on the user's vault. Identity is a session JWT *or*
+    // a revocable `lv_` agent token (Settings → Agent connections).
+    // Origin guard rejects browsers; a real MCP client sends no Origin.
+    let mcpPublicBaseURLRaw = reader.string(forKey: "mcp.publicBaseUrl", default: "")
+    let ingestionPublicBaseURLForMCP = reader.string(forKey: "ingestion.publicBaseUrl", default: "")
+    let mcpPublicBaseURL: String = {
+        if !mcpPublicBaseURLRaw.isEmpty {
+            return mcpPublicBaseURLRaw
+        }
+        if !ingestionPublicBaseURLForMCP.isEmpty {
+            return ingestionPublicBaseURLForMCP
+        }
+        return "https://api.luminavault.com"
+    }()
+    let mcpLogger = Logger(label: "lv.mcp")
+    let agentConnectionService = AgentConnectionService(fluent: services.fluent, logger: mcpLogger)
+    let mcpAuthenticator = MCPAuthenticator(jwt: jwtAuthenticator, agents: agentConnectionService)
     let mcpGroup = router.group("/v1/mcp")
-        .add(middleware: jwtAuthenticator)
-        .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
+        .add(middleware: MCPOriginGuard(logger: mcpLogger))
+        .add(middleware: RateLimitMiddleware(policy: .mcpAnonymousByIP, storage: rateLimitStorage))
+        .add(middleware: mcpAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .mcpByUser, storage: rateLimitStorage))
     MCPController(
         service: MCPService(
             fluent: services.fluent,
@@ -1989,11 +2002,20 @@ func buildRouter(
                 indexer: chunkIndexer,
                 logger: Logger(label: "lv.mcp.index")
             ),
-            logger: Logger(label: "lv.mcp")
+            logger: mcpLogger
         ),
         vaultAccess: vaultAccessService,
-        logger: Logger(label: "lv.mcp")
+        logger: mcpLogger
     ).addRoutes(to: mcpGroup)
+
+    let agentConnectionsGroup = router.group("/v1/me/agent-connections")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    AgentConnectionsController(
+        service: agentConnectionService,
+        publicBaseURL: mcpPublicBaseURL,
+        logger: mcpLogger
+    ).addRoutes(to: agentConnectionsGroup)
 
     // HER-35: vault init handshake — separate group so the heavy upload
     // rate-limit policy never blocks the "Create My Vault" call.
