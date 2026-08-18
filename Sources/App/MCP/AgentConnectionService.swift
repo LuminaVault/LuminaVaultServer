@@ -22,11 +22,6 @@ struct AgentConnectionService: Sendable {
     let fluent: Fluent
     let logger: Logger
 
-    init(fluent: Fluent, logger: Logger) {
-        self.fluent = fluent
-        self.logger = logger
-    }
-
     func issue(tenantID: UUID, name: String, kind: AgentClientKind) async throws -> (AgentConnectionDTO, String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -44,7 +39,7 @@ struct AgentConnectionService: Sendable {
         row.tokenHash = Self.hash(token)
         row.tokenPrefix = String(token.prefix(Self.displayPrefixLen))
         try await row.save(on: fluent.db())
-        return (try row.asDTO(), token)
+        return try (row.asDTO(), token)
     }
 
     func list(tenantID: UUID) async throws -> [AgentConnectionDTO] {

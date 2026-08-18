@@ -25,8 +25,9 @@ final class AgentConnection: Model, TenantModel, @unchecked Sendable {
     init() {}
 
     func asDTO() throws -> AgentConnectionDTO {
-        AgentConnectionDTO(
-            id: try requireID(),
+        let id = try requireID()
+        return AgentConnectionDTO(
+            id: id,
             name: name,
             clientKind: clientKind,
             tokenPrefix: tokenPrefix,

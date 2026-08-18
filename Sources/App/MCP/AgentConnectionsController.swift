@@ -51,7 +51,7 @@ struct AgentConnectionsController {
     }
 
     @Sendable
-    func revoke(_ req: Request, ctx: AppRequestContext) async throws -> Response {
+    func revoke(_: Request, ctx: AppRequestContext) async throws -> Response {
         let tenantID = try ctx.requireTenantID()
         guard let id = ctx.parameters.get("id", as: UUID.self) else {
             throw HTTPError(.badRequest, message: "invalid_id")
