@@ -84,6 +84,7 @@ private let dbTestConfigValuesBase: [AbsoluteConfigKey: ConfigValue] = [
     // set an explicit CORS allowlist or `buildApplication` fatals at boot.
     // Tests never exercise browser CORS; a loopback origin satisfies it.
     "cors.allowedOrigins": "http://127.0.0.1",
+    "mcp.publicBaseUrl": "https://api.example.com",
     // HER-310: skip bundled skill scan during tests — hundreds of legacy
     // SKILL.md files log parse warnings on every `buildApplication` boot.
     "skills.builtinScan.enabled": "false",

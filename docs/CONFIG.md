@@ -104,6 +104,19 @@ The route exposes only the source for that active job, sends `no-store`, and
 becomes unavailable when the token expires or processing finishes. Non-dev
 environments reject a non-HTTPS base URL.
 
+### Inbound MCP (Agent connections)
+
+`POST /v1/mcp` accepts a session JWT **or** a revocable `lv_` agent token.
+Users create tokens in Settings → Agent connections. The plaintext key is
+shown once; only its SHA-256 is stored.
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `MCP_PUBLIC_BASE_URL` | No | `INGESTION_PUBLIC_BASE_URL`, else `https://api.luminavault.com` | Origin written into Claude/Codex/Hermes setup snippets. Must be the URL an outside agent can reach. Do not derive it from `Host`. |
+
+Snippet commands always target `{MCP_PUBLIC_BASE_URL}/v1/mcp`. A request that
+carries a browser `Origin` is rejected (real MCP clients send none).
+
 ### Plugin marketplace and WASM runner
 
 | Variable | Required | Default | Purpose |

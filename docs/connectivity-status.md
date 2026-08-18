@@ -51,6 +51,16 @@ old endpoint).
 | Managed Hermes (in-cluster) | ✅ configured | REST `api_server` on `:8642` in `apps/hermes/hermes.yaml`; API dials `http://hermes.<ns>.svc.cluster.local:8642` via `HERMES_GATEWAY_URL`. |
 | Legacy Hermes VPS | ⚠️ decommission | `78.46.192.73` — superseded by in-cluster Hermes; destroy per incident/cutover runbooks when confirmed idle. |
 
+## Inbound MCP (outside agents → vault)
+
+| Item | Status | Notes |
+|---|---|---|
+| `POST /v1/mcp` tools | ✅ shipped | Vault `status` / `search` / `browse` / `read` / `recent` / `links` / `context` / `index`. |
+| Per-user `lv_` tokens | ✅ shipped | Settings → Agent connections. Hash stored; key shown once. Claude Code / Codex / Hermes / other snippets. |
+| Origin guard | ✅ shipped | Requests with a browser `Origin` are rejected. |
+| JWT still accepted | ✅ shipped | Existing session tokens keep working. |
+| Standalone single-user MCP binary | ❌ not shipped | Deliberate. That model is one static token and belongs on a tailnet; the public API uses per-user keys instead. |
+
 ## Known caveats / out of scope
 
 - Managed-mode Tailscale for BYO Hermes is **not** supported — the managed

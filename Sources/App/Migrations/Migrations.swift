@@ -116,4 +116,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M110_SelfImprovement())
     await fluent.migrations.add(M111_CreateMemoryChunks())
     await fluent.migrations.add(M112_CreateVaultLinks())
+    await fluent.migrations.add(M113_CreateAgentConnections())
 }
