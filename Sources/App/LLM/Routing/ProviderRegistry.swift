@@ -119,7 +119,14 @@ actor ProviderRegistry: Service {
             loadConfig(
                 kind: .openRouter,
                 key: "openRouter",
-                fallbackAPIKey: reader.string(forKey: ConfigKey("openrouter.api_key"), isSecret: true, default: ""),
+                fallbackAPIKeys: [
+                    reader.string(forKey: ConfigKey("openrouter.api_key"), isSecret: true, default: ""),
+                    // `secrets/*/llm-fallback.example.yaml` — the platform-owned
+                    // key that exists so apps keep answering when their own
+                    // provider is unconfigured or out of credit. Last resort so
+                    // a namespace that seals both keeps its primary.
+                    reader.string(forKey: ConfigKey("openrouter.fallback_api_key"), isSecret: true, default: ""),
+                ],
                 reader: reader
             ),
             // Free lane leg 2 — NVIDIA NIM direct. `isEnabled(.nvidia)` is what
@@ -128,7 +135,7 @@ actor ProviderRegistry: Service {
             loadConfig(
                 kind: .nvidia,
                 key: "nvidia",
-                fallbackAPIKey: reader.string(forKey: ConfigKey("nvidia.api_key"), isSecret: true, default: ""),
+                fallbackAPIKeys: [reader.string(forKey: ConfigKey("nvidia.api_key"), isSecret: true, default: "")],
                 reader: reader
             ),
             loadConfig(kind: .gemini, key: "gemini", reader: reader),
@@ -161,10 +168,18 @@ actor ProviderRegistry: Service {
         "llm.provider.\(key.lowercased()).apikey"
     }
 
-    private static func loadConfig(kind: ProviderKind, key: String, fallbackAPIKey: String = "", reader: ConfigReader) -> ProviderConfig? {
+    /// Resolution order is canonical → legacy spelling → any supplied aliases,
+    /// in the order given. First non-empty wins.
+    private static func loadConfig(kind: ProviderKind, key: String, fallbackAPIKeys: [String] = [], reader: ConfigReader) -> ProviderConfig? {
         let configured = reader.string(forKey: ConfigKey(Self.apiKeyConfigKey(key)), isSecret: true, default: "")
         let legacy = reader.string(forKey: ConfigKey(Self.legacyAPIKeyConfigKey(key)), isSecret: true, default: "")
-        let apiKey = [configured, legacy, fallbackAPIKey].first { !$0.isEmpty } ?? ""
+        // Blank means absent, matching `ProviderConfig.isEnabled` — otherwise a
+        // key sealed as a stray space shadows a usable alias and disables the
+        // provider outright.
+        let apiKey = ([configured, legacy] + fallbackAPIKeys)
+            .lazy
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
         let rawBaseURL = [
             reader.string(forKey: ConfigKey("llm.provider.\(key).baseURL"), default: ""),
             reader.string(forKey: ConfigKey("llm.provider.\(key.lowercased()).baseurl"), default: ""),

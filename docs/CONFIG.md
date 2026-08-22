@@ -291,7 +291,8 @@ contract in `docs/llm-models.md` §4a — this table is the env reference only.
 | Variable | Default | Purpose |
 | --- | ---: | --- |
 | `FREELANE_ENABLED` | `true` | Kill switch. `false` restores pre-lane routing exactly. |
-| `FREELANE_OPEN_ROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Leg 1, on the platform OpenRouter key. 1M context, $0. |
+| `FREELANE_OPEN_ROUTER_MODEL` | `z-ai/glm-5.2:free` | Leg 1 primary, on the platform OpenRouter key. 256K context, $0, faster than the Nemotron below. |
+| `FREELANE_OPEN_ROUTER_SECONDARY_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Leg 1 second hop — same key, **same daily counter**. 1M context, slower. Resilience against one model being down, not extra capacity. |
 | `FREELANE_NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Leg 2, on the platform NIM key. No `:free` suffix — NIM 404s on it. |
 | `FREELANE_PER_USER_DAILY_REQUESTS` | `20` | Per-tenant grace, so one user cannot starve the platform allowance. |
 | `FREELANE_OPEN_ROUTER_DAILY_REQUESTS` | `45` | Platform-wide. OpenRouter free limits are account-wide: 50/day until $10 of credit has ever been bought, 1000/day after. Raise to ~900 once funded. |

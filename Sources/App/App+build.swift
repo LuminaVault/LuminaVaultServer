@@ -1199,6 +1199,10 @@ func buildRouter(
             forKey: ConfigKey("freelane.openRouterModel"),
             default: FreeLaneCatalog.defaultOpenRouterModel
         ),
+        openRouterSecondaryModel: reader.string(
+            forKey: ConfigKey("freelane.openRouterSecondaryModel"),
+            default: FreeLaneCatalog.defaultOpenRouterSecondaryModel
+        ),
         nvidiaModel: reader.string(
             forKey: ConfigKey("freelane.nvidiaModel"),
             default: FreeLaneCatalog.defaultNvidiaModel

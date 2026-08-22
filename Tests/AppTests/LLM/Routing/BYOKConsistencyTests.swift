@@ -71,8 +71,16 @@ struct BYOKConsistencyTests {
         }
     }
 
+    /// Selecting BYOK with no key stored is no longer a 403 dead end.
+    ///
+    /// `FreeLanePolicy` rule 2b diverts the request to the free lane on every
+    /// entitled tier instead. In this test environment no platform provider key
+    /// is registered, so the lane has no funded leg and reports exhaustion — a
+    /// 429 with a retry hint, not a 403 telling the user to go add a key. With
+    /// `LLM_PROVIDER_OPEN_ROUTER_API_KEY` present the same request answers
+    /// normally off the free lane; see `FreeLaneRoutingTests`.
     @Test
-    func `byok chat without provider keys returns byok_keys_required`() async throws {
+    func `byok chat without provider keys falls to the free lane, not a 403`() async throws {
         let app = try await buildApplication(reader: dbTestReaderWithStubChat())
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
@@ -95,16 +103,17 @@ struct BYOKConsistencyTests {
                 {"messages":[{"role":"user","content":"Hello"}]}
                 """)
             ) { response in
-                #expect(response.status == .forbidden)
+                #expect(response.status == .tooManyRequests)
                 let json = try #require(
                     JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any]
                 )
                 let error = try #require(json["error"] as? [String: Any])
-                #expect(error["code"] as? String == "byok_keys_required")
+                // The dead end this change removed.
+                #expect(error["code"] as? String != "byok_keys_required")
+                #expect(error["code"] as? String == "free_lane_exhausted")
                 #expect((error["message"] as? String)?.isEmpty == false)
                 let cta = try #require(error["cta"] as? [String])
                 #expect(cta.contains("add_key"))
-                #expect(cta.contains("switch_to_managed"))
             }
         }
     }

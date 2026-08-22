@@ -35,6 +35,34 @@ struct FreeLanePolicyTests {
         #expect(verdict?.forced == true)
     }
 
+    /// The dead end this rule exists to close: a user who selected BYOK and has
+    /// no key on any provider used to reach `byokKeysRequiredDecision` and get a
+    /// 403. Only `lapsed` escaped it, because rule 4 happened to catch that tier.
+    /// Now every entitled tier lands on the free lane instead — a working free
+    /// answer beats a dead end, and the stored preference is never overwritten.
+    @Test(
+        "byok with no key anywhere gets the free lane on every entitled tier",
+        arguments: [UserTier.pro, .ultimate, .trial, .lapsed]
+    )
+    func byokWithoutKeyFallsToFreeLane(tier: UserTier) {
+        let verdict = FreeLanePolicy.evaluate(Self.input(tier: tier, mode: .byok, hasKey: false))
+        #expect(verdict == FreeLaneVerdict(trigger: .notEntitled, forced: true))
+    }
+
+    /// Rule 2 must keep winning over the new rule. `EntitlementMiddleware` 402s
+    /// an archived user before routing; manufacturing a free route here would
+    /// only mask that.
+    @Test("archived byok user with no key is still left alone")
+    func archivedByokWithoutKeyIsUntouched() {
+        #expect(FreeLanePolicy.evaluate(Self.input(tier: .archived, mode: .byok, hasKey: false)) == nil)
+    }
+
+    /// Rule 1 is unchanged: a real key means the user pays their own provider.
+    @Test("byok with a key is still honoured and never diverted", arguments: [UserTier.pro, .ultimate, .trial])
+    func byokWithKeyNotDivertedByNewRule(tier: UserTier) {
+        #expect(FreeLanePolicy.evaluate(Self.input(tier: tier, mode: .byok, hasKey: true)) == nil)
+    }
+
     @Test("paying and trial tiers keep their own routing", arguments: [UserTier.pro, .ultimate, .trial])
     func entitledTiersAreHonoured(tier: UserTier) {
         #expect(FreeLanePolicy.evaluate(Self.input(tier: tier)) == nil)

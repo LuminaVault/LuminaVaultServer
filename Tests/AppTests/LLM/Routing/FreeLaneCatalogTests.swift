@@ -4,19 +4,46 @@ import Testing
 
 /// Invariants the free lane cannot survive losing. All pure.
 struct FreeLaneCatalogTests {
-    @Test("both legs are present, OpenRouter first")
+    @Test("three routes: two OpenRouter slugs, then the NIM reserve")
     func legOrder() {
         let routes = FreeLaneCatalog.routes()
-        #expect(routes.map(\.leg) == [.openRouterFree, .nvidiaDirect])
-        #expect(routes[0].provider == .openRouter)
-        #expect(routes[1].provider == .nvidia)
+        #expect(routes.map(\.leg) == [.openRouterFree, .openRouterFree, .nvidiaDirect])
+        #expect(routes.map(\.provider) == [.openRouter, .openRouter, .nvidia])
+        #expect(routes[0].model == FreeLaneCatalog.defaultOpenRouterModel)
+        #expect(routes[1].model == FreeLaneCatalog.defaultOpenRouterSecondaryModel)
     }
 
-    @Test("preferring a leg promotes it without dropping the other")
+    /// The whole reason the second slug shares `openRouterFree` rather than
+    /// getting its own `Leg`.
+    ///
+    /// `FreeLaneGate` meters one counter per leg, and OpenRouter's `:free`
+    /// allowance is **account-wide across every `:free` slug** — 50 requests/day
+    /// un-topped-up, 1000 after a $10 purchase. Giving the second slug its own
+    /// leg would hand it its own counter, letting the lane spend twice the
+    /// allowance and collect the 429s the gate exists to prevent.
+    @Test("both OpenRouter slugs meter as a single leg")
+    func openRouterSlugsShareOneGateCounter() {
+        let routes = FreeLaneCatalog.routes()
+        let openRouterRoutes = routes.filter { $0.leg == .openRouterFree }
+        #expect(openRouterRoutes.count == 2)
+        #expect(Set(openRouterRoutes.map(\.model)).count == 2, "the two slugs must be distinct models")
+        #expect(Set(routes.map(\.leg)).count == FreeLaneCatalog.Leg.allCases.count)
+    }
+
+    @Test("preferring the OpenRouter leg keeps both its slugs, in order")
+    func preferringOpenRouterKeepsBothSlugs() {
+        let routes = FreeLaneCatalog.routes(preferring: .openRouterFree)
+        #expect(routes.map(\.leg) == [.openRouterFree, .openRouterFree, .nvidiaDirect])
+        #expect(routes[0].model == FreeLaneCatalog.defaultOpenRouterModel)
+        #expect(routes[1].model == FreeLaneCatalog.defaultOpenRouterSecondaryModel)
+    }
+
+    @Test("preferring a leg promotes it without dropping the others")
     func preferringPromotes() {
         let routes = FreeLaneCatalog.routes(preferring: .nvidiaDirect)
-        #expect(routes.map(\.leg) == [.nvidiaDirect, .openRouterFree])
-        #expect(routes.count == FreeLaneCatalog.Leg.allCases.count)
+        #expect(routes.first?.leg == .nvidiaDirect)
+        #expect(routes.count == 3)
+        #expect(routes.filter { $0.leg == .openRouterFree }.count == 2)
     }
 
     /// Hermes Agent refuses to start a turn below 64K and fails the whole
@@ -88,10 +115,11 @@ struct FreeLaneCatalogTests {
     func legCostModelsDiffer() {
         let routes = FreeLaneCatalog.routes()
 
-        let openRouterLeg = routes.first { $0.leg == .openRouterFree }
-        #expect(openRouterLeg?.model.hasSuffix(":free") == true)
-        // Never catalogued — see `routerCatalogHasNoFreeSlugs`.
-        #expect(RouterModelCatalog.entry(provider: .openRouter, model: openRouterLeg?.model ?? "") == nil)
+        for route in routes where route.leg == .openRouterFree {
+            #expect(route.model.hasSuffix(":free"), "\(route.model) is not a zero-rated slug")
+            // Never catalogued — see `routerCatalogHasNoFreeSlugs`.
+            #expect(RouterModelCatalog.entry(provider: .openRouter, model: route.model) == nil)
+        }
 
         // The NIM leg is deliberately a real, priced model. If this ever becomes
         // nil, the daily-ceiling reasoning above has silently lost its basis.

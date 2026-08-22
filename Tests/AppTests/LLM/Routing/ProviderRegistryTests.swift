@@ -25,6 +25,55 @@ struct ProviderRegistryTests {
         ]))
     }
 
+    /// `secrets/*/llm-fallback.example.yaml` templates a platform-owned
+    /// OpenRouter key under `OPENROUTER_FALLBACK_API_KEY`, described there as
+    /// the credential apps "fall through to when their own provider is out of
+    /// credit, rate limited, or unconfigured". Nothing read it, so sealing that
+    /// secret would have left the free lane dark. It is now the last-resort
+    /// alias, behind the canonical name and the two legacy spellings.
+    @Test
+    func `openrouter fallback api key alias enables the provider`() async {
+        let r = ConfigReader(providers: [InMemoryProvider(values: [
+            "openrouter.fallback_api_key": cfg("fallback-key"),
+        ])])
+        let registry = ProviderRegistry.from(reader: r, adapters: [], logger: Logger(label: "test"))
+        let enabled = await registry.isEnabled(.openRouter)
+        let config = await registry.config(for: .openRouter)
+        #expect(enabled == true)
+        #expect(config?.apiKey == "fallback-key")
+    }
+
+    /// `isEnabled` treats a blank key as missing, but alias selection used to
+    /// pick the first *non-empty* string — so a canonical key sealed as a stray
+    /// space shadowed a perfectly good fallback and silently disabled the
+    /// provider, taking the free lane down with it. Blank must mean absent in
+    /// both places.
+    @Test
+    func `a blank canonical key does not shadow a usable alias`() async {
+        let r = ConfigReader(providers: [InMemoryProvider(values: [
+            "llm.provider.openRouter.apiKey": cfg("   "),
+            "openrouter.fallback_api_key": cfg("fallback-key"),
+        ])])
+        let registry = ProviderRegistry.from(reader: r, adapters: [], logger: Logger(label: "test"))
+        let enabled = await registry.isEnabled(.openRouter)
+        let config = await registry.config(for: .openRouter)
+        #expect(enabled == true)
+        #expect(config?.apiKey == "fallback-key")
+    }
+
+    @Test
+    func `canonical openrouter key wins over every alias`() async {
+        let r = ConfigReader(providers: [InMemoryProvider(values: [
+            "llm.provider.openRouter.apiKey": cfg("canonical"),
+            "llm.provider.openrouter.apikey": cfg("legacy"),
+            "openrouter.api_key": cfg("alias"),
+            "openrouter.fallback_api_key": cfg("fallback-key"),
+        ])])
+        let registry = ProviderRegistry.from(reader: r, adapters: [], logger: Logger(label: "test"))
+        let config = await registry.config(for: .openRouter)
+        #expect(config?.apiKey == "canonical")
+    }
+
     @Test
     func `missing api key disables provider`() async {
         let r = ConfigReader(providers: [InMemoryProvider(values: [

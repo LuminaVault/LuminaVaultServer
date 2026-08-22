@@ -74,6 +74,19 @@ enum FreeLanePolicy {
             return nil
         }
 
+        // 2b. BYOK selected but no key exists on any provider. This used to fall
+        //     through to the tier switch below and, for an entitled user, end at
+        //     a 403 `byok_keys_required` — the "I picked BYOK and now nothing
+        //     works" dead end. A working free answer beats a dead end. The
+        //     stored preference is read, never overwritten, so the moment a key
+        //     is added rule 1 takes over again.
+        //
+        //     Deliberately placed *after* the archived guard: archived is 402'd
+        //     upstream and must not get a manufactured route.
+        if input.requestedMode == .byok, !input.hasUsableUserCredential {
+            return FreeLaneVerdict(trigger: .notEntitled, forced: true)
+        }
+
         // 3. Paying, and trial (card on file, 14-day funnel — real quality is
         //    the product being sold). Honoured unless the platform lane is gone,
         //    in which case the free lane is an emergency backstop rather than a
@@ -88,9 +101,7 @@ enum FreeLanePolicy {
         }
 
         // 4. Lapsed: trial expired or subscription cancelled. The forced lane.
-        //    Note this deliberately catches `mode == .byok` with zero usable
-        //    keys too: that user gets a working (free) answer instead of the
-        //    403 `byok_keys_required` dead end they would otherwise hit.
+        //    (BYOK-with-zero-keys is handled by rule 2b above, for every tier.)
         return FreeLaneVerdict(trigger: .notEntitled, forced: true)
     }
 

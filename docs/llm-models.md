@@ -197,14 +197,21 @@ costs $0, so the blast radius is provider rate limits rather than money.
 
 Per-minute limits are not metered (`period_start` is a DATE). They surface as
 upstream 429s, which `ProviderErrorClassifier` marks recoverable, so the
-transport fails over to the other leg — correct, and free.
+transport fails over to the next route — correct, and free.
+
+The OpenRouter leg carries **two** `:free` slugs, tried in order, and they share
+one `FreeLaneGate` counter on purpose. OpenRouter's free allowance is
+account-wide across every `:free` slug, not per model, so a second slug buys
+resilience against one model being down or per-minute throttled — it does not
+buy capacity. Giving it its own `Leg` would double-spend the same allowance.
 
 ### Config
 
 | Key | Env | Default |
 |---|---|---|
 | `freelane.enabled` | `FREELANE_ENABLED` | `true` |
-| `freelane.openRouterModel` | `FREELANE_OPEN_ROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `freelane.openRouterModel` | `FREELANE_OPEN_ROUTER_MODEL` | `z-ai/glm-5.2:free` |
+| `freelane.openRouterSecondaryModel` | `FREELANE_OPEN_ROUTER_SECONDARY_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
 | `freelane.nvidiaModel` | `FREELANE_NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` |
 | `freelane.perUserDailyRequests` | `FREELANE_PER_USER_DAILY_REQUESTS` | `20` |
 | `freelane.openRouterDailyRequests` | `FREELANE_OPEN_ROUTER_DAILY_REQUESTS` | `45` |

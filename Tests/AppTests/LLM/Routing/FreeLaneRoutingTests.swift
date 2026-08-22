@@ -121,8 +121,43 @@ struct FreeLaneRoutingTests {
             // fallback spends the gateway's own key and is what made a
             // non-paying user unbounded.
             #expect(!decision.candidates.contains { $0.provider == .hermesGateway })
-            // The other free leg is the only permitted fallback.
-            #expect(decision.fallbacks.allSatisfy { $0.provider == .nvidia })
+            // Only free-lane providers may appear as fallbacks: the second
+            // OpenRouter `:free` slug (same key, same gate counter) and the NIM
+            // reserve. Never a billable provider.
+            #expect(decision.fallbacks.allSatisfy { $0.provider == .openRouter || $0.provider == .nvidia })
+            #expect(decision.fallbacks.map(\.modelID) == [
+                FreeLaneCatalog.defaultOpenRouterSecondaryModel,
+                FreeLaneCatalog.defaultNvidiaModel,
+            ])
+        }
+    }
+
+    /// Rule 2b end to end: an *entitled* user who selected BYOK and stored no
+    /// key used to reach `byokKeysRequiredDecision` and get a 403. They now land
+    /// on the lane like anyone else without a funding source.
+    @Test
+    func `an entitled byok user with no keys lands on the free lane, not a 403`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.route.byoknokey") { fluent in
+            let user = Self.makeUser(tier: "pro")
+            try await Self.prepare(fluent, user: user)
+
+            let preference = UserLLMPreference()
+            preference.tenantID = try user.requireID()
+            preference.mode = "byok"
+            preference.primaryProvider = "anthropic"
+            preference.primaryModel = "claude-opus-4-7"
+            preference.fallbackChain = .init(steps: [])
+            try await preference.save(on: fluent.db())
+
+            let router = Self.router(fluent: fluent, freeLane: Self.runtime(fluent: fluent))
+            let decision = await router.pick(forModel: nil, capability: .medium, user: user)
+
+            #expect(decision.primary.provider == .openRouter)
+            #expect(decision.primary.modelID == FreeLaneCatalog.defaultOpenRouterModel)
+            // The lane is platform-funded, so it presents as managed.
+            #expect(decision.credentialMode == .managed)
+            #expect(decision.cerberus?.freeLaneExhausted == false)
+            #expect(!decision.candidates.contains { $0.provider == .hermesGateway })
         }
     }
 
