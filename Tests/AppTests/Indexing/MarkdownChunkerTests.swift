@@ -12,7 +12,7 @@ struct MarkdownChunkerTests {
     /// Re-reads the source the way a client following a citation would.
     private func sourceSlice(_ source: String, _ chunk: DocumentChunk) -> String {
         let lines = source.components(separatedBy: "\n")
-        return lines[(chunk.startLine - 1)...(chunk.endLine - 1)].joined(separator: "\n")
+        return lines[(chunk.startLine - 1) ... (chunk.endLine - 1)].joined(separator: "\n")
     }
 
     private func assertInvariants(_ source: String, _ chunks: [DocumentChunk], sourceLocation: SourceLocation = #_sourceLocation) {
@@ -75,7 +75,7 @@ struct MarkdownChunkerTests {
 
     @Test
     func `invariant holds for plain text with no headings`() {
-        let source = (1...200).map { "line \($0) of an unstructured capture" }.joined(separator: "\n")
+        let source = (1 ... 200).map { "line \($0) of an unstructured capture" }.joined(separator: "\n")
         let chunks = MarkdownChunker.chunk(source, maxChars: 300, overlapChars: 50)
         #expect(chunks.count > 1)
         assertInvariants(source, chunks)
@@ -264,7 +264,7 @@ struct MarkdownChunkerTests {
     func `splitting always makes forward progress`() {
         // Overlap wider than the content would loop forever if the splitter
         // could reopen a chunk at the line it just started on.
-        let source = (1...60).map { "sentence number \($0)." }.joined(separator: "\n")
+        let source = (1 ... 60).map { "sentence number \($0)." }.joined(separator: "\n")
         let chunks = MarkdownChunker.chunk(source, maxChars: 50, overlapChars: 49)
         #expect(chunks.count > 1)
         for (previous, next) in zip(chunks, chunks.dropFirst()) {
@@ -275,7 +275,7 @@ struct MarkdownChunkerTests {
 
     @Test
     func `overlap carries trailing context into the next chunk`() {
-        let source = (1...40).map { "paragraph \($0)\n" }.joined(separator: "\n")
+        let source = (1 ... 40).map { "paragraph \($0)\n" }.joined(separator: "\n")
         let withOverlap = MarkdownChunker.chunk(source, maxChars: 120, overlapChars: 60)
         let withoutOverlap = MarkdownChunker.chunk(source, maxChars: 120, overlapChars: 0)
         #expect(withOverlap.count >= withoutOverlap.count)

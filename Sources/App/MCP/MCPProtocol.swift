@@ -49,7 +49,7 @@ enum MCPLimits {
     static let defaultContextSiblingLimit = VaultNavigationService.defaultSiblingLimit
     /// Characters returned by `read` before truncation is reported.
     static let maxReadChars = 100_000
-    static let defaultReadChars = 20_000
+    static let defaultReadChars = 20000
     static let maxQueryLength = 1000
 
     /// Clamp with an explicit error rather than silently, so an agent asking

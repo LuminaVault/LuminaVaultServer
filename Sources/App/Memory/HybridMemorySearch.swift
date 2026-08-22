@@ -48,7 +48,7 @@ struct HybridMemorySearch: Sendable {
             spaceID: spaceID
         )
 
-        return Self.merge(chunks: await chunkHits, documents: try await documentHits, limit: limit)
+        return try await Self.merge(chunks: chunkHits, documents: documentHits, limit: limit)
     }
 
     /// The chunk arm degraded to empty on failure.
@@ -92,11 +92,15 @@ struct HybridMemorySearch: Sendable {
 
         for hit in chunks where seen.insert(hit.id).inserted {
             merged.append(hit)
-            if merged.count == limit { return merged }
+            if merged.count == limit {
+                return merged
+            }
         }
         for hit in documents where seen.insert(hit.id).inserted {
             merged.append(hit)
-            if merged.count == limit { return merged }
+            if merged.count == limit {
+                return merged
+            }
         }
         return merged
     }

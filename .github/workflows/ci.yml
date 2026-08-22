@@ -65,17 +65,34 @@ jobs:
       # latest on the runner, which silently activates new default rules and
       # re-breaks the lint gate against unchanged code. Pin to the version the
       # codebase is formatted with; bump deliberately + reformat in one PR.
-      - name: Install SwiftFormat (pinned 0.61.1)
+      #
+      # The binary is invoked by ABSOLUTE PATH, never as bare `swiftformat`.
+      # macos-latest is Apple Silicon and ships a Homebrew SwiftFormat at
+      # /opt/homebrew/bin, which precedes /usr/local/bin on PATH — so the old
+      # `sudo mv ... /usr/local/bin` + bare `swiftformat` combination installed
+      # the pin and then ran the Homebrew build anyway. The step printed
+      # "0.62.1" directly under a heading that claimed 0.61.1, and the gate sat
+      # red from 2026-08-12 to 2026-08-22 against a pin that never applied.
+      - name: Install SwiftFormat (pinned 0.62.1)
         run: |
+          set -euo pipefail
           curl -fsSL -o /tmp/swiftformat.zip \
-            https://github.com/nicklockwood/SwiftFormat/releases/download/0.61.1/swiftformat.zip
+            https://github.com/nicklockwood/SwiftFormat/releases/download/0.62.1/swiftformat.zip
           unzip -o /tmp/swiftformat.zip -d /tmp/swiftformat
           BIN="$(find /tmp/swiftformat -type f -name swiftformat | head -1)"
           chmod +x "$BIN"
-          sudo mv "$BIN" /usr/local/bin/swiftformat
-          swiftformat --version
+          mv "$BIN" /tmp/swiftformat-bin
+          /tmp/swiftformat-bin --version
       - name: SwiftFormat
-        run: swiftformat --lint . --reporter github-actions-log
+        run: |
+          set -euo pipefail
+          # Fail loudly if the pin ever stops matching what actually executes.
+          actual="$(/tmp/swiftformat-bin --version)"
+          if [ "$actual" != "0.62.1" ]; then
+            echo "::error::SwiftFormat pin mismatch: expected 0.62.1, got ${actual}"
+            exit 1
+          fi
+          /tmp/swiftformat-bin --lint . --reporter github-actions-log
       - name: Install SwiftLint (pinned 0.63.3)
         run: |
           set -euo pipefail

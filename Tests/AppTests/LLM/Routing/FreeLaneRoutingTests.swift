@@ -45,8 +45,12 @@ struct FreeLaneRoutingTests {
     /// Registry with the platform keys the lane's legs are gated on.
     private static func registry(openRouter: Bool, nvidia: Bool) -> ProviderRegistry {
         var configs: [ProviderConfig] = []
-        if openRouter { configs.append(ProviderConfig(kind: .openRouter, apiKey: "or-key", baseURL: nil)) }
-        if nvidia { configs.append(ProviderConfig(kind: .nvidia, apiKey: "nvapi-key", baseURL: nil)) }
+        if openRouter {
+            configs.append(ProviderConfig(kind: .openRouter, apiKey: "or-key", baseURL: nil))
+        }
+        if nvidia {
+            configs.append(ProviderConfig(kind: .nvidia, apiKey: "nvapi-key", baseURL: nil))
+        }
         return ProviderRegistry(configs: configs, adapters: [], logger: Logger(label: "test.freelane.registry"))
     }
 

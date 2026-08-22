@@ -63,6 +63,7 @@ struct ModelRouterTests {
     }
 
     // MARK: - Free lane
+
     //
     // The free tier used to name Together/Groq/Gemini models whose API keys are
     // unset in every deployment. Those rows were filtered out and the tier

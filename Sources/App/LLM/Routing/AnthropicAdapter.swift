@@ -246,7 +246,9 @@ struct AnthropicAdapter: ProviderAdapter {
     /// rationale — this is the same rule for Anthropic.
     private func resolveCredentials() async throws -> (key: String, baseURL: URL) {
         let mode = LLMRoutingContext.credentialMode
-        if mode == .managed { return (apiKey, baseURL) }
+        if mode == .managed {
+            return (apiKey, baseURL)
+        }
 
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
@@ -264,7 +266,9 @@ struct AnthropicAdapter: ProviderAdapter {
             creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
             logger.error("user credential lookup failed for anthropic: \(error)")
-            if mode == .byok { throw BYOKKeysRequiredError() }
+            if mode == .byok {
+                throw BYOKKeysRequiredError()
+            }
             return (apiKey, baseURL)
         }
 

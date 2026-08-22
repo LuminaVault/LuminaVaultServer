@@ -39,7 +39,9 @@ enum MarkdownHeadings {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
 
             if let open = fence {
-                if trimmed.hasPrefix(open) { fence = nil }
+                if trimmed.hasPrefix(open) {
+                    fence = nil
+                }
                 previousWasHeading = false
                 continue
             }
@@ -140,8 +142,12 @@ enum MarkdownHeadings {
     /// Setext level from an underline of `=` (1) or `-` (2), or nil.
     private static func setextLevel(_ trimmed: String) -> Int? {
         guard !trimmed.isEmpty else { return nil }
-        if trimmed.allSatisfy({ $0 == "=" }) { return 1 }
-        if trimmed.allSatisfy({ $0 == "-" }) { return 2 }
+        if trimmed.allSatisfy({ $0 == "=" }) {
+            return 1
+        }
+        if trimmed.allSatisfy({ $0 == "-" }) {
+            return 2
+        }
         return nil
     }
 }

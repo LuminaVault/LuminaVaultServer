@@ -99,8 +99,13 @@ actor FreeLaneGate {
 
     // MARK: - Storage
 
-    static func tenantScopeKey(_ tenantID: UUID) -> String { "freelane:tenant:\(tenantID.uuidString)" }
-    static func legScopeKey(_ leg: FreeLaneCatalog.Leg) -> String { "freelane:leg:\(leg.rawValue)" }
+    static func tenantScopeKey(_ tenantID: UUID) -> String {
+        "freelane:tenant:\(tenantID.uuidString)"
+    }
+
+    static func legScopeKey(_ leg: FreeLaneCatalog.Leg) -> String {
+        "freelane:leg:\(leg.rawValue)"
+    }
 
     /// Atomic conditional increment — the same idiom as
     /// `WorkflowSpendService.reserveBucket`. `UPDATE … WHERE spent + 1 <= limit

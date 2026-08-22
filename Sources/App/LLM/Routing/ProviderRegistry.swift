@@ -150,7 +150,9 @@ actor ProviderRegistry: Service {
     /// `llm.provider.openRouter.apiKey` reads **`LLM_PROVIDER_OPEN_ROUTER_API_KEY`** —
     /// not the `LLM_PROVIDER_OPENROUTER_APIKEY` that every .env and compose file
     /// shipped, which is why the platform OpenRouter key silently never loaded.
-    static func apiKeyConfigKey(_ key: String) -> String { "llm.provider.\(key).apiKey" }
+    static func apiKeyConfigKey(_ key: String) -> String {
+        "llm.provider.\(key).apiKey"
+    }
 
     /// The pre-fix spelling, kept working so deployments heal without an ops step.
     /// An all-lowercase key has no camelCase boundaries, so it encodes verbatim:
@@ -167,9 +169,9 @@ actor ProviderRegistry: Service {
             reader.string(forKey: ConfigKey("llm.provider.\(key).baseURL"), default: ""),
             reader.string(forKey: ConfigKey("llm.provider.\(key.lowercased()).baseurl"), default: ""),
         ]
-            .lazy
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? ""
+        .lazy
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? ""
         let baseURL = rawBaseURL.isEmpty ? nil : URL(string: rawBaseURL)
         let config = ProviderConfig(kind: kind, apiKey: apiKey, baseURL: baseURL)
         return config.isEnabled ? config : nil

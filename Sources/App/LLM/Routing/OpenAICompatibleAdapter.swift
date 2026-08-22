@@ -158,7 +158,9 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     /// branch and spends the platform key by design.
     private func resolveCredentials() async throws -> (key: String, baseURL: URL) {
         let mode = LLMRoutingContext.credentialMode
-        if mode == .managed { return (apiKey, baseURL) }
+        if mode == .managed {
+            return (apiKey, baseURL)
+        }
 
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
@@ -182,7 +184,9 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
             // drift, missing SecretBox). The user-visible remedy differs, but
             // the money decision does not.
             logger.error("user credential lookup failed for \(kind.rawValue): \(error)")
-            if mode == .byok { throw BYOKKeysRequiredError() }
+            if mode == .byok {
+                throw BYOKKeysRequiredError()
+            }
             return (apiKey, baseURL)
         }
 

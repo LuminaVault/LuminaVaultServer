@@ -27,9 +27,9 @@ struct MCPContractTests {
     }
 
     @Test
-    func `every tool advertises a strict object schema`() {
+    func `every tool advertises a strict object schema`() throws {
         for tool in MCPToolCatalog.all {
-            let schema = try! #require(tool.inputSchema.objectValue, "\(tool.name) needs an object schema")
+            let schema = try #require(tool.inputSchema.objectValue, "\(tool.name) needs an object schema")
             #expect(schema["type"]?.stringValue == "object", "\(tool.name)")
             #expect(schema["additionalProperties"]?.boolValue == false, "\(tool.name) must reject unknown arguments")
             #expect(schema["properties"]?.objectValue != nil, "\(tool.name)")
@@ -46,24 +46,24 @@ struct MCPContractTests {
     }
 
     @Test
-    func `tools requiring an identifier declare it required`() {
+    func `tools requiring an identifier declare it required`() throws {
         for name in ["read", "links", "context"] {
-            let tool = try! #require(MCPToolCatalog.tool(named: name))
+            let tool = try #require(MCPToolCatalog.tool(named: name))
             let required = tool.inputSchema.objectValue?["required"]?
                 .objectValueArrayStrings ?? []
             #expect(required.contains("path"), "\(name) must require path")
         }
-        let search = try! #require(MCPToolCatalog.tool(named: "search"))
+        let search = try #require(MCPToolCatalog.tool(named: "search"))
         #expect(search.inputSchema.objectValue?["required"]?.objectValueArrayStrings == ["query"])
     }
 
     @Test
-    func `listing annotates read-only tools`() {
-        let listing = try! #require(MCPToolCatalog.listing().arrayValue)
+    func `listing annotates read-only tools`() throws {
+        let listing = try #require(MCPToolCatalog.listing().arrayValue)
         #expect(listing.count == Self.expectedTools.count)
         for entry in listing {
-            let object = try! #require(entry.objectValue)
-            let name = try! #require(object["name"]?.stringValue)
+            let object = try #require(entry.objectValue)
+            let name = try #require(object["name"]?.stringValue)
             let readOnly = object["annotations"]?.objectValue?["readOnlyHint"]?.boolValue
             #expect(readOnly == (name != "index"), "\(name) readOnlyHint")
             // Nothing here deletes user content — not even `index`, which only
@@ -151,7 +151,9 @@ struct JSONValueTests {
 
 private extension JSONValue {
     var arrayValue: [JSONValue]? {
-        if case let .array(value) = self { return value }
+        if case let .array(value) = self {
+            return value
+        }
         return nil
     }
 

@@ -76,7 +76,7 @@ enum RouterModelCatalog {
             model: "nvidia/nemotron-3-nano-30b-a3b",
             displayName: "Nemotron 3 Nano 30B (NVIDIA)",
             taskQuality: ratings(general: 72, reasoning: 70, coding: 70, search: 58, summarization: 74),
-            inputPerMillionUsdMicros: 50_000,
+            inputPerMillionUsdMicros: 50000,
             outputPerMillionUsdMicros: 200_000,
             defaultLatencyMs: 450,
             capabilities: ["chat", "tools"],
@@ -156,7 +156,7 @@ enum RouterModelCatalog {
             displayName: "Nemotron 3 Super 120B",
             taskQuality: ratings(general: 88, reasoning: 90, coding: 91, search: 62, summarization: 86),
             // Verified 2026-08-08: $0.085 in / $0.40 out per Mtok, 1M context.
-            inputPerMillionUsdMicros: 85_000,
+            inputPerMillionUsdMicros: 85000,
             outputPerMillionUsdMicros: 400_000,
             defaultLatencyMs: 900,
             capabilities: ["chat", "tools", "reasoning"],

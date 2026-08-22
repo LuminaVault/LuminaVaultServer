@@ -79,7 +79,7 @@ struct MemoryChunkSearchTests {
         let memory = try await memories.create(
             tenantID: tenantID,
             content: content,
-            embedding: try await embeddings.embed(content, tenantID: tenantID),
+            embedding: embeddings.embed(content, tenantID: tenantID),
             sourceVaultFileID: vaultFileID
         )
         let memoryID = try memory.requireID()
@@ -110,7 +110,7 @@ struct MemoryChunkSearchTests {
         return try await MemoryChunkRepository(fluent: fluent).hybridSearch(
             tenantID: tenantID,
             query: query,
-            queryEmbedding: try await embeddings.embed(query, tenantID: tenantID),
+            queryEmbedding: embeddings.embed(query, tenantID: tenantID),
             limit: limit
         )
     }
@@ -137,7 +137,7 @@ struct MemoryChunkSearchTests {
                 let lines = Self.document.components(separatedBy: "\n")
                 #expect(citation.startLine >= 1)
                 #expect(citation.endLine <= lines.count)
-                let cited = lines[(citation.startLine - 1)...(citation.endLine - 1)].joined(separator: "\n")
+                let cited = lines[(citation.startLine - 1) ... (citation.endLine - 1)].joined(separator: "\n")
                 #expect(cited.contains("zarquonfallback"), "cited lines must contain the term that matched")
             }
         }
@@ -234,7 +234,7 @@ struct MemoryChunkSearchTests {
             try await withTestFluent(label: "test.chunk.rewrite") { fluent in
                 let memoryID = try await Self.seed(fluent: fluent, tenantID: tenantID, path: "notes/a.md")
 
-                #expect(!(try await Self.search(fluent: fluent, tenantID: tenantID, query: "zarquontimeout").isEmpty))
+                #expect(try await !(Self.search(fluent: fluent, tenantID: tenantID, query: "zarquontimeout").isEmpty))
 
                 // Rewrite with the Timeouts section removed.
                 let indexer = DocumentChunkIndexer(

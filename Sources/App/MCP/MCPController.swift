@@ -45,16 +45,22 @@ struct MCPController {
             guard let result = try await dispatch(rpc, request: request, ctx: ctx) else {
                 return Response(status: .accepted)
             }
-            if isNotification { return Response(status: .accepted) }
+            if isNotification {
+                return Response(status: .accepted)
+            }
             return try Self.encode(.success(id: rpc.id, result))
         } catch let error as MCPError {
-            if isNotification { return Response(status: .accepted) }
+            if isNotification {
+                return Response(status: .accepted)
+            }
             return try Self.encode(.failure(id: rpc.id, error))
         } catch {
             // Never leak an internal message to an agent that will repeat it
             // to the user; the detail goes to our logs instead.
             logger.error("mcp.internalError method=\(rpc.method): \(error)")
-            if isNotification { return Response(status: .accepted) }
+            if isNotification {
+                return Response(status: .accepted)
+            }
             return try Self.encode(.failure(id: rpc.id, .internalError("tool execution failed")))
         }
     }

@@ -46,7 +46,7 @@ extension EmbeddingService {
 
             for _ in 0 ..< width {
                 let index = next
-                group.addTask { (index, try await embed(texts[index], tenantID: tenantID)) }
+                group.addTask { try await (index, embed(texts[index], tenantID: tenantID)) }
                 next += 1
             }
 
@@ -54,7 +54,7 @@ extension EmbeddingService {
                 results[index] = vector
                 if next < texts.count {
                     let index = next
-                    group.addTask { (index, try await embed(texts[index], tenantID: tenantID)) }
+                    group.addTask { try await (index, embed(texts[index], tenantID: tenantID)) }
                     next += 1
                 }
             }

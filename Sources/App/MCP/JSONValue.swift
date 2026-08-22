@@ -48,22 +48,30 @@ indirect enum JSONValue: Codable, Sendable, Equatable {
     // MARK: - Typed access
 
     var objectValue: [String: JSONValue]? {
-        if case let .object(value) = self { return value }
+        if case let .object(value) = self {
+            return value
+        }
         return nil
     }
 
     var stringValue: String? {
-        if case let .string(value) = self { return value }
+        if case let .string(value) = self {
+            return value
+        }
         return nil
     }
 
     var intValue: Int? {
-        if case let .number(value) = self { return Int(value) }
+        if case let .number(value) = self {
+            return Int(value)
+        }
         return nil
     }
 
     var boolValue: Bool? {
-        if case let .bool(value) = self { return value }
+        if case let .bool(value) = self {
+            return value
+        }
         return nil
     }
 

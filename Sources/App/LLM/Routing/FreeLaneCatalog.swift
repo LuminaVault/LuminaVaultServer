@@ -43,7 +43,7 @@ enum FreeLaneCatalog {
     /// `auxiliary.compression` advertises less than this, so every free-lane
     /// slug has to clear it. See `docs/CONFIG.md`, "Managed Hermes context
     /// window".
-    static let hermesMinimumContextWindow = 64_000
+    static let hermesMinimumContextWindow = 64000
 
     /// Failover order. `preferring` promotes a leg the gate has already granted
     /// to primary while keeping the other as the in-flight fallback.

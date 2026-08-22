@@ -4,9 +4,9 @@ import Hummingbird
 import HummingbirdTesting
 import struct LuminaVaultShared.ActivityFeedResponse
 import struct LuminaVaultShared.AuthResponse
+import enum LuminaVaultShared.DashboardPeriod
 import struct LuminaVaultShared.DashboardProfileResponse
 import struct LuminaVaultShared.DashboardStatsResponse
-import enum LuminaVaultShared.DashboardPeriod
 import struct LuminaVaultShared.HomeSummaryResponse
 import struct LuminaVaultShared.InsightListResponse
 import struct LuminaVaultShared.TaskListResponse

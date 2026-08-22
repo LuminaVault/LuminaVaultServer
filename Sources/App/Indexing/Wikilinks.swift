@@ -48,7 +48,9 @@ enum Wikilinks {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
 
             if let open = fence {
-                if trimmed.hasPrefix(open) { fence = nil }
+                if trimmed.hasPrefix(open) {
+                    fence = nil
+                }
                 continue
             }
             if let opened = fenceMarker(trimmed) {
@@ -167,9 +169,15 @@ enum Wikilinks {
     /// one edge on a case-sensitive filesystem.
     static func normalizeSlug(_ target: String) -> String {
         var slug = target.replacingOccurrences(of: "\\", with: "/")
-        while slug.hasPrefix("./") { slug = String(slug.dropFirst(2)) }
-        while slug.hasPrefix("/") { slug = String(slug.dropFirst()) }
-        while slug.hasSuffix("/") { slug = String(slug.dropLast()) }
+        while slug.hasPrefix("./") {
+            slug = String(slug.dropFirst(2))
+        }
+        while slug.hasPrefix("/") {
+            slug = String(slug.dropFirst())
+        }
+        while slug.hasSuffix("/") {
+            slug = String(slug.dropLast())
+        }
         return slug
     }
 

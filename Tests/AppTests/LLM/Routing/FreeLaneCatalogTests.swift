@@ -3,7 +3,6 @@ import LuminaVaultShared
 import Testing
 
 /// Invariants the free lane cannot survive losing. All pure.
-@Suite
 struct FreeLaneCatalogTests {
     @Test("both legs are present, OpenRouter first")
     func legOrder() {

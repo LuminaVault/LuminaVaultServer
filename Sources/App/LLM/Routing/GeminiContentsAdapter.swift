@@ -45,7 +45,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
     /// old fall-through to `apiKey` was a cost leak.
     private func resolveKey() async throws -> String {
         let mode = LLMRoutingContext.credentialMode
-        if mode == .managed { return apiKey }
+        if mode == .managed {
+            return apiKey
+        }
 
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
@@ -63,11 +65,15 @@ struct GeminiContentsAdapter: ProviderAdapter {
             creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
             logger.error("user credential lookup failed for gemini: \(error)")
-            if mode == .byok { throw BYOKKeysRequiredError() }
+            if mode == .byok {
+                throw BYOKKeysRequiredError()
+            }
             return apiKey
         }
 
-        if let key = creds?.apiKey, !key.isEmpty { return key }
+        if let key = creds?.apiKey, !key.isEmpty {
+            return key
+        }
         if mode == .byok {
             logger.error("byok request for gemini has no usable credential; failing closed")
             throw BYOKKeysRequiredError()

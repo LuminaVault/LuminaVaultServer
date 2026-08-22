@@ -530,9 +530,8 @@ actor HermesMemoryService {
                         .first { $0.slug == slug }?.id
                 }
                 let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
-                let hits: [MemorySearchResult]
-                if let hybridSearch {
-                    hits = try await hybridSearch.search(
+                let hits: [MemorySearchResult] = if let hybridSearch {
+                    try await hybridSearch.search(
                         tenantID: tenantID,
                         query: args.query,
                         queryEmbedding: embedding,
@@ -540,7 +539,7 @@ actor HermesMemoryService {
                         spaceID: resolvedSpaceID
                     )
                 } else {
-                    hits = try await memories.semanticSearch(
+                    try await memories.semanticSearch(
                         tenantID: tenantID,
                         queryEmbedding: embedding,
                         limit: effectiveLimit,
@@ -568,7 +567,9 @@ actor HermesMemoryService {
                         row["document_id"] = citation.documentID
                         row["start_line"] = String(citation.startLine)
                         row["end_line"] = String(citation.endLine)
-                        if let path = citation.path { row["path"] = path }
+                        if let path = citation.path {
+                            row["path"] = path
+                        }
                     }
                     return row
                 }

@@ -64,11 +64,15 @@ enum FreeLanePolicy {
         // 1. BYOK with a real key: the user is paying their own provider.
         //    Honoured on every tier, including lapsed — we are not the ones
         //    being billed, so there is nothing to protect.
-        if input.requestedMode == .byok, input.hasUsableUserCredential { return nil }
+        if input.requestedMode == .byok, input.hasUsableUserCredential {
+            return nil
+        }
 
         // 2. Archived is read-only. `EntitlementMiddleware` 402s before routing
         //    ever happens; manufacturing a route here would only mask that.
-        if input.effectiveTier == .archived { return nil }
+        if input.effectiveTier == .archived {
+            return nil
+        }
 
         // 3. Paying, and trial (card on file, 14-day funnel — real quality is
         //    the product being sold). Honoured unless the platform lane is gone,
@@ -92,5 +96,7 @@ enum FreeLanePolicy {
 
     /// Read-side counterpart, for surfaces that report the *effective* route
     /// rather than the stored preference.
-    static func honoursUserChoice(_ input: Input) -> Bool { evaluate(input) == nil }
+    static func honoursUserChoice(_ input: Input) -> Bool {
+        evaluate(input) == nil
+    }
 }

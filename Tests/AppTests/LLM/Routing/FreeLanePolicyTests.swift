@@ -3,7 +3,6 @@ import LuminaVaultShared
 import Testing
 
 /// The free-lane decision matrix. Pure — no database, no HTTP.
-@Suite
 struct FreeLanePolicyTests {
     private static func input(
         tier: UserTier,

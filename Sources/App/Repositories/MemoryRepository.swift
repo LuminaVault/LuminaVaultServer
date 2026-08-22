@@ -600,7 +600,9 @@ struct MemoryCitation: Sendable, Equatable {
     let endLine: Int
 
     /// Human-readable trail for prompts and UI: `projects/hermes.md › Routing › Fallbacks (L40-58)`.
-    var displayTrail: String { dto.displayTrail }
+    var displayTrail: String {
+        dto.displayTrail
+    }
 
     var dto: MemoryCitationDTO {
         MemoryCitationDTO(

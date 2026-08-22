@@ -74,7 +74,9 @@ struct MCPService: Sendable {
                     "memoryID": .string(hit.id.uuidString),
                     "text": .string(hit.content),
                 ]
-                if let snippet = hit.snippet { row["snippet"] = .string(snippet) }
+                if let snippet = hit.snippet {
+                    row["snippet"] = .string(snippet)
+                }
                 if let citation = hit.citation {
                     // The locator is the point of this tool. Flattened rather
                     // than nested so it is hard for a model to miss.
@@ -106,13 +108,13 @@ struct MCPService: Sendable {
         }
         let files = try await query.sort(\.$path).limit(limit).all()
 
-        return .object([
+        return try .object([
             "count": .number(Double(files.count)),
-            "documents": .array(try files.map { file in
-                .object([
+            "documents": .array(files.map { file in
+                try .object([
                     "path": .string(file.path),
                     "sizeBytes": .number(Double(file.sizeBytes)),
-                    "vaultFileID": .string(try file.requireID().uuidString),
+                    "vaultFileID": .string(file.requireID().uuidString),
                 ])
             }),
         ])
@@ -184,10 +186,10 @@ struct MCPService: Sendable {
         let vaultFileID = try file.requireID()
         let outgoing = try await links.outgoing(tenantID: tenantID, vaultFileID: vaultFileID)
         let incoming = try await links.incoming(tenantID: tenantID, vaultFileID: vaultFileID)
-        return .object([
+        return try .object([
             "path": .string(file.path),
-            "outgoing": try JSONValue.encoding(outgoing),
-            "incoming": try JSONValue.encoding(incoming),
+            "outgoing": JSONValue.encoding(outgoing),
+            "incoming": JSONValue.encoding(incoming),
         ])
     }
 

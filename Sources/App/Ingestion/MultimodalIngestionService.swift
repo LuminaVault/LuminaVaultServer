@@ -483,12 +483,12 @@ struct MultimodalIngestionService {
                 sourceVaultFileID: sourceFileID, spaceID: spaceID, reviewState: "auto"
             )
             item.memoryID = try memory.requireID()
-            await chunkIndexer?.indexBestEffort(
+            try await chunkIndexer?.indexBestEffort(
                 tenantID: tenantID,
-                memoryID: try memory.requireID(),
+                memoryID: memory.requireID(),
                 vaultFileID: sourceFileID,
                 spaceID: spaceID,
-                sourcePath: await sourcePath(tenantID: tenantID, vaultFileID: sourceFileID),
+                sourcePath: sourcePath(tenantID: tenantID, vaultFileID: sourceFileID),
                 content: content
             )
             item.summary = result.summary
@@ -654,12 +654,12 @@ struct MultimodalIngestionService {
         item.memoryID = try memory.requireID()
         // The dedupe path clones another item's analysis, so it needs its own
         // chunk rows: chunks are keyed by memory, and this is a new memory.
-        await chunkIndexer?.indexBestEffort(
+        try await chunkIndexer?.indexBestEffort(
             tenantID: tenantID,
-            memoryID: try memory.requireID(),
+            memoryID: memory.requireID(),
             vaultFileID: item.vaultFileID,
             spaceID: spaceID,
-            sourcePath: await sourcePath(tenantID: tenantID, vaultFileID: item.vaultFileID),
+            sourcePath: sourcePath(tenantID: tenantID, vaultFileID: item.vaultFileID),
             content: sourceMemory.content
         )
         item.summary = source.summary

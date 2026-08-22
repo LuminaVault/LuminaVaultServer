@@ -73,14 +73,14 @@ struct LLMPreferencesController {
         guard freeLaneEnabled, let tenantID = try? user.requireID() else {
             return toWire(snapshot) ?? managedWire
         }
-        let honoured = FreeLanePolicy.honoursUserChoice(.init(
+        let honoured = await FreeLanePolicy.honoursUserChoice(.init(
             effectiveTier: EntitlementChecker.effectiveTier(
                 tier: user.tierEnum,
                 override: user.tierOverrideEnum
             ),
             requestedMode: requestedMode,
-            hasUsableUserCredential: await hasUsableCredential(tenantID),
-            platformPaidManagedAvailable: await platformPaidManagedAvailable(),
+            hasUsableUserCredential: hasUsableCredential(tenantID),
+            platformPaidManagedAvailable: platformPaidManagedAvailable(),
             freeLaneEnabled: freeLaneEnabled
         ))
         return honoured ? (toWire(snapshot) ?? managedWire) : managedWire

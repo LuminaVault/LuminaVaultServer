@@ -185,7 +185,9 @@ struct OllamaAdapter: ProviderAdapter {
     /// adapters; managed and unattributed calls keep the default.
     private func resolveBaseURL() async throws -> URL {
         let mode = LLMRoutingContext.credentialMode
-        if mode == .managed { return defaultBaseURL }
+        if mode == .managed {
+            return defaultBaseURL
+        }
 
         guard let userCredentials,
               let user = LLMRoutingContext.currentUser,
@@ -203,11 +205,15 @@ struct OllamaAdapter: ProviderAdapter {
             creds = try await userCredentials.credential(for: kind, tenantID: tenantID)
         } catch {
             logger.error("user credential lookup failed for ollama: \(error)")
-            if mode == .byok { throw BYOKKeysRequiredError() }
+            if mode == .byok {
+                throw BYOKKeysRequiredError()
+            }
             return defaultBaseURL
         }
 
-        if let url = creds?.baseURL { return url }
+        if let url = creds?.baseURL {
+            return url
+        }
         if mode == .byok {
             logger.error("byok request for ollama has no endpoint configured; failing closed")
             throw BYOKKeysRequiredError()

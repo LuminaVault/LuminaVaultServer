@@ -24,8 +24,13 @@ struct BYOKFailClosedTests {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?
 
-        override class func canInit(with _: URLRequest) -> Bool { handler != nil }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            handler != nil
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.handler else {
@@ -169,13 +174,13 @@ struct BYOKFailClosedTests {
     /// BYOK-declared call to the *deployment's* own Ollama is a cross-tenant
     /// correctness and privacy bug.
     @Test("ollama byok with no configured endpoint throws rather than using the deployment host")
-    func ollamaFailsClosed() async {
+    func ollamaFailsClosed() async throws {
         let capture = Capture()
         Self.installHandler(capture)
         defer { StubProtocol.handler = nil }
 
-        let adapter = OllamaAdapter(
-            defaultBaseURL: URL(string: "http://localhost:11434")!,
+        let adapter = try OllamaAdapter(
+            defaultBaseURL: #require(URL(string: "http://localhost:11434")),
             session: Self.session(),
             logger: Logger(label: "test.byok"),
             userCredentials: nil

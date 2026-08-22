@@ -21,11 +21,9 @@ struct FreeLaneExhaustedError: Error, Equatable, HTTPResponseError {
     let userMessage =
         "You've used today's free messages. Upgrade for the full brain, or add your own API key in Settings to keep going now."
 
-    init(retryAfterSeconds: Int) {
-        self.retryAfterSeconds = retryAfterSeconds
+    var status: HTTPResponse.Status {
+        .tooManyRequests
     }
-
-    var status: HTTPResponse.Status { .tooManyRequests }
 
     var bodyData: Data {
         let envelope: [String: Any] = [

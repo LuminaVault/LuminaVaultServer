@@ -101,7 +101,7 @@ enum MarkdownChunker {
     /// 1-based line where the body begins, skipping a leading YAML frontmatter block.
     private static func bodyStartLine(in lines: [String]) -> Int {
         guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return 1 }
-        for index in 1..<lines.count where lines[index].trimmingCharacters(in: .whitespaces) == "---" {
+        for index in 1 ..< lines.count where lines[index].trimmingCharacters(in: .whitespaces) == "---" {
             return index + 2
         }
         // Unterminated frontmatter: treat the whole file as body rather than
@@ -120,7 +120,7 @@ enum MarkdownChunker {
         var sectionStart = bodyStart
         var currentOrdinal: Int?
 
-        for line in bodyStart...lines.count where ordinalByLine[line] != nil {
+        for line in bodyStart ... lines.count where ordinalByLine[line] != nil {
             if sectionStart < line {
                 result.append(
                     Section(
@@ -271,7 +271,7 @@ enum MarkdownChunker {
         var result: [(start: Int, end: Int)] = []
         var current: Int?
 
-        for line in start...end {
+        for line in start ... end {
             let isBlank = lines[line - 1].trimmingCharacters(in: .whitespaces).isEmpty
             if isBlank {
                 if let open = current {
@@ -293,19 +293,23 @@ enum MarkdownChunker {
     private static func trimBlankEdges(lines: [String], from start: Int, to end: Int) -> (start: Int, end: Int)? {
         var first = start
         var last = end
-        while first <= last, lines[first - 1].trimmingCharacters(in: .whitespaces).isEmpty { first += 1 }
-        while last >= first, lines[last - 1].trimmingCharacters(in: .whitespaces).isEmpty { last -= 1 }
+        while first <= last, lines[first - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            first += 1
+        }
+        while last >= first, lines[last - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            last -= 1
+        }
         return first <= last ? (start: first, end: last) : nil
     }
 
     private static func sliceText(lines: [String], from start: Int, to end: Int) -> String {
-        lines[(start - 1)...(end - 1)].joined(separator: "\n")
+        lines[(start - 1) ... (end - 1)].joined(separator: "\n")
     }
 
     private static func sliceLength(lines: [String], from start: Int, to end: Int) -> Int {
         guard start <= end else { return 0 }
         var total = 0
-        for line in start...end {
+        for line in start ... end {
             total += lines[line - 1].count
         }
         // Newlines between the lines.

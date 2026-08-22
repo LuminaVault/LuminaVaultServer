@@ -15,9 +15,9 @@ struct WikilinkParsingTests {
     }
 
     @Test
-    func `alias, heading, and path are split apart`() {
+    func `alias, heading, and path are split apart`() throws {
         let links = Wikilinks.extract(from: "[[projects/hermes#Fallbacks|how routing fails]]")
-        let link = try! #require(links.first)
+        let link = try #require(links.first)
         #expect(link.targetSlug == "projects/hermes")
         #expect(link.targetHeading == "Fallbacks")
         #expect(link.label == "how routing fails")

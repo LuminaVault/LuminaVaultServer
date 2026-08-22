@@ -79,11 +79,11 @@ struct VaultLintService: Sendable {
         }
 
         var checks: [VaultLintCheck] = []
-        checks.append(contentsOf: try await linkChecks(sql: sql, tenantID: tenantID))
-        checks.append(try await duplicateSlugs(sql: sql, tenantID: tenantID))
-        checks.append(try await orphans(tenantID: tenantID))
-        checks.append(try await staleIndex(tenantID: tenantID))
-        checks.append(contentsOf: try await fileChecks(sql: sql, tenantID: tenantID))
+        try await checks.append(contentsOf: linkChecks(sql: sql, tenantID: tenantID))
+        try await checks.append(duplicateSlugs(sql: sql, tenantID: tenantID))
+        try await checks.append(orphans(tenantID: tenantID))
+        try await checks.append(staleIndex(tenantID: tenantID))
+        try await checks.append(contentsOf: fileChecks(sql: sql, tenantID: tenantID))
 
         return VaultLintReport(
             checks: checks,

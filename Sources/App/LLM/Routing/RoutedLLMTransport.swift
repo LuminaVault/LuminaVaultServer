@@ -413,8 +413,8 @@ struct RoutedLLMTransport: HermesChatTransport {
                 var yieldedAny = false
                 do {
                     let credentialMode = decision.credentialMode
-                    ?? decision.cerberus?.mode
-                    ?? LLMRoutingContext.credentialMode
+                        ?? decision.cerberus?.mode
+                        ?? LLMRoutingContext.credentialMode
                     let candidateStream = LLMRoutingContext.$credentialMode.withValue(credentialMode) {
                         adapter.chatStream(
                             payload: candidatePayload,

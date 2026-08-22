@@ -8,7 +8,6 @@ import Testing
 /// NVIDIA route died in `RoutedLLMTransport` as "unregistered provider". These
 /// guard the wiring that fixes that, and that the free lane's NIM leg can
 /// actually be dispatched.
-@Suite
 struct NvidiaAdapterRegistrationTests {
     private static func registry(nvidiaKey: String) -> ProviderRegistry {
         let logger = Logger(label: "test.nvidia")

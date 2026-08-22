@@ -620,7 +620,9 @@ struct CerberusModelRouter: ModelRouter {
         var legs: [FreeLaneCatalog.Leg] = []
         for leg in FreeLaneCatalog.Leg.allCases {
             let provider: ProviderKind = leg == .openRouterFree ? .openRouter : .nvidia
-            if await registry?.isEnabled(provider) ?? false { legs.append(leg) }
+            if await registry?.isEnabled(provider) ?? false {
+                legs.append(leg)
+            }
         }
 
         let outcome: FreeLaneGate.Outcome = legs.isEmpty

@@ -66,7 +66,7 @@ struct FreeLaneGateTests {
                 return
             }
             // Buckets roll at UTC midnight, which is what Retry-After promises.
-            #expect(retryAfter > 0 && retryAfter <= 86_400)
+            #expect(retryAfter > 0 && retryAfter <= 86400)
         }
     }
 
@@ -147,7 +147,9 @@ struct FreeLaneGateTests {
                     }
                 }
                 var total = 0
-                for await didGrant in group where didGrant { total += 1 }
+                for await didGrant in group where didGrant {
+                    total += 1
+                }
                 return total
             }
             #expect(granted == 10, "expected exactly the ceiling to be granted, got \(granted)")
