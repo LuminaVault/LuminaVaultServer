@@ -61,6 +61,11 @@ struct BYOKFailClosedTests {
             return _requests.count
         }
 
+        var isEmpty: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return _requests.isEmpty
+        }
+
         var last: URLRequest? {
             lock.lock(); defer { lock.unlock() }
             return _requests.last
@@ -123,7 +128,7 @@ struct BYOKFailClosedTests {
                 )
             }
         }
-        #expect(capture.count == 0, "a BYOK request with no key must never reach the provider")
+        #expect(capture.isEmpty, "a BYOK request with no key must never reach the provider")
     }
 
     @Test("anthropic byok with no resolvable credential throws and spends nothing")
@@ -145,7 +150,7 @@ struct BYOKFailClosedTests {
                 )
             }
         }
-        #expect(capture.count == 0)
+        #expect(capture.isEmpty)
     }
 
     @Test("gemini byok with no resolvable credential throws and spends nothing")
@@ -167,7 +172,7 @@ struct BYOKFailClosedTests {
                 )
             }
         }
-        #expect(capture.count == 0)
+        #expect(capture.isEmpty)
     }
 
     /// Ollama carries no API key, so this is not a cost leak — but proxying a
@@ -192,7 +197,7 @@ struct BYOKFailClosedTests {
                 )
             }
         }
-        #expect(capture.count == 0)
+        #expect(capture.isEmpty)
     }
 
     // MARK: - Managed must still work (the regression guard)

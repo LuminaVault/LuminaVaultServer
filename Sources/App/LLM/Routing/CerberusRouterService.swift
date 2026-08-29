@@ -605,6 +605,11 @@ struct CerberusModelRouter: ModelRouter {
     /// being rewritten onto the Hermes gateway; and `fallbacks` limited to the
     /// other free leg — never the terminal `hermesGateway` cascade, which is
     /// precisely the unbounded-cost path this lane exists to close.
+    // These builders thread one routing decision's full context through in a
+    // single call. Boxing the nine into a parameter object would add a type
+    // whose only purpose is to satisfy the linter, and would hide which
+    // inputs each decision actually reads.
+    // swiftlint:disable:next function_parameter_count
     private func freeLaneDecision(
         table: RouteDecision,
         tenantID: UUID,
@@ -713,6 +718,11 @@ struct CerberusModelRouter: ModelRouter {
         }
     }
 
+    // These builders thread one routing decision's full context through in a
+    // single call. Boxing the nine into a parameter object would add a type
+    // whose only purpose is to satisfy the linter, and would hide which
+    // inputs each decision actually reads.
+    // swiftlint:disable:next function_parameter_count
     private static func byokKeysRequiredDecision(
         table: RouteDecision,
         tenantID: UUID,
