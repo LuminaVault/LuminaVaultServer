@@ -1,12 +1,12 @@
 import Foundation
 import Hummingbird
 import Logging
+import ServiceLifecycle
 
 /// HER-200 M3 — seam for swapping rate-limit storage when a second replica
 /// ships. `memory` (the default) uses `MemoryPersistDriver` so single-process
-/// dev/test keeps working. `redis` is reserved for the Redis-backed driver;
-/// asking for it today logs a warning and falls back to memory so a misset
-/// env var doesn't crash the boot.
+/// dev/test keeps working. `redis` selects the Valkey/Redis-backed
+/// `ValkeyPersistDriver` so every replica shares one counter set.
 enum RateLimitStorageKind: String {
     case memory
     case redis
@@ -19,27 +19,58 @@ enum RateLimitStorageKind: String {
     }
 }
 
+/// Result of `makeRateLimitStorage`. `driver` is what every
+/// `RateLimitMiddleware` reads; `service`, when present, must be registered
+/// with the application's `ServiceGroup` so the backing connection is
+/// opened, readiness-checked, and closed with the process.
+struct RateLimitStorage {
+    let kind: RateLimitStorageKind
+    let driver: any PersistDriver
+    let service: (any Service)?
+}
+
 /// Builds the `PersistDriver` used by every `RateLimitMiddleware` instance.
 /// Centralises the construction site so the rate-limit storage decision is
 /// one config key, not scattered `MemoryPersistDriver()` literals.
 ///
-/// Audit S4 — the Redis-backed driver is still unimplemented. In-memory storage is
-/// correct for a single replica, but if an operator deploys multiple replicas and
-/// sets `rateLimit.storageKind=redis` expecting shared counters, a silent fallback
-/// to per-process memory would let a caller bypass every limit by spreading requests
-/// across replicas. So outside dev we FAIL LOUD rather than degrade silently.
-func makeRateLimitStorage(kind: String, isProduction: Bool, logger: Logger) -> any PersistDriver {
-    switch RateLimitStorageKind(raw: kind) {
+/// Audit S-01 — `redis` used to `fatalError` outside dev because the driver
+/// was never wired. It now builds `ValkeyPersistDriver` from `REDIS_URL`; a
+/// missing or malformed URL throws a descriptive
+/// `RateLimitStorageConfigurationError` so the operator sees the offending
+/// keys instead of a crash trace. Reachability is verified by the driver's
+/// `run()` readiness probe once the `ServiceGroup` starts, and a failed probe
+/// stops the boot with a thrown error rather than a silent in-memory fallback
+/// (which would let a caller bypass every limit by spreading requests across
+/// replicas).
+func makeRateLimitStorage(kind rawKind: String, redisURL: String, logger: Logger) throws -> RateLimitStorage {
+    let kind = RateLimitStorageKind(raw: rawKind)
+    switch kind {
     case .memory:
-        return MemoryPersistDriver()
+        logger.info("rate-limit storage: memory (per-process)", metadata: [
+            "config": "RATE_LIMIT_STORAGE_KIND=memory",
+        ])
+        return RateLimitStorage(kind: .memory, driver: MemoryPersistDriver(), service: nil)
     case .redis:
-        let message = "rateLimit.storageKind=redis requested but the Redis PersistDriver is not yet wired. "
-            + "In-memory storage is per-process and does NOT share counters across replicas — "
-            + "rate limits would be bypassable in a multi-replica deploy."
-        if isProduction {
-            fatalError(message + " Refusing to boot; implement the Redis driver or set rateLimit.storageKind=memory.")
+        let trimmedURL = redisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty else {
+            logger.error("rate-limit storage: RATE_LIMIT_STORAGE_KIND=redis but REDIS_URL is empty")
+            throw RateLimitStorageConfigurationError.missingRedisURL
         }
-        logger.warning("\(message) Falling back to memory (dev only).")
-        return MemoryPersistDriver()
+        let configuration: ValkeyPersistConfiguration
+        do {
+            configuration = try ValkeyPersistConfiguration(url: trimmedURL)
+        } catch {
+            logger.error("rate-limit storage: REDIS_URL rejected", metadata: [
+                "config": "RATE_LIMIT_STORAGE_KIND=redis, REDIS_URL",
+                "error": "\(error)",
+            ])
+            throw error
+        }
+        let driver = ValkeyPersistDriver(configuration: configuration, logger: logger)
+        logger.info("rate-limit storage: valkey (shared across replicas)", metadata: [
+            "config": "RATE_LIMIT_STORAGE_KIND=redis, REDIS_URL",
+            "address": "\(configuration.displayAddress)",
+        ])
+        return RateLimitStorage(kind: .redis, driver: driver, service: driver)
     }
 }
