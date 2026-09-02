@@ -221,6 +221,19 @@ func buildApplication(
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
+    // P0 #4 — product analytics over HTTP so Linux deploys actually emit
+    // `user_registered` etc. Off (with a warning) when either key is unset.
+    // Registered as a Service so the final batch is flushed on shutdown.
+    if let analytics = makePostHogAnalytics(
+        projectToken: reader.string(forKey: "posthog.projectToken", isSecret: true, default: ""),
+        host: reader.string(forKey: "posthog.host", default: ""),
+        logger: Logger(label: "lv.posthog")
+    ) {
+        PostHogAnalytics.install(analytics)
+        appServices.append(analytics)
+    } else {
+        PostHogAnalytics.install(nil)
+    }
     let router = try buildRouter(
         reader: reader,
         services: services,
