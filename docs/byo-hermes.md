@@ -112,6 +112,25 @@ auth). Use the `:8642` api_server above.
 
 ---
 
+## Dashboard link (Hermes Mirror + cron)
+
+The API server (`:8642`, `API_SERVER_KEY`) covers chat and read-only skills.
+Mirroring **everything** — skill install/toggle, cron jobs, your KB vault and
+past sessions — goes through the Hermes **dashboard** (`hermes dashboard`,
+`:9119`) with its session token.
+
+The dashboard accepts a static bearer (`Authorization: Bearer <HERMES_DASHBOARD_SESSION_TOKEN>`)
+**only when bound to loopback**. Any other bind engages the OAuth/password gate,
+which has no bearer path — LuminaVault then reports
+`hermes_dashboard_auth_mode_unsupported` and disables skill writes, cron, vault
+and session import.
+
+Fix: keep the dashboard on `127.0.0.1:9119` and put your own TLS in front of it
+(the nginx or Cloudflare Tunnel setups below work unchanged — proxy `/api/` to
+the loopback dashboard). Then link the public dashboard URL + token in
+Settings → Hermes → Dashboard (`PUT /v1/me/hermes/cron/config`). LuminaVault
+re-probes the auth mode on save and on `POST /v1/settings/hermes/test`.
+
 ## What you get over BYO (and what stays in LuminaVault)
 
 | Runs on **your** Hermes (via `/v1`) | Stays in **LuminaVault** |
