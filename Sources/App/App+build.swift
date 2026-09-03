@@ -690,6 +690,7 @@ func buildRouter(
     // docker exec (managed). Built in the same secret branch; mounted at
     // /v1/me/hermes/cron.
     var cronBridgeService: CronBridgeService?
+    var hermesMirrorService: HermesMirrorService?
     // Cron bridge deps captured from the secret branch; the service is assembled
     // after `routedTransport` exists (NL→spec classifier needs it).
     var cronDocker: (any DockerExec)?
@@ -2305,6 +2306,39 @@ func buildRouter(
             let cronGroup = router.group("/v1/me/hermes/cron").add(middleware: jwtAuthenticator)
             CronBridgeController(service: cronBridgeService).addRoutes(to: cronGroup)
         }
+        // Hermes Mirror — /v1/hermes/mirror: skills, jobs, vault and sessions
+        // mirrored from the tenant's Hermes (dashboard for BYO, PVC for managed).
+        if let hermesEndpointResolver, let cronSSRF {
+            let mirror = HermesMirrorWiring.make(.init(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                ssrfGuard: cronSSRF,
+                resolver: hermesEndpointResolver,
+                capabilities: hermesCapabilitiesService,
+                containerManager: cronContainerManager,
+                perTenantDataRootBase: services.hermesPerTenantDataRootBase,
+                managedHermesRoot: services.hermesDataRoot,
+                ingest: VaultIngestService(
+                    fluent: services.fluent,
+                    vaultPaths: vaultPaths,
+                    spaces: spacesService,
+                    memories: MemoryRepository(fluent: services.fluent),
+                    embeddings: embeddingService,
+                    logger: Logger(label: "lv.hermes-mirror.ingest"),
+                    chunkIndexer: chunkIndexer
+                ),
+                compileController: memoryCompileController,
+                logger: Logger(label: "lv.hermes-mirror")
+            ))
+            hermesMirrorService = mirror.service
+            var mirrorGroup = router.group("/v1/hermes/mirror")
+                .add(middleware: jwtAuthenticator)
+                .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+            if let byoHermesMiddleware {
+                mirrorGroup = mirrorGroup.add(middleware: byoHermesMiddleware)
+            }
+            mirror.controller.addRoutes(to: mirrorGroup)
+        }
     }
 
     // SOUL.md CRUD (HER-85) — protected; per-user rate limited.
@@ -2955,7 +2989,8 @@ func buildRouter(
         memoryCompileController: memoryCompileController,
         fluent: services.fluent,
         enforcementEnabled: services.billingEnforcementEnabled,
-        logger: skillsLogger
+        logger: skillsLogger,
+        mirror: hermesMirrorService
     ).addRoutes(to: skillsGroup)
 
     // HER-177 — Today-tab skill outputs feed.

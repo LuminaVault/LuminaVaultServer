@@ -258,6 +258,8 @@ actor HermesMirrorService {
     /// Toggle on Hermes, then mirror the new flag locally.
     func toggleSkill(tenantID: UUID, name: String, enabled: Bool) async throws -> HermesMirroredSkillDTO {
         let db = fluent.db()
+        // Fluent query builder, not a collection.
+        // swiftlint:disable:next first_where
         guard let row = try await HermesMirroredSkill.query(on: db, tenantID: tenantID).filter(\.$name == name).first() else {
             throw HTTPError(.notFound, message: "hermes_skill_not_found")
         }
@@ -328,16 +330,14 @@ actor HermesMirrorService {
             candidates.insert(pointer, at: 0)
         }
         for candidate in candidates {
-            if await Self.isVaultRoot(transport, candidate) {
-                return candidate
-            }
+            guard await Self.isVaultRoot(transport, candidate) else { continue }
+            return candidate
         }
         let vaults = HermesMirrorPath.join(base, "obsidian-vault")
         if let entries = try? await transport.listFiles(path: vaults) {
             for entry in entries where entry.isDirectory && !entry.name.hasPrefix(".") {
-                if await Self.isVaultRoot(transport, entry.path) {
-                    return entry.path
-                }
+                guard await Self.isVaultRoot(transport, entry.path) else { continue }
+                return entry.path
             }
         }
         return nil
@@ -570,7 +570,7 @@ actor HermesMirrorService {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = (try? encoder.encode(manifest)) ?? Data("{}".utf8)
-        return String(decoding: data, as: UTF8.self) + "\n"
+        return (String(data: data, encoding: .utf8) ?? "{}") + "\n"
     }
 
     static func readme(root: String) -> String {
@@ -703,9 +703,9 @@ actor HermesMirrorService {
     static func sessionMarkdown(session: HermesMirrorSession, messages: [HermesMirrorSessionMessage], maxBytes: Int) -> String? {
         let textual = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && ($0.role == "user" || $0.role == "assistant") }
         guard !textual.isEmpty else { return nil }
-        let title = session.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = session.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var lines: [String] = []
-        lines.append("# \((title?.isEmpty == false) ? title! : "Hermes session \(session.id)")")
+        lines.append("# \(trimmedTitle.isEmpty ? "Hermes session \(session.id)" : trimmedTitle)")
         lines.append("")
         lines.append("- session: `\(session.id)`")
         if let source = session.source {
@@ -821,7 +821,7 @@ actor HermesMirrorService {
 
     static func encode(_ value: some Encodable) -> String? {
         guard let data = try? JSONEncoder().encode(value) else { return nil }
-        return String(decoding: data, as: UTF8.self)
+        return String(data: data, encoding: .utf8)
     }
 
     static func decode<T: Decodable>(_: T.Type, _ raw: String?) -> T? {

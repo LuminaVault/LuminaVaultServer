@@ -1458,6 +1458,185 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HermesCapabilitiesResponse' }
 
+
+  # ── Hermes Mirror — the tenant's Hermes (skills, cron jobs, KB vault, sessions) mirrored into LuminaVault ──
+  /v1/hermes/mirror/status:
+    get:
+      tags: [Settings]
+      operationId: hermesMirrorStatus
+      summary: Mirror status for the tenant's Hermes (counts, last sync, vault state, dashboard probe).
+      responses:
+        '200':
+          description: Current mirror state; `dashboard` carries the cached dashboard probe when a dashboard URL is linked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirrorStatusDTO' }
+
+  /v1/hermes/mirror/sync:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorSync
+      summary: Sync skills, cron jobs and vault detection from the tenant's Hermes.
+      description: |
+        Each scope runs independently; failures are recorded on the status
+        (`lastStatus` `partial` / `failed`, `lastError`) rather than thrown.
+        An empty or absent `scope` syncs everything.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesMirrorSyncRequest' }
+      responses:
+        '200':
+          description: Refreshed status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirrorStatusDTO' }
+
+  /v1/hermes/mirror/skills:
+    get:
+      tags: [Settings]
+      operationId: hermesMirrorSkillsList
+      summary: Skills mirrored from the tenant's Hermes (last sync).
+      responses:
+        '200':
+          description: Mirrored skills.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredSkillsResponse' }
+
+  /v1/hermes/mirror/skills/{name}:
+    put:
+      tags: [Settings]
+      operationId: hermesMirrorSkillToggle
+      summary: Enable or disable a skill on the tenant's Hermes (dashboard `/api/skills/toggle`).
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesMirroredSkillToggleRequest' }
+      responses:
+        '200':
+          description: Updated skill.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredSkillDTO' }
+        '404':
+          description: Skill not in the mirror (`hermes_skill_not_found`).
+        '502':
+          description: |
+            Hermes refused or was unreachable. `message` is a stable code:
+            `hermes_dashboard_auth_mode_unsupported` (dashboard behind the OAuth gate —
+            bind it to loopback behind your own TLS proxy or tunnel),
+            `hermes_dashboard_unauthorized`, `hermes_dashboard_unreachable`,
+            `hermes_mirror_upstream_error`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/jobs:
+    get:
+      tags: [Settings]
+      operationId: hermesMirrorJobsList
+      summary: Cron jobs on the tenant's Hermes — live when reachable, else the last snapshot.
+      responses:
+        '200':
+          description: Jobs with `source` = `live` or `snapshot`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobsResponse' }
+
+  /v1/hermes/mirror/jobs/install-compile:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorInstallCompileJob
+      summary: Install the nightly `luminavault-nightly-compile` kb-compile job on the tenant's Hermes (idempotent by name).
+      responses:
+        '200':
+          description: Job id and schedule; `created` is false when it already existed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesCompileJobInstallResultDTO' }
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/vault/import:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorVaultImport
+      summary: Import the KB vault on the tenant's Hermes into LuminaVault (markdown only, resumable).
+      description: |
+        Detects the vault (`.kb/manifest.json`, or `raw/` + `wiki/`, under the
+        dashboard working directory; `kb-config.json` pointer) unless
+        `vaultPath` is given. Caps: 5000 files, 2 MiB each, 200 files per call
+        — `truncated: true` means call again (or let the refresh worker
+        continue) from `cursor`. Paths containing `..` are rejected.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesVaultImportRequest' }
+      responses:
+        '200':
+          description: Import counts for this run.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesVaultImportResultDTO' }
+        '400':
+          description: '`hermes_mirror_invalid_path` or `hermes_vault_path_not_found`.'
+        '404':
+          description: No vault detected (`hermes_vault_not_found`).
+        '409':
+          description: An import for this tenant is already running (`hermes_mirror_busy`).
+
+  /v1/hermes/mirror/vault/create:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorVaultCreate
+      summary: Create the KB skeleton (`raw/`, `wiki/`, `.kb/`) on the tenant's Hermes and install the kb-* skills.
+      responses:
+        '200':
+          description: Created (or already existing) vault; `installedSkills` lists skills added this call.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesVaultCreateResultDTO' }
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/vault/import-sessions:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorImportSessions
+      summary: Import past Hermes sessions as markdown transcripts and compile them into memory.
+      description: |
+        Newest-first; empty sessions are skipped; each transcript lands under
+        the "Hermes Sessions" space as `sessions/<date>-<id>.md`. Caps 2000
+        sessions / 1 MiB each / 100 per call — `truncated: true` means call
+        again from `cursor`. A high-water mark keeps later runs incremental.
+      responses:
+        '200':
+          description: Sessions imported this run and whether a compile was triggered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesSessionsImportResultDTO' }
+        '409':
+          description: An import for this tenant is already running (`hermes_mirror_busy`).
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   /v1/me/improvement:
     get:
       tags: [Self Improvement]
@@ -6832,7 +7011,10 @@ components:
 
     SkillSource:
       type: string
-      enum: [builtin, vault]
+      description: >-
+        `hermes` = mirrored from the tenant's own Hermes (id `hermes-<name>`);
+        runs on Hermes, `/run` answers 400 `hermes_skill_runs_on_hermes`.
+      enum: [builtin, vault, hermes]
 
     SkillRunStatus:
       type: string
@@ -8021,6 +8203,7 @@ components:
           items: { type: string }
         ingestionMaxSourceBytes: { type: integer, format: int64 }
         ingestionRemoteSourceURL: { type: boolean }
+        dashboard: { $ref: '#/components/schemas/HermesDashboardCapabilitiesDTO' }
 
     HermesCapabilitiesResponse:
       type: object
@@ -8051,6 +8234,174 @@ components:
       required: [verifiedAt]
       properties:
         verifiedAt: { type: string, format: date-time }
+
+    # ── Hermes Mirror ──
+    HermesDashboardAuthMode:
+      type: string
+      description: >-
+        `bearer` = dashboard accepts the static token (loopback bind behind your
+        own proxy/tunnel); `oauth_only` = dashboard is behind the OAuth/password
+        gate and cannot be driven by LuminaVault; `unauthorized` = token rejected;
+        `unreachable` = no answer.
+      enum: [bearer, oauth_only, unauthorized, unreachable]
+
+    HermesDashboardCapabilitiesDTO:
+      type: object
+      required: [reachable, authMode, skillsWrite, cron, fs, sessions]
+      properties:
+        reachable: { type: boolean }
+        authMode: { $ref: '#/components/schemas/HermesDashboardAuthMode' }
+        skillsWrite: { type: boolean }
+        cron: { type: boolean }
+        fs: { type: boolean }
+        sessions: { type: boolean }
+        version: { type: string }
+        kbVaultPath: { type: string }
+
+    HermesMirrorSyncScope:
+      type: string
+      enum: [skills, jobs, vault]
+
+    HermesMirrorSyncRequest:
+      type: object
+      properties:
+        scope:
+          type: array
+          items: { $ref: '#/components/schemas/HermesMirrorSyncScope' }
+
+    HermesMirrorSyncStatus:
+      type: string
+      enum: [never, ok, partial, failed]
+
+    HermesMirrorVaultState:
+      type: string
+      enum: [absent, detected, created, imported]
+
+    HermesMirrorTransportKind:
+      type: string
+      enum: [managed, remote, none]
+
+    HermesMirrorStatusDTO:
+      type: object
+      required: [transport, lastStatus, skillsCount, jobsCount, vaultFilesCount, vaultState, sessionsImported]
+      properties:
+        transport: { $ref: '#/components/schemas/HermesMirrorTransportKind' }
+        lastSyncAt: { type: string, format: date-time }
+        lastStatus: { $ref: '#/components/schemas/HermesMirrorSyncStatus' }
+        lastError: { type: string }
+        skillsCount: { type: integer }
+        jobsCount: { type: integer }
+        vaultFilesCount: { type: integer }
+        vaultPath: { type: string }
+        vaultState: { $ref: '#/components/schemas/HermesMirrorVaultState' }
+        sessionsImported: { type: integer }
+        compileJobID: { type: string }
+        dashboard: { $ref: '#/components/schemas/HermesDashboardCapabilitiesDTO' }
+
+    HermesMirroredSkillSource:
+      type: string
+      enum: [builtin, hub, custom]
+
+    HermesMirroredSkillDTO:
+      type: object
+      required: [name, description, enabled, source]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        source: { $ref: '#/components/schemas/HermesMirroredSkillSource' }
+        updatedAt: { type: string, format: date-time }
+
+    HermesMirroredSkillsResponse:
+      type: object
+      required: [skills]
+      properties:
+        skills:
+          type: array
+          items: { $ref: '#/components/schemas/HermesMirroredSkillDTO' }
+
+    HermesMirroredSkillToggleRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+
+    HermesMirroredJobDTO:
+      type: object
+      required: [hermesJobID, paused]
+      properties:
+        hermesJobID: { type: string }
+        name: { type: string }
+        schedule: { type: string }
+        prompt: { type: string }
+        paused: { type: boolean }
+        lastRunAt: { type: string, format: date-time }
+        nextRunAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    HermesMirroredJobsSource:
+      type: string
+      enum: [live, snapshot]
+
+    HermesMirroredJobsResponse:
+      type: object
+      required: [source, jobs]
+      properties:
+        source: { $ref: '#/components/schemas/HermesMirroredJobsSource' }
+        jobs:
+          type: array
+          items: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+
+    HermesVaultImportRequest:
+      type: object
+      properties:
+        vaultPath:
+          type: string
+          description: Absolute path on the Hermes host; overrides detection.
+
+    HermesVaultImportResultDTO:
+      type: object
+      required: [vaultPath, scanned, imported, skipped, failed, truncated]
+      properties:
+        vaultPath: { type: string }
+        scanned: { type: integer }
+        imported: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        truncated: { type: boolean }
+        cursor: { type: string }
+
+    HermesVaultCreateResultDTO:
+      type: object
+      required: [vaultPath, alreadyExisted, createdDirectories, installedSkills]
+      properties:
+        vaultPath: { type: string }
+        alreadyExisted: { type: boolean }
+        createdDirectories:
+          type: array
+          items: { type: string }
+        installedSkills:
+          type: array
+          items: { type: string }
+
+    HermesSessionsImportResultDTO:
+      type: object
+      required: [sessionsImported, sessionsSkipped, filesWritten, truncated, compileTriggered]
+      properties:
+        sessionsImported: { type: integer }
+        sessionsSkipped: { type: integer }
+        filesWritten: { type: integer }
+        truncated: { type: boolean }
+        cursor: { type: string }
+        compileTriggered: { type: boolean }
+
+    HermesCompileJobInstallResultDTO:
+      type: object
+      required: [jobID, schedule, created]
+      properties:
+        jobID: { type: string }
+        schedule: { type: string }
+        created: { type: boolean }
 
     # ── Provider credentials + LLM preferences (HER-252) ──
 
