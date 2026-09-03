@@ -194,25 +194,17 @@ struct CronBridgeService {
     }
 
     func createBYO(baseURL: String, token: String, spec: CronCreateSpec) async throws -> [HermesCronJob] {
-        let validated = try await ssrfGuard.validate(rawURL: baseURL)
-        let endpoint = validated.absoluteString.hasSuffix("/")
-            ? validated.absoluteString + "api/cron/jobs"
-            : validated.absoluteString + "/api/cron/jobs"
-        var req = HTTPClientRequest(url: endpoint)
-        req.method = .POST
-        req.headers.add(name: "Authorization", value: "Bearer \(token)")
-        req.headers.add(name: "Content-Type", value: "application/json")
-        var bodyObj: [String: Any] = ["schedule": spec.schedule, "deliver": spec.deliver ?? "origin"]
+        var body: [String: JSONValue] = ["schedule": .string(spec.schedule), "deliver": .string(spec.deliver ?? "origin")]
         if let prompt = spec.prompt, !prompt.isEmpty {
-            bodyObj["prompt"] = prompt
+            body["prompt"] = .string(prompt)
         }
         if let name = spec.name, !name.isEmpty {
-            bodyObj["name"] = name
+            body["name"] = .string(name)
         }
-        req.body = try .bytes(JSONSerialization.data(withJSONObject: bodyObj))
-        let resp = try await httpClient.execute(req, timeout: .seconds(25))
-        guard (200 ..< 300).contains(Int(resp.status.code)) else {
-            throw HTTPError(.badGateway, message: "byo_cron_create_\(resp.status.code)")
+        do {
+            _ = try await dashboardClient(baseURL: baseURL, token: token).createCronJobRaw(body)
+        } catch let error as HermesMirrorTransportError {
+            throw Self.byoError(error, operation: "create")
         }
         return try await listBYO(baseURL: baseURL, token: token)
     }
@@ -262,21 +254,39 @@ struct CronBridgeService {
     }
 
     func listBYO(baseURL: String, token: String) async throws -> [HermesCronJob] {
-        // SSRF: the dashboard URL is user-provided — validate (+ re-resolve) it.
-        let validated = try await ssrfGuard.validate(rawURL: baseURL)
-        let endpoint = validated.absoluteString.hasSuffix("/")
-            ? validated.absoluteString + "api/cron/jobs"
-            : validated.absoluteString + "/api/cron/jobs"
-        var req = HTTPClientRequest(url: endpoint)
-        req.headers.add(name: "Authorization", value: "Bearer \(token)")
-        req.headers.add(name: "Accept", value: "application/json")
-        let resp = try await httpClient.execute(req, timeout: .seconds(15))
-        guard (200 ..< 300).contains(Int(resp.status.code)) else {
-            throw HTTPError(.badGateway, message: "byo_cron_http_\(resp.status.code)")
+        // SSRF: the dashboard URL is user-provided — the client validates
+        // (+ re-resolves) it on every call.
+        do {
+            return try await Self.parse(dashboardClient(baseURL: baseURL, token: token).listCronJobsRaw())
+        } catch let error as HermesMirrorTransportError {
+            throw Self.byoError(error, operation: "http")
         }
-        var body = try await resp.body.collect(upTo: 8 * 1024 * 1024)
-        let data = body.readData(length: body.readableBytes) ?? Data()
-        return Self.parse(data)
+    }
+
+    /// One dashboard client for every BYO call (Hermes Mirror shares it).
+    func dashboardClient(baseURL: String, token: String) -> HermesDashboardClient {
+        HermesDashboardClient(
+            baseURL: baseURL,
+            token: token,
+            ssrfGuard: ssrfGuard,
+            http: AsyncHTTPClientHermesHTTP(httpClient: httpClient),
+            logger: logger
+        )
+    }
+
+    /// Keeps the pre-mirror error codes (`byo_cron_http_<status>` /
+    /// `byo_cron_create_<status>`) that clients already key off.
+    static func byoError(_ error: HermesMirrorTransportError, operation: String) -> HTTPError {
+        switch error {
+        case let .http(status, _):
+            HTTPError(.badGateway, message: "byo_cron_\(operation)_\(status)")
+        case .dashboardUnauthorized:
+            HTTPError(.badGateway, message: "byo_cron_\(operation)_401")
+        case .dashboardAuthModeUnsupported:
+            HTTPError(.badGateway, message: error.code)
+        default:
+            HTTPError(.badGateway, message: error.code)
+        }
     }
 
     // MARK: - Managed (docker exec)
