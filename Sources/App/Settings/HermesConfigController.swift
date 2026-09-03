@@ -55,6 +55,10 @@ struct HermesConfigController {
     let secretBox: SecretBox
     let ssrfGuard: SSRFGuard
     let probeSession: URLSession
+    /// Hermes Mirror — re-probes capabilities (gateway + dashboard) after a
+    /// successful `PUT` and `POST /test` so panes reflect the new endpoint
+    /// without waiting for the cache TTL.
+    let capabilities: HermesRemoteCapabilitiesService?
     let logger: Logger
 
     init(
@@ -62,12 +66,14 @@ struct HermesConfigController {
         secretBox: SecretBox,
         ssrfGuard: SSRFGuard,
         probeSession: URLSession = .shared,
+        capabilities: HermesRemoteCapabilitiesService? = nil,
         logger: Logger
     ) {
         self.fluent = fluent
         self.secretBox = secretBox
         self.ssrfGuard = ssrfGuard
         self.probeSession = probeSession
+        self.capabilities = capabilities
         self.logger = logger
     }
 
@@ -144,6 +150,7 @@ struct HermesConfigController {
         row.name = (trimmedName?.isEmpty == false) ? trimmedName : nil
         row.verifiedAt = nil
         try await row.save(on: db)
+        _ = await capabilities?.capabilities(tenantID: tenantID, force: true)
 
         return GetResponse(
             baseUrl: row.baseURL,
@@ -221,6 +228,7 @@ struct HermesConfigController {
         let now = Date()
         row.verifiedAt = now
         try await row.save(on: fluent.db())
+        _ = await capabilities?.capabilities(tenantID: tenantID, force: true)
         return TestResponse(verifiedAt: now)
     }
 

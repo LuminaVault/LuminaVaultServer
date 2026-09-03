@@ -725,13 +725,6 @@ func buildRouter(
                 requireHTTPS: byoHermesRequireHttps,
                 allowTailnetHTTP: byoHermesAllowTailnetHttp
             )
-            byoHermesController = HermesConfigController(
-                fluent: services.fluent,
-                secretBox: secretBox,
-                ssrfGuard: ssrfGuard,
-                probeSession: BYOHTTP.session,
-                logger: byoHermesLogger
-            )
             let resolver = HermesEndpointResolver(
                 fluent: services.fluent,
                 secretBox: secretBox,
@@ -744,10 +737,23 @@ func buildRouter(
                 resolver: resolver,
                 logger: byoHermesLogger
             )
-            hermesCapabilitiesService = HermesRemoteCapabilitiesService(
+            // Hermes Mirror — the capabilities probe also covers the tenant's
+            // dashboard (auth mode, skills write, cron, fs, sessions).
+            let capabilitiesService = HermesRemoteCapabilitiesService(
                 fluent: services.fluent,
                 resolver: resolver,
                 probeSession: BYOHTTP.session,
+                dashboardCredentials: HermesDashboardCredentialStore(fluent: services.fluent, secretBox: secretBox),
+                dashboardSSRFGuard: ssrfGuard,
+                logger: byoHermesLogger
+            )
+            hermesCapabilitiesService = capabilitiesService
+            byoHermesController = HermesConfigController(
+                fluent: services.fluent,
+                secretBox: secretBox,
+                ssrfGuard: ssrfGuard,
+                probeSession: BYOHTTP.session,
+                capabilities: capabilitiesService,
                 logger: byoHermesLogger
             )
             let xaiLogger = Logger(label: "lv.xai-oauth")
