@@ -36,19 +36,25 @@ struct VaultIngestService {
         var imported: Int = 0
         var skipped: Int = 0
         var failed: Int = 0
+        /// `VaultFile` ids written or updated by this batch (Hermes Mirror
+        /// feeds them straight into a memory compile).
+        var vaultFileIDs: [UUID] = []
     }
 
     /// Ingest a batch of markdown files into one Space (created if needed).
-    func ingestBatch(tenantID: UUID, spaceName: String, files: [FileInput]) async throws -> Result {
+    /// `provenance` is stamped on every written row's metadata (e.g.
+    /// `hermes-mirror`, `hermes-session`) so imports stay traceable.
+    func ingestBatch(tenantID: UUID, spaceName: String, files: [FileInput], provenance: String? = nil) async throws -> Result {
         let space = try await ensureSpace(tenantID: tenantID, name: spaceName)
         let spaceID = try space.requireID()
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         var result = Result(spaceID: spaceID, spaceSlug: space.slug)
         for file in files {
             do {
-                let ingested = try await ingestOne(tenantID: tenantID, spaceID: spaceID, slug: space.slug, input: file)
-                if ingested {
+                let ingested = try await ingestOne(tenantID: tenantID, spaceID: spaceID, slug: space.slug, input: file, provenance: provenance)
+                if let ingested {
                     result.imported += 1
+                    result.vaultFileIDs.append(ingested)
                 } else {
                     result.skipped += 1
                 }
@@ -79,9 +85,9 @@ struct VaultIngestService {
 
     /// Returns true when the file was (re)ingested, false when skipped
     /// (empty, or unchanged since a prior import).
-    private func ingestOne(tenantID: UUID, spaceID: UUID, slug: String, input: FileInput) async throws -> Bool {
+    private func ingestOne(tenantID: UUID, spaceID: UUID, slug: String, input: FileInput, provenance: String?) async throws -> UUID? {
         let content = input.content
-        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
         // Obsidian filenames carry spaces / em-dashes / emoji / parens, which the
         // strict vault sanitizer rejects. Slugify each path segment ourselves
@@ -95,7 +101,7 @@ struct VaultIngestService {
         let existing = try await VaultFile.query(on: db, tenantID: tenantID)
             .filter(\.$path == safeRelative).first()
         if let existing, existing.sha256 == digest {
-            return false
+            return nil
         } // unchanged
 
         // Write the on-disk blob (the row is the index, the file is the payload).
@@ -107,7 +113,7 @@ struct VaultIngestService {
         try data.write(to: target, options: .atomic)
 
         let humanName = (input.path as NSString).lastPathComponent
-        let metadata = VaultFileMetadata(title: Self.title(from: content, fallback: humanName))
+        let metadata = VaultFileMetadata(title: Self.title(from: content, fallback: humanName), provenance: provenance)
         let savedID: UUID
         if let existing {
             existing.spaceID = spaceID
@@ -151,7 +157,7 @@ struct VaultIngestService {
             sourcePath: safeRelative,
             content: content
         )
-        return true
+        return savedID
     }
 
     /// First markdown H1, else the filename (sans extension).
