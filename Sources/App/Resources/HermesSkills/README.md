@@ -1,9 +1,14 @@
 # Bundled Hermes Skills (HER-276)
 
 LuminaVault's `kb-*` skills (`kb-compile`, `kb-ingest`, `kb-import`,
-`kb-merge-vault`, `kb-output`) vendored at `LuminaVaultServer/hermes-skills/`
+`kb-merge-vault`, `kb-output`) vendored at `LuminaVaultServer/Sources/App/Resources/HermesSkills/`
 so every deployment ships them without depending on the host's
 `~/.hermes/skills/` tree.
+
+The same directory is a SwiftPM resource (`.copy("Resources/HermesSkills")` in
+`Package.swift`): `HermesBundledSkills` reads it at runtime so the Hermes Mirror
+can install the `kb-*` skills onto a user's own Hermes when it creates a vault
+there. One tree, two consumers — edit here only.
 
 ## How it works
 
@@ -25,18 +30,18 @@ start using `cp -Rn` (no-clobber), so:
 
 ## Editing a skill
 
-1. Edit a `SKILL.md` (or `references/…` file) under `hermes-skills/<slug>/`.
+1. Edit a `SKILL.md` (or `references/…` file) under `Sources/App/Resources/HermesSkills/<slug>/`.
 2. `docker compose build hermes` to rebuild the image.
 3. `docker compose up -d hermes` to restart the container.
 
 For fast iteration, you can also edit `./data/hermes/skills/<slug>/`
 directly — the volume bind-mount surfaces those edits live without a
-rebuild. Just remember to fold the changes back into `hermes-skills/`
+rebuild. Just remember to fold the changes back into `Sources/App/Resources/HermesSkills/`
 before committing so the next clean rebuild picks them up.
 
 ## Adding a new skill
 
-1. Create `hermes-skills/<slug>/SKILL.md` with frontmatter:
+1. Create `Sources/App/Resources/HermesSkills/<slug>/SKILL.md` with frontmatter:
    ```
    ---
    name: <slug>
