@@ -2331,6 +2331,13 @@ func buildRouter(
                 logger: Logger(label: "lv.hermes-mirror")
             ))
             hermesMirrorService = mirror.service
+            if fluentEnabled, lvEnvironment != "test" {
+                managedServices.append(HermesMirrorRefreshWorker(
+                    fluent: services.fluent,
+                    service: mirror.service,
+                    logger: Logger(label: "lv.hermes-mirror.worker")
+                ))
+            }
             var mirrorGroup = router.group("/v1/hermes/mirror")
                 .add(middleware: jwtAuthenticator)
                 .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
