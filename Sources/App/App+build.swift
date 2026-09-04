@@ -2735,6 +2735,51 @@ func buildRouter(
         HermesCapabilitiesController(service: hermesCapabilitiesService).addRoutes(to: capabilitiesGroup)
     }
 
+    // Phase 1 — /v1/hermes/runs. Start an agent run on the tenant's Hermes,
+    // follow it live, approve or deny its tool calls from a push, stop it.
+    // Requires the endpoint resolver (the gateway base URL + BYO auth header
+    // come from it), so it mounts on the same SecretBox gate as BYO Hermes.
+    if let hermesEndpointResolver {
+        let runsLogger = Logger(label: "lv.hermes.runs")
+        let runsHTTP = AsyncHTTPClientHermesRunsHTTP()
+        let hermesAPIKey = services.hermesAPIKey
+        let hermesRunsService = HermesRunsService(
+            fluent: services.fluent,
+            eventBus: eventBus,
+            notifier: APNSHermesRunPushNotifier(push: pushService, logger: runsLogger),
+            resolve: { tenantID in try await hermesEndpointResolver.resolve(tenantID: tenantID) },
+            makeClient: { resolution, sessionKey in
+                HermesRunsClient.make(
+                    resolution: resolution,
+                    managedAPIKey: hermesAPIKey,
+                    sessionKey: sessionKey,
+                    http: runsHTTP,
+                    logger: runsLogger
+                )
+            },
+            logger: runsLogger
+        )
+        // `run()` re-attaches watchers for runs that were still active when
+        // the process last stopped, and cancels them on graceful shutdown.
+        if fluentEnabled, lvEnvironment != "test" {
+            managedServices.append(hermesRunsService)
+        }
+        let runsBase = router.group("/v1/hermes/runs")
+            .add(middleware: jwtAuthenticator)
+        let runsGroup = (byoHermesMiddleware.map { runsBase.add(middleware: $0) } ?? runsBase)
+            .add(middleware: hermesProfileMiddleware)
+            .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
+            .add(middleware: EntitlementMiddleware(
+                requires: .chat,
+                enforcementEnabled: services.billingEnforcementEnabled
+            ))
+        HermesRunsController(
+            service: hermesRunsService,
+            eventBus: eventBus,
+            logger: runsLogger
+        ).addRoutes(to: runsGroup)
+    }
+
     // HER-252 — /v1/me/providers (CRUD + test) and /v1/me/preferences/llm
     // (GET/PUT) for per-user LLM credential + routing preferences.
     // Providers controller only mounts when SecretBox is available (it

@@ -206,7 +206,7 @@ actor HermesRunsService: Service {
             cancelWatcher(runID: runID)
             let finished = try await store.finish(runID: runID, status: .stopped, error: nil)
             guard let finished else { throw HermesRunsServiceError.runNotFound }
-            await notifier.runFinished(tenantID: tenantID, run: try finished.toDTO())
+            try await notifier.runFinished(tenantID: tenantID, run: finished.toDTO())
             return try finished.toDTO()
         }
         // `run.cancelled` arrives on the watcher; the DTO reflects it then.
@@ -299,7 +299,7 @@ actor HermesRunsService: Service {
         guard let id = run.id else { return }
         do {
             if let finished = try await store.finish(runID: id, status: .lost, error: reason) {
-                await notifier.runFinished(tenantID: run.tenantID, run: try finished.toDTO())
+                try await notifier.runFinished(tenantID: run.tenantID, run: finished.toDTO())
             }
         } catch {
             logger.error("hermes run mark-lost failed", metadata: [

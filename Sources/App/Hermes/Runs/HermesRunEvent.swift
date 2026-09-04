@@ -97,7 +97,7 @@ enum HermesRunEvent: Sendable, Equatable {
     }
 
     private static func parseChoices(_ value: AnyJSONValue?) -> [HermesApprovalChoice] {
-        let parsed = (value?.arrayValue ?? []).compactMap { $0.stringValue }.compactMap(HermesApprovalChoice.init(rawValue:))
+        let parsed = (value?.arrayValue ?? []).compactMap(\.stringValue).compactMap(HermesApprovalChoice.init(rawValue:))
         return parsed.isEmpty ? HermesApprovalChoice.allCases : parsed
     }
 }
@@ -113,27 +113,37 @@ struct HermesRunEventFrame: Sendable, Equatable {
 
 extension AnyJSONValue {
     var stringValue: String? {
-        if case let .string(value) = self { return value }
+        if case let .string(value) = self {
+            return value
+        }
         return nil
     }
 
     var doubleValue: Double? {
-        if case let .number(value) = self { return value }
+        if case let .number(value) = self {
+            return value
+        }
         return nil
     }
 
     var boolValue: Bool? {
-        if case let .bool(value) = self { return value }
+        if case let .bool(value) = self {
+            return value
+        }
         return nil
     }
 
     var objectValue: [String: AnyJSONValue]? {
-        if case let .object(value) = self { return value }
+        if case let .object(value) = self {
+            return value
+        }
         return nil
     }
 
     var arrayValue: [AnyJSONValue]? {
-        if case let .array(value) = self { return value }
+        if case let .array(value) = self {
+            return value
+        }
         return nil
     }
 }
