@@ -83,11 +83,25 @@ final class HermesRun: Model, TenantModel, @unchecked Sendable {
 final class HermesRunEventRow: Model, @unchecked Sendable {
     static let schema = "hermes_run_events"
 
+    /// Key a non-object payload is stored under. Every Hermes run event is a
+    /// JSON object, but an SSE record with a scalar `data:` line and an
+    /// `event:` header would not be — wrap it rather than lose it.
+    static let scalarPayloadKey = "value"
+
     @ID(key: .id) var id: UUID?
     @Field(key: "run_id") var runID: UUID
     @Field(key: "seq") var seq: Int
     @Field(key: "event") var event: String
-    @Field(key: "payload") var payload: AnyJSONValue
+    /// The event object verbatim.
+    ///
+    /// Typed as a dictionary rather than `AnyJSONValue` on purpose:
+    /// `AnyJSONValue.init(from:)` tries `String` first, and the Postgres
+    /// decoder happily hands a `jsonb` column to a single-value container as
+    /// its text form — so a bare `AnyJSONValue` field reads back as
+    /// `.string("{\"output\":…}")` and every client would receive the payload
+    /// double-encoded. A dictionary has no scalar decoding to fall into, so
+    /// the driver parses the JSON as intended.
+    @Field(key: "payload") var payload: [String: AnyJSONValue]
     @Field(key: "at") var at: Date
 
     init() {}
@@ -97,11 +111,11 @@ final class HermesRunEventRow: Model, @unchecked Sendable {
         self.runID = runID
         self.seq = seq
         self.event = event
-        self.payload = payload
+        self.payload = payload.objectValue ?? [Self.scalarPayloadKey: payload]
         self.at = at
     }
 
     func toDTO() -> HermesRunEventDTO {
-        HermesRunEventDTO(runID: runID, seq: seq, event: event, payload: payload, at: at)
+        HermesRunEventDTO(runID: runID, seq: seq, event: event, payload: .object(payload), at: at)
     }
 }

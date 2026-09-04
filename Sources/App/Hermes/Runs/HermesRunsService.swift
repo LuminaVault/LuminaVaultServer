@@ -90,6 +90,16 @@ actor HermesRunsService: Service {
     func run() async throws {
         await reattach()
         try? await gracefulShutdown()
+        let cancelled = await stopAllWatchers()
+        logger.info("hermes runs service stopped", metadata: ["watchers_cancelled": .stringConvertible(cancelled)])
+    }
+
+    /// Cancel every watcher and wait for each to exit. Awaiting matters: a
+    /// watcher writes through `Fluent`, so returning before they are done
+    /// would let the database pool shut down under an in-flight save.
+    /// Returns how many were running.
+    @discardableResult
+    func stopAllWatchers() async -> Int {
         let active = watchers
         watchers.removeAll()
         for handle in active.values {
@@ -98,7 +108,7 @@ actor HermesRunsService: Service {
         for handle in active.values {
             await handle.task.value
         }
-        logger.info("hermes runs service stopped", metadata: ["watchers_cancelled": .stringConvertible(active.count)])
+        return active.count
     }
 
     /// Re-attach watchers to runs that were active when the process last
