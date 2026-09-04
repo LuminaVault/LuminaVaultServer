@@ -175,6 +175,7 @@ func buildApplication(
         ),
         xClientID: reader.string(forKey: "oauth.x.clientId", default: ""),
         rateLimitStorageKind: reader.string(forKey: "rateLimit.storageKind", default: "memory"),
+        redisURL: reader.string(forKey: "redis.url", isSecret: true, default: ""),
         smsKind: reader.string(forKey: "sms.kind", default: "logging"),
         twilioAccountSID: reader.string(forKey: "twilio.accountSid", default: ""),
         twilioAuthToken: reader.string(forKey: "twilio.authToken", default: ""),
@@ -220,6 +221,19 @@ func buildApplication(
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
+    // P0 #4 — product analytics over HTTP so Linux deploys actually emit
+    // `user_registered` etc. Off (with a warning) when either key is unset.
+    // Registered as a Service so the final batch is flushed on shutdown.
+    if let analytics = makePostHogAnalytics(
+        projectToken: reader.string(forKey: "posthog.projectToken", isSecret: true, default: ""),
+        host: reader.string(forKey: "posthog.host", default: ""),
+        logger: Logger(label: "lv.posthog")
+    ) {
+        PostHogAnalytics.install(analytics)
+        appServices.append(analytics)
+    } else {
+        PostHogAnalytics.install(nil)
+    }
     let router = try buildRouter(
         reader: reader,
         services: services,
@@ -481,13 +495,19 @@ func buildRouter(
     if !services.googleClientID.isEmpty {
         oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
     }
-    // HER-200 M3 — single config key controls rate-limit storage. Memory
-    // is fine for single-process; Redis seam reserved for multi-replica.
-    let rateLimitStorage = makeRateLimitStorage(
+    // HER-200 M3 / audit S-01 — single config key controls rate-limit
+    // storage. Memory is fine for single-process; `redis` wires the shared
+    // Valkey driver and registers it with the ServiceGroup so its readiness
+    // probe gates the boot.
+    let rateLimitStorageSelection = try makeRateLimitStorage(
         kind: services.rateLimitStorageKind,
-        isProduction: reader.string(forKey: "lv.environment", default: "dev") != "dev",
+        redisURL: services.redisURL,
         logger: Logger(label: "lv.ratelimit")
     )
+    let rateLimitStorage = rateLimitStorageSelection.driver
+    if let rateLimitStorageService = rateLimitStorageSelection.service {
+        managedServices.append(rateLimitStorageService)
+    }
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,

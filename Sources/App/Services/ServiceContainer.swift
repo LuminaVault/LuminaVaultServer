@@ -97,6 +97,8 @@ struct ServiceContainer {
     /// `redis` uses REDIS_URL with Valkey/Redis-backed shared storage; prod
     /// fails fast if the URL is missing or invalid.
     let rateLimitStorageKind: String
+    /// `REDIS_URL` — required when `rateLimitStorageKind == redis`.
+    let redisURL: String
     /// SMS gateway selector: `logging` (default) | `twilio`.
     let smsKind: String
     /// Twilio account credentials. Required when `smsKind=twilio`.

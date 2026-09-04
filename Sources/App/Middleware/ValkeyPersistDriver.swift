@@ -7,13 +7,16 @@ import Valkey
 /// Boot-time failures parsing `REDIS_URL` for the rate-limit/persist store.
 /// Thrown before the server starts serving, so the operator sees the bad
 /// value instead of a silently-degraded in-memory fallback.
-enum RateLimitStorageConfigurationError: Error, CustomStringConvertible {
+enum RateLimitStorageConfigurationError: Error, CustomStringConvertible, Equatable {
+    case missingRedisURL
     case invalidRedisURL(String)
     case unsupportedRedisScheme(String)
     case invalidRedisDatabase(String)
 
     var description: String {
         switch self {
+        case .missingRedisURL:
+            "RATE_LIMIT_STORAGE_KIND=redis requires REDIS_URL (redis://host:port or valkey://host:port)"
         case let .invalidRedisURL(url):
             "invalid REDIS_URL: \(url)"
         case let .unsupportedRedisScheme(scheme):
@@ -27,6 +30,8 @@ enum RateLimitStorageConfigurationError: Error, CustomStringConvertible {
 struct ValkeyPersistConfiguration {
     let address: ValkeyServerAddress
     let client: ValkeyClientConfiguration
+    /// `host:port` for boot logs — never carries credentials.
+    let displayAddress: String
 
     init(url rawURL: String) throws {
         guard let components = URLComponents(string: rawURL),
@@ -50,9 +55,9 @@ struct ValkeyPersistConfiguration {
         if let password = components.percentEncodedPassword?.removingPercentEncoding,
            !password.isEmpty
         {
-            let username = components.percentEncodedUser?.removingPercentEncoding
+            let username = components.percentEncodedUser?.removingPercentEncoding ?? ""
             configuration.authentication = .init(
-                username: (username?.isEmpty == false ? username! : "default"),
+                username: username.isEmpty ? "default" : username,
                 password: password
             )
         }
@@ -65,6 +70,7 @@ struct ValkeyPersistConfiguration {
         }
 
         address = .hostname(host, port: port)
+        displayAddress = "\(host):\(port)"
         client = configuration
     }
 }
@@ -78,11 +84,14 @@ final class ValkeyPersistDriver: PersistDriver {
     private let client: ValkeyClient
     private let namespace: String
     private let logger: Logger
+    /// Redacted server address (host + port, never credentials) for boot logs.
+    let address: String
 
-    init(client: ValkeyClient, namespace: String = "lv:persist", logger: Logger) {
+    init(client: ValkeyClient, namespace: String = "lv:persist", logger: Logger, address: String = "") {
         self.client = client
         self.namespace = namespace.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
         self.logger = logger
+        self.address = address
     }
 
     convenience init(
@@ -97,7 +106,8 @@ final class ValkeyPersistDriver: PersistDriver {
                 logger: logger
             ),
             namespace: namespace,
-            logger: logger
+            logger: logger,
+            address: configuration.displayAddress
         )
     }
 
@@ -112,7 +122,11 @@ final class ValkeyPersistDriver: PersistDriver {
                 group.cancelAll()
             } catch {
                 group.cancelAll()
-                logger.critical("Valkey rate-limit storage failed readiness check", metadata: ["error": .string("\(error)")])
+                logger.critical("Valkey rate-limit storage failed readiness check", metadata: [
+                    "error": .string("\(error)"),
+                    "config": "RATE_LIMIT_STORAGE_KIND=redis, REDIS_URL",
+                    "address": "\(address)",
+                ])
                 throw error
             }
         }

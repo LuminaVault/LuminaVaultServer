@@ -37,7 +37,6 @@ let package = Package(
         // HER-236: OTLPHTTPLogExporter posts JSON log batches to the otel-collector.
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.33.0"),
         .package(url: "https://github.com/valkey-io/valkey-swift.git", from: "1.4.0"),
-        .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.60.0"),
     ],
     targets: [
         .executableTarget(name: "App",
@@ -62,9 +61,6 @@ let package = Package(
                               .product(name: "OTLPGRPC", package: "swift-otel"),
                               .product(name: "AsyncHTTPClient", package: "async-http-client"),
                               .product(name: "Valkey", package: "valkey-swift"),
-                              // ObjC SDK — no Linux Foundation headers; link only on Darwin.
-                              .product(name: "PostHog", package: "posthog-ios",
-                                       condition: .when(platforms: [.macOS, .iOS])),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                               .product(name: "Yams", package: "Yams"),
                               .byName(name: "AppAPI"),
