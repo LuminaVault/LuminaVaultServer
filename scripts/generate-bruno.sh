@@ -8,8 +8,9 @@
 #
 # Behaviour:
 #   - Reads $REPO_ROOT/Sources/AppAPI/openapi.yaml.
-#   - Writes into $LUMINAVAULT_COLLECTION_PATH (default
-#     ~/Projects/ObsidianClaudeBrain/LuminaVaultCollection).
+#   - Writes into $LUMINAVAULT_COLLECTION_PATH; when unset, the sibling
+#     ../LuminaVaultCollection beside this repo, else the historical
+#     ~/Projects/ObsidianClaudeBrain/LuminaVaultCollection.
 #   - `bru import openapi` overwrites generated request files; manual
 #     additions and the environments/ folder are preserved (any path
 #     not matching a generated operation name is left alone).
@@ -24,7 +25,16 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SPEC="${REPO_ROOT}/Sources/AppAPI/openapi.yaml"
-TARGET="${LUMINAVAULT_COLLECTION_PATH:-${HOME}/Projects/ObsidianClaudeBrain/LuminaVaultCollection}"
+# The collection is normally checked out beside this repo, so look there
+# before falling back to the historical location. An explicit
+# LUMINAVAULT_COLLECTION_PATH always wins.
+if [ -n "${LUMINAVAULT_COLLECTION_PATH:-}" ]; then
+  TARGET="${LUMINAVAULT_COLLECTION_PATH}"
+elif [ -d "$(dirname "${REPO_ROOT}")/LuminaVaultCollection" ]; then
+  TARGET="$(dirname "${REPO_ROOT}")/LuminaVaultCollection"
+else
+  TARGET="${HOME}/Projects/ObsidianClaudeBrain/LuminaVaultCollection"
+fi
 
 if [ ! -f "${SPEC}" ]; then
   echo "error: OpenAPI spec not found at ${SPEC}" >&2
