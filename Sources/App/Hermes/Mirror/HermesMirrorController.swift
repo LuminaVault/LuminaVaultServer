@@ -18,7 +18,14 @@ struct HermesMirrorController {
         router.get("skills", use: skills)
         router.put("skills/:name", use: toggleSkill)
         router.get("jobs", use: jobs)
+        router.post("jobs", use: createJob)
         router.post("jobs/install-compile", use: installCompileJob)
+        router.get("jobs/:id/runs", use: jobRuns)
+        router.put("jobs/:id", use: updateJob)
+        router.post("jobs/:id/pause", use: pauseJob)
+        router.post("jobs/:id/resume", use: resumeJob)
+        router.post("jobs/:id/trigger", use: triggerJob)
+        router.delete("jobs/:id", use: deleteJob)
         router.post("jobs/:id/collect", use: collectJobRuns)
         router.post("vault/import", use: importVault)
         router.post("vault/create", use: createVault)
@@ -77,6 +84,66 @@ struct HermesMirrorController {
         return String(raw)
     }
 
+    // MARK: - Job control
+
+    /// Runs LuminaVault has already collected for this job, newest first.
+    /// Reads stored rows only — it never touches the tenant's Hermes, so it
+    /// answers while that Hermes is offline.
+    @Sendable
+    func jobRuns(_ req: Request, ctx: AppRequestContext) async throws -> HermesJobRunsResponse {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        let limit = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? HermesMirrorService.defaultJobRunsLimit
+        return try await Self.mapErrors {
+            try await service.jobRuns(tenantID: tenantID, jobID: jobID, limit: limit)
+        }
+    }
+
+    /// Creates a cron job on the tenant's Hermes (full `CronJobCreate` body).
+    @Sendable
+    func createJob(_ req: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let body = try await req.decode(as: HermesJobCreateRequest.self, context: ctx)
+        return try await Self.mapErrors { try await service.createJob(tenantID: tenantID, request: body) }
+    }
+
+    @Sendable
+    func updateJob(_ req: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        let body = try await req.decode(as: HermesJobUpdateRequest.self, context: ctx)
+        return try await Self.mapErrors { try await service.updateJob(tenantID: tenantID, jobID: jobID, request: body) }
+    }
+
+    @Sendable
+    func pauseJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.pauseJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func resumeJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.resumeJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func triggerJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.triggerJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func deleteJob(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        try await Self.mapErrors { try await service.deleteJob(tenantID: tenantID, jobID: jobID) }
+        return .noContent
+    }
+
     @Sendable
     func installCompileJob(_: Request, ctx: AppRequestContext) async throws -> HermesCompileJobInstallResultDTO {
         let tenantID = try ctx.requireTenantID()
@@ -129,6 +196,8 @@ extension HermesMirrorStatusDTO: ResponseEncodable {}
 extension HermesMirroredSkillsResponse: ResponseEncodable {}
 extension HermesMirroredSkillDTO: ResponseEncodable {}
 extension HermesMirroredJobsResponse: ResponseEncodable {}
+extension HermesMirroredJobDTO: ResponseEncodable {}
+extension HermesJobRunsResponse: ResponseEncodable {}
 extension HermesCompileJobInstallResultDTO: ResponseEncodable {}
 extension HermesVaultImportResultDTO: ResponseEncodable {}
 extension HermesVaultCreateResultDTO: ResponseEncodable {}

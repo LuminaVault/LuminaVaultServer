@@ -223,6 +223,128 @@ struct HermesMirrorControllerTests {
         }
     }
 
+    /// Phase 2 slice 5 — the write half of `/jobs`. Every mutation goes to
+    /// Hermes first and the mirrored row is refreshed from the answer, so
+    /// `GET /jobs` must show the change without an intervening sync.
+    @Test
+    func `job control creates, updates, pauses, resumes, triggers and deletes a job`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let auth: HTTPFields = [.authorization: "Bearer \(token)", .contentType: "application/json"]
+            let name = "control-\(UUID().uuidString.prefix(6).lowercased())"
+
+            var jobID = ""
+            let create = ByteBuffer(string: #"{"name":"\#(name)","schedule":"0 9 * * *","prompt":"Write the brief","deliver":"origin","skills":["kb-compile"]}"#)
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .post, headers: auth, body: create) { response in
+                #expect(response.status == .ok)
+                let job = try Self.decode(HermesMirroredJobDTO.self, response.body)
+                #expect(job.name == name)
+                #expect(job.schedule == "0 9 * * *")
+                #expect(job.paused == false)
+                jobID = job.hermesJobID
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .post, headers: auth, body: ByteBuffer(string: #"{"name":"  ","schedule":"0 9 * * *"}"#)) { response in
+                #expect(response.status == .badRequest)
+                #expect(String(buffer: response.body).contains("hermes_job_name_required"))
+            }
+            // Mirrored immediately: no sync between the create and this read.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .get, headers: auth) { response in
+                let jobs = try Self.decode(HermesMirroredJobsResponse.self, response.body)
+                #expect(jobs.jobs.contains { $0.hermesJobID == jobID && $0.name == name })
+            }
+
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)", method: .put, headers: auth, body: ByteBuffer(string: #"{"schedule":"0 6 * * *","prompt":"Write it earlier"}"#)) { response in
+                #expect(response.status == .ok)
+                let job = try Self.decode(HermesMirroredJobDTO.self, response.body)
+                #expect(job.schedule == "0 6 * * *")
+                #expect(job.prompt == "Write it earlier")
+            }
+            // An empty patch is a no-op write upstream that would answer 200
+            // and read to a client as "applied"; refuse it here instead.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)", method: .put, headers: auth, body: ByteBuffer(string: "{}")) { response in
+                #expect(response.status == .badRequest)
+                #expect(String(buffer: response.body).contains("hermes_job_update_empty"))
+            }
+
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/pause", method: .post, headers: auth) { response in
+                #expect(response.status == .ok)
+                let job = try Self.decode(HermesMirroredJobDTO.self, response.body)
+                #expect(job.paused == true)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .get, headers: auth) { response in
+                let jobs = try Self.decode(HermesMirroredJobsResponse.self, response.body)
+                #expect(jobs.jobs.first { $0.hermesJobID == jobID }?.paused == true)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/resume", method: .post, headers: auth) { response in
+                #expect(response.status == .ok)
+                let job = try Self.decode(HermesMirroredJobDTO.self, response.body)
+                #expect(job.paused == false)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/trigger", method: .post, headers: auth) { response in
+                #expect(response.status == .ok)
+                let job = try Self.decode(HermesMirroredJobDTO.self, response.body)
+                #expect(job.nextRunAt != nil)
+            }
+
+            // Nothing has run yet, so the stored history is empty but valid.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/runs?limit=5", method: .get, headers: auth) { response in
+                #expect(response.status == .ok)
+                let runs = try Self.decode(HermesJobRunsResponse.self, response.body)
+                #expect(runs.hermesJobID == jobID)
+                #expect(runs.runs.isEmpty)
+            }
+
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)", method: .delete, headers: auth) { response in
+                #expect(response.status == .noContent)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .get, headers: auth) { response in
+                let jobs = try Self.decode(HermesMirroredJobsResponse.self, response.body)
+                #expect(jobs.jobs.contains { $0.hermesJobID == jobID } == false)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)", method: .delete, headers: auth) { response in
+                #expect(response.status == .notFound)
+                #expect(String(buffer: response.body).contains("hermes_job_not_found"))
+            }
+        }
+    }
+
+    @Test
+    func `job control refuses unknown ids and path traversal`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let auth: HTTPFields = [.authorization: "Bearer \(token)", .contentType: "application/json"]
+            let patch = ByteBuffer(string: #"{"schedule":"0 6 * * *"}"#)
+
+            // A job this tenant does not mirror is 404 on every mutation…
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/does-not-exist", method: .put, headers: auth, body: patch) { response in
+                #expect(response.status == .notFound)
+                #expect(String(buffer: response.body).contains("hermes_job_not_found"))
+            }
+            for action in ["pause", "resume", "trigger"] {
+                try await client.execute(uri: "/v1/hermes/mirror/jobs/does-not-exist/\(action)", method: .post, headers: auth) { response in
+                    #expect(response.status == .notFound)
+                    #expect(String(buffer: response.body).contains("hermes_job_not_found"))
+                }
+            }
+            // …and an id that is not a single path component never reaches
+            // Hermes or the PVC at all.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/..%2Fetc", method: .put, headers: auth, body: patch) { response in
+                #expect(response.status == .badRequest)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/..%2Fetc", method: .delete, headers: auth) { response in
+                #expect(response.status == .badRequest)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/..%2Fetc/pause", method: .post, headers: auth) { response in
+                #expect(response.status == .badRequest)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/..%2Fetc/runs", method: .get, headers: auth) { response in
+                #expect(response.status == .badRequest)
+            }
+        }
+    }
+
     @Test
     func `transport errors map to stable status codes`() {
         #expect(HermesMirrorController.status(for: .invalidPath("x")) == .badRequest)

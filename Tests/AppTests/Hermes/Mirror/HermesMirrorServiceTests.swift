@@ -504,6 +504,9 @@ struct HermesMirrorServiceTests {
             #expect(listed.runs.map(\.runKey) == ["cron_j1_2"])
             #expect(listed.collectedAt != nil)
             #expect(listed.runs[0].tokens == HermesJobRunTokensDTO(input: 12, output: 34))
+            // The listing resolves the vault path the run was filed at, so a
+            // client can open the output without a second round trip.
+            #expect(listed.runs[0].vaultFilePath?.hasSuffix("raw/jobs/daily-digest/2025-09-02-0800.md") == true)
 
             // The pass writes only the two collect columns, so the mirrored
             // job's `raw` jsonb is byte-identical afterwards. Saving the whole

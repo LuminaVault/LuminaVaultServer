@@ -1565,6 +1565,187 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HermesMirroredJobsResponse' }
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorJobCreate
+      summary: Create a cron job on the tenant's Hermes.
+      description: |
+        The full Hermes `CronJobCreate` body. `schedule` accepts a cron
+        expression, an interval (`every 2h`) or a one-shot time; `deliver`
+        follows Hermes' grammar (`origin`, `local`, `all`,
+        `platform[:chat_id[:thread]]`, comma-separated). The job is created on
+        Hermes first and mirrored from the response, so a rejected create
+        leaves the mirror untouched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesJobCreateRequest' }
+      responses:
+        '200':
+          description: The job as Hermes stores it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+        '400':
+          description: '`hermes_job_name_required` or `hermes_job_schedule_required`.'
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/jobs/{id}:
+    put:
+      tags: [Settings]
+      operationId: hermesMirrorJobUpdate
+      summary: Partially update a mirrored cron job on the tenant's Hermes.
+      description: |
+        Only the fields present in the body are sent to Hermes as `updates`;
+        an empty body is refused (`hermes_job_update_empty`) rather than sent
+        on as a no-op write. `enabled: false` pauses without clearing the
+        schedule — prefer the `pause` / `resume` routes for that.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesJobUpdateRequest' }
+      responses:
+        '200':
+          description: The job as Hermes stores it afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+        '400':
+          description: '`hermes_mirror_invalid_path` or `hermes_job_update_empty`.'
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Settings]
+      operationId: hermesMirrorJobDelete
+      summary: Delete a cron job on the tenant's Hermes.
+      description: |
+        Deletes upstream first, then drops the mirrored row. Runs already
+        collected into `hermes_job_runs` are kept — the outputs are in the
+        vault and on the Today feed, and deleting a schedule is not a request
+        to forget what it produced.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted.
+        '400':
+          description: '`hermes_mirror_invalid_path`.'
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/jobs/{id}/pause:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorJobPause
+      summary: Pause a mirrored cron job on the tenant's Hermes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 'The job with `paused: true`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+
+  /v1/hermes/mirror/jobs/{id}/resume:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorJobResume
+      summary: Resume a paused cron job on the tenant's Hermes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 'The job with `paused: false`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+
+  /v1/hermes/mirror/jobs/{id}/trigger:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorJobTrigger
+      summary: Run a mirrored cron job on Hermes' next scheduler tick.
+      description: |
+        Returns as soon as Hermes has scheduled the run; it does not wait for
+        output. The run is collected the usual way — poll
+        `/v1/hermes/mirror/jobs/{id}/runs`, or let the refresh worker collect it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The job as Hermes stores it afterwards.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirroredJobDTO' }
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+
+  /v1/hermes/mirror/jobs/{id}/runs:
+    get:
+      tags: [Settings]
+      operationId: hermesMirrorJobRuns
+      summary: Runs LuminaVault has collected for this job, newest first.
+      description: |
+        Reads stored `hermes_job_runs` rows only, so it answers while the
+        tenant's Hermes is offline. `vaultFilePath` is the file the run's
+        output was filed as; `collectedAt` is when the collector last pulled
+        this job. Use `POST /v1/hermes/mirror/jobs/{id}/collect` to refresh
+        before reading.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Collected runs, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesJobRunsResponse' }
+        '400':
+          description: '`hermes_mirror_invalid_path`.'
 
   /v1/hermes/mirror/jobs/install-compile:
     post:
@@ -8457,6 +8638,112 @@ components:
         created: { type: boolean }
 
     # ── Hermes job runs (Phase 2 "Collect") ──
+
+    HermesJobCreateRequest:
+      type: object
+      required: [name, schedule]
+      description: |
+        Hermes' own `CronJobCreate` body. Absent fields are left out of the
+        upstream request so Hermes applies its own defaults.
+      properties:
+        name: { type: string }
+        schedule:
+          type: string
+          description: Cron expression, interval (`every 2h`) or one-shot time.
+        prompt: { type: string }
+        deliver:
+          type: string
+          description: '`origin`, `local`, `all`, or `platform[:chat_id[:thread]]`; comma-separated.'
+        skills:
+          type: array
+          items: { type: string }
+        model: { type: string }
+        provider: { type: string }
+        baseURL: { type: string }
+        script: { type: string }
+        contextFrom:
+          type: array
+          items: { type: string }
+        enabledToolsets:
+          type: array
+          items: { type: string }
+        workdir: { type: string }
+        noAgent: { type: boolean }
+
+    HermesJobUpdateRequest:
+      type: object
+      description: |
+        Partial update — only present fields are sent to Hermes. An empty
+        body is refused (`hermes_job_update_empty`).
+      properties:
+        name: { type: string }
+        schedule: { type: string }
+        prompt: { type: string }
+        deliver: { type: string }
+        skills:
+          type: array
+          items: { type: string }
+        model: { type: string }
+        provider: { type: string }
+        baseURL: { type: string }
+        script: { type: string }
+        contextFrom:
+          type: array
+          items: { type: string }
+        enabledToolsets:
+          type: array
+          items: { type: string }
+        workdir: { type: string }
+        noAgent: { type: boolean }
+        enabled:
+          type: boolean
+          description: '`false` pauses without clearing the schedule.'
+
+    HermesJobRunStatus:
+      type: string
+      enum: [running, ok, error]
+
+    HermesJobRunTokensDTO:
+      type: object
+      properties:
+        input: { type: integer }
+        output: { type: integer }
+
+    HermesJobRunDTO:
+      type: object
+      required: [id, hermesJobID, runKey, status, startedAt]
+      properties:
+        id: { type: string, format: uuid }
+        hermesJobID: { type: string }
+        runKey:
+          type: string
+          description: Hermes' own identity for the run; unique per tenant and the collector's idempotency key.
+        status: { $ref: '#/components/schemas/HermesJobRunStatus' }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        output:
+          type: string
+          description: Markdown the run produced, truncated at 256 KiB. The vault file holds the same body.
+        error: { type: string }
+        tokens: { $ref: '#/components/schemas/HermesJobRunTokensDTO' }
+        vaultFilePath:
+          type: string
+          description: '`raw/jobs/<job-slug>/<yyyy-MM-dd-HHmm>.md` when the output was filed.'
+        skillRunLogID: { type: string, format: uuid }
+        collectedAt: { type: string, format: date-time }
+
+    HermesJobRunsResponse:
+      type: object
+      required: [hermesJobID, runs]
+      properties:
+        hermesJobID: { type: string }
+        runs:
+          type: array
+          items: { $ref: '#/components/schemas/HermesJobRunDTO' }
+        collectedAt:
+          type: string
+          format: date-time
+          description: When the collector last pulled runs for this job.
 
     HermesJobCollectResultDTO:
       type: object

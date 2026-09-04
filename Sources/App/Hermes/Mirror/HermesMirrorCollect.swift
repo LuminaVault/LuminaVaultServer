@@ -74,20 +74,33 @@ extension HermesMirrorService {
 
     /// Stored runs for one job, newest first. Reads the
     /// `(tenant_id, hermes_job_id, started_at DESC)` index — never a scan.
+    ///
+    /// The vault paths come from one extra keyed lookup over the page's file
+    /// ids rather than a join, so a page of runs that filed nothing costs no
+    /// second query at all.
     func jobRuns(tenantID: UUID, jobID: String, limit: Int) async throws -> HermesJobRunsResponse {
         let id = try HermesJobID.validate(jobID)
-        let bounded = max(1, min(limit, 200))
+        let bounded = max(1, min(limit, Self.maxJobRunsLimit))
         let rows = try await HermesJobRun.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$hermesJobID == id)
             .sort(\.$startedAt, .descending)
             .limit(bounded)
             .all()
         let job = try await mirroredJob(tenantID: tenantID, jobID: id)
+        let paths = try await vaultPaths(tenantID: tenantID, fileIDs: rows.compactMap(\.vaultFileID))
         return HermesJobRunsResponse(
             hermesJobID: id,
-            runs: rows.map { $0.dto() },
+            runs: rows.map { $0.dto(vaultFilePath: $0.vaultFileID.flatMap { paths[$0] }) },
             collectedAt: job?.runsCollectedAt
         )
+    }
+
+    private func vaultPaths(tenantID: UUID, fileIDs: [UUID]) async throws -> [UUID: String] {
+        guard !fileIDs.isEmpty else { return [:] }
+        let files = try await VaultFile.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id ~~ Set(fileIDs))
+            .all()
+        return Dictionary(files.compactMap { file in file.id.map { ($0, file.path) } }, uniquingKeysWith: { first, _ in first })
     }
 
     struct HermesCollectSummary: Sendable, Equatable {
@@ -235,7 +248,9 @@ extension HermesMirrorService {
         """).run()
     }
 
-    private func mirroredJob(tenantID: UUID, jobID: String) async throws -> HermesMirroredJob? {
+    /// Not `private`: job control (`HermesMirrorJobControl.swift`) refuses an
+    /// id this tenant does not mirror the same way collect does.
+    func mirroredJob(tenantID: UUID, jobID: String) async throws -> HermesMirroredJob? {
         // Fluent query builder, not a collection.
         // swiftlint:disable:next first_where
         try await HermesMirroredJob.query(on: fluent.db(), tenantID: tenantID)

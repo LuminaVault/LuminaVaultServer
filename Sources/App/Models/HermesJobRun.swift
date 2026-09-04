@@ -82,7 +82,9 @@ final class HermesJobRun: Model, TenantModel, @unchecked Sendable {
         return String(markdown[..<end]) + truncationMarker
     }
 
-    func dto() -> HermesJobRunDTO {
+    /// `vaultFilePath` is resolved by the caller — the row holds only the
+    /// file id, and one keyed lookup per page beats one per run.
+    func dto(vaultFilePath: String? = nil) -> HermesJobRunDTO {
         HermesJobRunDTO(
             id: id ?? UUID(),
             hermesJobID: hermesJobID,
@@ -93,7 +95,7 @@ final class HermesJobRun: Model, TenantModel, @unchecked Sendable {
             output: output,
             error: error,
             tokens: tokens,
-            vaultFilePath: nil,
+            vaultFilePath: vaultFilePath,
             skillRunLogID: skillRunLogID,
             collectedAt: collectedAt
         )
