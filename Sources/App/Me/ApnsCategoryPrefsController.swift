@@ -24,13 +24,17 @@ struct ApnsCategoryPrefsController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         if let row = try await ApnsCategoryPrefs.find(tenantID, on: fluent.db()) {
-            return APNSCategoryPrefsResponse(
-                chatEnabled: row.chatEnabled,
-                nudgeEnabled: row.nudgeEnabled,
-                digestEnabled: row.digestEnabled
-            )
+            return Self.response(for: row)
         }
-        return APNSCategoryPrefsResponse(chatEnabled: true, nudgeEnabled: true, digestEnabled: true)
+        // No row yet means nothing has been opted out of; mirror the column
+        // defaults rather than inventing a second source of truth.
+        return APNSCategoryPrefsResponse(
+            chatEnabled: true,
+            nudgeEnabled: true,
+            digestEnabled: true,
+            approvalEnabled: true,
+            runCompletedEnabled: true
+        )
     }
 
     @Sendable
@@ -51,12 +55,24 @@ struct ApnsCategoryPrefsController {
         if let digest = body.digestEnabled {
             row.digestEnabled = digest
         }
+        if let approval = body.approvalEnabled {
+            row.approvalEnabled = approval
+        }
+        if let runCompleted = body.runCompletedEnabled {
+            row.runCompletedEnabled = runCompleted
+        }
         try await row.save(on: db)
 
-        return APNSCategoryPrefsResponse(
+        return Self.response(for: row)
+    }
+
+    static func response(for row: ApnsCategoryPrefs) -> APNSCategoryPrefsResponse {
+        APNSCategoryPrefsResponse(
             chatEnabled: row.chatEnabled,
             nudgeEnabled: row.nudgeEnabled,
-            digestEnabled: row.digestEnabled
+            digestEnabled: row.digestEnabled,
+            approvalEnabled: row.approvalEnabled,
+            runCompletedEnabled: row.runCompletedEnabled
         )
     }
 }

@@ -8049,18 +8049,32 @@ components:
 
     APNSCategoryPrefsResponse:
       type: object
-      required: [chatEnabled, nudgeEnabled, digestEnabled]
+      required: [chatEnabled, nudgeEnabled, digestEnabled, approvalEnabled, runCompletedEnabled]
       properties:
         chatEnabled: { type: boolean }
         nudgeEnabled: { type: boolean }
         digestEnabled: { type: boolean }
+        approvalEnabled:
+          type: boolean
+          description: >-
+            Phase 1 `approval` pushes — the actionable prompt asking the user to
+            approve or deny a tool call. Off means the run waits for an answer
+            given in the app instead.
+        runCompletedEnabled:
+          type: boolean
+          description: Phase 1 `runCompleted` pushes — the terminal banner for a run.
 
     APNSCategoryPrefsPutRequest:
       type: object
+      description: >-
+        Sparse: an omitted field is left unchanged. Sending an empty object is
+        a no-op that returns the current settings.
       properties:
         chatEnabled: { type: boolean }
         nudgeEnabled: { type: boolean }
         digestEnabled: { type: boolean }
+        approvalEnabled: { type: boolean }
+        runCompletedEnabled: { type: boolean }
 
     # ── Sessions (HER-245 / HER-259) ──
 
