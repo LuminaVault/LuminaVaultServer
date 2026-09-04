@@ -11,7 +11,7 @@
 #      start, never clobbering user-edited files (`cp -rn`).
 #
 # Rebuild via `docker compose build hermes` after editing
-# `hermes-skills/`.
+# `Sources/App/Resources/HermesSkills/`.
 # Pinned to the successful LuminaVaultHermesAgent build for source commit
 # 24cac9200f35b261694f91dd873507c9eec9792a. Bump deliberately only after its
 # API tests and GHCR image workflow pass.
@@ -75,7 +75,7 @@ RUN printf '\n# HER-XXX — Mnemosyne memory MCP server (baked default)\nmcp_ser
 
 # Baked layout — read-only inside the container. The runtime path
 # (`/opt/data/skills/`) is populated by the entrypoint on each start.
-COPY hermes-skills/ /opt/baked-skills/
+COPY Sources/App/Resources/HermesSkills/ /opt/baked-skills/
 
 # Idempotent seed: no-clobber copy preserves user-edited skill files
 # under the bind-mounted `/opt/data` volume.

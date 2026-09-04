@@ -9,7 +9,7 @@ on:
     paths:
       - docker/hermes.Dockerfile
       - docker/hermes-entrypoint.sh
-      - hermes-skills/**
+      - Sources/App/Resources/HermesSkills/**
       - .github/workflows/hermes-image.yml
   workflow_dispatch: {}
 

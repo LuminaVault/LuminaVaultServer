@@ -73,6 +73,9 @@ let package = Package(
                               // tree is preserved verbatim. `.process` flattens leaves into
                               // a single namespace and collides 5x `SKILL.md`.
                               .copy("Resources/Skills"),
+                              // Hermes Mirror — the kb-* skills baked into the Hermes image and
+                              // installed onto a user's own Hermes when a vault is created there.
+                              .copy("Resources/HermesSkills"),
                           ]),
         .target(
             name: "AppAPI",

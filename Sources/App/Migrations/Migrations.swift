@@ -117,4 +117,7 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M111_CreateMemoryChunks())
     await fluent.migrations.add(M112_CreateVaultLinks())
     await fluent.migrations.add(M113_CreateAgentConnections())
+    await fluent.migrations.add(M114_CreateHermesMirrorState())
+    await fluent.migrations.add(M115_CreateHermesMirroredSkills())
+    await fluent.migrations.add(M116_CreateHermesMirroredJobs())
 }

@@ -24,6 +24,12 @@ struct SkillsController {
     let fluent: HummingbirdFluent.Fluent
     let enforcementEnabled: Bool
     let logger: Logger
+    /// Hermes Mirror — skills mirrored from the tenant's own Hermes are
+    /// appended to `GET /v1/skills` as `source: hermes` (id `hermes-<name>`);
+    /// they run on Hermes, so `/run` refuses them.
+    var mirror: HermesMirrorService?
+
+    static let hermesSkillIDPrefix = "hermes-"
 
     private static let runsMaxLimit = 100
     private static let runsDefaultLimit = 50
@@ -53,7 +59,7 @@ struct SkillsController {
         let dailyCounts = try await dailyRunCounts(tenantID: tenantID, names: nil)
         let userTier = user.tier.isEmpty ? "trial" : user.tier
 
-        let skills = manifests.map { manifest -> LuminaVaultShared.SkillDTO in
+        var skills = manifests.map { manifest -> LuminaVaultShared.SkillDTO in
             let key = "\(manifest.source.rawValue):\(manifest.name)"
             let state = stateByKey[key]
             return Self.buildDTO(
@@ -63,7 +69,28 @@ struct SkillsController {
                 userTier: userTier
             )
         }
+        if let mirror {
+            let mirrored = try await mirror.mirroredSkills(tenantID: tenantID)
+            skills.append(contentsOf: mirrored.map(Self.hermesSkillDTO))
+        }
         return SkillListResponse(skills: skills)
+    }
+
+    /// A skill living on the tenant's Hermes, rendered in the app catalog.
+    /// No schedule/run state: LuminaVault never runs it.
+    static func hermesSkillDTO(_ skill: HermesMirroredSkillDTO) -> LuminaVaultShared.SkillDTO {
+        LuminaVaultShared.SkillDTO(
+            id: hermesSkillIDPrefix + skill.name,
+            source: .hermes,
+            name: skill.name,
+            title: skill.name,
+            descriptionText: skill.description,
+            capability: .medium,
+            enabled: skill.enabled,
+            dailyRunCount: 0,
+            dailyRunCap: 0,
+            bodyExcerpt: String(skill.description.prefix(200))
+        )
     }
 
     // MARK: - PATCH /v1/skills/:name
@@ -264,6 +291,9 @@ struct SkillsController {
         arguments: [String: String]
     ) async throws -> SkillRunResponse {
         let tenantID = try user.requireID()
+        if name.hasPrefix(Self.hermesSkillIDPrefix) {
+            throw HTTPError(.badRequest, message: "hermes_skill_runs_on_hermes")
+        }
         guard let manifest = try await catalog.manifest(named: name, for: tenantID) else {
             throw HTTPError(.notFound, message: "no skill named \(name)")
         }

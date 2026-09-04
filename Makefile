@@ -70,7 +70,7 @@ lint:
 bruno-regen: ## Regenerate the LuminaVaultCollection Bruno collection from Sources/AppAPI/openapi.yaml (HER-229)
 	./scripts/generate-bruno.sh
 
-hermes-skills-rebuild: ## Rebuild the Hermes image with the current hermes-skills/ tree baked in (HER-276)
+hermes-skills-rebuild: ## Rebuild the Hermes image with the current Sources/App/Resources/HermesSkills/ tree baked in (HER-276)
 	docker compose build hermes
 	docker compose up -d hermes
 	@echo "✓ hermes restarted with refreshed bundled skills"

@@ -17,6 +17,9 @@ struct VaultFileMetadata: Codable {
     /// `TodoDTO.projectID`). Stored here so note-todos and the dedicated
     /// `/v1/todos` API share one backing store (the vault file).
     var projectID: UUID?
+    /// Where an imported file came from (`hermes-mirror`, `hermes-session`).
+    /// Nil for files the user wrote or captured directly.
+    var provenance: String?
 
     init(
         enrichmentStatus: String? = nil,
@@ -25,7 +28,8 @@ struct VaultFileMetadata: Codable {
         isTodo: Bool? = nil,
         done: Bool? = nil,
         dueAt: Date? = nil,
-        projectID: UUID? = nil
+        projectID: UUID? = nil,
+        provenance: String? = nil
     ) {
         self.enrichmentStatus = enrichmentStatus
         self.title = title
@@ -34,6 +38,7 @@ struct VaultFileMetadata: Codable {
         self.done = done
         self.dueAt = dueAt
         self.projectID = projectID
+        self.provenance = provenance
     }
 }
 
