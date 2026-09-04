@@ -120,4 +120,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M114_CreateHermesMirrorState())
     await fluent.migrations.add(M115_CreateHermesMirroredSkills())
     await fluent.migrations.add(M116_CreateHermesMirroredJobs())
+    await fluent.migrations.add(M120_CreateHermesJobRuns())
 }

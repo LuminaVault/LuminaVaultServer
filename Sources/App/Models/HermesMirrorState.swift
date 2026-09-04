@@ -82,6 +82,12 @@ final class HermesMirroredJob: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "last_run_at") var lastRunAt: Date?
     @OptionalField(key: "next_run_at") var nextRunAt: Date?
     @Field(key: "raw") var raw: JSONValue
+    /// Start time of the newest *finished* run collected for this job (M120).
+    /// The collector only inserts runs at or after it, so a steady state costs
+    /// one listing and no output reads.
+    @OptionalField(key: "runs_high_water_at") var runsHighWaterAt: Date?
+    /// When the collector last completed a pass for this job.
+    @OptionalField(key: "runs_collected_at") var runsCollectedAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {}
