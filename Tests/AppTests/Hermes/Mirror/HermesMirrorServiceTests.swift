@@ -520,6 +520,72 @@ struct HermesMirrorServiceTests {
         }
     }
 
+    // MARK: - Job control (Phase 2)
+
+    @Test
+    func `job control mutates on Hermes, mirrors the answer and leaves raw intact`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.jobcontrol") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            let created = try await h.service.createJob(
+                tenantID: h.tenantID,
+                request: HermesJobCreateRequest(name: "Nightly", schedule: "0 3 * * *", prompt: "compile")
+            )
+            #expect(created.name == "Nightly")
+            #expect(await h.transport.jobList().map(\.id) == [created.hermesJobID])
+            // Mirrored without a sync — `GET /jobs` would show it immediately.
+            let mirrored = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(mirrored.hermesJobID == created.hermesJobID)
+            let rawAfterCreate = mirrored.raw
+
+            let paused = try await h.service.pauseJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(paused.paused == true)
+            let resumed = try await h.service.resumeJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(resumed.paused == false)
+            _ = try await h.service.triggerJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            let updated = try await h.service.updateJob(
+                tenantID: h.tenantID, jobID: created.hermesJobID,
+                request: HermesJobUpdateRequest(schedule: "0 6 * * *")
+            )
+            #expect(updated.schedule == "0 6 * * *")
+
+            // Four saves of the same row later, `raw` still holds the document
+            // Hermes sent rather than that document wrapped in another JSON
+            // string — the trap `markCollected` documents. It only holds
+            // because `apply(_:)` reassigns `raw` from each live response
+            // before the save; drop that and every mutation adds a layer.
+            //
+            // Note the read side is asymmetric: PostgresNIO hands a `jsonb`
+            // column to a single-value-container type as its raw *text*, so a
+            // loaded `JSONValue` is always a `.string`, never the `.object` it
+            // was written as. That is why the assertion is on the text.
+            let afterMutations = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(afterMutations.raw == rawAfterCreate)
+            guard case let .string(text) = afterMutations.raw else {
+                Issue.record("expected the jsonb read-back to be text, got \(afterMutations.raw)")
+                return
+            }
+            let decoded = try? JSONSerialization.jsonObject(with: Data(text.utf8))
+            #expect(decoded is [String: Any], "raw is no longer a JSON object: \(text)")
+
+            // An empty patch never reaches Hermes.
+            await #expect(throws: HTTPError.self) {
+                try await h.service.updateJob(tenantID: h.tenantID, jobID: created.hermesJobID, request: HermesJobUpdateRequest())
+            }
+            #expect(await h.transport.recordedCalls().filter { $0.hasPrefix("updateJob") }.count == 1)
+
+            // Delete drops the mirrored row but keeps collected history.
+            try await h.service.deleteJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(try await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).count() == 0)
+            await #expect(throws: HTTPError.self) {
+                try await h.service.pauseJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            }
+            // A job id that is not a single path component never reaches Hermes.
+            await #expect(throws: HermesMirrorTransportError.self) {
+                try await h.service.pauseJob(tenantID: h.tenantID, jobID: "../etc")
+            }
+        }
+    }
+
     @Test
     func `collecting the same run twice inserts nothing and reads no output`() async throws {
         try await withTestFluent(label: "lv.test.mirror.collect.idem") { fluent in

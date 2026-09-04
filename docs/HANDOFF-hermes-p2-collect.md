@@ -31,11 +31,21 @@ themselves are fully editable from LuminaVault.
    Local builds before the tag: `swift package edit LuminaVaultShared --path ../LuminaVaultShared`.
    **`Package.resolved` is deliberately not committed on this branch** — it is
    dirty from that edit and every commit here excludes it.
-3. **Regenerate the Bruno collection.** `openapi.yaml` gained eleven paths and
-   nine schemas on this branch, and `make bruno-regen` was **not** run: the
-   generated collection lives in a sibling repo
-   (`LuminaVaultCollection`, resolved via `LUMINAVAULT_COLLECTION_PATH`) that
-   this work was scoped out of. Run it after merge and commit the result there.
+3. **Regenerate the Bruno collection — once, after every Hermes branch is
+   merged, against `main`.** Not per branch. `openapi.yaml` gained eleven paths
+   and nine schemas here, but `make bruno-regen` rebuilds the **whole**
+   collection from a single `openapi.yaml` and preserves only `environments/`.
+   `feat/hermes-p1-runs` and `feat/hermes-p2-collect` branched separately and
+   their specs are disjoint, so regenerating from this branch would delete the
+   `Hermes Runs/` folder Phase 1 adds — and regenerating from Phase 1 would
+   delete this branch's job-control and webhook requests.
+
+   The collection lives at `~/Work/production/apps/lumina/LuminaVaultCollection`
+   (`git@github.com:LuminaVault/LuminaVaultCollection.git`), not at the
+   `~/Projects/ObsidianClaudeBrain/LuminaVaultCollection` that
+   `scripts/generate-bruno.sh` defaults to;
+   `export LUMINAVAULT_COLLECTION_PATH="$HOME/Work/production/apps/lumina/LuminaVaultCollection"`
+   is already in `~/.zshrc`. Commit the regenerated output in that repo.
 4. **Migrations:** M120 (`hermes_job_runs` + the two `hermes_mirrored_jobs`
    collect columns) and M121 (`hermes_mirror_webhooks`) run with
    `fluent.autoMigrate` / `make migrate`. Both are additive and both revert
@@ -157,7 +167,8 @@ rather than a `JSONValue`.
   reads the truth. A pushed body is unverified against Hermes' own run listing
   and writing it would burn the run key the poller relies on for idempotency.
   The fields are on the DTO for a future slice; today only `job_id` is acted on.
-- **`make bruno-regen`** — see owner step 3.
+- **`make bruno-regen`** — deliberately not run here; it must happen once
+  against `main` after the merges, not per branch. See owner step 3.
 - **Exposing `admin_config_rw` on `HermesDashboardCapabilitiesDTO`.** It is
   server-side only (`HermesDashboardStatus`) so Phase 2 needed no extra Shared
   change. A client that wants to hide the "enable push" button before calling
