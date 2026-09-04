@@ -1871,6 +1871,84 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/hermes/mirror/webhook:
+    get:
+      tags: [Settings]
+      operationId: hermesMirrorWebhookGet
+      summary: The tenant's inbound push credential (without the secret).
+      responses:
+        '200':
+          description: Path, token and signing envelope. `secret` is never returned here.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirrorWebhookDTO' }
+        '404':
+          description: No webhook has been minted for this tenant (`hermes_webhook_not_configured`).
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorWebhookRotate
+      summary: Mint (or replace) the inbound push credential for the tenant's Hermes.
+      description: |
+        Returns the signing `secret` exactly once — LuminaVault seals it and
+        never hands it back. Store it, and the `path`, on the tenant's Hermes.
+
+        Requires that Hermes to report `admin_config_rw`: without it the user
+        cannot save the URL and secret on their own side, so a credential
+        would be a dead end. Tenants on the managed Hermes always qualify;
+        anything else degrades to `hermes_admin_config_rw_required` and keeps
+        polling, which is the source of truth either way.
+      responses:
+        '200':
+          description: The new credential, including the one-time `secret`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesMirrorWebhookDTO' }
+        '409':
+          description: The tenant's Hermes does not report `admin_config_rw` (`hermes_admin_config_rw_required`).
+
+  /v1/hermes/mirror/webhook/{token}:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorWebhookPush
+      summary: Push endpoint for the tenant's Hermes — collect this job now.
+      description: |
+        Unauthenticated by construction: the sender is the user's own Hermes
+        and holds no LuminaVault session, so the token in the path plus
+        `X-Webhook-Signature-V2` — `hex(HMAC-SHA256(secret, "<timestamp>.<body>"))`
+        over the raw body, with `X-Webhook-Timestamp` in unix seconds and a
+        300 s window — is the whole gate. An unknown token, a bad signature
+        and a stale or missing timestamp all answer the same 401 so a sender
+        cannot probe for live tokens.
+
+        This only shortens the wait: the push runs the same idempotent
+        collect the background worker runs, keyed on Hermes' own run key, so
+        a webhook that never arrives, arrives late or arrives twice changes
+        latency and nothing else. A collect that could not run answers 200
+        with zero counts rather than an error, because a 5xx would invite a
+        retry loop over work the poller will do anyway.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesJobWebhookPayload' }
+      responses:
+        '200':
+          description: Counts for the collect this push triggered; zeroes when it was deferred to the poller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesJobCollectResultDTO' }
+        '400':
+          description: '`hermes_webhook_invalid_payload` or `hermes_mirror_invalid_path`.'
+        '401':
+          description: Unknown token, bad signature, or a stale/missing timestamp (`hermes_webhook_unauthorized`).
+
   /v1/me/improvement:
     get:
       tags: [Self Improvement]
@@ -8744,6 +8822,43 @@ components:
           type: string
           format: date-time
           description: When the collector last pulled runs for this job.
+
+    HermesMirrorWebhookDTO:
+      type: object
+      required: [path, token, signatureHeader, timestampHeader, replayWindowSeconds]
+      properties:
+        path:
+          type: string
+          description: Route to POST to, e.g. `/v1/hermes/mirror/webhook/<token>`.
+        token: { type: string }
+        secret:
+          type: string
+          description: Returned only by the rotate route, once. LuminaVault seals it and never returns it again.
+        signatureHeader:
+          type: string
+          description: Header carrying `hex(HMAC-SHA256(secret, "<timestamp>.<body>"))`.
+        timestampHeader:
+          type: string
+          description: Header carrying the unix-seconds timestamp bound into the signature.
+        replayWindowSeconds:
+          type: integer
+          description: How long a signed request stays valid.
+        rotatedAt: { type: string, format: date-time }
+
+    HermesJobWebhookPayload:
+      type: object
+      required: [job_id]
+      description: |
+        Body the tenant's Hermes posts when a cron job finishes. Only
+        `job_id` is acted on today — it names the job to collect now.
+      properties:
+        job_id: { type: string }
+        run_key: { type: string }
+        status: { $ref: '#/components/schemas/HermesJobRunStatus' }
+        output: { type: string }
+        error: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
 
     HermesJobCollectResultDTO:
       type: object

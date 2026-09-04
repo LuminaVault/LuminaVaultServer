@@ -59,7 +59,10 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: rootPath, isDirectory: &isDirectory) && isDirectory.boolValue
         }
-        return HermesDashboardStatus(reachable: exists, authRequired: false, version: nil, defaultCwd: rootPath)
+        // A managed Hermes keeps its config on the PVC LuminaVault already
+        // writes skills and cron jobs to, so admin config read/write is not
+        // something to ask about — it is the transport.
+        return HermesDashboardStatus(reachable: exists, authRequired: false, version: nil, defaultCwd: rootPath, adminConfigRW: exists)
     }
 
     // MARK: - Skills

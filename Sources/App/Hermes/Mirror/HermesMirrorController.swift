@@ -224,6 +224,9 @@ enum HermesMirrorWiring {
     struct Built {
         let service: HermesMirrorService
         let controller: HermesMirrorController
+        /// Rotate + read on the mirror group; the push route goes on the root
+        /// router (`addPublicRoutes`) because the sender is the user's Hermes.
+        let webhooks: HermesMirrorWebhookController
     }
 
     static func make(_ deps: Dependencies) -> Built {
@@ -246,6 +249,15 @@ enum HermesMirrorWiring {
             compile: MemoryCompileControllerRunner(controller: deps.compileController, fluent: deps.fluent),
             logger: deps.logger
         )
-        return Built(service: service, controller: HermesMirrorController(service: service))
+        return Built(
+            service: service,
+            controller: HermesMirrorController(service: service),
+            webhooks: HermesMirrorWebhookController(
+                fluent: deps.fluent,
+                secretBox: deps.secretBox,
+                service: service,
+                logger: deps.logger
+            )
+        )
     }
 }

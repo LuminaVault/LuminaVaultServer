@@ -46,6 +46,20 @@ struct HermesDashboardStatus: Sendable, Equatable {
     let version: String?
     /// Working directory the dashboard resolves relative paths against.
     let defaultCwd: String?
+    /// `admin_config_rw` as the Hermes reports it: this Hermes lets an admin
+    /// read and write its own configuration, which is what a user needs in
+    /// order to store an outbound webhook URL and secret. Nil means the
+    /// Hermes said nothing, which is treated as "no" — the inbound webhook is
+    /// an optimisation, so refusing to offer one costs only latency.
+    let adminConfigRW: Bool?
+
+    init(reachable: Bool, authRequired: Bool?, version: String?, defaultCwd: String?, adminConfigRW: Bool? = nil) {
+        self.reachable = reachable
+        self.authRequired = authRequired
+        self.version = version
+        self.defaultCwd = defaultCwd
+        self.adminConfigRW = adminConfigRW
+    }
 }
 
 struct HermesMirrorSkill: Sendable, Equatable {

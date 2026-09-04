@@ -2345,6 +2345,10 @@ func buildRouter(
                 mirrorGroup = mirrorGroup.add(middleware: byoHermesMiddleware)
             }
             mirror.controller.addRoutes(to: mirrorGroup)
+            mirror.webhooks.addRoutes(to: mirrorGroup)
+            // The push route is unauthenticated by construction — the sender
+            // is the tenant's own Hermes, which holds no LuminaVault session.
+            mirror.webhooks.addPublicRoutes(to: router)
         }
     }
 

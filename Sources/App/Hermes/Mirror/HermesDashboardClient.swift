@@ -55,8 +55,26 @@ struct HermesDashboardClient: Sendable {
             reachable: true,
             authRequired: object["auth_required"] as? Bool,
             version: object["version"] as? String,
-            defaultCwd: cwd
+            defaultCwd: cwd,
+            adminConfigRW: Self.adminConfigRW(object)
         )
+    }
+
+    /// `admin_config_rw` off `/api/status`. Hermes versions advertise it
+    /// either as a flat boolean or inside a `capabilities` list, and older
+    /// ones not at all — absent reads as "no", which only means LuminaVault
+    /// will not offer that tenant an inbound webhook.
+    static func adminConfigRW(_ status: [String: Any]) -> Bool? {
+        if let flag = status["admin_config_rw"] as? Bool {
+            return flag
+        }
+        if let capabilities = status["capabilities"] as? [String] {
+            return capabilities.contains("admin_config_rw")
+        }
+        if let capabilities = status["capabilities"] as? [String: Any], let flag = capabilities["admin_config_rw"] as? Bool {
+            return flag
+        }
+        return nil
     }
 
     /// Distinguishes the two dashboard auth modes by hitting a protected route.
