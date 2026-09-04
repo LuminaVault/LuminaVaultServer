@@ -1477,6 +1477,66 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HermesCapabilitiesResponse' }
 
+  /v1/me/hermes/cron/config:
+    put:
+      tags: [Settings]
+      operationId: hermesCronConfigPut
+      summary: Link the tenant's own Hermes dashboard (URL + token) for BYO cron.
+      description: |
+        Stores the BYO Hermes **dashboard** endpoint and its static bearer
+        token, then immediately lists the tenant's cron jobs through it — so
+        the response doubles as a probe of the credentials just saved.
+
+        `dashboardToken` is write-only: it is sealed with `SecretBox` into the
+        `cron_dashboard` columns and never returned by any read endpoint. To
+        change it, send the pair again.
+
+        The dashboard only honours a static bearer when it is **bound to
+        loopback behind the operator's own TLS proxy or tunnel**. A
+        non-loopback bind falls back to an OAuth/password gate that has no
+        bearer path, and this route answers
+        `502 hermes_dashboard_auth_mode_unsupported` — the credentials are
+        saved, but nothing can be driven through them until the bind changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesCronConfigRequest' }
+      responses:
+        '200':
+          description: |
+            Credentials stored and accepted. Body is the now-listable jobs,
+            with `source` = `managed` when a managed container exists for the
+            tenant (it wins over BYO) or `byo` otherwise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesCronListResponse' }
+        '400':
+          description: Body missing or not decodable as `HermesCronConfigRequest`.
+        '401':
+          description: No tenant identity on the request (missing or invalid JWT).
+        '500':
+          description: |
+            `dashboardUrl` failed `SSRFGuard.validate` (bad URL, disallowed
+            scheme, missing host, loopback / private / link-local / unresolvable
+            address). The guard's rejection is not translated here, so it
+            surfaces as an untyped 500 rather than the
+            `invalid_base_url:<reason>` 400 that `PUT /v1/settings/hermes`
+            returns.
+        '502':
+          description: |
+            Saved, but the follow-up list against the dashboard failed.
+            `message` is a stable code:
+            `hermes_dashboard_auth_mode_unsupported` (dashboard behind its
+            OAuth/password gate — bind it to loopback behind your own TLS proxy
+            or tunnel), `byo_cron_http_401` (token rejected),
+            `byo_cron_http_<status>` (any other upstream status),
+            `hermes_dashboard_unreachable`, `hermes_mirror_invalid_response`,
+            `hermes_mirror_body_too_large`, `hermes_mirror_unsupported`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
 
   # ── Hermes Mirror — the tenant's Hermes (skills, cron jobs, KB vault, sessions) mirrored into LuminaVault ──
   /v1/hermes/mirror/status:
@@ -8699,6 +8759,47 @@ components:
       required: [verifiedAt]
       properties:
         verifiedAt: { type: string, format: date-time }
+
+    # ── BYO Hermes cron bridge (/v1/me/hermes/cron) ──
+    HermesCronConfigRequest:
+      type: object
+      required: [dashboardUrl, dashboardToken]
+      properties:
+        dashboardUrl:
+          type: string
+          format: uri
+          description: >-
+            Base URL of the Hermes **dashboard** (not the `api_server` on 8642).
+            Validated by `SSRFGuard` before it is stored.
+        dashboardToken:
+          type: string
+          description: >-
+            Static bearer the dashboard accepts. Write-only — sealed at rest and
+            never returned by any read endpoint.
+
+    HermesCronJob:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        schedule: { type: string }
+        deliver: { type: string }
+        lastRun: { type: string }
+        status: { type: string }
+        mode: { type: string }
+
+    HermesCronListResponse:
+      type: object
+      required: [source, jobs]
+      properties:
+        source:
+          type: string
+          description: Where the jobs came from — a managed container or the linked dashboard.
+          enum: [managed, byo]
+        jobs:
+          type: array
+          items: { $ref: '#/components/schemas/HermesCronJob' }
 
     # ── Hermes Mirror ──
     HermesDashboardAuthMode:
