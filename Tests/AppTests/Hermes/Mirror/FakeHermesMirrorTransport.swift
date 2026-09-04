@@ -17,6 +17,11 @@ actor FakeHermesMirrorTransport: HermesMirrorTransport {
     var directories: Set<String> = []
     var sessions: [HermesMirrorSession] = []
     var messages: [String: [HermesMirrorSessionMessage]] = [:]
+    /// Hermes job id → runs the fake reports, newest first is not assumed;
+    /// `jobRuns` sorts and caps like the real transports do.
+    var runs: [String: [HermesMirrorJobRun]] = [:]
+    /// "<jobID>/<runKey>" → markdown; absent means Hermes kept no output.
+    var runOutputs: [String: String] = [:]
     var statusResult = HermesDashboardStatus(reachable: true, authRequired: false, version: "0.20.0", defaultCwd: "/home/hermes")
     /// Operation name → error to throw.
     var failures: [String: HermesMirrorTransportError] = [:]
@@ -40,6 +45,14 @@ actor FakeHermesMirrorTransport: HermesMirrorTransport {
 
     func setSessions(_ value: [HermesMirrorSession]) {
         sessions = value
+    }
+
+    func setRuns(_ jobID: String, _ value: [HermesMirrorJobRun]) {
+        runs[jobID] = value
+    }
+
+    func setRunOutput(_ jobID: String, _ runKey: String, _ output: String?) {
+        runOutputs["\(jobID)/\(runKey)"] = output
     }
 
     func setMessages(_ id: String, _ value: [HermesMirrorSessionMessage]) {
@@ -141,6 +154,73 @@ actor FakeHermesMirrorTransport: HermesMirrorTransport {
         )
         jobs.append(job)
         return job
+    }
+
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
+        try check("updateJob:\(id)")
+        return try mutate(id) { job in
+            HermesMirrorJob(
+                id: job.id,
+                name: updates.name ?? job.name,
+                schedule: updates.schedule ?? job.schedule,
+                prompt: updates.prompt ?? job.prompt,
+                paused: updates.enabled.map { !$0 } ?? job.paused,
+                lastRunAt: job.lastRunAt,
+                nextRunAt: job.nextRunAt,
+                raw: job.raw
+            )
+        }
+    }
+
+    func pauseJob(id: String) async throws -> HermesMirrorJob {
+        try check("pauseJob:\(id)")
+        return try mutate(id) { Self.repaused($0, paused: true) }
+    }
+
+    func resumeJob(id: String) async throws -> HermesMirrorJob {
+        try check("resumeJob:\(id)")
+        return try mutate(id) { Self.repaused($0, paused: false) }
+    }
+
+    func triggerJob(id: String) async throws -> HermesMirrorJob {
+        try check("triggerJob:\(id)")
+        return try mutate(id) { Self.repaused($0, paused: false) }
+    }
+
+    func deleteJob(id: String) async throws {
+        try check("deleteJob:\(id)")
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        jobs.remove(at: index)
+        runs[id] = nil
+    }
+
+    func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun] {
+        try check("jobRuns:\(jobID)")
+        let rows = runs[jobID] ?? []
+        return Array(rows.sorted { $0.startedAt > $1.startedAt }.prefix(max(1, limit)))
+    }
+
+    func jobRunOutput(jobID: String, runKey: String) async throws -> String? {
+        try check("jobRunOutput:\(jobID):\(runKey)")
+        return runOutputs["\(jobID)/\(runKey)"]
+    }
+
+    private func mutate(_ id: String, _ patch: (HermesMirrorJob) -> HermesMirrorJob) throws -> HermesMirrorJob {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        let updated = patch(jobs[index])
+        jobs[index] = updated
+        return updated
+    }
+
+    private static func repaused(_ job: HermesMirrorJob, paused: Bool) -> HermesMirrorJob {
+        HermesMirrorJob(
+            id: job.id, name: job.name, schedule: job.schedule, prompt: job.prompt,
+            paused: paused, lastRunAt: job.lastRunAt, nextRunAt: job.nextRunAt, raw: job.raw
+        )
     }
 
     func listFiles(path: String) async throws -> [HermesMirrorFileEntry] {

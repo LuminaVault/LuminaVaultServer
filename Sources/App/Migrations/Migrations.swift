@@ -123,4 +123,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M117_CreateHermesRuns())
     await fluent.migrations.add(M118_CreateHermesRunEvents())
     await fluent.migrations.add(M119_AddHermesRunApnsCategoryPrefs())
+    await fluent.migrations.add(M120_CreateHermesJobRuns())
+    await fluent.migrations.add(M121_CreateHermesMirrorWebhooks())
 }

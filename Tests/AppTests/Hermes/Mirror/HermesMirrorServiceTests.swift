@@ -5,6 +5,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 import Testing
 
 /// Hermes Mirror tasks 4–5 — `HermesMirrorService` against the fake
@@ -436,6 +437,271 @@ struct HermesMirrorServiceTests {
             #expect(status.sessionsImported == 0)
         }
     }
+
+    // MARK: - Collect (Phase 2)
+
+    private func run(
+        _ key: String,
+        _ started: TimeInterval,
+        status: HermesJobRunStatus = .ok,
+        error: String? = nil,
+        tokensIn: Int? = nil,
+        tokensOut: Int? = nil
+    ) -> HermesMirrorJobRun {
+        HermesMirrorJobRun(
+            key: key, status: status,
+            startedAt: Date(timeIntervalSince1970: started),
+            finishedAt: status == .running ? nil : Date(timeIntervalSince1970: started + 60),
+            error: error, tokensIn: tokensIn, tokensOut: tokensOut
+        )
+    }
+
+    @Test
+    func `collect stores finished runs, files the output and logs a hermes skill run`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "Daily Digest")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            let rawAfterSync = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first()).raw
+            await h.transport.setRuns("j1", [run("cron_j1_2", 1_756_800_000, tokensIn: 12, tokensOut: 34)])
+            await h.transport.setRunOutput("j1", "cron_j1_2", "# Tuesday brief\n\nAll quiet.\n")
+
+            let result = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+            #expect(result.fetched == 1)
+            #expect(result.inserted == 1)
+            #expect(result.skipped == 0)
+            #expect(result.filesWritten == 1)
+            #expect(result.truncated == false)
+            #expect(result.highWaterMark == Date(timeIntervalSince1970: 1_756_800_000))
+
+            let rows = try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).all()
+            #expect(rows.count == 1)
+            #expect(rows[0].hermesRunKey == "cron_j1_2")
+            #expect(rows[0].status == HermesJobRunStatus.ok.rawValue)
+            #expect(rows[0].output == "# Tuesday brief\n\nAll quiet.\n")
+            #expect(rows[0].vaultFileID != nil)
+            #expect(rows[0].skillRunLogID != nil)
+            #expect(rows[0].tokens == HermesJobRunTokensDTO(input: 12, output: 34))
+
+            // The output is a vault file under raw/jobs/<job-slug>/<stamp>.md.
+            let vaultFileID = try #require(rows[0].vaultFileID)
+            let file = try #require(await VaultFile.find(vaultFileID, on: fluent.db()))
+            #expect(file.path.hasSuffix("raw/jobs/daily-digest/2025-09-02-0800.md"))
+            #expect(file.metadata?.provenance == HermesMirrorService.jobProvenance)
+
+            // …and a `skill_run_log` row with source `hermes` for the feed.
+            let sql = try #require(fluent.db() as? any SQLDatabase)
+            struct LogRow: Decodable { let source: String; let name: String; let status: String; let markdown: String? }
+            let logs = try await sql.raw("SELECT source, name, status, markdown FROM skill_run_log WHERE tenant_id = \(bind: h.tenantID)")
+                .all(decoding: LogRow.self)
+            #expect(logs.count == 1)
+            #expect(logs[0].source == SkillSource.hermes.rawValue)
+            #expect(logs[0].name == "Daily Digest")
+            #expect(logs[0].status == SkillRunStatus.success.rawValue)
+            #expect(logs[0].markdown == "# Tuesday brief\n\nAll quiet.\n")
+
+            let listed = try await h.service.jobRuns(tenantID: h.tenantID, jobID: "j1", limit: 10)
+            #expect(listed.runs.map(\.runKey) == ["cron_j1_2"])
+            #expect(listed.collectedAt != nil)
+            #expect(listed.runs[0].tokens == HermesJobRunTokensDTO(input: 12, output: 34))
+            // The listing resolves the vault path the run was filed at, so a
+            // client can open the output without a second round trip.
+            #expect(listed.runs[0].vaultFilePath?.hasSuffix("raw/jobs/daily-digest/2025-09-02-0800.md") == true)
+
+            // The pass writes only the two collect columns, so the mirrored
+            // job's `raw` jsonb is byte-identical afterwards. Saving the whole
+            // row instead would re-encode it and corrupt it a little more on
+            // every tick — PostgresNIO hands a `jsonb` column back to a
+            // single-value-container type like `JSONValue` as its raw *text*,
+            // so a load→save cycle wraps the document in another JSON string.
+            let mirrored = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(mirrored.raw == rawAfterSync)
+            #expect(mirrored.runsHighWaterAt == Date(timeIntervalSince1970: 1_756_800_000))
+        }
+    }
+
+    // MARK: - Job control (Phase 2)
+
+    @Test
+    func `job control mutates on Hermes, mirrors the answer and leaves raw intact`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.jobcontrol") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            let created = try await h.service.createJob(
+                tenantID: h.tenantID,
+                request: HermesJobCreateRequest(name: "Nightly", schedule: "0 3 * * *", prompt: "compile")
+            )
+            #expect(created.name == "Nightly")
+            #expect(await h.transport.jobList().map(\.id) == [created.hermesJobID])
+            // Mirrored without a sync — `GET /jobs` would show it immediately.
+            let mirrored = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(mirrored.hermesJobID == created.hermesJobID)
+            let rawAfterCreate = mirrored.raw
+
+            let paused = try await h.service.pauseJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(paused.paused == true)
+            let resumed = try await h.service.resumeJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(resumed.paused == false)
+            _ = try await h.service.triggerJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            let updated = try await h.service.updateJob(
+                tenantID: h.tenantID, jobID: created.hermesJobID,
+                request: HermesJobUpdateRequest(schedule: "0 6 * * *")
+            )
+            #expect(updated.schedule == "0 6 * * *")
+
+            // Four saves of the same row later, `raw` still holds the document
+            // Hermes sent rather than that document wrapped in another JSON
+            // string — the trap `markCollected` documents. It only holds
+            // because `apply(_:)` reassigns `raw` from each live response
+            // before the save; drop that and every mutation adds a layer.
+            //
+            // Note the read side is asymmetric: PostgresNIO hands a `jsonb`
+            // column to a single-value-container type as its raw *text*, so a
+            // loaded `JSONValue` is always a `.string`, never the `.object` it
+            // was written as. That is why the assertion is on the text.
+            let afterMutations = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(afterMutations.raw == rawAfterCreate)
+            guard case let .string(text) = afterMutations.raw else {
+                Issue.record("expected the jsonb read-back to be text, got \(afterMutations.raw)")
+                return
+            }
+            let decoded = try? JSONSerialization.jsonObject(with: Data(text.utf8))
+            #expect(decoded is [String: Any], "raw is no longer a JSON object: \(text)")
+
+            // An empty patch never reaches Hermes.
+            await #expect(throws: HTTPError.self) {
+                try await h.service.updateJob(tenantID: h.tenantID, jobID: created.hermesJobID, request: HermesJobUpdateRequest())
+            }
+            #expect(await h.transport.recordedCalls().filter { $0.hasPrefix("updateJob") }.count == 1)
+
+            // Delete drops the mirrored row but keeps collected history.
+            try await h.service.deleteJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            #expect(try await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).count() == 0)
+            await #expect(throws: HTTPError.self) {
+                try await h.service.pauseJob(tenantID: h.tenantID, jobID: created.hermesJobID)
+            }
+            // A job id that is not a single path component never reaches Hermes.
+            await #expect(throws: HermesMirrorTransportError.self) {
+                try await h.service.pauseJob(tenantID: h.tenantID, jobID: "../etc")
+            }
+        }
+    }
+
+    @Test
+    func `collecting the same run twice inserts nothing and reads no output`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect.idem") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "Digest")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            await h.transport.setRuns("j1", [run("cron_j1_1", 1_756_800_000)])
+            await h.transport.setRunOutput("j1", "cron_j1_1", "# One\n")
+            _ = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+
+            let second = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+            #expect(second.inserted == 0)
+            #expect(second.skipped == 1)
+            #expect(second.filesWritten == 0)
+            #expect(try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).count() == 1)
+            // The high-water fast path means the second pass never re-read the
+            // output — one `jobRuns` call, one `jobRunOutput` call in total.
+            let calls = await h.transport.recordedCalls()
+            #expect(calls.filter { $0.hasPrefix("jobRunOutput") }.count == 1)
+            #expect(calls.filter { $0.hasPrefix("jobRuns") }.count == 2)
+
+            // A newer run gets through the fast path and is collected.
+            await h.transport.setRuns("j1", [run("cron_j1_1", 1_756_800_000), run("cron_j1_2", 1_756_803_600)])
+            await h.transport.setRunOutput("j1", "cron_j1_2", "# Two\n")
+            let third = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+            #expect(third.inserted == 1)
+            #expect(third.skipped == 1)
+            #expect(try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).count() == 2)
+        }
+    }
+
+    @Test
+    func `running runs are left for later and failed runs are stored without a file`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect.status") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "Digest")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            await h.transport.setRuns("j1", [
+                run("in-flight", 1_756_807_200, status: .running),
+                run("failed", 1_756_800_000, status: .error, error: "provider timeout"),
+                run("empty", 1_756_803_600),
+            ])
+            // `empty` finished but Hermes kept nothing worth filing.
+            await h.transport.setRunOutput("j1", "empty", "   \n")
+
+            let result = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+            #expect(result.fetched == 3)
+            #expect(result.inserted == 2)
+            #expect(result.skipped == 1)
+            #expect(result.filesWritten == 0)
+
+            let rows = try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).sort(\.$startedAt).all()
+            #expect(rows.map(\.hermesRunKey) == ["failed", "empty"])
+            #expect(rows[0].status == HermesJobRunStatus.error.rawValue)
+            #expect(rows[0].error == "provider timeout")
+            #expect(rows[0].output == nil)
+            #expect(rows[0].vaultFileID == nil)
+            #expect(rows[1].output == nil)
+            // The in-flight run is not below the water mark, so a later pass
+            // still picks it up once it finishes.
+            let job = try #require(await HermesMirroredJob.query(on: fluent.db(), tenantID: h.tenantID).first())
+            #expect(job.runsHighWaterAt == Date(timeIntervalSince1970: 1_756_803_600))
+
+            await h.transport.setRuns("j1", [run("in-flight", 1_756_807_200)])
+            await h.transport.setRunOutput("j1", "in-flight", "# Landed\n")
+            #expect(try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1").inserted == 1)
+        }
+    }
+
+    @Test
+    func `collect caps runs per tick and reports truncation`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect.cap") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "Chatty")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            let cap = HermesMirrorService.collectLimits.runsPerJobPerTick
+            var many: [HermesMirrorJobRun] = []
+            for index in 0 ..< (cap + 10) {
+                many.append(run("run-\(index)", 1_756_800_000 + Double(index) * 60))
+            }
+            await h.transport.setRuns("j1", many)
+
+            let result = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "j1")
+            #expect(result.fetched == cap)
+            #expect(result.inserted == cap)
+            #expect(result.truncated == true)
+            #expect(try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).count() == cap)
+        }
+    }
+
+    @Test
+    func `collectAllJobRuns isolates a failing job and an unknown job is a 404`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect.all") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "Good"), job("j2", name: "Broken")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            await h.transport.setRuns("j1", [run("cron_j1_1", 1_756_800_000)])
+            await h.transport.setRunOutput("j1", "cron_j1_1", "# Fine\n")
+            await h.transport.fail("jobRuns:j2", with: .dashboardUnreachable("boom"))
+
+            let summary = try await h.service.collectAllJobRuns(tenantID: h.tenantID)
+            #expect(summary.jobs == 1)
+            #expect(summary.failed == 1)
+            #expect(summary.inserted == 1)
+            #expect(summary.filesWritten == 1)
+            #expect(try await HermesJobRun.query(on: fluent.db(), tenantID: h.tenantID).count() == 1)
+
+            do {
+                _ = try await h.service.collectJobRuns(tenantID: h.tenantID, jobID: "nope")
+                Issue.record("expected hermes_job_not_found")
+            } catch let error as HTTPError {
+                #expect(error.status == .notFound)
+                #expect(error.body == "hermes_job_not_found")
+            }
+        }
+    }
 }
 
 /// Pure helpers on the service (no database).
@@ -470,6 +736,24 @@ struct HermesMirrorServiceHelperTests {
         #expect(HermesMirrorService.compilePrompt(vaultPath: "/kb").contains("/kb-compile"))
         #expect(HermesMirrorService.compilePrompt(vaultPath: "/kb").contains("`/kb`"))
         #expect(HermesMirrorService.compilePrompt(vaultPath: nil).contains("Locate the knowledge base"))
+    }
+
+    @Test
+    func `the vault path slugifies the job name and stamps the run start in UTC`() {
+        let row = HermesMirroredJob()
+        row.hermesJobID = "8628eaf81dda"
+        row.name = "Daily Digest — Morning"
+        let started = Date(timeIntervalSince1970: 1_756_800_000)
+        #expect(
+            HermesMirrorService.jobOutputVaultPath(job: row, run: HermesMirrorJobRun(key: "k", status: .ok, startedAt: started))
+                == "raw/jobs/daily-digest-morning/2025-09-02-0800.md"
+        )
+        row.name = "   "
+        #expect(
+            HermesMirrorService.jobOutputVaultPath(job: row, run: HermesMirrorJobRun(key: "k", status: .ok, startedAt: started))
+                == "raw/jobs/8628eaf81dda/2025-09-02-0800.md"
+        )
+        #expect(HermesMirrorService.stamp(Date(timeIntervalSince1970: 0)) == "1970-01-01-0000")
     }
 
     @Test

@@ -18,7 +18,15 @@ struct HermesMirrorController {
         router.get("skills", use: skills)
         router.put("skills/:name", use: toggleSkill)
         router.get("jobs", use: jobs)
+        router.post("jobs", use: createJob)
         router.post("jobs/install-compile", use: installCompileJob)
+        router.get("jobs/:id/runs", use: jobRuns)
+        router.put("jobs/:id", use: updateJob)
+        router.post("jobs/:id/pause", use: pauseJob)
+        router.post("jobs/:id/resume", use: resumeJob)
+        router.post("jobs/:id/trigger", use: triggerJob)
+        router.delete("jobs/:id", use: deleteJob)
+        router.post("jobs/:id/collect", use: collectJobRuns)
         router.post("vault/import", use: importVault)
         router.post("vault/create", use: createVault)
         router.post("vault/import-sessions", use: importSessions)
@@ -58,6 +66,82 @@ struct HermesMirrorController {
     func jobs(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobsResponse {
         let tenantID = try ctx.requireTenantID()
         return try await Self.mapErrors { try await service.jobs(tenantID: tenantID) }
+    }
+
+    /// Pull this job's finished runs now instead of waiting for the worker
+    /// tick. Idempotent — already-collected runs are skipped by run key.
+    @Sendable
+    func collectJobRuns(_: Request, ctx: AppRequestContext) async throws -> HermesJobCollectResultDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.collectJobRuns(tenantID: tenantID, jobID: jobID) }
+    }
+
+    static func jobID(_ ctx: AppRequestContext) throws -> String {
+        guard let raw = ctx.parameters.get("id"), !raw.isEmpty else {
+            throw HTTPError(.badRequest, message: "hermes_job_id_required")
+        }
+        return String(raw)
+    }
+
+    // MARK: - Job control
+
+    /// Runs LuminaVault has already collected for this job, newest first.
+    /// Reads stored rows only — it never touches the tenant's Hermes, so it
+    /// answers while that Hermes is offline.
+    @Sendable
+    func jobRuns(_ req: Request, ctx: AppRequestContext) async throws -> HermesJobRunsResponse {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        let limit = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? HermesMirrorService.defaultJobRunsLimit
+        return try await Self.mapErrors {
+            try await service.jobRuns(tenantID: tenantID, jobID: jobID, limit: limit)
+        }
+    }
+
+    /// Creates a cron job on the tenant's Hermes (full `CronJobCreate` body).
+    @Sendable
+    func createJob(_ req: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let body = try await req.decode(as: HermesJobCreateRequest.self, context: ctx)
+        return try await Self.mapErrors { try await service.createJob(tenantID: tenantID, request: body) }
+    }
+
+    @Sendable
+    func updateJob(_ req: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        let body = try await req.decode(as: HermesJobUpdateRequest.self, context: ctx)
+        return try await Self.mapErrors { try await service.updateJob(tenantID: tenantID, jobID: jobID, request: body) }
+    }
+
+    @Sendable
+    func pauseJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.pauseJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func resumeJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.resumeJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func triggerJob(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.triggerJob(tenantID: tenantID, jobID: jobID) }
+    }
+
+    @Sendable
+    func deleteJob(_: Request, ctx: AppRequestContext) async throws -> HTTPResponse.Status {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        try await Self.mapErrors { try await service.deleteJob(tenantID: tenantID, jobID: jobID) }
+        return .noContent
     }
 
     @Sendable
@@ -112,10 +196,13 @@ extension HermesMirrorStatusDTO: ResponseEncodable {}
 extension HermesMirroredSkillsResponse: ResponseEncodable {}
 extension HermesMirroredSkillDTO: ResponseEncodable {}
 extension HermesMirroredJobsResponse: ResponseEncodable {}
+extension HermesMirroredJobDTO: ResponseEncodable {}
+extension HermesJobRunsResponse: ResponseEncodable {}
 extension HermesCompileJobInstallResultDTO: ResponseEncodable {}
 extension HermesVaultImportResultDTO: ResponseEncodable {}
 extension HermesVaultCreateResultDTO: ResponseEncodable {}
 extension HermesSessionsImportResultDTO: ResponseEncodable {}
+extension HermesJobCollectResultDTO: ResponseEncodable {}
 
 /// Builds the mirror stack from the BYO-Hermes dependencies so `App+build`
 /// stays to a few lines.
@@ -137,6 +224,9 @@ enum HermesMirrorWiring {
     struct Built {
         let service: HermesMirrorService
         let controller: HermesMirrorController
+        /// Rotate + read on the mirror group; the push route goes on the root
+        /// router (`addPublicRoutes`) because the sender is the user's Hermes.
+        let webhooks: HermesMirrorWebhookController
     }
 
     static func make(_ deps: Dependencies) -> Built {
@@ -159,6 +249,15 @@ enum HermesMirrorWiring {
             compile: MemoryCompileControllerRunner(controller: deps.compileController, fluent: deps.fluent),
             logger: deps.logger
         )
-        return Built(service: service, controller: HermesMirrorController(service: service))
+        return Built(
+            service: service,
+            controller: HermesMirrorController(service: service),
+            webhooks: HermesMirrorWebhookController(
+                fluent: deps.fluent,
+                secretBox: deps.secretBox,
+                service: service,
+                logger: deps.logger
+            )
+        )
     }
 }
