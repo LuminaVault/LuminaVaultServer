@@ -117,4 +117,7 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M111_CreateMemoryChunks())
     await fluent.migrations.add(M112_CreateVaultLinks())
     await fluent.migrations.add(M113_CreateAgentConnections())
+    await fluent.migrations.add(M117_CreateHermesRuns())
+    await fluent.migrations.add(M118_CreateHermesRunEvents())
+    await fluent.migrations.add(M119_AddHermesRunApnsCategoryPrefs())
 }
