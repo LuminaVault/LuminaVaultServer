@@ -17,6 +17,19 @@ protocol HermesMirrorTransport: Sendable {
     func createSkill(name: String, content: String) async throws
     func listJobs() async throws -> [HermesMirrorJob]
     func createJob(_ spec: HermesMirrorJobSpec) async throws -> HermesMirrorJob
+    /// Partial update; returns the job as Hermes stores it afterwards.
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob
+    func pauseJob(id: String) async throws -> HermesMirrorJob
+    func resumeJob(id: String) async throws -> HermesMirrorJob
+    /// Schedules the job to fire on the next scheduler tick.
+    func triggerJob(id: String) async throws -> HermesMirrorJob
+    func deleteJob(id: String) async throws
+    /// Run history for one job, newest first, at most `limit` entries.
+    /// Outputs are not included — `jobRunOutput` fetches them one at a time so
+    /// only new runs cost a read.
+    func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun]
+    /// Markdown a run produced, nil when Hermes kept nothing for it.
+    func jobRunOutput(jobID: String, runKey: String) async throws -> String?
     func listFiles(path: String) async throws -> [HermesMirrorFileEntry]
     func readText(path: String) async throws -> String
     func writeText(path: String, content: String) async throws
@@ -56,12 +69,263 @@ struct HermesMirrorJob: Sendable, Equatable {
     let raw: JSONValue
 }
 
+/// Full Hermes `CronJobCreate` body (`web_server.py:10032`). Everything past
+/// `skills` is optional and omitted from the wire body when nil.
 struct HermesMirrorJobSpec: Sendable, Equatable {
     let name: String
     let schedule: String
     let prompt: String
     let deliver: String
     let skills: [String]
+    var model: String?
+    var provider: String?
+    var baseURL: String?
+    var script: String?
+    var contextFrom: [String]?
+    var enabledToolsets: [String]?
+    var workdir: String?
+    var noAgent = false
+
+    init(
+        name: String,
+        schedule: String,
+        prompt: String,
+        deliver: String,
+        skills: [String],
+        model: String? = nil,
+        provider: String? = nil,
+        baseURL: String? = nil,
+        script: String? = nil,
+        contextFrom: [String]? = nil,
+        enabledToolsets: [String]? = nil,
+        workdir: String? = nil,
+        noAgent: Bool = false
+    ) {
+        self.name = name
+        self.schedule = schedule
+        self.prompt = prompt
+        self.deliver = deliver
+        self.skills = skills
+        self.model = model
+        self.provider = provider
+        self.baseURL = baseURL
+        self.script = script
+        self.contextFrom = contextFrom
+        self.enabledToolsets = enabledToolsets
+        self.workdir = workdir
+        self.noAgent = noAgent
+    }
+
+    init(_ request: HermesJobCreateRequest) {
+        self.init(
+            name: request.name,
+            schedule: request.schedule,
+            prompt: request.prompt ?? "",
+            deliver: request.deliver ?? "origin",
+            skills: request.skills ?? [],
+            model: request.model,
+            provider: request.provider,
+            baseURL: request.baseURL,
+            script: request.script,
+            contextFrom: request.contextFrom,
+            enabledToolsets: request.enabledToolsets,
+            workdir: request.workdir,
+            noAgent: request.noAgent ?? false
+        )
+    }
+
+    /// Wire body for `POST /api/cron/jobs`; nil optionals are left out so
+    /// Hermes applies its own defaults.
+    var body: [String: JSONValue] {
+        var body: [String: JSONValue] = [
+            "name": .string(name),
+            "schedule": .string(schedule),
+            "prompt": .string(prompt),
+            "deliver": .string(deliver),
+            "skills": .array(skills.map(JSONValue.string)),
+            "no_agent": .bool(noAgent),
+        ]
+        if let model {
+            body["model"] = .string(model)
+        }
+        if let provider {
+            body["provider"] = .string(provider)
+        }
+        if let baseURL {
+            body["base_url"] = .string(baseURL)
+        }
+        if let script {
+            body["script"] = .string(script)
+        }
+        if let contextFrom {
+            body["context_from"] = .array(contextFrom.map(JSONValue.string))
+        }
+        if let enabledToolsets {
+            body["enabled_toolsets"] = .array(enabledToolsets.map(JSONValue.string))
+        }
+        if let workdir {
+            body["workdir"] = .string(workdir)
+        }
+        return body
+    }
+}
+
+/// Partial job update — the `updates` dict of `PUT /api/cron/jobs/{id}`
+/// (`CronJobUpdate`). Only set fields are sent; `id` is immutable on Hermes.
+struct HermesMirrorJobUpdate: Sendable, Equatable {
+    var name: String?
+    var schedule: String?
+    var prompt: String?
+    var deliver: String?
+    var skills: [String]?
+    var model: String?
+    var provider: String?
+    var baseURL: String?
+    var script: String?
+    var contextFrom: [String]?
+    var enabledToolsets: [String]?
+    var workdir: String?
+    var noAgent: Bool?
+    var enabled: Bool?
+
+    init(
+        name: String? = nil,
+        schedule: String? = nil,
+        prompt: String? = nil,
+        deliver: String? = nil,
+        skills: [String]? = nil,
+        model: String? = nil,
+        provider: String? = nil,
+        baseURL: String? = nil,
+        script: String? = nil,
+        contextFrom: [String]? = nil,
+        enabledToolsets: [String]? = nil,
+        workdir: String? = nil,
+        noAgent: Bool? = nil,
+        enabled: Bool? = nil
+    ) {
+        self.name = name
+        self.schedule = schedule
+        self.prompt = prompt
+        self.deliver = deliver
+        self.skills = skills
+        self.model = model
+        self.provider = provider
+        self.baseURL = baseURL
+        self.script = script
+        self.contextFrom = contextFrom
+        self.enabledToolsets = enabledToolsets
+        self.workdir = workdir
+        self.noAgent = noAgent
+        self.enabled = enabled
+    }
+
+    init(_ request: HermesJobUpdateRequest) {
+        self.init(
+            name: request.name,
+            schedule: request.schedule,
+            prompt: request.prompt,
+            deliver: request.deliver,
+            skills: request.skills,
+            model: request.model,
+            provider: request.provider,
+            baseURL: request.baseURL,
+            script: request.script,
+            contextFrom: request.contextFrom,
+            enabledToolsets: request.enabledToolsets,
+            workdir: request.workdir,
+            noAgent: request.noAgent,
+            enabled: request.enabled
+        )
+    }
+
+    /// Hermes-side field names → values.
+    var updates: [String: JSONValue] {
+        var updates: [String: JSONValue] = [:]
+        if let name {
+            updates["name"] = .string(name)
+        }
+        if let schedule {
+            updates["schedule"] = .string(schedule)
+        }
+        if let prompt {
+            updates["prompt"] = .string(prompt)
+        }
+        if let deliver {
+            updates["deliver"] = .string(deliver)
+        }
+        if let skills {
+            updates["skills"] = .array(skills.map(JSONValue.string))
+        }
+        if let model {
+            updates["model"] = .string(model)
+        }
+        if let provider {
+            updates["provider"] = .string(provider)
+        }
+        if let baseURL {
+            updates["base_url"] = .string(baseURL)
+        }
+        if let script {
+            updates["script"] = .string(script)
+        }
+        if let contextFrom {
+            updates["context_from"] = .array(contextFrom.map(JSONValue.string))
+        }
+        if let enabledToolsets {
+            updates["enabled_toolsets"] = .array(enabledToolsets.map(JSONValue.string))
+        }
+        if let workdir {
+            updates["workdir"] = .string(workdir)
+        }
+        if let noAgent {
+            updates["no_agent"] = .bool(noAgent)
+        }
+        if let enabled {
+            updates["enabled"] = .bool(enabled)
+        }
+        return updates
+    }
+
+    var isEmpty: Bool {
+        updates.isEmpty
+    }
+}
+
+/// One run of a Hermes cron job as the transport lists it.
+struct HermesMirrorJobRun: Sendable, Equatable {
+    /// Unique per job on the Hermes side (session id / output file stem).
+    let key: String
+    let status: HermesJobRunStatus
+    let startedAt: Date
+    let finishedAt: Date?
+    let error: String?
+    let tokensIn: Int?
+    let tokensOut: Int?
+
+    init(key: String, status: HermesJobRunStatus, startedAt: Date, finishedAt: Date? = nil, error: String? = nil, tokensIn: Int? = nil, tokensOut: Int? = nil) {
+        self.key = key
+        self.status = status
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.error = error
+        self.tokensIn = tokensIn
+        self.tokensOut = tokensOut
+    }
+}
+
+/// Hermes job ids are single path components (`cron/output/<id>/`), so the
+/// same rule guards URL paths on the dashboard and directories on the PVC.
+enum HermesJobID {
+    static func validate(_ raw: String) throws -> String {
+        let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, id.count <= 128, id != ".", id != "..",
+              id.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." })
+        else {
+            throw HermesMirrorTransportError.invalidPath("job:\(raw)")
+        }
+        return id
+    }
 }
 
 struct HermesMirrorFileEntry: Sendable, Equatable {

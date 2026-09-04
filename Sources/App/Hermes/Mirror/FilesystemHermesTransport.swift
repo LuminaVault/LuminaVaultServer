@@ -186,7 +186,6 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
     /// scheduler picks it up on its next reload.
     func createJob(_ spec: HermesMirrorJobSpec) async throws -> HermesMirrorJob {
         let expression = try CronExpression(spec.schedule)
-        let url = cronJobsURL
         let now = clock()
         let nextRun = Self.nextRun(after: now, expression: expression)
         let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(12)
@@ -196,12 +195,14 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
             "prompt": .string(spec.prompt),
             "skills": .array(spec.skills.map(JSONValue.string)),
             "skill": .null,
-            "model": .null,
-            "provider": .null,
-            "base_url": .null,
-            "script": .null,
-            "no_agent": .bool(false),
-            "context_from": .null,
+            "model": spec.model.map(JSONValue.string) ?? .null,
+            "provider": spec.provider.map(JSONValue.string) ?? .null,
+            "base_url": spec.baseURL.map(JSONValue.string) ?? .null,
+            "script": spec.script.map(JSONValue.string) ?? .null,
+            "no_agent": .bool(spec.noAgent),
+            "context_from": spec.contextFrom.map { .array($0.map(JSONValue.string)) } ?? .null,
+            "enabled_toolsets": spec.enabledToolsets.map { .array($0.map(JSONValue.string)) } ?? .null,
+            "workdir": spec.workdir.map(JSONValue.string) ?? .null,
             "deliver": .string(spec.deliver),
             "schedule": .object(["kind": .string("cron"), "expr": .string(spec.schedule), "display": .string(spec.schedule)]),
             "schedule_display": .string(spec.schedule),
@@ -216,8 +217,163 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
             "last_status": .null,
             "last_error": .null,
         ]
+        let encoded = try JSONEncoder().encode(document)
+        return try await mutateJobs(now: now) { jobs in
+            guard let foundationDocument = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else {
+                throw HermesMirrorTransportError.invalidResponse("jobs.json")
+            }
+            jobs.append(foundationDocument)
+            guard let job = HermesDashboardClient.parseJob(foundationDocument) else {
+                throw HermesMirrorTransportError.invalidResponse("jobs.json")
+            }
+            return job
+        }
+    }
+
+    /// Mirrors `cron/jobs.py:update_job`: immutable `id`, schedule re-derived
+    /// (cron only on the managed path), `enabled: false` pauses.
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let now = clock()
+        // Schedule fields are derived before the closure so only Sendable
+        // values (JSON `Data`, the id, the clock) cross to the thread pool.
+        let schedulePatch: Data? = try updates.schedule.map { schedule in
+            let expression = try CronExpression(schedule)
+            let fields: [String: JSONValue] = [
+                "schedule": .object(["kind": .string("cron"), "expr": .string(schedule), "display": .string(schedule)]),
+                "schedule_display": .string(schedule),
+                "next_run_at": Self.nextRun(after: now, expression: expression).map { .string(HermesDates.iso($0)) } ?? .null,
+            ]
+            return try JSONEncoder().encode(fields)
+        }
+        let encoded = try JSONEncoder().encode(updates.updates)
+        return try await mutateJobs(now: now) { jobs in
+            guard let index = jobs.firstIndex(where: { ($0["id"] as? String) == jobID }) else {
+                throw HermesMirrorTransportError.notFound("job:\(jobID)")
+            }
+            var job = jobs[index]
+            let fields = try (JSONSerialization.jsonObject(with: encoded) as? [String: Any]) ?? [:]
+            for (key, value) in fields where key != "schedule" && key != "id" {
+                job[key] = value
+            }
+            if fields["skills"] != nil {
+                job["skill"] = NSNull()
+            }
+            if let schedulePatch, let scheduleFields = try JSONSerialization.jsonObject(with: schedulePatch) as? [String: Any] {
+                for (key, value) in scheduleFields {
+                    job[key] = value
+                }
+            }
+            if let enabled = fields["enabled"] as? Bool {
+                if enabled {
+                    job["state"] = "scheduled"
+                    job["paused_at"] = NSNull()
+                    job["paused_reason"] = NSNull()
+                } else {
+                    job["state"] = "paused"
+                    job["paused_at"] = HermesDates.iso(now)
+                }
+            }
+            jobs[index] = job
+            guard let parsed = HermesDashboardClient.parseJob(job) else {
+                throw HermesMirrorTransportError.invalidResponse("jobs.json")
+            }
+            return parsed
+        }
+    }
+
+    func pauseJob(id: String) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let now = clock()
+        return try await mutateJobs(now: now) { jobs in
+            try Self.patchJob(&jobs, id: jobID) { job in
+                job["enabled"] = false
+                job["state"] = "paused"
+                job["paused_at"] = HermesDates.iso(now)
+                job["paused_reason"] = NSNull()
+            }
+        }
+    }
+
+    func resumeJob(id: String) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let now = clock()
+        return try await mutateJobs(now: now) { jobs in
+            try Self.patchJob(&jobs, id: jobID) { job in
+                job["enabled"] = true
+                job["state"] = "scheduled"
+                job["paused_at"] = NSNull()
+                job["paused_reason"] = NSNull()
+                if let expr = (job["schedule"] as? [String: Any])?["expr"] as? String,
+                   let expression = try? CronExpression(expr),
+                   let next = Self.nextRun(after: now, expression: expression)
+                {
+                    job["next_run_at"] = HermesDates.iso(next)
+                }
+            }
+        }
+    }
+
+    func triggerJob(id: String) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let now = clock()
+        return try await mutateJobs(now: now) { jobs in
+            try Self.patchJob(&jobs, id: jobID) { job in
+                job["enabled"] = true
+                job["state"] = "scheduled"
+                job["paused_at"] = NSNull()
+                job["paused_reason"] = NSNull()
+                job["next_run_at"] = HermesDates.iso(now)
+            }
+        }
+    }
+
+    /// Removes the job and its `cron/output/<id>/` directory (`remove_job`).
+    func deleteJob(id: String) async throws {
+        let jobID = try HermesJobID.validate(id)
+        let outputDirectory = jobOutputDirectory(jobID)
+        _ = try await mutateJobs(now: clock()) { jobs in
+            guard let index = jobs.firstIndex(where: { ($0["id"] as? String) == jobID }) else {
+                throw HermesMirrorTransportError.notFound("job:\(jobID)")
+            }
+            jobs.remove(at: index)
+            try? FileManager.default.removeItem(at: outputDirectory)
+            return true
+        }
+    }
+
+    private static func patchJob(_ jobs: inout [[String: Any]], id: String, _ patch: (inout [String: Any]) -> Void) throws -> HermesMirrorJob {
+        guard let index = jobs.firstIndex(where: { ($0["id"] as? String) == id }) else {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        var job = jobs[index]
+        patch(&job)
+        jobs[index] = job
+        guard let parsed = HermesDashboardClient.parseJob(job) else {
+            throw HermesMirrorTransportError.invalidResponse("jobs.json")
+        }
+        return parsed
+    }
+
+    /// load → mutate → atomic save of `cron/jobs.json` under the same
+    /// advisory lock the Hermes scheduler and CLI take (`cron/.jobs.lock`),
+    /// so a concurrent Hermes write cannot clobber ours. Runs on the thread
+    /// pool; the closure sees the `jobs` array only.
+    private func mutateJobs<T: Sendable>(now: Date, _ body: @escaping @Sendable (inout [[String: Any]]) throws -> T) async throws -> T {
+        let url = cronJobsURL
+        let lockURL = url.deletingLastPathComponent().appendingPathComponent(".jobs.lock")
         return try await threadPool.runIfActive {
             let fm = FileManager.default
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
+            guard fd >= 0 else {
+                throw HermesMirrorTransportError.invalidResponse("jobs.lock")
+            }
+            defer { close(fd) }
+            guard flock(fd, LOCK_EX) == 0 else {
+                throw HermesMirrorTransportError.invalidResponse("jobs.lock")
+            }
+            defer { flock(fd, LOCK_UN) }
             var envelope: [String: Any] = ["jobs": [[String: Any]]()]
             if let data = fm.contents(atPath: url.path),
                let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -225,21 +381,84 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
                 envelope = existing
             }
             var jobs = (envelope["jobs"] as? [[String: Any]]) ?? []
-            let encoded = try JSONEncoder().encode(document)
-            guard let foundationDocument = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else {
-                throw HermesMirrorTransportError.invalidResponse("jobs.json")
-            }
-            jobs.append(foundationDocument)
+            let result = try body(&jobs)
             envelope["jobs"] = jobs
             envelope["updated_at"] = HermesDates.iso(now)
             let payload = try JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted, .sortedKeys])
-            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Self.atomicWrite(payload, to: url)
-            guard let job = HermesDashboardClient.parseJob(foundationDocument) else {
-                throw HermesMirrorTransportError.invalidResponse("jobs.json")
-            }
-            return job
+            return result
         }
+    }
+
+    // MARK: - Cron runs (`cron/output/<job>/<stamp>.md`)
+
+    func jobOutputDirectory(_ jobID: String) -> URL {
+        root.appendingPathComponent("cron", isDirectory: true)
+            .appendingPathComponent("output", isDirectory: true)
+            .appendingPathComponent(jobID, isDirectory: true)
+    }
+
+    /// Every `save_job_output` file is one completed run (`cron/jobs.py`);
+    /// the file stem `yyyy-MM-dd_HH-mm-ss` is the run key and start time. A
+    /// job whose `last_status` is `error` after its newest output file gets
+    /// one synthetic `error-<iso>` run carrying `last_error`, since failed
+    /// runs write no file.
+    func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun] {
+        let id = try HermesJobID.validate(jobID)
+        let directory = jobOutputDirectory(id)
+        let jobsURL = cronJobsURL
+        let bounded = max(1, min(limit, 100))
+        return try await threadPool.runIfActive {
+            let fm = FileManager.default
+            var runs: [HermesMirrorJobRun] = []
+            if let names = try? fm.contentsOfDirectory(atPath: directory.path) {
+                for name in names where name.hasSuffix(".md") && !name.hasPrefix(".") {
+                    let stem = String(name.dropLast(3))
+                    guard let started = Self.parseOutputStamp(stem) else { continue }
+                    runs.append(HermesMirrorJobRun(key: stem, status: .ok, startedAt: started, finishedAt: started))
+                }
+            }
+            if let data = fm.contents(atPath: jobsURL.path),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let job = (object["jobs"] as? [[String: Any]])?.first(where: { ($0["id"] as? String) == id }),
+               (job["last_status"] as? String) == "error",
+               let lastRun = HermesDates.parse(job["last_run_at"]),
+               runs.allSatisfy({ $0.startedAt < lastRun })
+            {
+                let stamp = HermesDates.iso(lastRun)
+                runs.append(HermesMirrorJobRun(key: "error-\(stamp)", status: .error, startedAt: lastRun, finishedAt: lastRun, error: (job["last_error"] as? String) ?? "run failed"))
+            }
+            return Array(runs.sorted { $0.startedAt > $1.startedAt }.prefix(bounded))
+        }
+    }
+
+    func jobRunOutput(jobID: String, runKey: String) async throws -> String? {
+        let id = try HermesJobID.validate(jobID)
+        guard Self.parseOutputStamp(runKey) != nil else { return nil }
+        let file = jobOutputDirectory(id).appendingPathComponent("\(runKey).md")
+        return try await threadPool.runIfActive {
+            guard let data = FileManager.default.contents(atPath: file.path) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+    }
+
+    /// `yyyy-MM-dd_HH-mm-ss` (`save_job_output`), read as UTC.
+    static func parseOutputStamp(_ stem: String) -> Date? {
+        let parts = stem.split(separator: "_")
+        guard parts.count == 2 else { return nil }
+        let date = parts[0].split(separator: "-").compactMap { Int($0) }
+        let time = parts[1].split(separator: "-").compactMap { Int($0) }
+        guard date.count == 3, time.count == 3 else { return nil }
+        var components = DateComponents()
+        components.year = date[0]
+        components.month = date[1]
+        components.day = date[2]
+        components.hour = time[0]
+        components.minute = time[1]
+        components.second = time[2]
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        return calendar.date(from: components)
     }
 
     /// Next minute (UTC) matching the expression within 366 days, else nil.

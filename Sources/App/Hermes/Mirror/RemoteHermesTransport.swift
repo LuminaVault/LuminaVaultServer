@@ -53,6 +53,34 @@ struct RemoteHermesTransport: HermesMirrorTransport {
         try await dashboard.createJob(spec)
     }
 
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
+        try await dashboard.updateJob(id: id, updates: updates)
+    }
+
+    func pauseJob(id: String) async throws -> HermesMirrorJob {
+        try await dashboard.pauseJob(id: id)
+    }
+
+    func resumeJob(id: String) async throws -> HermesMirrorJob {
+        try await dashboard.resumeJob(id: id)
+    }
+
+    func triggerJob(id: String) async throws -> HermesMirrorJob {
+        try await dashboard.triggerJob(id: id)
+    }
+
+    func deleteJob(id: String) async throws {
+        try await dashboard.deleteJob(id: id)
+    }
+
+    func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun] {
+        try await dashboard.jobRuns(jobID: jobID, limit: limit)
+    }
+
+    func jobRunOutput(jobID: String, runKey: String) async throws -> String? {
+        try await dashboard.jobRunOutput(jobID: jobID, runKey: runKey)
+    }
+
     func listFiles(path: String) async throws -> [HermesMirrorFileEntry] {
         try await dashboard.listFiles(path: path)
     }

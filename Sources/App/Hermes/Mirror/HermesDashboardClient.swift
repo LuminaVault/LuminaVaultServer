@@ -159,14 +159,7 @@ struct HermesDashboardClient: Sendable {
     }
 
     func createJob(_ spec: HermesMirrorJobSpec) async throws -> HermesMirrorJob {
-        let body: [String: JSONValue] = [
-            "name": .string(spec.name),
-            "schedule": .string(spec.schedule),
-            "prompt": .string(spec.prompt),
-            "deliver": .string(spec.deliver),
-            "skills": .array(spec.skills.map(JSONValue.string)),
-        ]
-        let data = try await createCronJobRaw(body)
+        let data = try await createCronJobRaw(spec.body)
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let job = Self.parseJob(object)
         {
@@ -178,6 +171,114 @@ struct HermesDashboardClient: Sendable {
             throw HermesMirrorTransportError.invalidResponse("/api/cron/jobs")
         }
         return created
+    }
+
+    /// `PUT /api/cron/jobs/{id}` with `{"updates": {...}}` (`CronJobUpdate`).
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.PUT, "/api/cron/jobs/\(jobID)", json: ["updates": .object(updates.updates)], cap: Self.fileBodyCap)
+        return try jobResponse(response, path: "/api/cron/jobs/{id}", id: jobID)
+    }
+
+    func pauseJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "pause")
+    }
+
+    func resumeJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "resume")
+    }
+
+    func triggerJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "trigger")
+    }
+
+    func deleteJob(id: String) async throws {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.DELETE, "/api/cron/jobs/\(jobID)", json: nil, cap: Self.fileBodyCap)
+        if response.status == 404 {
+            throw HermesMirrorTransportError.notFound("job:\(jobID)")
+        }
+        try Self.requireSuccess(response, path: "/api/cron/jobs/{id}")
+    }
+
+    private func jobAction(id: String, action: String) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.POST, "/api/cron/jobs/\(jobID)/\(action)", json: nil, cap: Self.fileBodyCap)
+        return try jobResponse(response, path: "/api/cron/jobs/{id}/\(action)", id: jobID)
+    }
+
+    private func jobResponse(_ response: HermesHTTPResponse, path: String, id: String) throws -> HermesMirrorJob {
+        if response.status == 404 {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        if response.status == 400 {
+            throw HermesMirrorTransportError.invalidResponse("\(path):rejected")
+        }
+        try Self.requireSuccess(response, path: path)
+        guard let object = response.jsonObject(), let job = Self.parseJob(object) else {
+            throw HermesMirrorTransportError.invalidResponse(path)
+        }
+        return job
+    }
+
+    // MARK: - Cron runs
+
+    /// `GET /api/cron/jobs/{id}/runs?limit=` — run sessions (`cron_<job>_<ts>`)
+    /// newest first, in the `/api/sessions` row shape
+    /// (`web_server.py:_list_cron_job_runs_sync`).
+    func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun] {
+        let id = try HermesJobID.validate(jobID)
+        let bounded = max(1, min(limit, 100))
+        let response = try await get("/api/cron/jobs/\(id)/runs", query: [("limit", String(bounded))], cap: Self.listBodyCap)
+        if response.status == 404 {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        try Self.requireSuccess(response, path: "/api/cron/jobs/{id}/runs")
+        return Self.parseRuns(response.json())
+    }
+
+    static func parseRuns(_ json: Any?) -> [HermesMirrorJobRun] {
+        let rows: [[String: Any]] = if let object = json as? [String: Any] {
+            (object["runs"] as? [[String: Any]]) ?? (object["sessions"] as? [[String: Any]]) ?? []
+        } else if let list = json as? [[String: Any]] {
+            list
+        } else {
+            []
+        }
+        return rows.compactMap { row -> HermesMirrorJobRun? in
+            guard let key = row["id"] as? String, !key.isEmpty,
+                  let started = HermesDates.parse(row["started_at"] ?? row["created_at"])
+            else { return nil }
+            let ended = HermesDates.parse(row["ended_at"])
+            let lastActive = HermesDates.parse(row["last_active"] ?? row["updated_at"])
+            let active = (row["is_active"] as? Bool) ?? false
+            let status: HermesJobRunStatus = active ? .running : .ok
+            return HermesMirrorJobRun(
+                key: key,
+                status: status,
+                startedAt: started,
+                finishedAt: active ? nil : (ended ?? lastActive ?? started),
+                error: nil,
+                tokensIn: (row["input_tokens"] as? NSNumber)?.intValue,
+                tokensOut: (row["output_tokens"] as? NSNumber)?.intValue
+            )
+        }
+    }
+
+    /// The run's final assistant message — what Hermes delivered.
+    func jobRunOutput(jobID _: String, runKey: String) async throws -> String? {
+        let messages = try await sessionMessages(id: runKey)
+        return Self.finalAssistantText(messages)
+    }
+
+    static func finalAssistantText(_ messages: [HermesMirrorSessionMessage]) -> String? {
+        for message in messages.reversed() where message.role == "assistant" {
+            let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
     }
 
     static func parseJobs(_ data: Data) -> [HermesMirrorJob] {

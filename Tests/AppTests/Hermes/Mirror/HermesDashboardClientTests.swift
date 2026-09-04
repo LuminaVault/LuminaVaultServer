@@ -121,6 +121,75 @@ struct HermesDashboardClientTests {
     }
 
     @Test
+    func `job mutations hit the cron routes and map 404 to notFound`() async throws {
+        let http = StubHermesHTTP()
+        let job = #"{"id":"j1","name":"Digest","enabled":true,"schedule":{"kind":"cron","expr":"0 3 * * *"}}"#
+        http.respond("PUT", "/api/cron/jobs/j1", json: job)
+        http.respond("POST", "/api/cron/jobs/j1/pause", json: #"{"id":"j1","enabled":false}"#)
+        http.respond("POST", "/api/cron/jobs/j1/resume", json: job)
+        http.respond("POST", "/api/cron/jobs/j1/trigger", json: job)
+        http.respond("DELETE", "/api/cron/jobs/j1", json: #"{"ok":true}"#)
+        let client = makeClient(http)
+
+        let updated = try await client.updateJob(id: "j1", updates: HermesMirrorJobUpdate(name: "Digest", schedule: "0 3 * * *", enabled: true))
+        #expect(updated.id == "j1")
+        let put = try #require(http.requests.first { $0.method == "PUT" })
+        let body = try #require(put.body)
+        // `CronJobUpdate` nests the patch under `updates`.
+        #expect(body.contains(#""updates""#))
+        #expect(body.contains(#""schedule":"0 3 * * *""#))
+        #expect(body.contains(#""enabled":true"#))
+
+        #expect(try await client.pauseJob(id: "j1").paused == true)
+        #expect(try await client.resumeJob(id: "j1").paused == false)
+        #expect(try await client.triggerJob(id: "j1").id == "j1")
+        try await client.deleteJob(id: "j1")
+
+        // Unstubbed ids answer 404 from the stub → stable notFound.
+        await #expect(throws: HermesMirrorTransportError.notFound("job:gone")) {
+            try await client.pauseJob(id: "gone")
+        }
+        await #expect(throws: HermesMirrorTransportError.notFound("job:gone")) {
+            try await client.deleteJob(id: "gone")
+        }
+        await #expect(throws: HermesMirrorTransportError.invalidPath("job:../etc")) {
+            try await client.deleteJob(id: "../etc")
+        }
+    }
+
+    @Test
+    func `jobRuns parses the run-session rows and clamps the limit`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("GET", "/api/cron/jobs/digest/runs", json: """
+        {"runs":[{"id":"cron_digest_1756800000","started_at":"2026-09-02T03:00:00+00:00","ended_at":"2026-09-02T03:01:00+00:00",
+                  "input_tokens":120,"output_tokens":340,"is_active":false},
+                 {"id":"cron_digest_1756713600","created_at":"2026-09-01T03:00:00+00:00","is_active":true},
+                 {"started_at":"2026-09-01T03:00:00+00:00"}]}
+        """)
+        let runs = try await makeClient(http).jobRuns(jobID: "digest", limit: 5000)
+        #expect(runs.map(\.key) == ["cron_digest_1756800000", "cron_digest_1756713600"])
+        #expect(runs[0].status == .ok)
+        #expect(runs[0].finishedAt != nil)
+        #expect(runs[0].tokensIn == 120)
+        #expect(runs[0].tokensOut == 340)
+        // Still running: no finish time, and the collector leaves it for later.
+        #expect(runs[1].status == .running)
+        #expect(runs[1].finishedAt == nil)
+        let request = try #require(http.requests.first)
+        #expect(request.url.contains("limit=100"))
+    }
+
+    @Test
+    func `jobRunOutput returns the run's final assistant message`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("GET", "/api/sessions/cron_digest_1/messages", json: """
+        {"messages":[{"role":"user","content":"go"},{"role":"assistant","content":"# Digest\\n"},{"role":"assistant","content":"  "}]}
+        """)
+        #expect(try await makeClient(http).jobRunOutput(jobID: "digest", runKey: "cron_digest_1") == "# Digest")
+        #expect(HermesDashboardClient.finalAssistantText([]) == nil)
+    }
+
+    @Test
     func `fs list maps entries and rejects traversal before any request`() async throws {
         let http = StubHermesHTTP()
         http.respond("GET", "/api/fs/list", json: #"{"entries":[{"name":"raw","path":"/kb/raw","isDirectory":true},{"name":"a.md","path":"/kb/a.md","isDirectory":false}]}"#)

@@ -101,6 +101,158 @@ struct FilesystemHermesTransportTests {
     }
 
     @Test
+    func `createJob carries the optional CronJobCreate fields through to jobs json`() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = FilesystemHermesTransport(rootPath: root.path, logger: Self.logger, clock: { Date(timeIntervalSince1970: 1_756_800_000) })
+        _ = try await transport.createJob(HermesMirrorJobSpec(
+            name: "digest", schedule: "0 3 * * *", prompt: "summarise", deliver: "origin", skills: ["kb-compile"],
+            model: "gpt-5", provider: "openai", baseURL: "https://api.example", script: "run.sh",
+            contextFrom: ["j1"], enabledToolsets: ["files"], workdir: "/home/hermes/work", noAgent: true
+        ))
+        let data = try Data(contentsOf: root.appendingPathComponent("cron/jobs.json"))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let row = try #require((object["jobs"] as? [[String: Any]])?.first)
+        #expect(row["model"] as? String == "gpt-5")
+        #expect(row["provider"] as? String == "openai")
+        #expect(row["base_url"] as? String == "https://api.example")
+        #expect(row["script"] as? String == "run.sh")
+        #expect(row["no_agent"] as? Bool == true)
+        #expect((row["context_from"] as? [String]) == ["j1"])
+        #expect((row["enabled_toolsets"] as? [String]) == ["files"])
+        #expect(row["workdir"] as? String == "/home/hermes/work")
+    }
+
+    @Test
+    func `updateJob patches fields, re-derives the schedule and leaves the id alone`() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixed = Date(timeIntervalSince1970: 1_756_800_000)
+        let transport = FilesystemHermesTransport(rootPath: root.path, logger: Self.logger, clock: { fixed })
+        let created = try await transport.createJob(HermesMirrorJobSpec(name: "old", schedule: "0 3 * * *", prompt: "p", deliver: "origin", skills: ["a"]))
+        let updated = try await transport.updateJob(id: created.id, updates: HermesMirrorJobUpdate(
+            name: "new", schedule: "30 7 * * *", prompt: "q", skills: ["b"], model: "gpt-5"
+        ))
+        #expect(updated.id == created.id)
+        #expect(updated.name == "new")
+        #expect(updated.schedule == "30 7 * * *")
+        #expect(updated.prompt == "q")
+        let row = try #require(Self.jobRow(root, id: created.id))
+        #expect(row["model"] as? String == "gpt-5")
+        #expect((row["skills"] as? [String]) == ["b"])
+        // `skill` (singular legacy field) is cleared when `skills` is set.
+        #expect(row["skill"] is NSNull)
+        #expect((row["schedule"] as? [String: Any])?["expr"] as? String == "30 7 * * *")
+        #expect(row["schedule_display"] as? String == "30 7 * * *")
+        #expect(row["next_run_at"] is String)
+        await #expect(throws: HermesMirrorTransportError.notFound("job:missing")) {
+            try await transport.updateJob(id: "missing", updates: HermesMirrorJobUpdate(name: "x"))
+        }
+        await #expect(throws: HermesMirrorTransportError.invalidPath("job:../etc")) {
+            try await transport.updateJob(id: "../etc", updates: HermesMirrorJobUpdate(name: "x"))
+        }
+    }
+
+    @Test
+    func `pause, resume, trigger and delete rewrite jobs json under the advisory lock`() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixed = Date(timeIntervalSince1970: 1_756_800_000)
+        let transport = FilesystemHermesTransport(rootPath: root.path, logger: Self.logger, clock: { fixed })
+        let job = try await transport.createJob(HermesMirrorJobSpec(name: "j", schedule: "0 3 * * *", prompt: "p", deliver: "origin", skills: []))
+
+        #expect(try await transport.pauseJob(id: job.id).paused == true)
+        var row = try #require(Self.jobRow(root, id: job.id))
+        #expect(row["state"] as? String == "paused")
+        #expect(row["paused_at"] is String)
+
+        #expect(try await transport.resumeJob(id: job.id).paused == false)
+        row = try #require(Self.jobRow(root, id: job.id))
+        #expect(row["state"] as? String == "scheduled")
+        #expect(row["paused_at"] is NSNull)
+
+        _ = try await transport.triggerJob(id: job.id)
+        row = try #require(Self.jobRow(root, id: job.id))
+        #expect(row["next_run_at"] as? String == HermesDates.iso(fixed))
+
+        // The lock is exclusive per mutation, so concurrent writers serialise
+        // instead of clobbering: 8 pause/resume pairs leave exactly one job.
+        await withTaskGroup(of: Void.self) { group in
+            for index in 0 ..< 8 {
+                group.addTask {
+                    if index.isMultiple(of: 2) {
+                        _ = try? await transport.pauseJob(id: job.id)
+                    } else {
+                        _ = try? await transport.resumeJob(id: job.id)
+                    }
+                }
+            }
+        }
+        #expect(try await transport.listJobs().count == 1)
+
+        try FileManager.default.createDirectory(at: transport.jobOutputDirectory(job.id), withIntermediateDirectories: true)
+        try await transport.deleteJob(id: job.id)
+        #expect(try await transport.listJobs().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: transport.jobOutputDirectory(job.id).path))
+        await #expect(throws: HermesMirrorTransportError.notFound("job:\(job.id)")) {
+            try await transport.deleteJob(id: job.id)
+        }
+    }
+
+    @Test
+    func `jobRuns lists cron output files newest first and reads one output`() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(root, "cron/output/digest/2026-09-01_03-00-00.md", "# Monday\n")
+        try write(root, "cron/output/digest/2026-09-02_03-00-00.md", "# Tuesday\n")
+        try write(root, "cron/output/digest/notes.txt", "ignored")
+        try write(root, "cron/output/digest/.hidden.md", "ignored")
+        let transport = FilesystemHermesTransport(rootPath: root.path, logger: Self.logger)
+        let runs = try await transport.jobRuns(jobID: "digest", limit: 10)
+        #expect(runs.map(\.key) == ["2026-09-02_03-00-00", "2026-09-01_03-00-00"])
+        #expect(runs.allSatisfy { $0.status == .ok })
+        // The stem is the run's UTC start instant, not a local-time reading.
+        #expect(runs[0].startedAt == HermesDates.parse("2026-09-02T03:00:00+00:00"))
+        #expect(try await transport.jobRunOutput(jobID: "digest", runKey: runs[0].key) == "# Tuesday\n")
+        #expect(try await transport.jobRunOutput(jobID: "digest", runKey: "missing") == nil)
+        #expect(try await transport.jobRuns(jobID: "digest", limit: 1).map(\.key) == ["2026-09-02_03-00-00"])
+        #expect(try await transport.jobRuns(jobID: "unknown-job", limit: 10).isEmpty)
+        await #expect(throws: HermesMirrorTransportError.invalidPath("job:../x")) {
+            try await transport.jobRuns(jobID: "../x", limit: 10)
+        }
+    }
+
+    @Test
+    func `a failed run with no output file surfaces as a synthetic error run`() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(root, "cron/output/digest/2026-09-01_03-00-00.md", "# Monday\n")
+        try write(root, "cron/jobs.json", #"""
+        {"jobs":[{"id":"digest","name":"Digest","schedule":{"kind":"cron","expr":"0 3 * * *"},"enabled":true,
+                  "last_run_at":"2026-09-02T03:00:00+00:00","last_status":"error","last_error":"provider timeout"}]}
+        """#)
+        let transport = FilesystemHermesTransport(rootPath: root.path, logger: Self.logger)
+        let runs = try await transport.jobRuns(jobID: "digest", limit: 10)
+        #expect(runs.count == 2)
+        #expect(runs[0].status == .error)
+        #expect(runs[0].error == "provider timeout")
+        #expect(runs[0].key.hasPrefix("error-"))
+        #expect(runs[1].status == .ok)
+        // No synthetic run once a later output file exists for that failure.
+        try write(root, "cron/output/digest/2026-09-02_03-00-01.md", "# Recovered\n")
+        let recovered = try await transport.jobRuns(jobID: "digest", limit: 10)
+        #expect(recovered.count == 2)
+        #expect(recovered.allSatisfy { $0.status == .ok })
+    }
+
+    private static func jobRow(_ root: URL, id: String) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("cron/jobs.json")),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return (object["jobs"] as? [[String: Any]])?.first { ($0["id"] as? String) == id }
+    }
+
+    @Test
     func `nextRun finds the next matching minute`() throws {
         let expression = try CronExpression("0 3 * * *")
         let from = Date(timeIntervalSince1970: 1_756_800_000)
