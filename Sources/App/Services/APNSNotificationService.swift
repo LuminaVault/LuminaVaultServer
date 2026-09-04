@@ -74,7 +74,14 @@ struct LiveAPNSPushSender: APNSPushSender {
             expiration: APNSNotificationExpiration.none,
             priority: .immediately,
             topic: topic,
-            payload: payload.merging(["category": category.rawValue]) { current, _ in current }
+            payload: payload.merging(["category": category.rawValue]) { current, _ in current },
+            // iOS matches a UNNotificationCategory on `aps.category` and nothing
+            // else. The name was only ever put in the custom payload, which the
+            // system does not read, so every push shipped with `aps.category`
+            // nil. That went unnoticed while every category was a plain banner;
+            // it makes an actionable one (Phase 1 `approval`) impossible —
+            // the buttons simply never render.
+            category: category.rawValue
         )
         let request = APNSRequest(
             message: notification,
