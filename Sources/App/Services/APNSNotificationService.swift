@@ -24,6 +24,11 @@ enum APNSPushCategory: String {
     case cron
     case ingestion
     case workflow
+    /// Phase 1 — a Hermes run is waiting on a tool-call approval. iOS
+    /// registers this as an actionable category (Approve once / Deny).
+    case approval
+    /// Phase 1 — a Hermes run finished (completed, failed or stopped).
+    case runCompleted
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -357,7 +362,7 @@ struct APNSNotificationService {
             // High-signal, low-frequency surfaces — never gated by the
             // category opt-out table in v1.
             return false
-        case .chat, .nudge, .digest:
+        case .chat, .nudge, .digest, .approval, .runCompleted:
             break
         }
         guard let prefs = try await ApnsCategoryPrefs.find(tenantID, on: db) else {
@@ -367,6 +372,8 @@ struct APNSNotificationService {
         case .chat: return !prefs.chatEnabled
         case .nudge: return !prefs.nudgeEnabled
         case .digest: return !prefs.digestEnabled
+        case .approval: return !prefs.approvalEnabled
+        case .runCompleted: return !prefs.runCompletedEnabled
         case .achievement, .reminder, .cron, .ingestion, .workflow: return false
         }
     }

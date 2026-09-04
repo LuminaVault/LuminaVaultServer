@@ -32,6 +32,10 @@ tags:
   - name: Me
   - name: Settings
     description: Per-user config — currently BYO Hermes gateway (HER-217/223).
+  - name: Hermes Runs
+    description: >
+      Agent runs on the tenant's own Hermes — start, follow live over SSE,
+      approve or deny tool calls from a push notification, stop (Phase 1).
   - name: Self Improvement
     description: Tenant-scoped curator, SOUL review proposals, pinning, reports, and rollback.
   - name: Onboarding
@@ -1637,6 +1641,155 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /v1/hermes/runs:
+    post:
+      tags: [Hermes Runs]
+      operationId: hermesRunStart
+      summary: Start an agent run on the tenant's Hermes.
+      description: |
+        Proxies `POST /v1/runs` on the tenant's Hermes gateway and persists
+        the run — LuminaVault owns run history because the gateway keeps runs
+        in memory for 300 s only. Returns as soon as Hermes has accepted the
+        run; a server-side watcher then follows its SSE feed, persists every
+        event, and pushes an `approval` notification when a tool call needs a
+        decision. `501 hermes_runs_unsupported` when the tenant's Hermes does
+        not report both `approval_events` and `run_events_sse`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesRunStartRequest' }
+      responses:
+        '202':
+          description: Run accepted by Hermes and persisted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesRun' }
+        '400': { description: 'Empty prompt (`prompt_required`).' }
+        '402': { description: Chat entitlement required. }
+        '404': { description: 'Referenced conversation not found (`conversation_not_found`).' }
+        '429': { description: 'Rate limited, or too many concurrent runs (`hermes_runs_limit`).' }
+        '501': { description: 'This Hermes has no runs API (`hermes_runs_unsupported`).' }
+        '502': { description: 'Hermes gateway error (`hermes_runs_upstream_error`).' }
+    get:
+      tags: [Hermes Runs]
+      operationId: hermesRunList
+      summary: List the tenant's Hermes runs, newest first.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+      responses:
+        '200':
+          description: Persisted runs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesRunListResponse' }
+
+  /v1/hermes/runs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Hermes Runs]
+      operationId: hermesRunGet
+      summary: Read one run, including any pending approval.
+      responses:
+        '200':
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/hermes/runs/{id}/events:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Hermes Runs]
+      operationId: hermesRunEvents
+      summary: Server-sent events for one run — persisted replay, then live.
+      description: |
+        `text/event-stream`. Every record is `event: hermes.run.event` with a
+        JSON `HermesRunEvent` on the `data:` line; `: keepalive` comments hold
+        the connection open while a run is thinking. Persisted events with
+        `seq > after` are replayed first, so a client reconnecting with the
+        `lastSeq` it already holds loses nothing and sees nothing twice. The
+        stream closes once the run is terminal and fully drained.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: Resume cursor — the highest `seq` the client already has.
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: SSE stream of run events.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/hermes/runs/{id}/approval:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Hermes Runs]
+      operationId: hermesRunApprove
+      summary: Answer the tool-call approval a run is waiting on.
+      description: |
+        Forwards the choice to `POST /v1/runs/{hermesRunID}/approval` and
+        clears the pending approval. `409 hermes_approval_not_pending` when
+        nothing is waiting (including when the approval was already answered
+        on another surface).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HermesRunApprovalRequest' }
+      responses:
+        '200':
+          description: Choice accepted; the run resumes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'No approval pending (`hermes_approval_not_pending`).' }
+        '410': { description: 'Hermes expired the run (`hermes_run_expired`).' }
+        '502': { description: 'Hermes gateway error (`hermes_runs_upstream_error`).' }
+
+  /v1/hermes/runs/{id}/stop:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Hermes Runs]
+      operationId: hermesRunStop
+      summary: Stop a running agent run.
+      description: |
+        Hermes answers `stopping`; the terminal `run.cancelled` arrives on the
+        watcher, so the returned run may still read `running`. When Hermes has
+        already forgotten the run, LuminaVault marks it `stopped` itself.
+      responses:
+        '200':
+          description: Stop requested (or the run was already terminal).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { description: 'Hermes gateway error (`hermes_runs_upstream_error`).' }
+
   /v1/me/improvement:
     get:
       tags: [Self Improvement]
@@ -8402,6 +8555,118 @@ components:
         jobID: { type: string }
         schedule: { type: string }
         created: { type: boolean }
+
+    # ── Hermes agent runs (Phase 1 — act from your pocket) ──
+
+    HermesRunStatus:
+      type: string
+      description: >
+        Lifecycle as LuminaVault tracks it. Hermes' own `cancelled` maps to
+        `stopped`; `lost` is LuminaVault-only — the run watcher could not
+        re-attach after a restart because Hermes had already expired the run
+        from its 300 s in-memory store.
+      enum: [queued, running, waiting_for_approval, completed, failed, stopped, lost]
+
+    HermesApprovalChoice:
+      type: string
+      description: >
+        `once` allows this one command, `session` allows it for the rest of
+        the run's session, `always` allows it permanently on that Hermes.
+      enum: [once, session, always, deny]
+
+    HermesRunPendingApproval:
+      type: object
+      description: The tool call Hermes is waiting on. `command` is redacted upstream by Hermes.
+      required: [choices, requestedAt]
+      properties:
+        command: { type: [string, 'null'] }
+        choices:
+          type: array
+          items: { $ref: '#/components/schemas/HermesApprovalChoice' }
+        requestedAt: { type: string, format: date-time }
+        extra:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Any other fields from the `approval.request` event (tool name, risk hints).
+
+    HermesRun:
+      type: object
+      required: [id, hermesRunID, status, prompt, startedAt, lastSeq]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: LuminaVault row id — the id used in every `/v1/hermes/runs/{id}` path.
+        hermesRunID:
+          type: string
+          description: Hermes-side `run_id`, for cross-referencing Hermes logs.
+        status: { $ref: '#/components/schemas/HermesRunStatus' }
+        prompt: { type: string }
+        sessionID: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        conversationID: { type: [string, 'null'], format: uuid }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        lastEvent:
+          type: [string, 'null']
+          description: Name of the last Hermes event seen (`tool.started`, `approval.request`, …).
+        lastSeq:
+          type: integer
+          description: Highest persisted event `seq`; pass as `?after=` to resume the events feed.
+        pendingApproval:
+          oneOf:
+            - $ref: '#/components/schemas/HermesRunPendingApproval'
+            - type: 'null'
+        summary: { type: [string, 'null'] }
+        error: { type: [string, 'null'] }
+
+    HermesRunEvent:
+      type: object
+      description: >
+        One persisted Hermes event. `payload` is the event object exactly as
+        Hermes sent it. Delivered as the `data:` line of the run SSE feed
+        under the SSE event name `hermes.run.event`.
+      required: [runID, seq, event, payload, at]
+      properties:
+        runID: { type: string, format: uuid }
+        seq: { type: integer, description: Monotonic per run, starting at 1. }
+        event:
+          type: string
+          description: >
+            `run.started`, `message.delta`, `tool.started`, `tool.completed`,
+            `approval.request`, `approval.responded`, `run.completed`,
+            `run.failed`, `run.cancelled`, `error`, or a `watcher.*` event
+            synthesised by LuminaVault for a terminal state Hermes never sent.
+        payload: { description: Raw Hermes event object. }
+        at: { type: string, format: date-time }
+
+    HermesRunListResponse:
+      type: object
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items: { $ref: '#/components/schemas/HermesRun' }
+
+    HermesRunStartRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string }
+        sessionID:
+          type: [string, 'null']
+          description: Hermes session to continue; a fresh one is created when absent.
+        model: { type: [string, 'null'] }
+        conversationID:
+          type: [string, 'null']
+          format: uuid
+          description: When set, a system message linking to the run is appended to that conversation.
+
+    HermesRunApprovalRequest:
+      type: object
+      required: [choice]
+      properties:
+        choice: { $ref: '#/components/schemas/HermesApprovalChoice' }
 
     # ── Provider credentials + LLM preferences (HER-252) ──
 

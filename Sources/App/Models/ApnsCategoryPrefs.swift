@@ -10,6 +10,9 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
     @Field(key: "chat_enabled") var chatEnabled: Bool
     @Field(key: "nudge_enabled") var nudgeEnabled: Bool
     @Field(key: "digest_enabled") var digestEnabled: Bool
+    /// Phase 1 (M119) — Hermes run pushes: tool-call approvals and completions.
+    @Field(key: "approval_enabled") var approvalEnabled: Bool
+    @Field(key: "run_completed_enabled") var runCompletedEnabled: Bool
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {}
@@ -18,11 +21,15 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
         tenantID: UUID,
         chatEnabled: Bool = true,
         nudgeEnabled: Bool = true,
-        digestEnabled: Bool = true
+        digestEnabled: Bool = true,
+        approvalEnabled: Bool = true,
+        runCompletedEnabled: Bool = true
     ) {
         id = tenantID
         self.chatEnabled = chatEnabled
         self.nudgeEnabled = nudgeEnabled
         self.digestEnabled = digestEnabled
+        self.approvalEnabled = approvalEnabled
+        self.runCompletedEnabled = runCompletedEnabled
     }
 }

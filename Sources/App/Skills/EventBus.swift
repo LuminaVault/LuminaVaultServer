@@ -12,6 +12,10 @@ enum SkillEventType: String, Hashable, Codable, CaseIterable {
     /// locked → unlocked. Consumed by `MeTodayCache` for sub-1s digest
     /// invalidation; future widget streaming endpoints can reuse it.
     case achievementUnlocked = "achievement_unlocked"
+    /// Phase 1 — a Hermes run watcher persisted a new event (or the run
+    /// changed status). Payload shape: `HermesRunEventPayload`. Consumed by
+    /// `HermesRunsController` to fan live events out to run SSE clients.
+    case hermesRunEvent = "hermes_run_event"
 }
 
 /// In-process event envelope. Payload is stringly-typed for now to keep
@@ -38,6 +42,60 @@ struct SkillEvent: Hashable {
         static let healthSampleType = "health_sample_type"
         /// Count of samples in the synced batch.
         static let healthSampleCount = "health_sample_count"
+        /// `hermes_run_event` — LuminaVault run row id as `uuidString`.
+        static let hermesRunID = "hermes_run_id"
+        /// `hermes_run_event` — persisted event `seq` (decimal string).
+        static let hermesRunSeq = "hermes_run_seq"
+        /// `hermes_run_event` — Hermes event name (`tool.started`, …).
+        static let hermesRunEventName = "hermes_run_event_name"
+        /// `hermes_run_event` — `HermesRunStatus` raw value after the event.
+        static let hermesRunStatus = "hermes_run_status"
+    }
+}
+
+/// Typed view of a `hermes_run_event` payload. `EventBus` stays stringly
+/// typed; this struct is the one place that knows the key names.
+struct HermesRunEventPayload: Hashable, Sendable {
+    let runID: UUID
+    let seq: Int
+    let event: String
+    let status: String
+
+    init(runID: UUID, seq: Int, event: String, status: String) {
+        self.runID = runID
+        self.seq = seq
+        self.event = event
+        self.status = status
+    }
+
+    /// Decode from a bus event; nil when the event is not a run event or
+    /// a required key is missing.
+    init?(_ event: SkillEvent) {
+        guard event.type == .hermesRunEvent,
+              let rawID = event.payload[SkillEvent.PayloadKey.hermesRunID],
+              let runID = UUID(uuidString: rawID),
+              let rawSeq = event.payload[SkillEvent.PayloadKey.hermesRunSeq],
+              let seq = Int(rawSeq),
+              let name = event.payload[SkillEvent.PayloadKey.hermesRunEventName],
+              let status = event.payload[SkillEvent.PayloadKey.hermesRunStatus]
+        else { return nil }
+        self.runID = runID
+        self.seq = seq
+        self.event = name
+        self.status = status
+    }
+
+    func skillEvent(tenantID: UUID) -> SkillEvent {
+        SkillEvent(
+            type: .hermesRunEvent,
+            tenantID: tenantID,
+            payload: [
+                SkillEvent.PayloadKey.hermesRunID: runID.uuidString,
+                SkillEvent.PayloadKey.hermesRunSeq: String(seq),
+                SkillEvent.PayloadKey.hermesRunEventName: event,
+                SkillEvent.PayloadKey.hermesRunStatus: status,
+            ]
+        )
     }
 }
 
