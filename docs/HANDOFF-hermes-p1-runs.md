@@ -88,10 +88,29 @@ Stable error codes: `hermes_runs_unsupported` (501), `hermes_run_expired`
 3. **Bump the pin** in `Package.swift` from `from: "5.2.0"` to `from: "5.4.0"`
    and commit the refreshed `Package.resolved` on its own.
 
-4. **Regenerate Bruno.** `openapi.yaml` gained five paths, a `Hermes Runs`
-   tag and eight schemas, but the collection repo is not checked out in this
-   worktree, so `make bruno-regen` has **not** been run. Per `CLAUDE.md` it
-   must be, and both repos committed together:
+4. **Regenerate Bruno — once, after *both* server branches are merged.**
+   `openapi.yaml` gained five paths, a `Hermes Runs` tag and eight schemas.
+
+   `scripts/generate-bruno.sh` defaults to
+   `~/Projects/ObsidianClaudeBrain/LuminaVaultCollection`, which does not
+   exist on this machine — the collection is at
+   `~/Work/production/apps/lumina/LuminaVaultCollection`. An export was added
+   to `~/.zshrc`:
+
+   ```sh
+   export LUMINAVAULT_COLLECTION_PATH="$HOME/Work/production/apps/lumina/LuminaVaultCollection"
+   ```
+
+   With that set, regen was verified from this branch: it produced exactly
+   one additive folder, `LuminaVaultServer/Hermes Runs/`. The output was
+   **reverted**, deliberately.
+
+   The generator rebuilds the *whole* collection from one `openapi.yaml`
+   (it preserves only `environments/`). Phase 1 and Phase 2 branched
+   separately, so their specs are disjoint: regenerating from
+   `feat/hermes-p2-collect` would delete the `Hermes Runs` folder that
+   `feat/hermes-p1-runs` adds, and vice versa. So do **not** regen per
+   branch — merge both, then run it once against `main`:
 
    ```sh
    make bruno-regen && cd "$LUMINAVAULT_COLLECTION_PATH" && git diff
