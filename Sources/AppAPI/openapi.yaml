@@ -1011,11 +1011,26 @@ paths:
     get:
       tags: [Skills]
       operationId: skillOutputs
-      summary: Today-tab skill outputs feed (HER-177). Empty until skill dispatch lands (HER-169).
+      summary: Today-tab skill outputs feed (HER-177) — local skill runs and collected Hermes job runs, newest first.
+      description: |
+        Unions `skill_run_log` runs that produced markdown with the
+        `hermes_job_runs` collected from the tenant's Hermes (Phase 2), newest
+        first. Hermes runs are mirrored into `skill_run_log` for the skill
+        surfaces; the feed reads them from the job-runs side instead, which
+        also carries `vaultFilePath`. A failed run with no markdown falls back
+        to its error text. `since` and `before` are both exclusive; page
+        backwards by passing the previous response's `nextCursor` as `before`
+        (present only when the page was full).
       parameters:
         - in: query
           name: since
           required: false
+          description: Exclusive lower bound — return only outputs newer than this.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: before
+          required: false
+          description: Exclusive upper bound — the previous page's `nextCursor`.
           schema: { type: string, format: date-time }
         - in: query
           name: limit

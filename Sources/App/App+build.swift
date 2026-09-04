@@ -3000,8 +3000,8 @@ func buildRouter(
         mirror: hermesMirrorService
     ).addRoutes(to: skillsGroup)
 
-    // HER-177 — Today-tab skill outputs feed.
-    SkillOutputsController(logger: skillsLogger).addRoutes(to: skillsGroup)
+    // HER-177 — Today-tab skill outputs feed (local skill runs + Hermes job runs).
+    SkillOutputsController(fluent: services.fluent, logger: skillsLogger).addRoutes(to: skillsGroup)
 
     // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
     let jobsGroup = router.group("/v1/jobs").add(middleware: jwtAuthenticator)
