@@ -153,6 +153,43 @@ struct HermesMirrorRefreshWorkerTests {
     }
 
     @Test
+    func `a refresh collects each mirrored job's finished runs into the brain`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.worker.collect") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            let tenantID = try await Self.seedTenant(on: fluent, dashboard: true)
+            let transports = PerTenantTransports()
+            let service = Self.makeService(fluent: fluent, transports: transports)
+            let fake = await transports.fake(for: tenantID)
+            await fake.setJobs([HermesMirrorJob(
+                id: "digest", name: "Digest", schedule: "0 3 * * *", prompt: "p",
+                paused: false, lastRunAt: nil, nextRunAt: nil, raw: .object(["id": .string("digest")])
+            )])
+            await fake.setRuns("digest", [HermesMirrorJobRun(
+                key: "cron_digest_1", status: .ok,
+                startedAt: Date(timeIntervalSince1970: 1_756_800_000),
+                finishedAt: Date(timeIntervalSince1970: 1_756_800_060)
+            )])
+            await fake.setRunOutput("digest", "cron_digest_1", "# Nightly\n")
+
+            // One tick: the jobs sync discovers the job, then collect files it.
+            let outcome = await HermesMirrorRefreshWorker.refresh(
+                tenantID: tenantID, service: service, budget: .seconds(30), logger: Self.logger
+            )
+            #expect(outcome == .ok)
+            let runs = try await HermesJobRun.query(on: fluent.db(), tenantID: tenantID).all()
+            #expect(runs.map(\.hermesRunKey) == ["cron_digest_1"])
+            #expect(runs[0].vaultFileID != nil)
+
+            // The next tick takes the high-water fast path: no second insert.
+            _ = await HermesMirrorRefreshWorker.refresh(
+                tenantID: tenantID, service: service, budget: .seconds(30), logger: Self.logger
+            )
+            #expect(try await HermesJobRun.query(on: fluent.db(), tenantID: tenantID).count() == 1)
+        }
+    }
+
+    @Test
     func `jitter stays within the bound`() {
         for _ in 0 ..< 20 {
             let value = HermesMirrorRefreshWorker.jitter(upTo: .seconds(2))

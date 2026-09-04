@@ -19,6 +19,7 @@ struct HermesMirrorController {
         router.put("skills/:name", use: toggleSkill)
         router.get("jobs", use: jobs)
         router.post("jobs/install-compile", use: installCompileJob)
+        router.post("jobs/:id/collect", use: collectJobRuns)
         router.post("vault/import", use: importVault)
         router.post("vault/create", use: createVault)
         router.post("vault/import-sessions", use: importSessions)
@@ -58,6 +59,22 @@ struct HermesMirrorController {
     func jobs(_: Request, ctx: AppRequestContext) async throws -> HermesMirroredJobsResponse {
         let tenantID = try ctx.requireTenantID()
         return try await Self.mapErrors { try await service.jobs(tenantID: tenantID) }
+    }
+
+    /// Pull this job's finished runs now instead of waiting for the worker
+    /// tick. Idempotent — already-collected runs are skipped by run key.
+    @Sendable
+    func collectJobRuns(_: Request, ctx: AppRequestContext) async throws -> HermesJobCollectResultDTO {
+        let tenantID = try ctx.requireTenantID()
+        let jobID = try Self.jobID(ctx)
+        return try await Self.mapErrors { try await service.collectJobRuns(tenantID: tenantID, jobID: jobID) }
+    }
+
+    static func jobID(_ ctx: AppRequestContext) throws -> String {
+        guard let raw = ctx.parameters.get("id"), !raw.isEmpty else {
+            throw HTTPError(.badRequest, message: "hermes_job_id_required")
+        }
+        return String(raw)
     }
 
     @Sendable
@@ -116,6 +133,7 @@ extension HermesCompileJobInstallResultDTO: ResponseEncodable {}
 extension HermesVaultImportResultDTO: ResponseEncodable {}
 extension HermesVaultCreateResultDTO: ResponseEncodable {}
 extension HermesSessionsImportResultDTO: ResponseEncodable {}
+extension HermesJobCollectResultDTO: ResponseEncodable {}
 
 /// Builds the mirror stack from the BYO-Hermes dependencies so `App+build`
 /// stays to a few lines.

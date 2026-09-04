@@ -1568,6 +1568,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/hermes/mirror/jobs/{id}/collect:
+    post:
+      tags: [Settings]
+      operationId: hermesMirrorCollectJobRuns
+      summary: Pull this job's finished runs from the tenant's Hermes now.
+      description: |
+        Idempotent — runs already stored (matched on Hermes' own run key) are
+        skipped, so calling this repeatedly costs one listing and no output
+        reads. Each new run's non-empty output is written to the vault as
+        `raw/jobs/<job-slug>/<yyyy-MM-dd-HHmm>.md` (provenance `hermes-job`)
+        and logged as a `hermes` skill run so it appears on the Today feed.
+        Caps: 50 runs per job per call, 256 KiB of stored output per run —
+        `truncated: true` means the listing filled the cap. Runs still in
+        flight are left for a later call. The background refresh worker runs
+        the same pass every tick; this route only shortens the wait.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Counts for this pass and the job's new high-water mark.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesJobCollectResultDTO' }
+        '400':
+          description: '`hermes_job_id_required` or `hermes_mirror_invalid_path`.'
+        '404':
+          description: The job is not mirrored for this tenant (`hermes_job_not_found`).
+        '409':
+          description: Another mirror operation is running for this tenant (`hermes_mirror_busy`).
+        '502':
+          description: Hermes refused or was unreachable (stable code in `message`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /v1/hermes/mirror/vault/import:
     post:
       tags: [Settings]
@@ -8402,6 +8440,33 @@ components:
         jobID: { type: string }
         schedule: { type: string }
         created: { type: boolean }
+
+    # ── Hermes job runs (Phase 2 "Collect") ──
+
+    HermesJobCollectResultDTO:
+      type: object
+      required: [hermesJobID, fetched, inserted, skipped, filesWritten, truncated]
+      properties:
+        hermesJobID: { type: string }
+        fetched:
+          type: integer
+          description: Runs Hermes listed for this job, bounded by the per-call cap of 50.
+        inserted:
+          type: integer
+          description: New `hermes_job_runs` rows written by this call.
+        skipped:
+          type: integer
+          description: Runs already collected (same run key) or still in flight.
+        filesWritten:
+          type: integer
+          description: Vault files written under `raw/jobs/<job-slug>/`.
+        truncated:
+          type: boolean
+          description: The listing filled the per-call cap; the job is busier than one pass.
+        highWaterMark:
+          type: string
+          format: date-time
+          description: Start time of the newest finished run collected so far.
 
     # ── Provider credentials + LLM preferences (HER-252) ──
 

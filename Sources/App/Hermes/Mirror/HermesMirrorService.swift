@@ -798,14 +798,17 @@ actor HermesMirrorService {
         try await state.save(on: fluent.db())
     }
 
-    private func beginExclusive(_ tenantID: UUID) throws {
+    /// One long-running mirror operation per tenant at a time (import, session
+    /// import, collect). Not `private`: the collect pass lives in
+    /// `HermesMirrorCollect.swift` and takes the same latch.
+    func beginExclusive(_ tenantID: UUID) throws {
         guard !inFlight.contains(tenantID) else {
             throw HTTPError(.conflict, message: "hermes_mirror_busy")
         }
         inFlight.insert(tenantID)
     }
 
-    private func endExclusive(_ tenantID: UUID) {
+    func endExclusive(_ tenantID: UUID) {
         inFlight.remove(tenantID)
     }
 

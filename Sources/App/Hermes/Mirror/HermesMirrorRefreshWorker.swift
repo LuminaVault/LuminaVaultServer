@@ -138,13 +138,26 @@ actor HermesMirrorRefreshWorker: Service {
         case timedOut
     }
 
-    /// Sync skills + jobs, then continue a pending vault import, inside one
-    /// time budget. Errors are logged, never propagated.
+    /// Sync skills + jobs, collect finished job runs, then continue a pending
+    /// vault import, inside one time budget. Errors are logged, never
+    /// propagated.
+    ///
+    /// Collect runs after the jobs sync so it sees the current job set, and
+    /// before the vault import so a slow import cannot starve it — a job's
+    /// output reaching the Today feed is the phase's whole point.
     static func refresh(tenantID: UUID, service: HermesMirrorService, budget: Duration, logger: Logger) async -> Outcome {
         await withTaskGroup(of: Outcome.self, returning: Outcome.self) { group in
             group.addTask {
                 do {
                     let status = try await service.sync(tenantID: tenantID, scopes: [.skills, .jobs])
+                    let collected = try await service.collectAllJobRuns(tenantID: tenantID)
+                    if collected.inserted > 0 || collected.failed > 0 {
+                        logger.info("hermes.mirror.worker collect", metadata: [
+                            "tenant": .string(tenantID.uuidString),
+                            "jobs": "\(collected.jobs)", "runs": "\(collected.inserted)",
+                            "files": "\(collected.filesWritten)", "failed": "\(collected.failed)",
+                        ])
+                    }
                     if try await service.hasPendingVaultImport(tenantID: tenantID) {
                         _ = try await service.importVault(tenantID: tenantID, requestedPath: nil)
                     }

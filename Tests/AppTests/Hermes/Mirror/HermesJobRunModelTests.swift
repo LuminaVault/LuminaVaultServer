@@ -28,16 +28,10 @@ struct HermesJobRunModelTests {
     }
 
     @Test
-    func `tokens round-trip through the JSONB column and are absent when unreported`() {
-        #expect(HermesJobRun.tokensJSON(input: nil, output: nil) == nil)
-        #expect(HermesJobRun.tokensDTO(nil) == nil)
-        #expect(HermesJobRun.tokensDTO(.string("nope")) == nil)
-        #expect(HermesJobRun.tokensDTO(.object([:])) == nil)
-
-        let both = HermesJobRun.tokensJSON(input: 120, output: 340)
-        #expect(HermesJobRun.tokensDTO(both) == HermesJobRunTokensDTO(input: 120, output: 340))
-        let outputOnly = HermesJobRun.tokensJSON(input: nil, output: 7)
-        #expect(HermesJobRun.tokensDTO(outputOnly) == HermesJobRunTokensDTO(input: nil, output: 7))
+    func `tokens are absent when Hermes reported none and typed when it did`() {
+        #expect(HermesJobRun.tokens(input: nil, output: nil) == nil)
+        #expect(HermesJobRun.tokens(input: 120, output: 340) == HermesJobRunTokensDTO(input: 120, output: 340))
+        #expect(HermesJobRun.tokens(input: nil, output: 7) == HermesJobRunTokensDTO(input: nil, output: 7))
     }
 
     @Test

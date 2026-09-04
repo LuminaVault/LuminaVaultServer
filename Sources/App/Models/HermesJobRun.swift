@@ -28,7 +28,12 @@ final class HermesJobRun: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "output") var output: String?
     @OptionalField(key: "error") var error: String?
     /// `{"input": Int?, "output": Int?}` when Hermes reported usage.
-    @OptionalField(key: "tokens") var tokens: JSONValue?
+    ///
+    /// Typed rather than `JSONValue`: PostgresNIO decodes a `jsonb` column
+    /// into a single-value-container type as the raw JSON *text*, so a
+    /// `JSONValue` field would read back as `.string("{...}")`. A keyed
+    /// `Codable` struct takes the JSON path and round-trips correctly.
+    @OptionalField(key: "tokens") var tokens: HermesJobRunTokensDTO?
     @OptionalField(key: "vault_file_id") var vaultFileID: UUID?
     /// `skill_run_log.id` — that table is raw SQL, so this is an unconstrained
     /// reference kept in step by the collector.
@@ -45,20 +50,13 @@ final class HermesJobRun: Model, TenantModel, @unchecked Sendable {
         startedAt = run.startedAt
         finishedAt = run.finishedAt
         error = run.error
-        tokens = Self.tokensJSON(input: run.tokensIn, output: run.tokensOut)
+        tokens = Self.tokens(input: run.tokensIn, output: run.tokensOut)
         self.collectedAt = collectedAt
     }
 
-    static func tokensJSON(input: Int?, output: Int?) -> JSONValue? {
+    static func tokens(input: Int?, output: Int?) -> HermesJobRunTokensDTO? {
         guard input != nil || output != nil else { return nil }
-        var fields: [String: JSONValue] = [:]
-        if let input {
-            fields["input"] = .number(Double(input))
-        }
-        if let output {
-            fields["output"] = .number(Double(output))
-        }
-        return .object(fields)
+        return HermesJobRunTokensDTO(input: input, output: output)
     }
 
     static let truncationMarker = "\n\n_[truncated by LuminaVault at 256 KiB]_\n"
@@ -94,23 +92,10 @@ final class HermesJobRun: Model, TenantModel, @unchecked Sendable {
             finishedAt: finishedAt,
             output: output,
             error: error,
-            tokens: Self.tokensDTO(tokens),
+            tokens: tokens,
             vaultFilePath: nil,
             skillRunLogID: skillRunLogID,
             collectedAt: collectedAt
         )
-    }
-
-    static func tokensDTO(_ value: JSONValue?) -> HermesJobRunTokensDTO? {
-        guard case let .object(fields)? = value else { return nil }
-        let input = fields["input"].flatMap(Self.int)
-        let output = fields["output"].flatMap(Self.int)
-        guard input != nil || output != nil else { return nil }
-        return HermesJobRunTokensDTO(input: input, output: output)
-    }
-
-    private static func int(_ value: JSONValue) -> Int? {
-        guard case let .number(number) = value else { return nil }
-        return Int(number)
     }
 }

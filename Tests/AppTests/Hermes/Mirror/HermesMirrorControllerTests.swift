@@ -168,6 +168,61 @@ struct HermesMirrorControllerTests {
         }
     }
 
+    /// Writes a cron output file into the shared test Hermes home the way
+    /// `save_job_output` does; returns a cleanup closure.
+    private static func seedJobOutput(job: String, stamp: String, markdown: String) throws -> () -> Void {
+        let dir = hermesRoot.appendingPathComponent("cron/output/\(job)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(markdown.utf8).write(to: dir.appendingPathComponent("\(stamp).md"))
+        return { try? FileManager.default.removeItem(at: dir) }
+    }
+
+    @Test
+    func `collect pulls a job's output into the vault and is idempotent`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let auth: HTTPFields = [.authorization: "Bearer \(token)", .contentType: "application/json"]
+
+            var jobID = ""
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/install-compile", method: .post, headers: auth) { response in
+                #expect(response.status == .ok)
+                jobID = try Self.decode(HermesCompileJobInstallResultDTO.self, response.body).jobID
+            }
+            let cleanup = try Self.seedJobOutput(job: jobID, stamp: "2026-09-02_03-00-00", markdown: "# Nightly compile\n\nWrote 3 articles.\n")
+            defer { cleanup() }
+            // The job must be mirrored before it can be collected.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs", method: .get, headers: auth) { response in
+                #expect(response.status == .ok)
+            }
+
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/collect", method: .post, headers: auth) { response in
+                #expect(response.status == .ok)
+                let result = try Self.decode(HermesJobCollectResultDTO.self, response.body)
+                #expect(result.hermesJobID == jobID)
+                #expect(result.fetched == 1)
+                #expect(result.inserted == 1)
+                #expect(result.filesWritten == 1)
+                #expect(result.truncated == false)
+                #expect(result.highWaterMark != nil)
+            }
+            // Second call: same run key, nothing new.
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/\(jobID)/collect", method: .post, headers: auth) { response in
+                let result = try Self.decode(HermesJobCollectResultDTO.self, response.body)
+                #expect(result.inserted == 0)
+                #expect(result.skipped == 1)
+                #expect(result.filesWritten == 0)
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/does-not-exist/collect", method: .post, headers: auth) { response in
+                #expect(response.status == .notFound)
+                #expect(String(buffer: response.body).contains("hermes_job_not_found"))
+            }
+            try await client.execute(uri: "/v1/hermes/mirror/jobs/..%2Fetc/collect", method: .post, headers: auth) { response in
+                #expect(response.status == .badRequest)
+            }
+        }
+    }
+
     @Test
     func `transport errors map to stable status codes`() {
         #expect(HermesMirrorController.status(for: .invalidPath("x")) == .badRequest)
