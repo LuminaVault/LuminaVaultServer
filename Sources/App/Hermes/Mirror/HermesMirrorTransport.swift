@@ -490,13 +490,19 @@ extension JSONValue {
     init(foundation value: Any) {
         switch value {
         case is NSNull: self = .null
-        case let bool as Bool where CFGetTypeID(bool as CFTypeRef) == CFBooleanGetTypeID(): self = .bool(bool)
         case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            // `JSONSerialization` boxes booleans and numbers alike in
+            // `NSNumber`, and `as? Bool` succeeds for 0 and 1 either way, so
+            // the box has to be interrogated. `CFBooleanGetTypeID` did that
+            // and is Darwin-only — it compiled on macOS and broke the Linux
+            // build, which is what CI runs. The ObjC type encoding is the
+            // portable form of the same question: a boxed boolean reports "c".
+            if String(cString: number.objCType) == "c" {
                 self = .bool(number.boolValue)
             } else {
                 self = .number(number.doubleValue)
             }
+        case let bool as Bool: self = .bool(bool)
         case let string as String: self = .string(string)
         case let array as [Any]: self = .array(array.map(JSONValue.init(foundation:)))
         case let object as [String: Any]: self = .object(object.mapValues(JSONValue.init(foundation:)))
