@@ -343,6 +343,18 @@ actor HermesMirrorService {
         return nil
     }
 
+    /// A directory counts as a vault when it carries a `.kb/manifest.json`, or
+    /// when it has a `raw/` directory.
+    ///
+    /// `raw/` alone used to be rejected — both `raw/` and `wiki/` were
+    /// required. But `wiki/` is *output*: `kb-compile` writes it, so a vault
+    /// that has been captured into but never compiled has only `raw/`, and a
+    /// real user vault sitting right where we look was declared absent. Worse
+    /// than a miss: `createVault` would then build a second, empty vault
+    /// beside it and mirror that instead.
+    ///
+    /// `raw/` is the meaningful signal — it is what capture writes and what
+    /// compile reads.
     private static func isVaultRoot(_ transport: any HermesMirrorTransport, _ path: String) async -> Bool {
         guard let entries = try? await transport.listFiles(path: path) else { return false }
         let names = Set(entries.filter(\.isDirectory).map(\.name))
@@ -351,7 +363,7 @@ actor HermesMirrorService {
         {
             return true
         }
-        return names.contains("raw") && names.contains("wiki")
+        return names.contains("raw")
     }
 
     private static func readKBConfigPointer(_ transport: any HermesMirrorTransport, _ base: String) async -> String? {

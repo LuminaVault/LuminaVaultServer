@@ -115,12 +115,26 @@ actor HermesMirrorRefreshWorker: Service {
         let tenantID: UUID
     }
 
-    /// Keyset page of tenants with a dashboard URL, ordered by row id.
+    /// Keyset page of tenants linked to a Hermes of their own, ordered by row id.
+    ///
+    /// A dashboard URL **or** a gateway base URL qualifies. This used to
+    /// require the dashboard, so a tenant who had linked only their gateway —
+    /// all the iOS app can store — was never refreshed in the background at
+    /// all, however many skills and jobs their box was running.
     func configuredTenants(after cursor: UUID?) async throws -> [ConfiguredTenant] {
         var query = UserHermesConfig.query(on: fluent.db())
-            .filter(\.$cronDashboardURL != nil)
-            // swiftlint:disable:next empty_string
-            .filter(\.$cronDashboardURL != "")
+            .group(.or) { linked in
+                linked
+                    .group(.and) { dashboard in
+                        dashboard
+                            .filter(\.$cronDashboardURL != nil)
+                            // swiftlint:disable:next empty_string
+                            .filter(\.$cronDashboardURL != "")
+                    }
+                    // `base_url` is non-optional on the model; empty means unset.
+                    // swiftlint:disable:next empty_string
+                    .filter(\.$baseURL != "")
+            }
             .sort(\.$id)
             .limit(pageSize)
         if let cursor {

@@ -10,11 +10,17 @@ protocol HermesMirrorTransportProviding: Sendable {
 }
 
 /// Picks the mirror transport for a tenant:
-/// - dashboard credentials on `user_hermes_config` → `RemoteHermesTransport`
-///   (BYO; gateway resolution feeds the read-only skills fallback);
+/// - **a BYO gateway or dashboard credentials → `RemoteHermesTransport`**;
 /// - otherwise `FilesystemHermesTransport` on the per-tenant container volume
 ///   when one exists, else the managed Hermes home on the shared PVC, with
 ///   sessions over the tenant's gateway resolution.
+///
+/// The gateway alone used to be insufficient: this keyed on dashboard
+/// credentials, so a tenant who had linked only their gateway — which is all
+/// the iOS app can store — silently fell through to the managed filesystem
+/// transport rooted on *our* disk. It found an empty `skills/` and no
+/// `cron/jobs.json` and reported `lastStatus: .ok` with zero counts and no
+/// error: connected, importing nothing, complaining about nothing.
 struct HermesMirrorTransportFactory: HermesMirrorTransportProviding {
     let credentials: HermesDashboardCredentialStore
     let ssrfGuard: SSRFGuard
@@ -26,44 +32,62 @@ struct HermesMirrorTransportFactory: HermesMirrorTransportProviding {
     let managedHermesRoot: String
     let logger: Logger
 
-    /// Cheap classification (one row read, no network).
+    /// Cheap classification (one row read plus the resolver, no network).
     func kind(tenantID: UUID) async -> HermesMirrorTransportKind {
         if await (try? credentials.credentials(tenantID: tenantID)) != nil {
+            return .remote
+        }
+        if await (try? resolver.resolve(tenantID: tenantID))?.isUserOverride == true {
             return .remote
         }
         return .managed
     }
 
     func transport(tenantID: UUID) async throws -> any HermesMirrorTransport {
-        if let dashboard = try await credentials.credentials(tenantID: tenantID) {
-            let resolution = try? await resolver.resolve(tenantID: tenantID)
-            return RemoteHermesTransport(
-                gatewayBaseURL: resolution?.isUserOverride == true ? resolution?.baseURL : nil,
-                gatewayAuthHeader: resolution?.authHeader,
-                skillsClient: skillsClient,
-                dashboard: HermesDashboardClient(
-                    baseURL: dashboard.url,
-                    token: dashboard.token,
+        let dashboard = try await credentials.credentials(tenantID: tenantID)
+        let resolution = try? await resolver.resolve(tenantID: tenantID)
+        let ownGateway = resolution?.isUserOverride == true ? resolution : nil
+
+        // Either half is enough to talk to the user's own box.
+        guard dashboard != nil || ownGateway != nil else {
+            return await managedTransport(tenantID: tenantID)
+        }
+
+        return RemoteHermesTransport(
+            gatewayBaseURL: ownGateway?.baseURL,
+            gatewayAuthHeader: ownGateway?.authHeader,
+            skillsClient: skillsClient,
+            gateway: ownGateway.map {
+                HermesGatewayReadClient(
+                    baseURL: $0.baseURL,
+                    authHeader: $0.authHeader,
+                    http: http,
+                    logger: logger
+                )
+            },
+            dashboard: dashboard.map {
+                HermesDashboardClient(
+                    baseURL: $0.url,
+                    token: $0.token,
                     ssrfGuard: ssrfGuard,
                     http: http,
                     logger: logger
-                ),
-                logger: logger
-            )
-        }
-        return await managedTransport(tenantID: tenantID)
+                )
+            },
+            logger: logger
+        )
     }
 
     private func managedTransport(tenantID: UUID) async -> FilesystemHermesTransport {
         var root = managedHermesRoot
-        var sessions: HermesGatewaySessionsClient?
+        var sessions: HermesGatewayReadClient?
         if let containerManager, let handle = try? await containerManager.handle(tenantID: tenantID) {
             let volume = "\(perTenantDataRootBase)/\(tenantID.uuidString.lowercased())"
             if FileManager.default.fileExists(atPath: volume) {
                 root = volume
             }
             if let baseURL = URL(string: handle.baseURL) {
-                sessions = HermesGatewaySessionsClient(
+                sessions = HermesGatewayReadClient(
                     baseURL: baseURL,
                     authHeader: "Bearer \(handle.apiServerKey)",
                     http: http,
@@ -72,7 +96,7 @@ struct HermesMirrorTransportFactory: HermesMirrorTransportProviding {
             }
         }
         if sessions == nil, let resolution = try? await resolver.resolve(tenantID: tenantID) {
-            sessions = HermesGatewaySessionsClient(
+            sessions = HermesGatewayReadClient(
                 baseURL: resolution.baseURL,
                 authHeader: resolution.authHeader,
                 http: http,

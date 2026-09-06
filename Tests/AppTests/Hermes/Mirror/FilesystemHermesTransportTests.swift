@@ -306,7 +306,7 @@ struct FilesystemHermesTransportTests {
         http.respond("GET", "/api/sessions", json: #"{"sessions":[{"id":"s1","message_count":2}],"total":1}"#)
         http.respond("GET", "/api/sessions/s1/messages", json: #"{"messages":[{"role":"user","content":"hi"}]}"#)
         let baseURL = try #require(URL(string: "http://hermes:8642"))
-        let client = HermesGatewaySessionsClient(baseURL: baseURL, authHeader: "Bearer key", http: http, logger: Self.logger)
+        let client = HermesGatewayReadClient(baseURL: baseURL, authHeader: "Bearer key", http: http, logger: Self.logger)
         let transport = FilesystemHermesTransport(rootPath: "/tmp/lv-none", sessions: client, logger: Self.logger)
         let page = try await transport.listSessions(offset: 0, limit: 5)
         #expect(page.sessions.map(\.id) == ["s1"])

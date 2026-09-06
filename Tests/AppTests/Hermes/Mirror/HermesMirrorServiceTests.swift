@@ -221,6 +221,31 @@ struct HermesMirrorServiceTests {
         }
     }
 
+    /// A vault that has been captured into but never compiled has only
+    /// `raw/` — `wiki/` is what `kb-compile` writes. Requiring both declared a
+    /// real vault absent, and `createVault` would then build an empty second
+    /// one beside it and mirror that instead. This is the shape of the
+    /// owner's own `/root/.hermes/vault`.
+    @Test
+    func `detectVault accepts a raw-only vault that has never been compiled`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.detect.raw") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.addFile("/home/hermes/vault/raw/note.md", "# note")
+            #expect(try await h.service.detectVault(transport: h.transport, preferred: nil) == "/home/hermes/vault")
+        }
+    }
+
+    /// A directory with neither marker is still not a vault — the relaxation
+    /// must not turn any folder into one.
+    @Test
+    func `detectVault still rejects a directory with no raw and no manifest`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.detect.none") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.addFile("/home/hermes/vault/notes/note.md", "# note")
+            #expect(try await h.service.detectVault(transport: h.transport, preferred: nil) == nil)
+        }
+    }
+
     @Test
     func `importVault ingests markdown, skips hidden dirs, resumes from the cursor and reports counts`() async throws {
         var limits = HermesMirrorService.Limits()
