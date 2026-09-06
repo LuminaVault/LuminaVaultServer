@@ -570,11 +570,22 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
     static func atomicWrite(_ data: Data, to url: URL) throws {
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).lv-tmp-\(UUID().uuidString)")
         try data.write(to: tmp, options: .atomic)
-        let fm = FileManager.default
-        if fm.fileExists(atPath: url.path) {
-            _ = try fm.replaceItemAt(url, withItemAt: tmp)
-        } else {
-            try fm.moveItem(at: tmp, to: url)
+        // `rename(2)` replaces the destination atomically whether or not it
+        // already exists, and behaves the same on Darwin and Linux. The
+        // previous branch on `fileExists` used `FileManager.replaceItemAt`,
+        // which is Darwin-shaped: on swift-corelibs-foundation it fails with
+        // NSCocoaErrorDomain 4 ("The file doesn't exist") naming the file it
+        // was asked to replace. Every mutation over an existing config.yaml or
+        // cron/jobs.json therefore failed on Linux while passing on macOS —
+        // only the create-new path, which took `moveItem`, worked.
+        //
+        // `tmp` is a sibling of `url`, so this is a same-filesystem rename.
+        guard rename(tmp.path, url.path) == 0 else {
+            let code = errno
+            try? FileManager.default.removeItem(at: tmp)
+            throw HermesMirrorTransportError.invalidResponse(
+                "atomic write of \(url.lastPathComponent) failed (errno \(code))"
+            )
         }
     }
 }
