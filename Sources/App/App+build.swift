@@ -1161,7 +1161,7 @@ func buildRouter(
         guard let store = userCredentialStore else { return false }
         for kind in ProviderKind.userCredentialTargets {
             guard let creds = try? await store.credential(for: kind, tenantID: tenantID) else { continue }
-            if creds.apiKey?.isEmpty == false || creds.baseURL != nil {
+            if kind.isSpendable(apiKey: creds.apiKey, baseURL: creds.baseURL) {
                 return true
             }
         }
@@ -1488,7 +1488,7 @@ func buildRouter(
     )
     let transcribeGroup = router.group("/v1/transcribe")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
@@ -1546,7 +1546,7 @@ func buildRouter(
     )
     let visionEmbedGroup = router.group("/v1/vision")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserDaily, storage: rateLimitStorage))
     visionEmbedController.addRoutes(to: visionEmbedGroup)
@@ -1616,7 +1616,7 @@ func buildRouter(
         )
         let ttsGroup = router.group("/v1/tts")
             .add(middleware: jwtAuthenticator)
-            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserPerMinute, storage: rateLimitStorage))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserDaily, storage: rateLimitStorage))
         ttsController.addRoutes(to: ttsGroup)
@@ -1936,7 +1936,7 @@ func buildRouter(
     let memoBase = router.group("/v1/memos").add(middleware: jwtAuthenticator)
     let memoWithByo = byoHermesMiddleware.map { memoBase.add(middleware: $0) } ?? memoBase
     let memoGroup = memoWithByo
-        .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
     memoController.addRoutes(to: memoGroup)
 
     // Spaces (user-defined organizing folders) — service is created early so
@@ -2120,7 +2120,7 @@ func buildRouter(
         .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
     let memoryCompileWithByo = byoHermesMiddleware.map { memoryCompileBase.add(middleware: $0) } ?? memoryCompileBase
     let memoryCompileGroup = memoryCompileWithByo
-        .add(middleware: EntitlementMiddleware(requires: .memoryCompile, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryCompile, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .memoryCompileByUser, storage: rateLimitStorage))
     memoryCompileController.addCompileRoutes(to: memoryCompileGroup)
 
