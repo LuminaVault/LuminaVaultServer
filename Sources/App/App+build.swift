@@ -2956,11 +2956,20 @@ func buildRouter(
     // needs the per-tenant key to seal API keys at rest). Preferences
     // controller has no crypto dependency so it mounts unconditionally.
     if let userCredentialStore {
-        let providersController = ProvidersController(
+        var providersController = ProvidersController(
             credentialStore: userCredentialStore,
             fluent: services.fluent,
             logger: Logger(label: "lv.me.providers")
         )
+        // Report availability from the registry the router actually consults,
+        // so a client cannot be told to collect a key for a provider this
+        // deployment has no adapter for. That mismatch is precisely what let
+        // the Gemini gap sit unnoticed: the pane offered a key field while the
+        // router had no way to spend it.
+        providersController.providerAvailability = { [providerRegistry] id in
+            guard let kind = ProviderKind(rawValue: id.rawValue) else { return false }
+            return await providerRegistry.isEnabled(kind)
+        }
         let providersGroup = router.group("/v1/me/providers")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))

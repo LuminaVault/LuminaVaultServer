@@ -2366,6 +2366,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderCredentialsListResponse' }
 
+  /v1/me/providers/catalog:
+    get:
+      tags: [Me]
+      operationId: providersCatalog
+      summary: Static per-provider facts for rendering a BYO key form.
+      description: |
+        Display name, default base URL, whether a base URL or an API key is
+        actually required, an example key format, and where keys are issued.
+
+        Carries no tenant state — pair it with `GET /v1/me/providers`, which
+        says what this user has stored. `available` is false when this
+        deployment has no adapter registered for the provider, so a client
+        should not offer to collect a key that nothing here can spend.
+      responses:
+        '200':
+          description: The provider catalog for this deployment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderCatalogResponse' }
+
   /v1/me/providers/{provider}:
     parameters:
       - in: path
@@ -9306,6 +9326,27 @@ components:
         providers:
           type: array
           items: { $ref: '#/components/schemas/ProviderCredentialDTO' }
+
+    ProviderCatalogEntryDTO:
+      type: object
+      required: [provider, displayName, requiresBaseURL, requiresAPIKey, available]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        displayName: { type: string }
+        defaultBaseURL: { type: string, nullable: true }
+        requiresBaseURL: { type: boolean }
+        requiresAPIKey: { type: boolean }
+        keyHint: { type: string, nullable: true }
+        keysURL: { type: string, nullable: true }
+        available: { type: boolean }
+
+    ProviderCatalogResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderCatalogEntryDTO' }
 
     LLMModelInfo:
       type: object

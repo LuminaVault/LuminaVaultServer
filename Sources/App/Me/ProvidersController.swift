@@ -11,6 +11,7 @@ import LuminaVaultShared
 
 extension ProviderCredentialDTO: @retroactive ResponseEncodable {}
 extension ProviderCredentialsListResponse: @retroactive ResponseEncodable {}
+extension ProviderCatalogResponse: @retroactive ResponseEncodable {}
 extension ProviderTestResponse: @retroactive ResponseEncodable {}
 extension ProviderModelsResponse: @retroactive ResponseEncodable {}
 extension ProviderPoolKeyDTO: @retroactive ResponseEncodable {}
@@ -41,6 +42,10 @@ struct ProvidersController {
     let fluent: Fluent
     let probeSession: URLSession
     let logger: Logger
+    /// Whether this deployment has an adapter registered for a provider.
+    /// Nil (the default) reports every provider available, which is what the
+    /// tests and any wiring without a registry want.
+    var providerAvailability: (@Sendable (ProviderID) async -> Bool)?
 
     init(credentialStore: UserCredentialStore, fluent: Fluent, probeSession: URLSession = .shared, logger: Logger) {
         self.credentialStore = credentialStore
@@ -50,6 +55,7 @@ struct ProvidersController {
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get("catalog", use: catalog)
         router.get(use: list)
         router.put(":provider", use: put)
         router.delete(":provider", use: delete)
@@ -101,6 +107,40 @@ struct ProvidersController {
     }
 
     // MARK: - GET /v1/me/providers
+
+    /// GET /v1/me/providers/catalog — the static facts a client needs to
+    /// render a BYO key form.
+    ///
+    /// These were hardcoded in each client, so adding a provider touched
+    /// three repositories and the copies drifted out of step with what the
+    /// router could actually spend. Serving them puts the facts beside the
+    /// adapters that implement them.
+    ///
+    /// Registered before the parameterised routes: `:provider` would
+    /// otherwise match the literal path `catalog` and try to parse it as a
+    /// provider id.
+    @Sendable
+    func catalog(_: Request, ctx: AppRequestContext) async throws -> ProviderCatalogResponse {
+        _ = try ctx.requireTenantID()
+        guard let providerAvailability else {
+            return ProviderCatalogResponse(providers: ProviderCatalog.all())
+        }
+        var entries: [ProviderCatalogEntryDTO] = []
+        for id in ProviderID.allCases {
+            let base = ProviderCatalog.entry(for: id)
+            entries.append(ProviderCatalogEntryDTO(
+                provider: base.provider,
+                displayName: base.displayName,
+                defaultBaseURL: base.defaultBaseURL,
+                requiresBaseURL: base.requiresBaseURL,
+                requiresAPIKey: base.requiresAPIKey,
+                keyHint: base.keyHint,
+                keysURL: base.keysURL,
+                available: await providerAvailability(id)
+            ))
+        }
+        return ProviderCatalogResponse(providers: entries)
+    }
 
     @Sendable
     func list(_: Request, ctx: AppRequestContext) async throws -> ProviderCredentialsListResponse {
