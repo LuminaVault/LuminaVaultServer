@@ -2366,6 +2366,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderCredentialsListResponse' }
 
+  /v1/me/providers/catalog:
+    get:
+      tags: [Me]
+      operationId: providersCatalog
+      summary: Static per-provider facts for rendering a BYO key form.
+      description: |
+        Display name, default base URL, whether a base URL or an API key is
+        actually required, an example key format, and where keys are issued.
+
+        Carries no tenant state — pair it with `GET /v1/me/providers`, which
+        says what this user has stored. `available` is false when this
+        deployment has no adapter registered for the provider, so a client
+        should not offer to collect a key that nothing here can spend.
+      responses:
+        '200':
+          description: The provider catalog for this deployment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderCatalogResponse' }
+
   /v1/me/providers/{provider}:
     parameters:
       - in: path
@@ -9299,6 +9319,29 @@ components:
             `credit_exhausted` / `rate_limit` / `upstream_error` /
             `upstream_rejected` / `network` / `tls_error` / `timeout`.
 
+            Only set by an actual auth rejection (401/403) or credit
+            exhaustion. A rate limit, a 5xx or a timeout is evidence about
+            the provider's health, not about the key, and does not stamp it.
+        supportsTools:
+          type: boolean
+          nullable: true
+          description: |
+            Whether this endpoint was observed to honour tool calls.
+
+            Three-valued: `true` the probe saw a tool call, `false` the
+            endpoint answered without calling one, and **absent/null** means
+            unprobed or no verdict reached. Null must be read as permissive —
+            it does not mean "no tools".
+
+            A credential that authenticates is not the same as an endpoint
+            that works: an OpenAI-compatible gateway can accept a `tools`
+            block, ignore it, and answer from the model's own knowledge.
+        toolsProbedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the tool probe last reached this credential.
+
     ProviderCredentialsListResponse:
       type: object
       required: [providers]
@@ -9306,6 +9349,27 @@ components:
         providers:
           type: array
           items: { $ref: '#/components/schemas/ProviderCredentialDTO' }
+
+    ProviderCatalogEntryDTO:
+      type: object
+      required: [provider, displayName, requiresBaseURL, requiresAPIKey, available]
+      properties:
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        displayName: { type: string }
+        defaultBaseURL: { type: string, nullable: true }
+        requiresBaseURL: { type: boolean }
+        requiresAPIKey: { type: boolean }
+        keyHint: { type: string, nullable: true }
+        keysURL: { type: string, nullable: true }
+        available: { type: boolean }
+
+    ProviderCatalogResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderCatalogEntryDTO' }
 
     LLMModelInfo:
       type: object

@@ -11,6 +11,7 @@ import LuminaVaultShared
 
 extension ProviderCredentialDTO: @retroactive ResponseEncodable {}
 extension ProviderCredentialsListResponse: @retroactive ResponseEncodable {}
+extension ProviderCatalogResponse: @retroactive ResponseEncodable {}
 extension ProviderTestResponse: @retroactive ResponseEncodable {}
 extension ProviderModelsResponse: @retroactive ResponseEncodable {}
 extension ProviderPoolKeyDTO: @retroactive ResponseEncodable {}
@@ -41,6 +42,10 @@ struct ProvidersController {
     let fluent: Fluent
     let probeSession: URLSession
     let logger: Logger
+    /// Whether this deployment has an adapter registered for a provider.
+    /// Nil (the default) reports every provider available, which is what the
+    /// tests and any wiring without a registry want.
+    var providerAvailability: (@Sendable (ProviderID) async -> Bool)?
 
     init(credentialStore: UserCredentialStore, fluent: Fluent, probeSession: URLSession = .shared, logger: Logger) {
         self.credentialStore = credentialStore
@@ -50,6 +55,7 @@ struct ProvidersController {
     }
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get("catalog", use: catalog)
         router.get(use: list)
         router.put(":provider", use: put)
         router.delete(":provider", use: delete)
@@ -102,6 +108,40 @@ struct ProvidersController {
 
     // MARK: - GET /v1/me/providers
 
+    /// GET /v1/me/providers/catalog — the static facts a client needs to
+    /// render a BYO key form.
+    ///
+    /// These were hardcoded in each client, so adding a provider touched
+    /// three repositories and the copies drifted out of step with what the
+    /// router could actually spend. Serving them puts the facts beside the
+    /// adapters that implement them.
+    ///
+    /// Registered before the parameterised routes: `:provider` would
+    /// otherwise match the literal path `catalog` and try to parse it as a
+    /// provider id.
+    @Sendable
+    func catalog(_: Request, ctx: AppRequestContext) async throws -> ProviderCatalogResponse {
+        _ = try ctx.requireTenantID()
+        guard let providerAvailability else {
+            return ProviderCatalogResponse(providers: ProviderCatalog.all())
+        }
+        var entries: [ProviderCatalogEntryDTO] = []
+        for id in ProviderID.allCases {
+            let base = ProviderCatalog.entry(for: id)
+            entries.append(ProviderCatalogEntryDTO(
+                provider: base.provider,
+                displayName: base.displayName,
+                defaultBaseURL: base.defaultBaseURL,
+                requiresBaseURL: base.requiresBaseURL,
+                requiresAPIKey: base.requiresAPIKey,
+                keyHint: base.keyHint,
+                keysURL: base.keysURL,
+                available: await providerAvailability(id)
+            ))
+        }
+        return ProviderCatalogResponse(providers: entries)
+    }
+
     @Sendable
     func list(_: Request, ctx: AppRequestContext) async throws -> ProviderCredentialsListResponse {
         let tenantID = try ctx.requireTenantID()
@@ -127,7 +167,9 @@ struct ProvidersController {
                 label: row?.label,
                 verifiedAt: row?.verifiedAt,
                 lastFailureAt: row?.lastFailureAt,
-                lastFailureCode: row?.lastFailureCode
+                lastFailureCode: row?.lastFailureCode,
+                supportsTools: row?.supportsTools,
+                toolsProbedAt: row?.toolsProbedAt
             )
         }
         return ProviderCredentialsListResponse(providers: dtos)
@@ -229,11 +271,21 @@ struct ProvidersController {
             }
             guard
                 let (_, response) = try? await probeSession.data(for: req),
-                let http = response as? HTTPURLResponse,
-                (200 ..< 300).contains(http.statusCode)
+                let http = response as? HTTPURLResponse
             else {
-                try? await credentialStore.recordFailure(tenantID: tenantID, provider: kind, code: TestError.network.rawValue)
+                // Unreachable right now. Says nothing about the key.
                 throw HTTPError(.badGateway, message: TestError.network.rawValue)
+            }
+            guard (200 ..< 300).contains(http.statusCode) else {
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    try? await credentialStore.recordFailure(
+                        tenantID: tenantID,
+                        provider: kind,
+                        code: TestError.upstreamRejected.rawValue
+                    )
+                    throw HTTPError(.badGateway, message: TestError.upstreamRejected.rawValue)
+                }
+                throw HTTPError(.badGateway, message: TestError.upstreamError.rawValue)
             }
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
             return ProviderTestResponse(verifiedAt: Date(), model: nil)
@@ -250,21 +302,80 @@ struct ProvidersController {
             _ = try await adapter.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
             // Success — stamp verified_at.
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
-            return ProviderTestResponse(verifiedAt: Date(), model: pingPayload["model"] as? String)
+            // Then ask a harder question, detached: does this endpoint
+            // actually honour tool calls? An OpenAI-compatible gateway can
+            // accept a `tools` block, ignore it, and answer from the model's
+            // own knowledge — a well-formed 200 that nothing upstream
+            // notices, after which the product tells the user their skills
+            // are running when no tool was ever called.
+            //
+            // Detached because the answer must not delay or fail the /test
+            // response the user is waiting on: an unknown verdict is
+            // permissive, so there is nothing to block for.
+            let model = pingPayload["model"] as? String
+            probeToolSupport(tenantID: tenantID, kind: kind, adapter: adapter, model: model)
+            return ProviderTestResponse(verifiedAt: Date(), model: model)
         } catch let error as ProviderError {
-            try? await credentialStore.recordFailure(
-                tenantID: tenantID,
-                provider: kind,
-                code: error.reasonCode
-            )
+            // Only an auth rejection is evidence about the key. A 429, a 500,
+            // a timeout or a DNS failure means the provider is having a bad
+            // minute — staining the credential for that tells the user their
+            // key is broken when it is not, and the pane then nags them to
+            // re-enter a perfectly good key.
+            if error.isCredentialRejection {
+                try? await credentialStore.recordFailure(
+                    tenantID: tenantID,
+                    provider: kind,
+                    code: error.reasonCode
+                )
+            }
             throw HTTPError(.badGateway, message: stableCode(for: error).rawValue)
         } catch {
-            try? await credentialStore.recordFailure(
-                tenantID: tenantID,
-                provider: kind,
-                code: TestError.network.rawValue
-            )
+            // Transport-level failure before we ever reached the provider.
+            // Same reasoning: this is not evidence about the credential.
             throw HTTPError(.badGateway, message: TestError.network.rawValue)
+        }
+    }
+
+    /// Runs `ProviderToolProbe` in the background and stores the verdict.
+    ///
+    /// Every failure path lands on `.unknown`, which is recorded as nil and
+    /// read as permissive. The probe is a best-effort check against a third
+    /// party; treating "we could not tell" as "no tools" would disable working
+    /// setups on a network blip — a worse failure than the one detected.
+    private func probeToolSupport(
+        tenantID: UUID,
+        kind: ProviderKind,
+        adapter: any ProviderAdapter,
+        model: String?
+    ) {
+        guard let model, !model.isEmpty else { return }
+        let store = credentialStore
+        let logger = logger
+        Task {
+            let nonce = ProviderToolProbe.nonce()
+            let body = JSON.encode(ProviderToolProbe.payload(model: model, nonce: nonce))
+            let verdict: ProviderToolProbe.Verdict
+            do {
+                let response = try await adapter.chatCompletionsWithMetadata(
+                    payload: body,
+                    sessionKey: tenantID.uuidString,
+                    sessionID: nil
+                )
+                verdict = ProviderToolProbe.verdict(from: response.data)
+            } catch {
+                logger.debug("tool probe could not reach a verdict for \(kind.rawValue): \(error)")
+                verdict = .unknown
+            }
+            let stored: Bool? = switch verdict {
+            case .supported: true
+            case .notSupported: false
+            case .unknown: nil
+            }
+            do {
+                try await store.recordToolSupport(tenantID: tenantID, provider: kind, supportsTools: stored)
+            } catch {
+                logger.debug("could not store tool probe verdict for \(kind.rawValue): \(error)")
+            }
         }
     }
 

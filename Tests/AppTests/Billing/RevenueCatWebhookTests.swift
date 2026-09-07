@@ -62,6 +62,15 @@ struct RevenueCatWebhookTests {
         }
     }
 
+    private static func setTier(userID: UUID, _ tier: LuminaVaultShared.UserTier, expiresAt: Date?) async throws {
+        try await withTestFluent(label: "test.billing.rc.tier") { fluent in
+            let user = try #require(try await User.find(userID, on: fluent.db()))
+            user.tier = tier.rawValue
+            user.tierExpiresAt = expiresAt
+            try await user.save(on: fluent.db())
+        }
+    }
+
     private static func loadUser(userID: UUID) async throws -> User {
         try await withTestFluent(label: "test.rc-webhook.load") { fluent in
             try #require(try await User.find(userID, on: fluent.db()))
@@ -146,7 +155,7 @@ struct RevenueCatWebhookTests {
                 eventID: "evt-init-\(UUID().uuidString)",
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
-                productId: "luminavault_pro_monthly",
+                productId: "pro_monthly_14_99",
                 expirationAtMs: futureMs
             )
 
@@ -176,7 +185,7 @@ struct RevenueCatWebhookTests {
                 eventID: "evt-ult-\(UUID().uuidString)",
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
-                productId: "luminavault_ultimate_annual",
+                productId: "ultimate_yearly_299_99",
                 expirationAtMs: Int64(Date().addingTimeInterval(86400 * 365).timeIntervalSince1970 * 1000)
             )
 
@@ -233,7 +242,7 @@ struct RevenueCatWebhookTests {
                 eventID: eventID,
                 type: "INITIAL_PURCHASE",
                 appUserId: auth.userId.uuidString,
-                productId: "luminavault_pro_monthly",
+                productId: "pro_monthly_14_99",
                 expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
             )
 
@@ -305,6 +314,142 @@ struct RevenueCatWebhookTests {
             ) { response in
                 #expect(response.status == .ok)
             }
+        }
+    }
+
+    // MARK: - Regressions
+
+    /// A SKU we do not sell must fail loudly. It used to fall through with no
+    /// else and no log: Apple billed the user, `tier_expires_at` advanced, the
+    /// event was logged (suppressing any replay), and the tier stayed `trial`.
+    @Test
+    func `an unmapped product fails instead of silently granting nothing`() async throws {
+        let app = try await buildApplication(reader: Self.reader())
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.bindRevenueCatID(userID: auth.userId, rcUserID: auth.userId.uuidString)
+            let eventID = "evt-unmapped-\(UUID().uuidString)"
+            let body = Self.payload(
+                eventID: eventID,
+                type: "INITIAL_PURCHASE",
+                appUserId: auth.userId.uuidString,
+                productId: "luminavault_pro_monthly",
+                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
+            )
+            try await client.execute(
+                uri: "/v1/billing/revenuecat-webhook",
+                method: .post,
+                headers: Self.signedHeaders(body: body),
+                body: ByteBuffer(string: body)
+            ) { response in
+                #expect(response.status.code >= 500, "RevenueCat must retry, not see success")
+            }
+
+            // Nothing was granted, and nothing was recorded — a logged event
+            // would suppress the retry and strand the user permanently.
+            let user = try await Self.loadUser(userID: auth.userId)
+            #expect(user.tier == LuminaVaultShared.UserTier.trial.rawValue)
+            try await withTestFluent(label: "test.billing.rc.unmapped") { fluent in
+                let logged = try await BillingEventLog.query(on: fluent.db())
+                    .filter(\.$eventID == eventID)
+                    .first()
+                #expect(logged == nil)
+            }
+        }
+    }
+
+    /// The permanent-lockout bug: RENEWAL used to write only the expiry, so a
+    /// user already flipped to `lapsed` by a *missed* renewal renewed
+    /// successfully, got a future expiry, and stayed locked out forever.
+    @Test
+    func `a renewal restores the tier of a lapsed subscriber`() async throws {
+        let app = try await buildApplication(reader: Self.reader())
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.bindRevenueCatID(userID: auth.userId, rcUserID: auth.userId.uuidString)
+            try await Self.setTier(userID: auth.userId, .lapsed, expiresAt: Date().addingTimeInterval(-86400))
+
+            let future = Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
+            let body = Self.payload(
+                eventID: "evt-renew-\(UUID().uuidString)",
+                type: "RENEWAL",
+                appUserId: auth.userId.uuidString,
+                productId: "pro_monthly_14_99",
+                expirationAtMs: future
+            )
+            try await client.execute(
+                uri: "/v1/billing/revenuecat-webhook",
+                method: .post,
+                headers: Self.signedHeaders(body: body),
+                body: ByteBuffer(string: body)
+            ) { response in
+                #expect(response.status == .ok)
+            }
+
+            let user = try await Self.loadUser(userID: auth.userId)
+            #expect(user.tier == LuminaVaultShared.UserTier.pro.rawValue)
+            #expect((user.tierExpiresAt ?? .distantPast) > Date())
+        }
+    }
+
+    /// Apple retries a failed charge for days. Demoting on the first failure
+    /// locks out a user whose card is about to succeed, so the tier is held
+    /// and the expiry pushed past tonight's lapse job.
+    @Test
+    func `a billing issue holds the tier through the retry window`() async throws {
+        let app = try await buildApplication(reader: Self.reader())
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.bindRevenueCatID(userID: auth.userId, rcUserID: auth.userId.uuidString)
+            let almostExpired = Date().addingTimeInterval(3600)
+            try await Self.setTier(userID: auth.userId, .pro, expiresAt: almostExpired)
+
+            let body = Self.payload(
+                eventID: "evt-billing-issue-\(UUID().uuidString)",
+                type: "BILLING_ISSUE",
+                appUserId: auth.userId.uuidString
+            )
+            try await client.execute(
+                uri: "/v1/billing/revenuecat-webhook",
+                method: .post,
+                headers: Self.signedHeaders(body: body),
+                body: ByteBuffer(string: body)
+            ) { response in
+                #expect(response.status == .ok)
+            }
+
+            let user = try await Self.loadUser(userID: auth.userId)
+            #expect(user.tier == LuminaVaultShared.UserTier.pro.rawValue, "must not demote on a retryable failure")
+            #expect((user.tierExpiresAt ?? .distantPast) > Date().addingTimeInterval(86400 * 7))
+        }
+    }
+
+    /// Cancellation is a statement about auto-renew, not access: the user
+    /// keeps what they paid for until the period ends.
+    @Test
+    func `a cancellation with time remaining keeps the tier`() async throws {
+        let app = try await buildApplication(reader: Self.reader())
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.bindRevenueCatID(userID: auth.userId, rcUserID: auth.userId.uuidString)
+            try await Self.setTier(userID: auth.userId, .pro, expiresAt: Date().addingTimeInterval(86400 * 20))
+
+            let body = Self.payload(
+                eventID: "evt-cancel-\(UUID().uuidString)",
+                type: "CANCELLATION",
+                appUserId: auth.userId.uuidString,
+                productId: "pro_monthly_14_99",
+                expirationAtMs: Int64(Date().addingTimeInterval(86400 * 20).timeIntervalSince1970 * 1000)
+            )
+            try await client.execute(
+                uri: "/v1/billing/revenuecat-webhook",
+                method: .post,
+                headers: Self.signedHeaders(body: body),
+                body: ByteBuffer(string: body)
+            ) { response in
+                #expect(response.status == .ok)
+            }
+            #expect(try await Self.loadUser(userID: auth.userId).tier == LuminaVaultShared.UserTier.pro.rawValue)
         }
     }
 }

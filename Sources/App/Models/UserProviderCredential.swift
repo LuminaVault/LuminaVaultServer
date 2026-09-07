@@ -22,6 +22,11 @@ final class UserProviderCredential: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "verified_at") var verifiedAt: Date?
     @OptionalField(key: "last_failure_at") var lastFailureAt: Date?
     @OptionalField(key: "last_failure_code") var lastFailureCode: String?
+    /// Whether this endpoint honours tool calls. Three-valued: nil means not
+    /// probed or no verdict reached, and must be read as permissive — see
+    /// `M122_AddProviderToolSupport`.
+    @OptionalField(key: "supports_tools") var supportsTools: Bool?
+    @OptionalField(key: "tools_probed_at") var toolsProbedAt: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

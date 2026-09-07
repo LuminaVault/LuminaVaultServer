@@ -73,3 +73,29 @@ extension ProviderKind {
         .xai, .anthropic, .openai, .gemini, .openRouter, .ollama, .nvidia, .nous, .custom,
     ]
 }
+
+extension ProviderKind {
+    /// Whether a stored row is actually *spendable* — i.e. a request built
+    /// from it could succeed without a platform key.
+    ///
+    /// This matters because a usable credential is what earns a tenant the
+    /// BYO paywall exemption. The old test was `apiKey != nil || baseURL !=
+    /// nil`, which let a row carrying only a base URL count. For every
+    /// provider that authenticates, that row cannot buy a single token — it
+    /// 401s — so it was proof of nothing, and saving a bare base URL against
+    /// any provider unlocked the paid surface.
+    ///
+    /// `.ollama` and `.custom` are the real exceptions rather than an
+    /// oversight: both address a server the user runs, which commonly has no
+    /// auth at all, so a base URL alone genuinely is the whole credential.
+    static let keylessCapable: Set<ProviderKind> = [.ollama, .custom]
+
+    func isSpendable(apiKey: String?, baseURL: URL?) -> Bool {
+        if let apiKey, !apiKey.isEmpty { return true }
+        guard Self.keylessCapable.contains(self) else { return false }
+        guard let baseURL, let scheme = baseURL.scheme, !scheme.isEmpty, baseURL.host != nil else {
+            return false
+        }
+        return true
+    }
+}

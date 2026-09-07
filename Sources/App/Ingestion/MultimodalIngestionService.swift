@@ -152,6 +152,13 @@ struct MultimodalIngestionService {
     /// derived memory is still written and still searchable, just without
     /// line-level citations.
     var chunkIndexer: DocumentChunkIndexer?
+    /// Per-tenant storage ceiling. Optional so test wirings and deployments
+    /// that do not meter storage keep the previous behaviour exactly.
+    ///
+    /// Ingestion is the only path that can write gigabytes — the other
+    /// `VaultFile` writers (capture, memo generator, skill runner) persist
+    /// text — so this is where a total-bytes quota actually binds.
+    var storageQuota: StorageQuotaService?
 
     func create(tenantID: UUID, request: IngestionCreateRequest) async throws -> IngestionBatchDTO {
         guard !request.items.isEmpty, request.items.count <= Self.maxItems else {
@@ -159,6 +166,19 @@ struct MultimodalIngestionService {
         }
         let batchBytes = request.items.compactMap(\.sizeBytes).reduce(Int64(0), +)
         guard batchBytes <= Self.maxBatchBytes else { throw HTTPError(.contentTooLarge, message: "batch exceeds 5 GiB") }
+        // Per-batch limits bound one request; nothing bounded the total. A
+        // tenant could repeat a 5 GiB batch indefinitely, and every byte lands
+        // in the nightly backup under 7/4/6 retention as well.
+        if let storageQuota {
+            let tier = try await User.find(tenantID, on: fluent.db())?.tierEnum ?? .trial
+            if case let .deny(used, limit) = await storageQuota.check(
+                tenantID: tenantID,
+                tier: tier,
+                incomingBytes: batchBytes
+            ) {
+                throw HTTPError(.contentTooLarge, message: StorageQuotaService.message(used: used, limit: limit))
+            }
+        }
         if let spaceID = request.spaceID {
             guard try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first() != nil else {
                 throw HTTPError(.badRequest, message: "unknown space")

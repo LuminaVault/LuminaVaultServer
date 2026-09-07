@@ -27,6 +27,8 @@ struct OpenAICompatibleAdapter: ProviderAdapter {
     /// (and the user's base URL override, if any), otherwise we fall
     /// back to the construction-time deployment defaults.
     let userCredentials: UserCredentialStore?
+    var acceptsUserCredentials: Bool { userCredentials != nil }
+
 
     /// Resolver used exclusively for ProviderKind.xai when the user's
     /// credential row has kind "oauth" (SuperGrok linked account). Returns

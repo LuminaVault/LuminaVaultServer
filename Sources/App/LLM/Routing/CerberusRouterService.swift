@@ -801,7 +801,7 @@ struct CerberusModelRouter: ModelRouter {
             guard let shared = kind.toShared() else { continue }
             do {
                 if let cred = try await credentials.credential(for: kind, tenantID: tenantID),
-                   cred.apiKey != nil || cred.baseURL != nil
+                   kind.isSpendable(apiKey: cred.apiKey, baseURL: cred.baseURL)
                 {
                     result.insert(shared)
                 }

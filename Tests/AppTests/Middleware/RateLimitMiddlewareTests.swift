@@ -2,6 +2,7 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
+import LuminaVaultShared
 import Testing
 
 /// HER-94: per-user rate-limit keying. Verifies that the `userOrIPKey`
@@ -255,5 +256,57 @@ struct RateLimitMiddlewareTests {
             gate: gate,
             uri: "/v1/conversations/\(conversationID)/messages/stream"
         )
+    }
+}
+
+/// Before this, a `lapsed` account and an Ultimate subscriber were handed
+/// identical buckets on `/v1/llm`: the free rider got the paying customer's
+/// ceiling, and the paying customer got the free rider's.
+struct TierAwareRateLimitTests {
+    @Test
+    func `paid tiers get headroom above the trial baseline`() {
+        let chat = RateLimitPolicy.chatByUser
+        #expect(chat.effectiveMax(for: .trial) == 30)
+        #expect(chat.effectiveMax(for: .pro) == 60)
+        #expect(chat.effectiveMax(for: .ultimate) == 120)
+    }
+
+    /// A lapsed BYO tenant is deliberately exempt from the paywall, so the
+    /// bucket must stay usable — just not at a paying customer's size.
+    @Test
+    func `lapsed keeps a working but small bucket`() {
+        let chat = RateLimitPolicy.chatByUser
+        let lapsed = chat.effectiveMax(for: .lapsed)
+        #expect(lapsed > 0)
+        #expect(lapsed < chat.effectiveMax(for: .trial))
+        #expect(lapsed == 10)
+    }
+
+    /// A scale must never produce 0: that would 429 every request, which is an
+    /// entitlement decision made in a different middleware.
+    @Test
+    func `no tier is ever locked out by the scale alone`() {
+        let tight = RateLimitPolicy(max: 1, window: 60, tierScale: RateLimitPolicy.standardTierScale) { _, _ in "k" }
+        for tier in UserTier.allCases {
+            #expect(tight.effectiveMax(for: tier) >= 1, "\(tier) must keep at least one request")
+        }
+    }
+
+    /// The IP-keyed auth routes run before there is an identity, and a login
+    /// attempt costs the same whoever makes it.
+    @Test
+    func `auth policies stay flat for every tier`() {
+        let login = RateLimitPolicy.loginByIP
+        #expect(login.tierScale == nil)
+        for tier in UserTier.allCases {
+            #expect(login.effectiveMax(for: tier) == 10)
+        }
+        #expect(login.effectiveMax(for: nil) == 10)
+    }
+
+    /// An unauthenticated caller on an auth-optional route gets the baseline.
+    @Test
+    func `an absent identity falls back to the base budget`() {
+        #expect(RateLimitPolicy.chatByUser.effectiveMax(for: nil) == 30)
     }
 }

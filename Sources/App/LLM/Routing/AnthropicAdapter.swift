@@ -27,6 +27,8 @@ struct AnthropicAdapter: ProviderAdapter {
     private let session: URLSession
     private let logger: Logger
     private let userCredentials: UserCredentialStore?
+    var acceptsUserCredentials: Bool { userCredentials != nil }
+
 
     /// Anthropic API version pin. Bumping this requires a release-notes
     /// review of behavior changes (tool use, prompt caching, etc.).

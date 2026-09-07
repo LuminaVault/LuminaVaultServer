@@ -21,6 +21,14 @@ struct RoutedLLMTransport: HermesChatTransport {
     let logger: Logger
 
     let usageMeter: UsageMeterService?
+    /// USD meter for *managed* traffic — calls the platform's own key pays
+    /// for. Optional so test and single-gateway wirings can skip the write.
+    ///
+    /// Deliberately not consulted for BYOK: the tenant is billed by the
+    /// provider directly, so metering it here would invent a cost we never
+    /// incur and make "what does a user cost" answer wrongly in the
+    /// expensive direction.
+    let costLedger: CostLedgerService?
     /// HER-252 — append-only telemetry sink for failover events. Optional
     /// so non-production wirings (tests, single-gateway deployments)
     /// can skip the DB write.
@@ -41,6 +49,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         currentUser: @escaping @Sendable () async -> User? = { LLMRoutingContext.currentUser },
         logger: Logger,
         usageMeter: UsageMeterService? = nil,
+        costLedger: CostLedgerService? = nil,
         failoverLogger: ProviderFailoverLogger? = nil,
         routerTelemetry: RouterTelemetryService? = nil,
         parallelExecutor: ParallelExecutor? = nil
@@ -51,6 +60,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         self.currentUser = currentUser
         self.logger = logger
         self.usageMeter = usageMeter
+        self.costLedger = costLedger
         self.failoverLogger = failoverLogger
         self.routerTelemetry = routerTelemetry
         self.parallelExecutor = parallelExecutor ?? ParallelExecutor(
@@ -182,15 +192,44 @@ struct RoutedLLMTransport: HermesChatTransport {
                         source: source
                     )
                 }
-                if let usageMeter, let user {
+                if usageMeter != nil || costLedger != nil, let user {
                     var mtokIn = 0
                     var mtokOut = 0
                     Self.extractUsage(from: metadata, mtokIn: &mtokIn, mtokOut: &mtokOut)
                     if mtokIn > 0 || mtokOut > 0, let userID = try? user.requireID() {
-                        let meter = usageMeter
+                        // Both meters read these, and the token meter's `Task`
+                        // captures them, so bind immutable copies — sending a
+                        // closure that captures the `var`s races the read below.
+                        let tokensIn = mtokIn
+                        let tokensOut = mtokOut
                         let modelToRecord = candidate.modelID
                         let billingID = LLMRoutingContext.billingTenantID ?? userID
-                        Task { await meter.record(tenantID: billingID, model: modelToRecord, tokensIn: mtokIn, tokensOut: mtokOut) }
+                        if let meter = usageMeter {
+                            Task { await meter.record(tenantID: billingID, model: modelToRecord, tokensIn: tokensIn, tokensOut: tokensOut) }
+                        }
+                        // `cost_ledger` is the only USD-denominated meter we
+                        // have; `usage_meter` counts tokens, which cannot be
+                        // compared across providers whose rates differ by two
+                        // orders of magnitude. BYOK is skipped on purpose —
+                        // the user pays that provider directly.
+                        if let ledger = costLedger,
+                           let charge = Self.ledgerCharge(
+                               credentialMode: credentialMode,
+                               provider: candidate.provider,
+                               model: modelToRecord,
+                               tokensIn: tokensIn,
+                               tokensOut: tokensOut,
+                               cerberus: decision.cerberus
+                           )
+                        {
+                            Task {
+                                await ledger.record(
+                                    tenantID: billingID,
+                                    provider: charge.provider,
+                                    usdMicros: charge.usdMicros
+                                )
+                            }
+                        }
                     }
                 }
                 if let cerberus = decision.cerberus, let routerTelemetry {
@@ -650,11 +689,67 @@ struct RoutedLLMTransport: HermesChatTransport {
         metadata: CerberusDecisionMetadata
     ) -> Int64 {
         guard let shared = provider.toShared() else { return 0 }
-        let route = metadata.routes.first { $0.provider == shared && $0.model == model }
-        let catalog = RouterModelCatalog.entry(provider: shared, model: model)
+        return catalogCost(
+            provider: shared,
+            model: model,
+            tokensIn: tokensIn,
+            tokensOut: tokensOut,
+            cerberus: metadata
+        )
+    }
+
+    /// What, if anything, to write to `cost_ledger` for a completed call.
+    ///
+    /// `nil` means "record nothing", for three distinct reasons that all
+    /// deserve the same silence:
+    ///
+    /// - **BYOK.** The tenant is billed by the provider directly. Metering it
+    ///   here would invent a cost we never incur and make the ledger answer
+    ///   "what does this user cost" wrongly, in the expensive direction.
+    /// - **A provider with no `ProviderID`.** Nothing to key the row on.
+    /// - **A model with no known rate.** A guessed price is worse than no
+    ///   row: the ledger's only job is to be truthful about money.
+    static func ledgerCharge(
+        credentialMode: LLMBrainMode?,
+        provider: ProviderKind,
+        model: String,
+        tokensIn: Int,
+        tokensOut: Int,
+        cerberus: CerberusDecisionMetadata?
+    ) -> (provider: ProviderID, usdMicros: Int64)? {
+        guard credentialMode != .byok else { return nil }
+        guard let providerID = provider.toShared() else { return nil }
+        let usd = catalogCost(
+            provider: providerID,
+            model: model,
+            tokensIn: tokensIn,
+            tokensOut: tokensOut,
+            cerberus: cerberus
+        )
+        guard usd > 0 else { return nil }
+        return (providerID, usd)
+    }
+
+    /// Micro-USD for a call, from the router's own price table.
+    ///
+    /// The decision's routes carry the rate actually quoted for this request,
+    /// so they win; `RouterModelCatalog` is the fallback for a call that never
+    /// went through Cerberus. A model in neither yields 0 — recording a
+    /// guessed price would be worse than recording nothing, because the
+    /// ledger's only job is to answer "what does a user cost" truthfully.
+    static func catalogCost(
+        provider: ProviderID,
+        model: String,
+        tokensIn: Int,
+        tokensOut: Int,
+        cerberus: CerberusDecisionMetadata?
+    ) -> Int64 {
+        let route = cerberus?.routes.first { $0.provider == provider && $0.model == model }
+        let catalog = RouterModelCatalog.entry(provider: provider, model: model)
         let inputRate = route?.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
         let outputRate = route?.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
-        return Int64(tokensIn) * inputRate / 1_000_000 + Int64(tokensOut) * outputRate / 1_000_000
+        return Int64(max(0, tokensIn)) * inputRate / 1_000_000
+            + Int64(max(0, tokensOut)) * outputRate / 1_000_000
     }
 
     private static func publishRouteOutcome(_ route: ModelRoute, cerberus: CerberusDecisionMetadata? = nil) {

@@ -195,6 +195,23 @@ actor UserCredentialStore {
 
     /// Stamp `verified_at` + clear failure fields. Called by the /test
     /// endpoint on a successful probe.
+    /// Store a tool-support verdict from `ProviderToolProbe`.
+    ///
+    /// `supportsTools` stays three-valued: nil means unprobed or no verdict
+    /// and is read as permissive. `toolsProbedAt` records when we last looked,
+    /// so a stale verdict can be distinguished from one never taken.
+    func recordToolSupport(tenantID: UUID, provider: ProviderKind, supportsTools: Bool?) async throws {
+        guard let row = try await UserProviderCredential.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$provider == provider.rawValue)
+            .first()
+        else { return }
+        row.supportsTools = supportsTools
+        row.toolsProbedAt = Date()
+        try await row.save(on: fluent.db())
+        invalidate(tenantID: tenantID, provider: provider)
+    }
+
     func recordSuccess(tenantID: UUID, provider: ProviderKind) async throws {
         guard let row = try await UserProviderCredential.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)
