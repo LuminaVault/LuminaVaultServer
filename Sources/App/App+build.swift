@@ -1293,6 +1293,21 @@ func buildRouter(
         logger: Logger(label: "lv.usage-meter")
     )
 
+    // The only USD-denominated meter in the system. `usage_meter` counts
+    // tokens, which cannot be compared across providers whose rates differ by
+    // two orders of magnitude, so before this "what does a tenant cost" had no
+    // answer at all — `cost_ledger` had a table (M73) and a complete service
+    // and was never once written to.
+    //
+    // The daily cap defaults to 0, which `checkBudget` reads as "disabled":
+    // this ships as a meter, and turning it into a gate is a separate decision
+    // that needs real numbers first — which it is the thing that produces.
+    let costLedgerService = CostLedgerService(
+        fluent: services.fluent,
+        managedDailyCapUsdMicros: Int64(reader.int(forKey: ConfigKey("billing.managedDailyCapUsdMicros"), default: 0)),
+        logger: Logger(label: "lv.cost-ledger")
+    )
+
     let parallelStore = ParallelExecutionStore(
         fluent: services.fluent,
         logger: Logger(label: "lv.cerberus.parallel.store")
@@ -1307,6 +1322,7 @@ func buildRouter(
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
+        costLedger: costLedgerService,
         failoverLogger: providerFailoverLogger,
         routerTelemetry: routerTelemetry,
         parallelExecutor: parallelExecutor
