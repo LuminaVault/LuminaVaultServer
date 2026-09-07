@@ -167,7 +167,9 @@ struct ProvidersController {
                 label: row?.label,
                 verifiedAt: row?.verifiedAt,
                 lastFailureAt: row?.lastFailureAt,
-                lastFailureCode: row?.lastFailureCode
+                lastFailureCode: row?.lastFailureCode,
+                supportsTools: row?.supportsTools,
+                toolsProbedAt: row?.toolsProbedAt
             )
         }
         return ProviderCredentialsListResponse(providers: dtos)
@@ -300,7 +302,19 @@ struct ProvidersController {
             _ = try await adapter.chatCompletionsWithMetadata(payload: payload, sessionKey: tenantID.uuidString, sessionID: nil)
             // Success — stamp verified_at.
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
-            return ProviderTestResponse(verifiedAt: Date(), model: pingPayload["model"] as? String)
+            // Then ask a harder question, detached: does this endpoint
+            // actually honour tool calls? An OpenAI-compatible gateway can
+            // accept a `tools` block, ignore it, and answer from the model's
+            // own knowledge — a well-formed 200 that nothing upstream
+            // notices, after which the product tells the user their skills
+            // are running when no tool was ever called.
+            //
+            // Detached because the answer must not delay or fail the /test
+            // response the user is waiting on: an unknown verdict is
+            // permissive, so there is nothing to block for.
+            let model = pingPayload["model"] as? String
+            probeToolSupport(tenantID: tenantID, kind: kind, adapter: adapter, model: model)
+            return ProviderTestResponse(verifiedAt: Date(), model: model)
         } catch let error as ProviderError {
             // Only an auth rejection is evidence about the key. A 429, a 500,
             // a timeout or a DNS failure means the provider is having a bad
@@ -319,6 +333,49 @@ struct ProvidersController {
             // Transport-level failure before we ever reached the provider.
             // Same reasoning: this is not evidence about the credential.
             throw HTTPError(.badGateway, message: TestError.network.rawValue)
+        }
+    }
+
+    /// Runs `ProviderToolProbe` in the background and stores the verdict.
+    ///
+    /// Every failure path lands on `.unknown`, which is recorded as nil and
+    /// read as permissive. The probe is a best-effort check against a third
+    /// party; treating "we could not tell" as "no tools" would disable working
+    /// setups on a network blip — a worse failure than the one detected.
+    private func probeToolSupport(
+        tenantID: UUID,
+        kind: ProviderKind,
+        adapter: any ProviderAdapter,
+        model: String?
+    ) {
+        guard let model, !model.isEmpty else { return }
+        let store = credentialStore
+        let logger = logger
+        Task {
+            let nonce = ProviderToolProbe.nonce()
+            let body = JSON.encode(ProviderToolProbe.payload(model: model, nonce: nonce))
+            let verdict: ProviderToolProbe.Verdict
+            do {
+                let response = try await adapter.chatCompletionsWithMetadata(
+                    payload: body,
+                    sessionKey: tenantID.uuidString,
+                    sessionID: nil
+                )
+                verdict = ProviderToolProbe.verdict(from: response.data)
+            } catch {
+                logger.debug("tool probe could not reach a verdict for \(kind.rawValue): \(error)")
+                verdict = .unknown
+            }
+            let stored: Bool? = switch verdict {
+            case .supported: true
+            case .notSupported: false
+            case .unknown: nil
+            }
+            do {
+                try await store.recordToolSupport(tenantID: tenantID, provider: kind, supportsTools: stored)
+            } catch {
+                logger.debug("could not store tool probe verdict for \(kind.rawValue): \(error)")
+            }
         }
     }
 

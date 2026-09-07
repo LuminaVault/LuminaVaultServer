@@ -9319,6 +9319,29 @@ components:
             `credit_exhausted` / `rate_limit` / `upstream_error` /
             `upstream_rejected` / `network` / `tls_error` / `timeout`.
 
+            Only set by an actual auth rejection (401/403) or credit
+            exhaustion. A rate limit, a 5xx or a timeout is evidence about
+            the provider's health, not about the key, and does not stamp it.
+        supportsTools:
+          type: boolean
+          nullable: true
+          description: |
+            Whether this endpoint was observed to honour tool calls.
+
+            Three-valued: `true` the probe saw a tool call, `false` the
+            endpoint answered without calling one, and **absent/null** means
+            unprobed or no verdict reached. Null must be read as permissive —
+            it does not mean "no tools".
+
+            A credential that authenticates is not the same as an endpoint
+            that works: an OpenAI-compatible gateway can accept a `tools`
+            block, ignore it, and answer from the model's own knowledge.
+        toolsProbedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the tool probe last reached this credential.
+
     ProviderCredentialsListResponse:
       type: object
       required: [providers]
