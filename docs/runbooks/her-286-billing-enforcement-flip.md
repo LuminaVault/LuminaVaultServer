@@ -45,7 +45,7 @@ iOS surface that converges on those 402s: universal `BaseHTTPClient.onPaymentReq
 
 **Operational guards:**
 
-- [ ] RevenueCat webhook `POST /v1/billing/revenuecat` reachable from RC egress IPs — test via RC dashboard "Send test event".
+- [ ] RevenueCat webhook `POST /v1/billing/revenuecat-webhook` reachable from RC egress IPs — test via RC dashboard "Send test event".
 - [ ] Sentry alert for a spike in `APIError.paymentRequired` from the iOS client.
 - [ ] Grafana / VPS dashboard for `/v1/auth/me/billing` p95 latency (expect uptick post-flip).
 - [ ] Rollback rehearsed on staging: `=false` + restart returns to allow-all in <30 s.

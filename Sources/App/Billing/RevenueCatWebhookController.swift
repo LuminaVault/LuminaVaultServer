@@ -5,6 +5,7 @@ import HTTPTypes
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
 struct RevenueCatWebhookController {
     let fluent: Fluent
@@ -75,6 +76,38 @@ struct RevenueCatWebhookController {
         return .ok
     }
 
+    /// How long a `BILLING_ISSUE` holds the tier. Apple retries a failed
+    /// charge for up to ~16 days; this covers it without holding forever.
+    static let billingRetryGrace: TimeInterval = 16 * 24 * 60 * 60
+
+    /// Thrown when RevenueCat reports a purchase of something we do not sell.
+    ///
+    /// Deliberately an error rather than a shrug: the handler must not write a
+    /// `billing_event_logs` row for it, because that row would suppress the
+    /// retry and strand a paying user on the wrong tier permanently.
+    struct UnknownProductError: Error, CustomStringConvertible {
+        let productID: String?
+        var description: String {
+            "unmapped RevenueCat product: \(productID ?? "<none>")"
+        }
+    }
+
+    /// Grants the tier a paid event entitles the user to.
+    private func applyPurchase(event: RCEvent, to user: User) throws {
+        guard let productID = event.productId, let tier = SubscriptionCatalog.tier(forProductID: productID) else {
+            logger.error("revenuecat reported a product we do not sell", metadata: [
+                "product_id": .string(event.productId ?? "<none>"),
+                "event_type": .string(event.type),
+                "known": .string(SubscriptionCatalog.products.map(\.id).joined(separator: ",")),
+            ])
+            throw UnknownProductError(productID: event.productId)
+        }
+        user.tier = tier.rawValue
+        if let expMs = event.expirationAtMs {
+            user.tierExpiresAt = Date(timeIntervalSince1970: TimeInterval(expMs) / 1000.0)
+        }
+    }
+
     /// Returns the resolved user UUID when the event mapped to a user, nil otherwise.
     private func processEvent(_ event: RCEvent) async throws -> UUID? {
         let rcUserID = event.appUserId
@@ -95,29 +128,37 @@ struct RevenueCatWebhookController {
         user.revenuecatUserID = rcUserID
 
         switch event.type {
-        case "INITIAL_PURCHASE", "PRODUCT_CHANGE":
-            if let pid = event.productId {
-                if pid.contains("ultimate") {
-                    user.tier = "ultimate"
-                } else if pid.contains("pro") {
-                    user.tier = "pro"
-                }
-            }
-            if let expMs = event.expirationAtMs {
-                user.tierExpiresAt = Date(timeIntervalSince1970: TimeInterval(expMs) / 1000.0)
-            }
-        case "RENEWAL":
-            if let expMs = event.expirationAtMs {
-                user.tierExpiresAt = Date(timeIntervalSince1970: TimeInterval(expMs) / 1000.0)
-            }
+        case "INITIAL_PURCHASE", "PRODUCT_CHANGE", "RENEWAL", "UNCANCELLATION":
+            // RENEWAL used to write only the expiry. A subscriber who had
+            // already been flipped to `lapsed` — by a *missed* earlier renewal
+            // — therefore renewed successfully, got a future expiry, and stayed
+            // locked out, because nothing restored the tier. Granting on every
+            // paid event fixes that and is idempotent.
+            try applyPurchase(event: event, to: user)
         case "CANCELLATION":
+            // Cancellation is a statement about auto-renew, not about access:
+            // the user keeps what they paid for until the period ends. Only a
+            // refund or an already-past expiry ends it now.
             if event.isRefund == true || (event.expirationAtMs ?? 0) < Int64(Date().timeIntervalSince1970 * 1000) {
-                user.tier = "lapsed"
+                user.tier = UserTier.lapsed.rawValue
             }
         case "EXPIRATION":
-            user.tier = "lapsed"
+            user.tier = UserTier.lapsed.rawValue
         case "BILLING_ISSUE":
-            logger.info("billing issue reported for user", metadata: ["rc_user_id": .string(rcUserID)])
+            // Apple retries a failed charge for days. Demoting on the first
+            // failure would lock out a user whose card is about to succeed, so
+            // hold the tier and push the expiry into the retry window — the
+            // nightly lapse job reads that expiry and would otherwise demote
+            // them tonight.
+            let hold = Date().addingTimeInterval(Self.billingRetryGrace)
+            if (user.tierExpiresAt ?? .distantPast) < hold {
+                user.tierExpiresAt = hold
+            }
+            logger.warning("billing issue — holding tier through the retry window", metadata: [
+                "rc_user_id": .string(rcUserID),
+                "tier": .string(user.tier),
+                "hold_until": .string(ISO8601DateFormatter().string(from: hold)),
+            ])
         case "SUBSCRIBER_ALIAS":
             logger.info("subscriber alias event", metadata: ["rc_user_id": .string(rcUserID)])
         default:
