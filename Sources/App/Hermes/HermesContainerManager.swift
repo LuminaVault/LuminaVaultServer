@@ -34,6 +34,19 @@ actor HermesContainerManager {
         /// loaded (env `MNEMOSYNE_ENABLED`). The per-user `User.mnemosyneEnabled`
         /// flag takes precedence when present; this is only the fallback.
         let mnemosyneDefault: Bool
+        /// Hard memory ceiling passed to `docker run --memory`, e.g. `512m`.
+        /// Empty disables the flag.
+        ///
+        /// Without it a tenant container inherits the host's entire RAM.
+        /// These run `--restart=unless-stopped`, so one tenant whose agent
+        /// loops on a large context can OOM the node and take every other
+        /// tenant — and the API itself — down with it. The kernel killing one
+        /// container is the strictly better failure.
+        let memoryLimit: String
+        /// CPU ceiling passed to `docker run --cpus`, e.g. `1.0`. Empty
+        /// disables the flag. Same reasoning as `memoryLimit`: a busy tenant
+        /// should saturate its own share, not the box.
+        let cpuLimit: String
         init(
             image: String,
             network: String,
@@ -42,7 +55,9 @@ actor HermesContainerManager {
             portRangeEnd: Int,
             idleTTLSeconds: Int,
             defaultModel: String = "hermes-3",
-            mnemosyneDefault: Bool = true
+            mnemosyneDefault: Bool = true,
+            memoryLimit: String = "",
+            cpuLimit: String = ""
         ) {
             self.image = image
             self.network = network
@@ -52,6 +67,8 @@ actor HermesContainerManager {
             self.idleTTLSeconds = idleTTLSeconds
             self.defaultModel = defaultModel
             self.mnemosyneDefault = mnemosyneDefault
+            self.memoryLimit = memoryLimit
+            self.cpuLimit = cpuLimit
         }
     }
 
@@ -341,12 +358,23 @@ actor HermesContainerManager {
             gateways: gateways,
             mnemosyneEnabled: mnemosyneEnabled
         )
+        // Resource ceilings, when configured. Applied at `run` time, so an
+        // existing container keeps whatever it was created with until
+        // `reprovisionAll()` recreates it.
+        var limitArgs: [String] = []
+        if !config.memoryLimit.isEmpty {
+            limitArgs += ["--memory", config.memoryLimit]
+        }
+        if !config.cpuLimit.isEmpty {
+            limitArgs += ["--cpus", config.cpuLimit]
+        }
         let args = [
             "run",
             "--detach",
             "--restart=unless-stopped",
             "--name", containerName,
             "--network", config.network,
+        ] + limitArgs + [
             "--publish", "\(port):8642",
             "--volume", "\(volumePath):/opt/data",
             "--env", "API_SERVER_ENABLED=true",

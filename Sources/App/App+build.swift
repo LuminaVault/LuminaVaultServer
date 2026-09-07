@@ -798,10 +798,30 @@ func buildRouter(
                     // (env `MNEMOSYNE_ENABLED`); `User.mnemosyneEnabled` wins
                     // when a row is loaded. On by default — Mnemosyne is the
                     // managed default memory layer.
-                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true"
+                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true",
+                    // Ceilings so one tenant cannot take the node down.
+                    // Empty disables the flag, for hosts whose cgroup driver
+                    // does not support the limit.
+                    memoryLimit: reader.string(forKey: "hermes.perTenant.memoryLimit", default: "512m"),
+                    cpuLimit: reader.string(forKey: "hermes.perTenant.cpuLimit", default: "1.0")
                 ),
                 logger: Logger(label: "lv.hermes-tenant")
             )
+            // The reaper `evictIdle()` was documented as having since
+            // HER-240a, and never had. Containers run
+            // `--restart=unless-stopped` and hold a port from a finite pool,
+            // so without this every tenant ever provisioned stayed up until
+            // the pool ran dry and `ensureRunning` began throwing
+            // `.portRangeExhausted` for everyone.
+            if lvEnvironment != "test" {
+                managedServices.append(HermesContainerReaperService(
+                    manager: containerManager,
+                    intervalSeconds: HermesContainerReaperService.intervalSeconds(
+                        idleTTLSeconds: services.hermesPerTenantIdleTTLSeconds
+                    ),
+                    logger: Logger(label: "lv.hermes-tenant.reaper")
+                ))
+            }
             // HER-134 — wire LocalHermes text embedding to the live
             // container manager. `handle` is read-only; if the tenant has
             // no running container the LocalHermes adapter surfaces
