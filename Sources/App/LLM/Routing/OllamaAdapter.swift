@@ -23,8 +23,9 @@ struct OllamaAdapter: ProviderAdapter {
     private let session: URLSession
     private let logger: Logger
     private let userCredentials: UserCredentialStore?
-    var acceptsUserCredentials: Bool { userCredentials != nil }
-
+    var acceptsUserCredentials: Bool {
+        userCredentials != nil
+    }
 
     init(
         defaultBaseURL: URL = URL(string: "http://localhost:11434")!,

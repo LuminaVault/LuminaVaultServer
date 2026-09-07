@@ -24,8 +24,9 @@ struct GeminiContentsAdapter: ProviderAdapter {
     /// only ever used the deployment env key, so a user's own Gemini BYOK
     /// key was silently ignored.
     private let userCredentials: UserCredentialStore?
-    var acceptsUserCredentials: Bool { userCredentials != nil }
-
+    var acceptsUserCredentials: Bool {
+        userCredentials != nil
+    }
 
     init(
         apiKey: String,

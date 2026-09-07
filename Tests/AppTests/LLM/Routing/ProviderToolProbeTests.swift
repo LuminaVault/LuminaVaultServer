@@ -11,7 +11,7 @@ import Testing
 /// was ever called.
 struct ProviderToolProbeTests {
     private func completion(_ message: [String: Any]) -> Data {
-        try! JSONSerialization.data(withJSONObject: ["choices": [["message": message]]])
+        (try? JSONSerialization.data(withJSONObject: ["choices": [["message": message]]])) ?? Data()
     }
 
     @Test

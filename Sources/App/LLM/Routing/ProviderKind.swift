@@ -91,7 +91,9 @@ extension ProviderKind {
     static let keylessCapable: Set<ProviderKind> = [.ollama, .custom]
 
     func isSpendable(apiKey: String?, baseURL: URL?) -> Bool {
-        if let apiKey, !apiKey.isEmpty { return true }
+        if let apiKey, !apiKey.isEmpty {
+            return true
+        }
         guard Self.keylessCapable.contains(self) else { return false }
         guard let baseURL, let scheme = baseURL.scheme, !scheme.isEmpty, baseURL.host != nil else {
             return false

@@ -61,7 +61,9 @@ protocol StreamingProviderAdapter: ProviderAdapter {
 extension ProviderAdapter {
     /// Adapters that hold no credential store — the platform-key-only ones —
     /// keep the default.
-    var acceptsUserCredentials: Bool { false }
+    var acceptsUserCredentials: Bool {
+        false
+    }
 
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)

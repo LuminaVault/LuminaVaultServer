@@ -128,7 +128,7 @@ struct ProvidersController {
         var entries: [ProviderCatalogEntryDTO] = []
         for id in ProviderID.allCases {
             let base = ProviderCatalog.entry(for: id)
-            entries.append(ProviderCatalogEntryDTO(
+            await entries.append(ProviderCatalogEntryDTO(
                 provider: base.provider,
                 displayName: base.displayName,
                 defaultBaseURL: base.defaultBaseURL,
@@ -136,7 +136,7 @@ struct ProvidersController {
                 requiresAPIKey: base.requiresAPIKey,
                 keyHint: base.keyHint,
                 keysURL: base.keysURL,
-                available: await providerAvailability(id)
+                available: providerAvailability(id)
             ))
         }
         return ProviderCatalogResponse(providers: entries)
