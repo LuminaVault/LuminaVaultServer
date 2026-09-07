@@ -229,11 +229,21 @@ struct ProvidersController {
             }
             guard
                 let (_, response) = try? await probeSession.data(for: req),
-                let http = response as? HTTPURLResponse,
-                (200 ..< 300).contains(http.statusCode)
+                let http = response as? HTTPURLResponse
             else {
-                try? await credentialStore.recordFailure(tenantID: tenantID, provider: kind, code: TestError.network.rawValue)
+                // Unreachable right now. Says nothing about the key.
                 throw HTTPError(.badGateway, message: TestError.network.rawValue)
+            }
+            guard (200 ..< 300).contains(http.statusCode) else {
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    try? await credentialStore.recordFailure(
+                        tenantID: tenantID,
+                        provider: kind,
+                        code: TestError.upstreamRejected.rawValue
+                    )
+                    throw HTTPError(.badGateway, message: TestError.upstreamRejected.rawValue)
+                }
+                throw HTTPError(.badGateway, message: TestError.upstreamError.rawValue)
             }
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
             return ProviderTestResponse(verifiedAt: Date(), model: nil)
@@ -252,18 +262,22 @@ struct ProvidersController {
             try await credentialStore.recordSuccess(tenantID: tenantID, provider: kind)
             return ProviderTestResponse(verifiedAt: Date(), model: pingPayload["model"] as? String)
         } catch let error as ProviderError {
-            try? await credentialStore.recordFailure(
-                tenantID: tenantID,
-                provider: kind,
-                code: error.reasonCode
-            )
+            // Only an auth rejection is evidence about the key. A 429, a 500,
+            // a timeout or a DNS failure means the provider is having a bad
+            // minute — staining the credential for that tells the user their
+            // key is broken when it is not, and the pane then nags them to
+            // re-enter a perfectly good key.
+            if error.isCredentialRejection {
+                try? await credentialStore.recordFailure(
+                    tenantID: tenantID,
+                    provider: kind,
+                    code: error.reasonCode
+                )
+            }
             throw HTTPError(.badGateway, message: stableCode(for: error).rawValue)
         } catch {
-            try? await credentialStore.recordFailure(
-                tenantID: tenantID,
-                provider: kind,
-                code: TestError.network.rawValue
-            )
+            // Transport-level failure before we ever reached the provider.
+            // Same reasoning: this is not evidence about the credential.
             throw HTTPError(.badGateway, message: TestError.network.rawValue)
         }
     }
