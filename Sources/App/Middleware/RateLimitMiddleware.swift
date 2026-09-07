@@ -203,6 +203,15 @@ extension RateLimitPolicy {
     /// the endpoint. Cron-/event-triggered runs bypass this middleware.
     /// Final window/max numbers to be tuned in HER-148 sub-tickets.
     static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+    /// `/v1/jobs` runs an LLM classifier per request (`JobIntentClassifier`),
+    /// so it is a paid-inference route wearing a CRUD shape. It had no limit
+    /// at all: a loop over `POST /v1/jobs/detect` was unbounded spend.
+    /// Matched to `kbCompileByUser`, the nearest per-request-inference route.
+    static let jobsByUser = RateLimitPolicy(max: 20, window: 60, keyBuilder: userOrIPKey)
+    /// `/v1/workflows` had no limit either. Studio traffic is bursty — a
+    /// canvas save touches several endpoints — so this is looser than jobs
+    /// and exists to bound a runaway client, not to shape normal editing.
+    static let workflowsByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-196 — `/v1/achievements` and `/v1/achievements/recent` are
     /// read-only catalog joins; iOS pulls them on Settings → Forms enter

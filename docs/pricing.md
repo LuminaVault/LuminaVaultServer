@@ -43,7 +43,7 @@ them. The free lane (`FreeLanePolicy`) and the BYO exemption
 | Tier | How you get here | What it grants |
 |---|---|---|
 | `trial` | signup, 14 days | everything except the four ultimate-only capabilities |
-| `pro` | a Pro SKU | as trial, plus `workflowAutomation` |
+| `pro` | a Pro SKU | the same, and keeps it |
 | `ultimate` | an Ultimate SKU | everything |
 | `lapsed` | trial or subscription expired | vault read + export only |
 | `archived` | 90 days lapsed | nothing; vault moved to cold storage |
@@ -58,8 +58,8 @@ lapsing entirely** — the mechanism to use for testers.
 
 - **Always, except archived:** `vaultRead`, `vaultExport`
 - **trial / pro / ultimate:** `capture`, `healthIngest`, `chat`, `memoryQuery`,
-  `memoGenerator`, `skillBuiltinRun`, `kbCompile`, `memoryCompile`
-- **pro / ultimate:** `workflowAutomation`
+  `memoGenerator`, `skillBuiltinRun`, `kbCompile`, `memoryCompile`,
+  `workflowAutomation`
 - **ultimate only:** `skillVaultRun`, `privacyBYOKey`, `privacyContextRouter`,
   `mlxOnDevice`
 
@@ -192,9 +192,6 @@ Until then, treat any statement about "the trial" as ambiguous.
 
 Recorded so they are not rediscovered:
 
-- **`CostLedgerService` is never instantiated.** `cost_ledger` is empty. There
-  is no USD-denominated meter anywhere, so "what does a user cost" is currently
-  unanswerable.
 - **The per-tenant Cerberus USD budget defaults to unlimited** — both limits
   are `nil`, so `RouterTelemetryService.reserve` always allows.
 - **No storage quota** — per file (except 10 MiB in memory-compile), per tenant
@@ -202,7 +199,8 @@ Recorded so they are not rediscovered:
   retention.
 - **Rate limits are not tier-aware.** A lapsed free user and an Ultimate
   subscriber get identical buckets.
+- **No per-tenant USD cap.** `cost_ledger` now records managed spend, but
+  `billing.managedDailyCapUsdMicros` defaults to 0 (disabled) — it ships as a
+  meter, and setting a cap needs real numbers from it first.
 - **The free lane's platform-wide OpenRouter cap is 45 requests/day** against a
   per-user grace of 20, and `FreeLaneGate` fails open on any SQL error.
-- **`/v1/workflows` has no entitlement and no rate limit**;
-  `Capability.workflowAutomation` is defined and mounted nowhere.

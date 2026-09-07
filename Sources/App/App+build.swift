@@ -1466,9 +1466,19 @@ func buildRouter(
     // managed Hermes default — identical to pre-BYO behaviour.
     let llmGroupBase = router.group("/v1/llm").add(middleware: jwtAuthenticator)
     let llmGroupWithByo = byoHermesMiddleware.map { llmGroupBase.add(middleware: $0) } ?? llmGroupBase
+    // `InFlightLimitMiddleware` shipped with tests and was mounted on
+    // nothing. Request-count rate limiting does not bound SSE: a stream holds
+    // a connection, an upstream socket and a `ResponseBody` writer for its
+    // whole life, so thirty streams opened inside one window are thirty
+    // concurrent upstream calls that the 30/min bucket happily allowed.
+    //
+    // Each group gets its own store, so a chat stream and a query stream are
+    // counted separately — they are separate upstreams and fail separately.
+    let streamConcurrencyPerUser = reader.int(forKey: ConfigKey("http.maxConcurrentStreamsPerUser"), default: 3)
     let llmGroup = llmGroupWithByo
         .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
+        .add(middleware: InFlightLimitMiddleware(maxConcurrent: streamConcurrencyPerUser))
         .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
 
@@ -1886,6 +1896,8 @@ func buildRouter(
     let queryGroup = queryWithByo
         .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        // `POST /v1/query/stream` is SSE; see the note on `llmGroup`.
+        .add(middleware: InFlightLimitMiddleware(maxConcurrent: streamConcurrencyPerUser))
     queryController.addRoutes(to: queryGroup)
 
     // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
@@ -3113,7 +3125,17 @@ func buildRouter(
     SkillOutputsController(fluent: services.fluent, logger: skillsLogger).addRoutes(to: skillsGroup)
 
     // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
-    let jobsGroup = router.group("/v1/jobs").add(middleware: jwtAuthenticator)
+    // `/v1/jobs` runs `JobIntentClassifier` — a real LLM call — on every
+    // request, and had neither an entitlement nor a rate limit. A lapsed
+    // account could drive platform inference indefinitely through it.
+    let jobsGroup = router.group("/v1/jobs")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .jobsByUser, storage: rateLimitStorage))
+        .add(middleware: EntitlementMiddleware(
+            requires: .chat,
+            enforcementEnabled: services.billingEnforcementEnabled,
+            hasUsableCredential: byoHasUsableCredential
+        ))
     let jobAuthoring = JobAuthoring(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
@@ -3152,7 +3174,17 @@ func buildRouter(
             workflowService: workflowService
         )
         workflowWebhookController.addPublicRoutes(to: router)
-        let workflowsGroup = router.group("/v1/workflows").add(middleware: jwtAuthenticator)
+        // `Capability.workflowAutomation` was defined and mounted nowhere, so
+        // the studio — which dispatches LLM work per run — was open to any
+        // authenticated account including `lapsed` and `archived`.
+        let workflowsGroup = router.group("/v1/workflows")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .workflowsByUser, storage: rateLimitStorage))
+            .add(middleware: EntitlementMiddleware(
+                requires: .workflowAutomation,
+                enforcementEnabled: services.billingEnforcementEnabled,
+                hasUsableCredential: byoHasUsableCredential
+            ))
         WorkflowController(
             service: workflowService,
             webhookController: workflowWebhookController,
