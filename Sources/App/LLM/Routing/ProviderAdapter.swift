@@ -29,6 +29,21 @@ protocol ProviderAdapter: Sendable {
     /// so the dispatcher can fail over; after the first yielded chunk
     /// errors terminate the stream without failover.
     func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error>
+
+    /// Whether this adapter instance was given a `UserCredentialStore` and
+    /// can therefore spend a tenant's own key.
+    ///
+    /// This exists because the omission is otherwise invisible.
+    /// `GeminiContentsAdapter` supports BYOK fully — the parameter, the
+    /// resolution, the fail-closed path — and was constructed in `App+build`
+    /// without it. `.gemini` is in `ProviderKind.userCredentialTargets`, so
+    /// the providers pane offered a key field for a provider whose adapter
+    /// structurally could not read the key, and every `.byok` Gemini request
+    /// threw `BYOKKeysRequiredError` against a perfectly good stored key.
+    ///
+    /// Nothing failed loudly, because each half looked correct on its own.
+    /// Surfacing it on the protocol makes the wiring assertable.
+    var acceptsUserCredentials: Bool { get }
 }
 
 /// Optional extension for providers that can return OpenAI-compatible
@@ -44,6 +59,10 @@ protocol StreamingProviderAdapter: ProviderAdapter {
 }
 
 extension ProviderAdapter {
+    /// Adapters that hold no credential store — the platform-key-only ones —
+    /// keep the default.
+    var acceptsUserCredentials: Bool { false }
+
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
         let data = try await chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: sessionID)
         return HermesChatTransportMetadata(data: data, headers: [:])

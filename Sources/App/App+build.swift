@@ -1091,14 +1091,31 @@ func buildRouter(
     // Free lane leg 2 — NVIDIA NIM direct. Same alias treatment; `NVIDIA_API_KEY`
     // is what `NvidiaNIMLiveTests` already reads, so prod and the live test agree.
     let platformNvidiaKey = providerAPIKey("nvidia", alias: "nvidia.api_key")
-    // HER-199 — register Gemini provider when API key is configured.
-    if !services.geminiAPIKey.isEmpty {
-        providerAdapters.append(GeminiContentsAdapter(
-            apiKey: services.geminiAPIKey,
-            session: .shared,
-            logger: routingLogger
-        ))
-    }
+    // HER-199 — Gemini.
+    //
+    // Two things were wrong here, and together they made a stored Gemini key
+    // structurally unspendable while the UI kept offering to take one:
+    //
+    //  1. The adapter was built without `userCredentials`, so `resolveKey()`
+    //     could never see the tenant's key and a `.byok` request threw
+    //     `BYOKKeysRequiredError` — even with a perfectly good key in the
+    //     store. `.gemini` is in `ProviderKind.userCredentialTargets`, so the
+    //     providers pane offered a field the router could not read.
+    //  2. Registration was gated on the *platform* key. A deployment with no
+    //     Gemini key of its own registered no adapter at all, so BYOK Gemini
+    //     failed a second time, at route selection.
+    //
+    // Anthropic and Ollama below already register unconditionally with the
+    // credential store; Gemini now matches them. With neither a platform key
+    // nor a user key, `resolveKey` returns the empty platform key and the
+    // upstream 401s — the same shape as any other unconfigured provider,
+    // rather than a route that silently does not exist.
+    providerAdapters.append(GeminiContentsAdapter(
+        apiKey: services.geminiAPIKey,
+        session: .shared,
+        logger: routingLogger,
+        userCredentials: userCredentialStore
+    ))
     // HER-164 — OpenAI-compatible adapter covers Together, Groq,
     // Fireworks, DeepInfra, and DeepSeek-direct in one struct. Each
     // provider registers only when its apiKey is present; the base
