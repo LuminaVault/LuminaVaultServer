@@ -232,7 +232,17 @@ struct CerberusModelRouter: ModelRouter {
         if let resolution = LLMRoutingContext.currentResolution, resolution.isUserOverride {
             let task = RouterTaskClassifier.classify(prompt, surface: scope.surface)
             let complexity = ComplexityClassifier.classify(prompt, surface: scope.surface)
-            let hermesPrimary = table.primary
+            // Route to the user's own gateway, not merely to whatever the
+            // table happened to rank first.
+            //
+            // `TableModelRouter` appends the gateway route *last*, so
+            // `table.primary` is a platform provider whenever platform keys are
+            // configured — which they are in production. A BYO tenant's chat
+            // was therefore answered by Anthropic on the platform's key while
+            // the metadata below claimed `profileName: "BYO Hermes"` and
+            // `deferredToHermes: true`. Their own box was candidate #4.
+            let hermesPrimary = table.candidates.first { $0.provider == .hermesGateway }
+                ?? ModelRoute(provider: .hermesGateway, modelID: model ?? table.primary.modelID)
             let selectedDTO = RouterModelRouteDTO(
                 provider: hermesPrimary.provider.toShared() ?? .openRouter,
                 model: hermesPrimary.modelID
@@ -272,7 +282,13 @@ struct CerberusModelRouter: ModelRouter {
                 reason: reason,
                 deferredToHermes: true
             )
-            return RouteDecision(primary: hermesPrimary, fallbacks: table.fallbacks, cerberus: metadata, credentialMode: metadata.mode)
+            // No platform fallbacks. `RoutedLLMTransport` retries down
+            // `candidates` on any recoverable network error, so keeping them
+            // meant a transient blip on the user's tailnet silently sent their
+            // prompt to a platform provider on our key — traffic they had
+            // deliberately kept on their own hardware. A BYO tenant fails
+            // loudly instead.
+            return RouteDecision(primary: hermesPrimary, fallbacks: [], cerberus: metadata, credentialMode: metadata.mode)
         }
 
         do {

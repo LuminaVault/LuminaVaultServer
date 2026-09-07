@@ -55,9 +55,15 @@ struct HermesResolutionMiddleware: RouterMiddleware {
                     "error": .string(String(describing: err)),
                 ]
             )
-            throw HTTPError(
-                .badGateway,
-                message: "hermes_unreachable"
+            // Still 502 and still `hermes_unreachable` on the wire, but as a
+            // `{code, message}` envelope so the client can show the reason
+            // instead of the bare token. This never dials the gateway — it is
+            // a *resolution* failure — and it fires for the whole route group,
+            // so an unhelpful message here made listing conversations look as
+            // broken as sending one.
+            throw UpstreamErrorResponse(
+                reasonCode: "hermes_unreachable",
+                userMessage: Self.message(for: err)
             )
         }
 
@@ -65,6 +71,19 @@ struct HermesResolutionMiddleware: RouterMiddleware {
         ctx.hermesResolution = resolution
         return try await LLMRoutingContext.$currentResolution.withValue(resolution) {
             try await next(request, ctx)
+        }
+    }
+
+    /// Each resolution failure has a different fix, and the user is the only
+    /// one who can apply any of them.
+    static func message(for error: HermesEndpointResolver.ResolutionError) -> String {
+        switch error {
+        case let .ssrfRejected(reason):
+            "Your Hermes address could not be used (\(reason)). Check the URL in Settings — a hostname that only resolves on your own network will not resolve from here; the tailnet IP does."
+        case .decryptFailed:
+            "Your saved Hermes credentials could not be read. Re-enter the auth header in Settings."
+        case .malformedRow:
+            "Your Hermes configuration is incomplete. Re-save it in Settings."
         }
     }
 }

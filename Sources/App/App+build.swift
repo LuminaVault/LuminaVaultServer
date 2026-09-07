@@ -1151,6 +1151,23 @@ func buildRouter(
         logger: routingLogger,
         userCredentials: userCredentialStore
     ))
+    // Does this tenant have a provider credential the router could spend?
+    //
+    // Shared by `LLMPreferencesController` (which feeds `FreeLanePolicy`) and
+    // by `EntitlementMiddleware` on the groups that cannot answer the BYO
+    // question from `hermesResolution`. `UserCredentialStore` caches per
+    // (tenant, provider) for 10 minutes, so the warm path is actor hops only.
+    let byoHasUsableCredential: @Sendable (UUID) async -> Bool = { [userCredentialStore] tenantID in
+        guard let store = userCredentialStore else { return false }
+        for kind in ProviderKind.userCredentialTargets {
+            guard let creds = try? await store.credential(for: kind, tenantID: tenantID) else { continue }
+            if creds.apiKey?.isEmpty == false || creds.baseURL != nil {
+                return true
+            }
+        }
+        return false
+    }
+
     // HER-161 — env-loaded provider registry. Reads
     // `llm.provider.<key>.apiKey` / `.baseURL` for anthropic, openai,
     // gemini, together, groq, fireworks, deepseekDirect — missing keys
@@ -1414,7 +1431,7 @@ func buildRouter(
     let llmGroupBase = router.group("/v1/llm").add(middleware: jwtAuthenticator)
     let llmGroupWithByo = byoHermesMiddleware.map { llmGroupBase.add(middleware: $0) } ?? llmGroupBase
     let llmGroup = llmGroupWithByo
-        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
         .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
@@ -1471,7 +1488,7 @@ func buildRouter(
     )
     let transcribeGroup = router.group("/v1/transcribe")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
@@ -1529,7 +1546,7 @@ func buildRouter(
     )
     let visionEmbedGroup = router.group("/v1/vision")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserDaily, storage: rateLimitStorage))
     visionEmbedController.addRoutes(to: visionEmbedGroup)
@@ -1599,7 +1616,7 @@ func buildRouter(
         )
         let ttsGroup = router.group("/v1/tts")
             .add(middleware: jwtAuthenticator)
-            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserPerMinute, storage: rateLimitStorage))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserDaily, storage: rateLimitStorage))
         ttsController.addRoutes(to: ttsGroup)
@@ -1712,13 +1729,13 @@ func buildRouter(
     let memoryCaptureBase = router.group("/v1/memory").add(middleware: jwtAuthenticator)
     let memoryCaptureWithByo = byoHermesMiddleware.map { memoryCaptureBase.add(middleware: $0) } ?? memoryCaptureBase
     let memoryCaptureGroup = memoryCaptureWithByo
-        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     memoryController.addCaptureRoutes(to: memoryCaptureGroup)
     let memorySearchBase = router.group("/v1/memory").add(middleware: jwtAuthenticator)
     let memorySearchWithByo = byoHermesMiddleware.map { memorySearchBase.add(middleware: $0) } ?? memorySearchBase
     let memorySearchGroup = memorySearchWithByo
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     memoryController.addSearchRoutes(to: memorySearchGroup)
     // Read routes don't fire chat — skip BYO middleware to keep the
@@ -1740,7 +1757,7 @@ func buildRouter(
     )
     let knowledgeGroup = router.group("/v1/knowledge")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     knowledgeController.addRoutes(to: knowledgeGroup)
 
@@ -1783,7 +1800,7 @@ func buildRouter(
     let autoSaveLinksEnabled = reader.string(forKey: "autoSaveLinks.enabled", default: "true").lowercased() == "true"
     let captureGroup = router.group("/v1/capture")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .capture, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .captureByUser, storage: rateLimitStorage))
     captureController.addRoutes(to: captureGroup)
 
@@ -1832,7 +1849,7 @@ func buildRouter(
     let queryWithByo = byoHermesMiddleware.map { queryBase.add(middleware: $0) } ?? queryBase
     let queryGroup = queryWithByo
         .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
     queryController.addRoutes(to: queryGroup)
 
     // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
@@ -1880,7 +1897,7 @@ func buildRouter(
     let conversationsGroup = conversationsWithByo
         .add(middleware: hermesProfileMiddleware)
         .add(middleware: RateLimitMiddleware(policy: .conversationByUser, storage: rateLimitStorage))
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
     conversationController.addRoutes(to: conversationsGroup)
 
     // Usability layer — primary Chats inbox over the same persisted
@@ -2626,7 +2643,7 @@ func buildRouter(
         logger: Logger(label: "lv.health")
     )
     let healthIngestGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .healthIngest, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .healthIngest, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
     healthController.addRoutes(to: healthIngestGroup)
     let healthReadGroup = router.group("/v1/health").add(middleware: jwtAuthenticator)
     healthController.addReadRoutes(to: healthReadGroup)
@@ -2889,10 +2906,6 @@ func buildRouter(
             .add(middleware: SidecarTokenMiddleware<AppRequestContext>(expectedToken: services.photonSidecarToken))
         photonWebhook.post("inbound", use: hermesGatewaysController.handlePhotonInbound)
     }
-    // `userCredentialStore` is a `var` (assigned conditionally during setup), and
-    // a `var` cannot be captured by an escaping @Sendable closure. Bind the
-    // final value once so the closure captures an immutable copy.
-    let resolvedCredentialStore = userCredentialStore
     let llmPrefsController = LLMPreferencesController(
         repository: userLLMPreferenceRepo,
         routerProfiles: routerProfileRepo,
@@ -2902,16 +2915,7 @@ func buildRouter(
         // the route the next turn will actually take.
         freeLaneEnabled: freeLaneEnabled,
         platformPaidManagedAvailable: { await providerRegistry.isEnabled(.openRouter) },
-        hasUsableCredential: { tenantID in
-            guard let store = resolvedCredentialStore else { return false }
-            for kind in ProviderKind.userCredentialTargets {
-                guard let creds = try? await store.credential(for: kind, tenantID: tenantID) else { continue }
-                if creds.apiKey?.isEmpty == false || creds.baseURL != nil {
-                    return true
-                }
-            }
-            return false
-        }
+        hasUsableCredential: byoHasUsableCredential
     )
     let llmPrefsGroup = router.group("/v1/me/preferences/llm")
         .add(middleware: jwtAuthenticator)

@@ -14,20 +14,20 @@ import Yams
 ///
 /// Sessions are not files (Hermes keeps them in SQLite), so they come from
 /// the tenant's gateway `api_server` (`/api/sessions*`, Bearer API key) via
-/// `HermesGatewaySessionsClient`; without a gateway they are `unsupported`.
+/// `HermesGatewayReadClient`; without a gateway they are `unsupported`.
 struct FilesystemHermesTransport: HermesMirrorTransport {
     let kind: HermesMirrorTransportKind = .managed
     /// Hermes home on the PVC (e.g. `/app/data/hermes`). Every path this
     /// transport touches must live inside it.
     let root: URL
-    let sessions: HermesGatewaySessionsClient?
+    let sessions: HermesGatewayReadClient?
     let logger: Logger
     let threadPool: NIOThreadPool
     let clock: @Sendable () -> Date
 
     init(
         rootPath: String,
-        sessions: HermesGatewaySessionsClient? = nil,
+        sessions: HermesGatewayReadClient? = nil,
         logger: Logger,
         threadPool: NIOThreadPool = .singleton,
         clock: @escaping @Sendable () -> Date = Date.init
@@ -593,7 +593,7 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
 /// Sessions over the gateway `api_server` (`/api/sessions`,
 /// `/api/sessions/{id}/messages`, Bearer API key). Same wire shapes as the
 /// dashboard, so the parsers are shared.
-struct HermesGatewaySessionsClient: Sendable {
+struct HermesGatewayReadClient: Sendable {
     let baseURL: URL
     let authHeader: String?
     let http: any HermesHTTPExecuting
@@ -612,6 +612,19 @@ struct HermesGatewaySessionsClient: Sendable {
             throw HermesMirrorTransportError.http(status: response.status, path: "/api/sessions")
         }
         return HermesDashboardClient.parseSessions(response.json())
+    }
+
+    /// The gateway serves the same cron rows the dashboard does, at
+    /// `/api/jobs` instead of `/api/cron/jobs`, authenticated with the gateway
+    /// key. That matters because the dashboard only accepts a static bearer on
+    /// a loopback bind — a normal public bind offers cookie/PKCE only — so for
+    /// most BYO users this is the only readable source of their jobs.
+    func listJobs() async throws -> [HermesMirrorJob] {
+        let response = try await get("api/jobs", query: [], cap: HermesDashboardClient.listBodyCap)
+        guard response.isSuccess else {
+            throw HermesMirrorTransportError.http(status: response.status, path: "/api/jobs")
+        }
+        return HermesDashboardClient.parseJobs(response.data)
     }
 
     func sessionMessages(id: String) async throws -> [HermesMirrorSessionMessage] {
