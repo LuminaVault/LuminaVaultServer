@@ -4,7 +4,7 @@ The single record of what we sell and what must be configured for it to work.
 Five artifacts used to carry four different price lists; if any of them
 disagrees with this file, this file is right and the other is a bug.
 
-Last reconciled 2026-09-07 (server `c06c427`, client `f560e12`).
+Last reconciled 2026-09-07 (server `a5a02fe`, client `f560e12`).
 
 ---
 
@@ -194,11 +194,20 @@ Recorded so they are not rediscovered:
 
 - **The per-tenant Cerberus USD budget defaults to unlimited** — both limits
   are `nil`, so `RouterTelemetryService.reserve` always allows.
-- **No storage quota** — per file (except 10 MiB in memory-compile), per tenant
-  or per vault. Everything also lands in the nightly backup with 7/4/6
-  retention.
+- **Storage quota covers ingestion only.** `StorageQuotaService` sums
+  `vault_files.size_bytes` and gates `POST /v1/ingestions` — the only path
+  that can write gigabytes. The other `VaultFile` writers (capture, memo
+  generator, skill runner) persist text and are unmetered. Defaults: trial
+  5 GiB, Pro 100 GiB, Ultimate 1 TiB, lapsed no growth.
 - **No per-tenant USD cap.** `cost_ledger` now records managed spend, but
   `billing.managedDailyCapUsdMicros` defaults to 0 (disabled) — it ships as a
   meter, and setting a cap needs real numbers from it first.
-- **The free lane's platform-wide OpenRouter cap is 45 requests/day** against a
-  per-user grace of 20, and `FreeLaneGate` fails open on any SQL error.
+- **The free lane's OpenRouter leg holds 45 requests/day platform-wide**
+  against a per-user grace of 20, so roughly three active free users exhaust
+  it. This is not the outage it looks like: legs cascade, and the next one
+  (`nvidiaDirect`, 900/day) takes over — but it is a different model, so free
+  users see a quality change rather than an error. 45 tracks OpenRouter's own
+  free-tier ceiling of 50/day before $10 of credit is purchased, so raising it
+  requires buying credit, not editing config. `FreeLaneGate` failing open on a
+  SQL error is deliberate and documented: the lane it grants costs $0 by
+  construction, so the blast radius is provider rate limits rather than money.

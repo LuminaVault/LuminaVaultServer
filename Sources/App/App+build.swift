@@ -2289,7 +2289,24 @@ func buildRouter(
             return await ingestionCapabilitiesService.capabilities(tenantID: tenantID).capabilities
         },
         publicBaseURL: ingestionPublicBaseURL,
-        chunkIndexer: chunkIndexer
+        chunkIndexer: chunkIndexer,
+        // Per-file and per-batch limits bound one request; nothing bounded a
+        // tenant's total until now, so a 5 GiB batch could simply be repeated.
+        storageQuota: StorageQuotaService(
+            fluent: services.fluent,
+            limits: StorageQuotaService.Limits(
+                // A configured 0 means "no growth"; omit the key entirely (or
+                // set a negative) for unlimited.
+                trial: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.trialBytes"), default: 5 * 1024 * 1024 * 1024)),
+                pro: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.proBytes"), default: 100 * 1024 * 1024 * 1024)),
+                ultimate: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.ultimateBytes"), default: 1024 * 1024 * 1024 * 1024)),
+                // A lapsed tenant keeps read and export, which is the whole
+                // content of the tier, so the ceiling only stops growth.
+                lapsed: 0
+            ),
+            enabled: reader.bool(forKey: ConfigKey("storage.quota.enabled"), default: true),
+            logger: Logger(label: "lv.storage-quota")
+        )
     )
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService, vaultAccess: vaultAccessService)
     ingestionController.addPublicSourceRoute(to: router)
