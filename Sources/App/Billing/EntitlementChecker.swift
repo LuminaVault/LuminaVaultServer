@@ -102,8 +102,17 @@ enum EntitlementChecker {
             case .lapsed, .archived: false
             }
 
+        // Trial is included deliberately. The tier exists to demonstrate the
+        // paid product, and Automation is the flagship of the Pro tier — a
+        // trial that cannot open the studio cannot sell the thing it is
+        // trialling. The gate that matters here is `lapsed`, which until this
+        // capability was mounted could run LLM-calling workflows for free
+        // forever.
         case .workflowAutomation:
-            effective == .pro || effective == .ultimate
+            switch effective {
+            case .trial, .pro, .ultimate: true
+            case .lapsed, .archived: false
+            }
 
         case .skillVaultRun, .privacyBYOKey, .privacyContextRouter, .mlxOnDevice:
             effective == .ultimate

@@ -64,14 +64,16 @@ struct BYOEntitlementMiddlewareTests {
         capability: Capability,
         tier: UserTier,
         resolution: HermesEndpointResolver.Resolution?,
-        hasUsableCredential: (@Sendable (UUID) async -> Bool)? = nil
+        hasUsableCredential: (@Sendable (UUID) async -> Bool)? = nil,
+        platformFunded: Bool = false
     ) async throws -> HTTPResponse.Status {
         let router = Router(context: AppRequestContext.self)
         router.add(middleware: StubContextMiddleware(user: user(tier: tier), resolution: resolution))
         router.add(middleware: EntitlementMiddleware(
             requires: capability,
             enforcementEnabled: true,
-            hasUsableCredential: hasUsableCredential
+            hasUsableCredential: hasUsableCredential,
+            platformFunded: platformFunded
         ))
         router.get("/probe") { _, _ -> String in "ok" }
 
@@ -142,6 +144,43 @@ struct BYOEntitlementMiddlewareTests {
             hasUsableCredential: { _ in true }
         )
         #expect(status.code == 402)
+    }
+
+    /// `/v1/transcribe` (Groq), `/v1/tts` (OpenAI) and `/v1/vision` (Cohere)
+    /// spend a platform key no matter whose Hermes the tenant brought — none
+    /// of the three adapters takes a `UserCredentialStore`. Exempting them
+    /// handed a lapsed BYO user 200 transcriptions, 1000 TTS calls and 200
+    /// vision embeds a day on our account.
+    ///
+    /// Note the capability is `.chat` for two of them — the same capability
+    /// that must stay exempt on `/v1/llm` — which is why this is a property
+    /// of the route and not of the capability.
+    @Test
+    func `platform-funded routes stay gated for BYO`() async throws {
+        for capability in [Capability.chat, .memoryQuery] {
+            let status = try await Self.probe(
+                capability: capability,
+                tier: .lapsed,
+                resolution: Self.ownHermes,
+                hasUsableCredential: { _ in true },
+                platformFunded: true
+            )
+            #expect(status.code == 402, "\(capability) on a platform-funded route must not be exempt")
+        }
+    }
+
+    /// The same capability, same tenant, same signals — exempt when the route
+    /// runs on their key. This pair is the whole distinction.
+    @Test
+    func `the same capability passes on a user-funded route`() async throws {
+        let status = try await Self.probe(
+            capability: .chat,
+            tier: .lapsed,
+            resolution: Self.ownHermes,
+            hasUsableCredential: { _ in true },
+            platformFunded: false
+        )
+        #expect(status == .ok)
     }
 
     @Test

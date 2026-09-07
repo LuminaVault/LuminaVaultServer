@@ -8,6 +8,29 @@ import Testing
 /// = 195 cells; we test ~30 representative cells covering every
 /// equivalence class, plus the override-never-downgrades invariant.
 struct EntitlementCheckerTests {
+    /// `workflowAutomation` was defined and mounted on no route, so
+    /// `/v1/workflows` — which dispatches LLM work per run — was open to any
+    /// authenticated account, `lapsed` and `archived` included.
+    ///
+    /// Trial is granted deliberately: the tier exists to demonstrate the paid
+    /// product, and a trial that cannot open the studio cannot sell the thing
+    /// it is trialling.
+    @Test
+    func `workflow automation is denied only after the trial ends unpaid`() {
+        for tier in [UserTier.trial, .pro, .ultimate] {
+            #expect(
+                EntitlementChecker.entitled(tier: tier, override: .none, for: .workflowAutomation),
+                "\(tier) should reach the workflow studio"
+            )
+        }
+        for tier in [UserTier.lapsed, .archived] {
+            #expect(
+                EntitlementChecker.entitled(tier: tier, override: .none, for: .workflowAutomation) == false,
+                "\(tier) must not drive platform inference through workflows"
+            )
+        }
+    }
+
     // MARK: - Always-on capabilities
 
     @Test

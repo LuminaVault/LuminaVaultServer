@@ -798,10 +798,30 @@ func buildRouter(
                     // (env `MNEMOSYNE_ENABLED`); `User.mnemosyneEnabled` wins
                     // when a row is loaded. On by default — Mnemosyne is the
                     // managed default memory layer.
-                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true"
+                    mnemosyneDefault: reader.string(forKey: "mnemosyne.enabled", default: "true").lowercased() == "true",
+                    // Ceilings so one tenant cannot take the node down.
+                    // Empty disables the flag, for hosts whose cgroup driver
+                    // does not support the limit.
+                    memoryLimit: reader.string(forKey: "hermes.perTenant.memoryLimit", default: "512m"),
+                    cpuLimit: reader.string(forKey: "hermes.perTenant.cpuLimit", default: "1.0")
                 ),
                 logger: Logger(label: "lv.hermes-tenant")
             )
+            // The reaper `evictIdle()` was documented as having since
+            // HER-240a, and never had. Containers run
+            // `--restart=unless-stopped` and hold a port from a finite pool,
+            // so without this every tenant ever provisioned stayed up until
+            // the pool ran dry and `ensureRunning` began throwing
+            // `.portRangeExhausted` for everyone.
+            if lvEnvironment != "test" {
+                managedServices.append(HermesContainerReaperService(
+                    manager: containerManager,
+                    intervalSeconds: HermesContainerReaperService.intervalSeconds(
+                        idleTTLSeconds: services.hermesPerTenantIdleTTLSeconds
+                    ),
+                    logger: Logger(label: "lv.hermes-tenant.reaper")
+                ))
+            }
             // HER-134 — wire LocalHermes text embedding to the live
             // container manager. `handle` is read-only; if the tenant has
             // no running container the LocalHermes adapter surfaces
@@ -1071,14 +1091,31 @@ func buildRouter(
     // Free lane leg 2 — NVIDIA NIM direct. Same alias treatment; `NVIDIA_API_KEY`
     // is what `NvidiaNIMLiveTests` already reads, so prod and the live test agree.
     let platformNvidiaKey = providerAPIKey("nvidia", alias: "nvidia.api_key")
-    // HER-199 — register Gemini provider when API key is configured.
-    if !services.geminiAPIKey.isEmpty {
-        providerAdapters.append(GeminiContentsAdapter(
-            apiKey: services.geminiAPIKey,
-            session: .shared,
-            logger: routingLogger
-        ))
-    }
+    // HER-199 — Gemini.
+    //
+    // Two things were wrong here, and together they made a stored Gemini key
+    // structurally unspendable while the UI kept offering to take one:
+    //
+    //  1. The adapter was built without `userCredentials`, so `resolveKey()`
+    //     could never see the tenant's key and a `.byok` request threw
+    //     `BYOKKeysRequiredError` — even with a perfectly good key in the
+    //     store. `.gemini` is in `ProviderKind.userCredentialTargets`, so the
+    //     providers pane offered a field the router could not read.
+    //  2. Registration was gated on the *platform* key. A deployment with no
+    //     Gemini key of its own registered no adapter at all, so BYOK Gemini
+    //     failed a second time, at route selection.
+    //
+    // Anthropic and Ollama below already register unconditionally with the
+    // credential store; Gemini now matches them. With neither a platform key
+    // nor a user key, `resolveKey` returns the empty platform key and the
+    // upstream 401s — the same shape as any other unconfigured provider,
+    // rather than a route that silently does not exist.
+    providerAdapters.append(GeminiContentsAdapter(
+        apiKey: services.geminiAPIKey,
+        session: .shared,
+        logger: routingLogger,
+        userCredentials: userCredentialStore
+    ))
     // HER-164 — OpenAI-compatible adapter covers Together, Groq,
     // Fireworks, DeepInfra, and DeepSeek-direct in one struct. Each
     // provider registers only when its apiKey is present; the base
@@ -1161,7 +1198,7 @@ func buildRouter(
         guard let store = userCredentialStore else { return false }
         for kind in ProviderKind.userCredentialTargets {
             guard let creds = try? await store.credential(for: kind, tenantID: tenantID) else { continue }
-            if creds.apiKey?.isEmpty == false || creds.baseURL != nil {
+            if kind.isSpendable(apiKey: creds.apiKey, baseURL: creds.baseURL) {
                 return true
             }
         }
@@ -1273,6 +1310,21 @@ func buildRouter(
         logger: Logger(label: "lv.usage-meter")
     )
 
+    // The only USD-denominated meter in the system. `usage_meter` counts
+    // tokens, which cannot be compared across providers whose rates differ by
+    // two orders of magnitude, so before this "what does a tenant cost" had no
+    // answer at all — `cost_ledger` had a table (M73) and a complete service
+    // and was never once written to.
+    //
+    // The daily cap defaults to 0, which `checkBudget` reads as "disabled":
+    // this ships as a meter, and turning it into a gate is a separate decision
+    // that needs real numbers first — which it is the thing that produces.
+    let costLedgerService = CostLedgerService(
+        fluent: services.fluent,
+        managedDailyCapUsdMicros: Int64(reader.int(forKey: ConfigKey("billing.managedDailyCapUsdMicros"), default: 0)),
+        logger: Logger(label: "lv.cost-ledger")
+    )
+
     let parallelStore = ParallelExecutionStore(
         fluent: services.fluent,
         logger: Logger(label: "lv.cerberus.parallel.store")
@@ -1287,6 +1339,7 @@ func buildRouter(
         router: modelRouter,
         logger: routingLogger,
         usageMeter: usageMeterService,
+        costLedger: costLedgerService,
         failoverLogger: providerFailoverLogger,
         routerTelemetry: routerTelemetry,
         parallelExecutor: parallelExecutor
@@ -1430,9 +1483,19 @@ func buildRouter(
     // managed Hermes default — identical to pre-BYO behaviour.
     let llmGroupBase = router.group("/v1/llm").add(middleware: jwtAuthenticator)
     let llmGroupWithByo = byoHermesMiddleware.map { llmGroupBase.add(middleware: $0) } ?? llmGroupBase
+    // `InFlightLimitMiddleware` shipped with tests and was mounted on
+    // nothing. Request-count rate limiting does not bound SSE: a stream holds
+    // a connection, an upstream socket and a `ResponseBody` writer for its
+    // whole life, so thirty streams opened inside one window are thirty
+    // concurrent upstream calls that the 30/min bucket happily allowed.
+    //
+    // Each group gets its own store, so a chat stream and a query stream are
+    // counted separately — they are separate upstreams and fail separately.
+    let streamConcurrencyPerUser = reader.int(forKey: ConfigKey("http.maxConcurrentStreamsPerUser"), default: 3)
     let llmGroup = llmGroupWithByo
         .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .chatByUser, storage: rateLimitStorage))
+        .add(middleware: InFlightLimitMiddleware(maxConcurrent: streamConcurrencyPerUser))
         .add(middleware: contextRouterMiddleware)
     llmController.addRoutes(to: llmGroup)
 
@@ -1488,7 +1551,7 @@ func buildRouter(
     )
     let transcribeGroup = router.group("/v1/transcribe")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
@@ -1546,7 +1609,7 @@ func buildRouter(
     )
     let visionEmbedGroup = router.group("/v1/vision")
         .add(middleware: jwtAuthenticator)
-        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .visionEmbedByUserDaily, storage: rateLimitStorage))
     visionEmbedController.addRoutes(to: visionEmbedGroup)
@@ -1616,7 +1679,7 @@ func buildRouter(
         )
         let ttsGroup = router.group("/v1/tts")
             .add(middleware: jwtAuthenticator)
-            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+            .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled, platformFunded: true))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserPerMinute, storage: rateLimitStorage))
             .add(middleware: RateLimitMiddleware(policy: .ttsByUserDaily, storage: rateLimitStorage))
         ttsController.addRoutes(to: ttsGroup)
@@ -1850,6 +1913,8 @@ func buildRouter(
     let queryGroup = queryWithByo
         .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
         .add(middleware: EntitlementMiddleware(requires: .memoryQuery, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
+        // `POST /v1/query/stream` is SSE; see the note on `llmGroup`.
+        .add(middleware: InFlightLimitMiddleware(maxConcurrent: streamConcurrencyPerUser))
     queryController.addRoutes(to: queryGroup)
 
     // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
@@ -1936,7 +2001,7 @@ func buildRouter(
     let memoBase = router.group("/v1/memos").add(middleware: jwtAuthenticator)
     let memoWithByo = byoHermesMiddleware.map { memoBase.add(middleware: $0) } ?? memoBase
     let memoGroup = memoWithByo
-        .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoGenerator, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
     memoController.addRoutes(to: memoGroup)
 
     // Spaces (user-defined organizing folders) — service is created early so
@@ -2120,7 +2185,7 @@ func buildRouter(
         .add(middleware: IdempotencyMiddleware(fluent: services.fluent))
     let memoryCompileWithByo = byoHermesMiddleware.map { memoryCompileBase.add(middleware: $0) } ?? memoryCompileBase
     let memoryCompileGroup = memoryCompileWithByo
-        .add(middleware: EntitlementMiddleware(requires: .memoryCompile, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: EntitlementMiddleware(requires: .memoryCompile, enforcementEnabled: services.billingEnforcementEnabled, hasUsableCredential: byoHasUsableCredential))
         .add(middleware: RateLimitMiddleware(policy: .memoryCompileByUser, storage: rateLimitStorage))
     memoryCompileController.addCompileRoutes(to: memoryCompileGroup)
 
@@ -2241,7 +2306,24 @@ func buildRouter(
             return await ingestionCapabilitiesService.capabilities(tenantID: tenantID).capabilities
         },
         publicBaseURL: ingestionPublicBaseURL,
-        chunkIndexer: chunkIndexer
+        chunkIndexer: chunkIndexer,
+        // Per-file and per-batch limits bound one request; nothing bounded a
+        // tenant's total until now, so a 5 GiB batch could simply be repeated.
+        storageQuota: StorageQuotaService(
+            fluent: services.fluent,
+            limits: StorageQuotaService.Limits(
+                // A configured 0 means "no growth"; omit the key entirely (or
+                // set a negative) for unlimited.
+                trial: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.trialBytes"), default: 5 * 1024 * 1024 * 1024)),
+                pro: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.proBytes"), default: 100 * 1024 * 1024 * 1024)),
+                ultimate: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.ultimateBytes"), default: 1024 * 1024 * 1024 * 1024)),
+                // A lapsed tenant keeps read and export, which is the whole
+                // content of the tier, so the ceiling only stops growth.
+                lapsed: 0
+            ),
+            enabled: reader.bool(forKey: ConfigKey("storage.quota.enabled"), default: true),
+            logger: Logger(label: "lv.storage-quota")
+        )
     )
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService, vaultAccess: vaultAccessService)
     ingestionController.addPublicSourceRoute(to: router)
@@ -2874,11 +2956,20 @@ func buildRouter(
     // needs the per-tenant key to seal API keys at rest). Preferences
     // controller has no crypto dependency so it mounts unconditionally.
     if let userCredentialStore {
-        let providersController = ProvidersController(
+        var providersController = ProvidersController(
             credentialStore: userCredentialStore,
             fluent: services.fluent,
             logger: Logger(label: "lv.me.providers")
         )
+        // Report availability from the registry the router actually consults,
+        // so a client cannot be told to collect a key for a provider this
+        // deployment has no adapter for. That mismatch is precisely what let
+        // the Gemini gap sit unnoticed: the pane offered a key field while the
+        // router had no way to spend it.
+        providersController.providerAvailability = { [providerRegistry] id in
+            guard let kind = ProviderKind(rawValue: id.rawValue) else { return false }
+            return await providerRegistry.isEnabled(kind)
+        }
         let providersGroup = router.group("/v1/me/providers")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
@@ -3077,7 +3168,17 @@ func buildRouter(
     SkillOutputsController(fluent: services.fluent, logger: skillsLogger).addRoutes(to: skillsGroup)
 
     // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
-    let jobsGroup = router.group("/v1/jobs").add(middleware: jwtAuthenticator)
+    // `/v1/jobs` runs `JobIntentClassifier` — a real LLM call — on every
+    // request, and had neither an entitlement nor a rate limit. A lapsed
+    // account could drive platform inference indefinitely through it.
+    let jobsGroup = router.group("/v1/jobs")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .jobsByUser, storage: rateLimitStorage))
+        .add(middleware: EntitlementMiddleware(
+            requires: .chat,
+            enforcementEnabled: services.billingEnforcementEnabled,
+            hasUsableCredential: byoHasUsableCredential
+        ))
     let jobAuthoring = JobAuthoring(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
@@ -3116,7 +3217,17 @@ func buildRouter(
             workflowService: workflowService
         )
         workflowWebhookController.addPublicRoutes(to: router)
-        let workflowsGroup = router.group("/v1/workflows").add(middleware: jwtAuthenticator)
+        // `Capability.workflowAutomation` was defined and mounted nowhere, so
+        // the studio — which dispatches LLM work per run — was open to any
+        // authenticated account including `lapsed` and `archived`.
+        let workflowsGroup = router.group("/v1/workflows")
+            .add(middleware: jwtAuthenticator)
+            .add(middleware: RateLimitMiddleware(policy: .workflowsByUser, storage: rateLimitStorage))
+            .add(middleware: EntitlementMiddleware(
+                requires: .workflowAutomation,
+                enforcementEnabled: services.billingEnforcementEnabled,
+                hasUsableCredential: byoHasUsableCredential
+            ))
         WorkflowController(
             service: workflowService,
             webhookController: workflowWebhookController,

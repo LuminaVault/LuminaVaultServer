@@ -40,6 +40,8 @@ struct HermesContainerManagerTests {
         fluent: Fluent,
         portStart: Int = 9000,
         portEnd: Int = 9100,
+        memoryLimit: String = "",
+        cpuLimit: String = "",
         now: @escaping @Sendable () -> Date = { Date() }
     ) throws -> HermesContainerManager {
         try HermesContainerManager(
@@ -52,7 +54,9 @@ struct HermesContainerManagerTests {
                 dataRootBase: "/tmp/lvtest",
                 portRangeStart: portStart,
                 portRangeEnd: portEnd,
-                idleTTLSeconds: 60
+                idleTTLSeconds: 60,
+                memoryLimit: memoryLimit,
+                cpuLimit: cpuLimit
             ),
             logger: Logger(label: "test.her240a"),
             now: now
@@ -91,6 +95,63 @@ struct HermesContainerManagerTests {
                 .first()
             #expect(row?.containerName == first.containerName)
             #expect(row?.xaiConnectedAt == nil)
+        }
+    }
+
+    /// Tenant containers run `--restart=unless-stopped` with no ceiling, so
+    /// one tenant whose agent loops on a large context could OOM the node and
+    /// take every other tenant — and the API — down with it.
+    @Test
+    func `configured resource limits reach docker run`() async throws {
+        try await withTestFluent(label: "lv.test.her240a.limits") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            try await Self.truncate(fluent)
+
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "her240a-limits").save(on: fluent.db())
+
+            let docker = StubDockerExec()
+            let manager = try Self.makeManager(
+                docker: docker,
+                fluent: fluent,
+                memoryLimit: "512m",
+                cpuLimit: "1.5"
+            )
+            _ = try await manager.ensureRunning(tenantID: tenantID)
+
+            let args = await docker.invocations.first { $0.args.first == "run" }?.args ?? []
+            #expect(args.contains("--memory"))
+            #expect(args.contains("512m"))
+            #expect(args.contains("--cpus"))
+            #expect(args.contains("1.5"))
+            // The flags must precede the image, or docker reads them as
+            // arguments to the container's own entrypoint.
+            let imageIndex = args.firstIndex(of: "hermes:test") ?? 0
+            #expect((args.firstIndex(of: "--memory") ?? .max) < imageIndex)
+            #expect((args.firstIndex(of: "--cpus") ?? .max) < imageIndex)
+        }
+    }
+
+    /// A host whose cgroup driver cannot honour a limit configures it empty,
+    /// and must then get a command with no flag rather than an empty value.
+    @Test
+    func `unset resource limits emit no flags`() async throws {
+        try await withTestFluent(label: "lv.test.her240a.nolimits") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            try await Self.truncate(fluent)
+
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "her240a-nolimits").save(on: fluent.db())
+
+            let docker = StubDockerExec()
+            let manager = try Self.makeManager(docker: docker, fluent: fluent)
+            _ = try await manager.ensureRunning(tenantID: tenantID)
+
+            let args = await docker.invocations.first { $0.args.first == "run" }?.args ?? []
+            #expect(args.contains("--memory") == false)
+            #expect(args.contains("--cpus") == false)
         }
     }
 

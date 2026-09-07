@@ -20,6 +20,27 @@ enum ProviderError: Error {
     case network(provider: ProviderKind, underlying: any Error)
     case creditExhausted(provider: ProviderKind, status: Int, body: String?)
 
+    /// Whether this failure is evidence about the *credential* rather than
+    /// about the provider's current health.
+    ///
+    /// Only an explicit auth rejection qualifies. A 429, a 500, a timeout or
+    /// a DNS failure says the provider is having a bad minute; it says
+    /// nothing about whether the user's key is valid, and recording it
+    /// against the credential tells the user their key is broken when it is
+    /// not. A 400 or 404 usually means the *ping* was wrong — an unknown
+    /// model name, say — which is our bug, not their key.
+    ///
+    /// `creditExhausted` is deliberately included: the key authenticated,
+    /// so it is real, but it cannot currently buy anything, and the user does
+    /// need to be told that about their credential specifically.
+    var isCredentialRejection: Bool {
+        switch self {
+        case let .permanent(_, status, _): status == 401 || status == 403
+        case .creditExhausted: true
+        case .transient, .network: false
+        }
+    }
+
     /// True when the dispatcher should try the next fallback candidate.
     var isRecoverable: Bool {
         switch self {

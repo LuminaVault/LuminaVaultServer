@@ -18,15 +18,31 @@ struct EntitlementMiddleware: RouterMiddleware {
     /// on a cold cache. It is supplied on the groups where the Hermes signal is
     /// unavailable, and consulted only after the free check has failed.
     let hasUsableCredential: (@Sendable (UUID) async -> Bool)?
+    /// Whether this route spends *our* money no matter whose Hermes or key the
+    /// tenant brought.
+    ///
+    /// Transcription (Groq), text-to-speech (OpenAI) and image embeddings
+    /// (Cohere) each hold a single platform key with no `UserCredentialStore`
+    /// and no `credentialMode`, so there is no bring-your-own path to them.
+    /// Exempting them from the paywall handed a BYO user 200 transcriptions,
+    /// 1000 TTS calls and 200 vision embeds a day on our account.
+    ///
+    /// This cannot be decided from the capability: `/v1/transcribe` and
+    /// `/v1/tts` both require `.chat`, the same capability as `/v1/llm`, which
+    /// genuinely does run on the user's own key. It is a property of the
+    /// route, so it is declared at the mount.
+    let platformFunded: Bool
 
     init(
         requires: Capability,
         enforcementEnabled: Bool,
-        hasUsableCredential: (@Sendable (UUID) async -> Bool)? = nil
+        hasUsableCredential: (@Sendable (UUID) async -> Bool)? = nil,
+        platformFunded: Bool = false
     ) {
         self.requires = requires
         self.enforcementEnabled = enforcementEnabled
         self.hasUsableCredential = hasUsableCredential
+        self.platformFunded = platformFunded
     }
 
     func handle(
@@ -55,6 +71,9 @@ struct EntitlementMiddleware: RouterMiddleware {
     /// zero-I/O read there. The credential lookup only runs when that is
     /// absent and the capability could actually be exempted.
     private func byoExemption(user: User, context: Context) async throws -> BYOExemption? {
+        // "We are not the ones being billed" is the whole justification for the
+        // exemption, and it does not hold here.
+        guard !platformFunded else { return nil }
         guard !requires.requiresUltimate, user.tierEnum != .archived else { return nil }
 
         if let exemption = BYOEntitlementPolicy.exemption(
