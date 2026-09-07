@@ -197,8 +197,6 @@ Recorded so they are not rediscovered:
 - **No storage quota** — per file (except 10 MiB in memory-compile), per tenant
   or per vault. Everything also lands in the nightly backup with 7/4/6
   retention.
-- **Rate limits are not tier-aware.** A lapsed free user and an Ultimate
-  subscriber get identical buckets.
 - **No per-tenant USD cap.** `cost_ledger` now records managed spend, but
   `billing.managedDailyCapUsdMicros` defaults to 0 (disabled) — it ships as a
   meter, and setting a cap needs real numbers from it first.

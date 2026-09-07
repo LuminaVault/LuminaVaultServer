@@ -1,5 +1,6 @@
 import Foundation
 import Hummingbird
+import LuminaVaultShared
 
 /// Per-route rate-limit policy.
 struct RateLimitPolicy {
@@ -8,6 +9,55 @@ struct RateLimitPolicy {
     /// Builds the bucket key from the request + context. Use IP, tenantID,
     /// (IP, email), etc. depending on what the route is rate-limiting.
     let keyBuilder: @Sendable (Request, AppRequestContext) -> String
+    /// Scales `max` by the caller's tier. `nil` means every caller shares the
+    /// flat `max`, which is right for the IP-keyed auth routes: those run
+    /// before there *is* an identity, and a login attempt costs the same
+    /// whoever makes it.
+    ///
+    /// It is not right for the inference routes. Before this, a `lapsed`
+    /// account and an Ultimate subscriber were handed identical buckets on
+    /// `/v1/llm` — the free rider got the paying customer's ceiling, and the
+    /// paying customer got the free rider's.
+    let tierScale: (@Sendable (UserTier?) -> Double)?
+
+    init(
+        max: Int,
+        window: TimeInterval,
+        tierScale: (@Sendable (UserTier?) -> Double)? = nil,
+        keyBuilder: @escaping @Sendable (Request, AppRequestContext) -> String
+    ) {
+        self.max = max
+        self.window = window
+        self.tierScale = tierScale
+        self.keyBuilder = keyBuilder
+    }
+
+    /// The effective ceiling for this request. Floored at 1 so a scale can
+    /// throttle a tier hard without ever locking it out entirely — a 0 here
+    /// would 429 every request, which is a different decision (an
+    /// entitlement) made in a different middleware.
+    func effectiveMax(for tier: UserTier?) -> Int {
+        guard let tierScale else { return max }
+        return Swift.max(1, Int((Double(max) * tierScale(tier)).rounded()))
+    }
+
+    /// The standard ladder for user-keyed, capacity-sensitive routes.
+    ///
+    /// `max` is the trial/baseline budget. Paid tiers get headroom above it;
+    /// `lapsed` gets a fraction, enough that a BYO tenant (whom the paywall
+    /// deliberately exempts) still works while an idle expired account cannot
+    /// sit on the platform's capacity. `archived` is closed by entitlement
+    /// long before it reaches here, so its scale is belt-and-braces.
+    @Sendable
+    static func standardTierScale(_ tier: UserTier?) -> Double {
+        switch tier {
+        case .ultimate: 4
+        case .pro: 2
+        case .trial, .none: 1
+        case .lapsed: 0.34
+        case .archived: 0.1
+        }
+    }
 }
 
 /// Token-bucket rate limiter on top of any `PersistDriver`. Hummingbird
@@ -25,6 +75,10 @@ struct RateLimitMiddleware: RouterMiddleware {
         next: (Request, Context) async throws -> Response
     ) async throws -> Response {
         let key = "rl:" + policy.keyBuilder(request, context)
+        // Read the tier from the identity the authenticator already attached;
+        // no DB work, and `nil` (an unauthenticated or auth-optional route)
+        // falls back to the flat `max`.
+        let limit = policy.effectiveMax(for: context.identity?.tierEnum)
         let now = Date().timeIntervalSince1970
 
         let current: BucketState = await (try? storage.get(key: key, as: BucketState.self))
@@ -38,7 +92,7 @@ struct RateLimitMiddleware: RouterMiddleware {
         let ttl = Duration.seconds(Int(policy.window) + 5)
         try await storage.set(key: key, value: bucket, expires: ttl)
 
-        if bucket.count > policy.max {
+        if bucket.count > limit {
             let retryAfter = max(1, Int(policy.window - (now - bucket.start)))
             throw HTTPError(
                 .tooManyRequests,
@@ -172,27 +226,27 @@ extension RateLimitPolicy {
     /// Keyed via `userOrIPKey` so a single bad actor with one account cannot
     /// burn the shared per-IP bucket for everyone behind the same NAT, while
     /// still degrading gracefully if the route is ever called unauth'd.
-    static let chatByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let chatByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// Audit S9 — `/v1/query` runs the retrieval + agent loop (embedding lookup
     /// + one-or-more Hermes/LLM calls) per request. Previously uncapped → a
     /// single account could drive unbounded Mtok cost / DoS. Same budget as chat.
-    static let queryByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let queryByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// Audit S9 — `/v1/conversations` is the multi-turn chat pipeline (same
     /// retrieval + streaming cost as chat). Previously uncapped.
-    static let conversationByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
-    static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
+    static let conversationByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// HER-240 / spec ticket #2: identical policy to kbCompileByUser, exposed
     /// under the new memory-compile name. Both coexist until the legacy
     /// /v1/kb-compile alias is retired.
-    static let memoryCompileByUser = RateLimitPolicy(max: 5, window: 60, keyBuilder: userOrIPKey)
-    static let captureByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let memoryCompileByUser = RateLimitPolicy(max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let captureByUser = RateLimitPolicy(max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
     /// Resumable ingestion uses 8 MiB chunks, so a 2 GiB file needs 256
     /// idempotent PUTs. Keep abuse bounded without throttling valid media.
     static let ingestionUploadByUser = RateLimitPolicy(max: 600, window: 60, keyBuilder: userOrIPKey)
     /// HER-91: vault export streams the entire tenant tree. Expensive on
     /// disk + bandwidth, so cap at a handful per 5-minute window per user.
-    static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, keyBuilder: userOrIPKey)
+    static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// HER-85: SOUL.md is small but writes hit two filesystem paths and could
     /// be abused to spam Hermes profile dirs. Cheap per-user bucket.
     static let soulByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
@@ -202,16 +256,16 @@ extension RateLimitPolicy {
     /// invocations so a user can't burn their daily Mtok budget by hammering
     /// the endpoint. Cron-/event-triggered runs bypass this middleware.
     /// Final window/max numbers to be tuned in HER-148 sub-tickets.
-    static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
+    static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// `/v1/jobs` runs an LLM classifier per request (`JobIntentClassifier`),
     /// so it is a paid-inference route wearing a CRUD shape. It had no limit
     /// at all: a loop over `POST /v1/jobs/detect` was unbounded spend.
     /// Matched to `kbCompileByUser`, the nearest per-request-inference route.
-    static let jobsByUser = RateLimitPolicy(max: 20, window: 60, keyBuilder: userOrIPKey)
+    static let jobsByUser = RateLimitPolicy(max: 20, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// `/v1/workflows` had no limit either. Studio traffic is bursty — a
     /// canvas save touches several endpoints — so this is looser than jobs
     /// and exists to bound a runaway client, not to shape normal editing.
-    static let workflowsByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let workflowsByUser = RateLimitPolicy(max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
 
     /// HER-196 — `/v1/achievements` and `/v1/achievements/recent` are
     /// read-only catalog joins; iOS pulls them on Settings → Forms enter
