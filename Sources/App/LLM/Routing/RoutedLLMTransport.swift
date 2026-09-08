@@ -254,6 +254,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                         provider: providerID,
                         model: candidate.modelID,
                         toolNames: toolNames,
+                        toolCallCount: nil,
                         failoverCount: fallbackCount,
                         tokensIn: traceIn,
                         tokensOut: traceOut,

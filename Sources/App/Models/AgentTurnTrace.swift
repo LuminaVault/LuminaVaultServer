@@ -12,7 +12,33 @@ import Foundation
 /// `AgentTurnTraceRoundTripTests` asserts the shape that comes back rather
 /// than merely that a value came back.
 struct AgentToolCalls: Codable, Equatable, Sendable {
+    /// Tool names in call order. Can be empty while `count` is not: the
+    /// streaming chat path observes tool *invocations* (`ChatStreamChunk
+    /// .toolCallID`) without ever seeing their names, so "3 tools, names
+    /// unknown" is a real and common state that must stay expressible.
     var names: [String]
+    /// How many tools ran. Authoritative — `names` is best-effort detail.
+    var count: Int
+
+    init(names: [String]) {
+        self.names = names
+        count = names.count
+    }
+
+    /// For callers that can count invocations but cannot name them.
+    init(count: Int, names: [String] = []) {
+        self.names = names
+        self.count = Swift.max(count, names.count)
+    }
+
+    private enum CodingKeys: String, CodingKey { case names, count }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        names = try container.decodeIfPresent([String].self, forKey: .names) ?? []
+        // Rows written before `count` existed carry only names.
+        count = try container.decodeIfPresent(Int.self, forKey: .count) ?? names.count
+    }
 }
 
 /// One routed LLM call, and what it actually did (M123).

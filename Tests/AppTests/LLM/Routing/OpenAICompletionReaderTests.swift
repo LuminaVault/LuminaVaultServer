@@ -80,3 +80,58 @@ struct OpenAICompletionReaderTests {
         #expect(OpenAICompletionReader.toolCallNames(from: withProse).isEmpty)
     }
 }
+
+/// "3 tools, names unknown" is a real state, not a degenerate one.
+///
+/// The streaming chat path observes tool *invocations* — `ChatStreamChunk`
+/// carries a `toolCallID` and never a name — so a chat turn can know that
+/// three tools ran without knowing which. The record has to hold that without
+/// collapsing it into "no tools", which is what a user would otherwise be
+/// shown for every streamed turn.
+struct AgentToolCallsShapeTests {
+    @Test
+    func `names imply a matching count`() {
+        let record = AgentToolCalls(names: ["a", "b"])
+        #expect(record.count == 2)
+        #expect(record.names == ["a", "b"])
+    }
+
+    @Test
+    func `a count can stand without names`() {
+        let record = AgentToolCalls(count: 3)
+        #expect(record.count == 3)
+        #expect(record.names.isEmpty)
+    }
+
+    /// Never report fewer tools than we have names for.
+    @Test
+    func `a count is never below the number of names`() {
+        #expect(AgentToolCalls(count: 0, names: ["a", "b"]).count == 2)
+    }
+
+    /// Rows written before `count` existed carry only names, and must decode.
+    @Test
+    func `a legacy record without a count infers it from names`() throws {
+        let legacy = Data(#"{"names":["a","b","c"]}"#.utf8)
+        let decoded = try JSONDecoder().decode(AgentToolCalls.self, from: legacy)
+        #expect(decoded.count == 3)
+    }
+
+    @Test
+    func `an empty record means the turn ran without tools`() throws {
+        let empty = Data(#"{"names":[],"count":0}"#.utf8)
+        let decoded = try JSONDecoder().decode(AgentToolCalls.self, from: empty)
+        #expect(decoded.names.isEmpty)
+        // An empty record's count agrees with its names, both saying "none ran".
+        #expect(decoded.count == decoded.names.count)
+    }
+
+    /// nil only when we know nothing at all; an empty record is an answer.
+    @Test
+    func `the recorder distinguishes no-tools from no-information`() {
+        #expect(AgentTurnTraceRecorder.toolRecord(names: nil, count: nil) == nil)
+        #expect(AgentTurnTraceRecorder.toolRecord(names: [], count: nil)?.names.isEmpty == true)
+        #expect(AgentTurnTraceRecorder.toolRecord(names: nil, count: 3)?.count == 3)
+        #expect(AgentTurnTraceRecorder.toolRecord(names: ["a"], count: 9)?.names == ["a"])
+    }
+}

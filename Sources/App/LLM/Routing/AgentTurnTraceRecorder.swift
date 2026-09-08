@@ -26,6 +26,10 @@ actor AgentTurnTraceRecorder {
         /// nil when the response body could not be read — distinct from an
         /// empty list, which means the model genuinely called nothing.
         let toolNames: [String]?
+        /// Set by callers that can count tool invocations but not name them —
+        /// the streaming chat path sees `ChatStreamChunk.toolCallID` and never
+        /// a name. Ignored when `toolNames` is present.
+        let toolCallCount: Int?
         let failoverCount: Int
         let tokensIn: Int
         let tokensOut: Int
@@ -34,13 +38,25 @@ actor AgentTurnTraceRecorder {
         let credentialMode: LLMBrainMode?
     }
 
+    /// nil only when we know nothing — neither names nor a count. An empty
+    /// record means "ran without tools", which is a real answer.
+    static func toolRecord(names: [String]?, count: Int?) -> AgentToolCalls? {
+        if let names {
+            return AgentToolCalls(names: names)
+        }
+        if let count {
+            return AgentToolCalls(count: count)
+        }
+        return nil
+    }
+
     func record(_ turn: Turn) async {
         let row = AgentTurnTrace(
             tenantID: turn.tenantID,
             conversationMessageID: turn.conversationMessageID,
             provider: turn.provider.rawValue,
             model: turn.model,
-            toolCalls: turn.toolNames.map { AgentToolCalls(names: $0) },
+            toolCalls: Self.toolRecord(names: turn.toolNames, count: turn.toolCallCount),
             failoverCount: max(0, turn.failoverCount),
             tokensIn: Int64(max(0, turn.tokensIn)),
             tokensOut: Int64(max(0, turn.tokensOut)),

@@ -56,6 +56,7 @@ struct AgentTurnTraceRoundTripTests {
                 provider: .openai,
                 model: "gpt-4o-mini",
                 toolNames: ["search_memory", "read_vault_file"],
+                toolCallCount: nil,
                 failoverCount: 2,
                 tokensIn: 1200,
                 tokensOut: 340,
@@ -97,7 +98,7 @@ struct AgentTurnTraceRoundTripTests {
             await recorder.record(.init(
                 tenantID: tenantID, conversationMessageID: nil,
                 provider: .anthropic, model: "claude-3-5-haiku-20241022",
-                toolNames: ["one"], failoverCount: 0,
+                toolNames: ["one"], toolCallCount: nil, failoverCount: 0,
                 tokensIn: 1, tokensOut: 1, estimatedCostUsdMicros: 1, latencyMs: 1,
                 credentialMode: .byok
             ))
@@ -129,13 +130,13 @@ struct AgentTurnTraceRoundTripTests {
 
             await recorder.record(.init(
                 tenantID: tenantID, conversationMessageID: nil,
-                provider: .openai, model: "m", toolNames: [], failoverCount: 0,
+                provider: .openai, model: "m", toolNames: [], toolCallCount: nil, failoverCount: 0,
                 tokensIn: 0, tokensOut: 0, estimatedCostUsdMicros: 0, latencyMs: 0,
                 credentialMode: nil
             ))
             await recorder.record(.init(
                 tenantID: tenantID, conversationMessageID: nil,
-                provider: .openai, model: "m", toolNames: nil, failoverCount: 0,
+                provider: .openai, model: "m", toolNames: nil, toolCallCount: nil, failoverCount: 0,
                 tokensIn: 0, tokensOut: 0, estimatedCostUsdMicros: 0, latencyMs: 0,
                 credentialMode: nil
             ))
