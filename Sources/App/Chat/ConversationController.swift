@@ -399,6 +399,45 @@ struct ConversationController {
         return Response(status: .noContent)
     }
 
+    /// Records what a streamed chat turn actually did, attached to the message
+    /// the user is looking at.
+    ///
+    /// The streaming path cannot name the tools it ran — `ChatStreamChunk`
+    /// carries a `toolCallID` and no name — so this stores the count and
+    /// leaves names empty; the non-streaming transport records names where it
+    /// has them.
+    ///
+    /// Provider and model were already handed to `enqueueOutput`, but that
+    /// writes to `memory_index_jobs`, a work queue whose rows are consumed and
+    /// removed. Nothing durable held the model for a given turn, which is why
+    /// a thread reopened on another device lost its model badge.
+    ///
+    /// Deliberately a separate method: inlining it pushed the streaming
+    /// closure past the type checker's limit.
+    private func recordTurnTrace(
+        tenantID: UUID,
+        messageID: UUID,
+        route: ModelProvenanceDTO?,
+        toolCallCount: Int
+    ) async {
+        let provider = route.flatMap { ProviderID(rawValue: $0.provider) } ?? .openRouter
+        let turn = AgentTurnTraceRecorder.Turn(
+            tenantID: tenantID,
+            conversationMessageID: messageID,
+            provider: provider,
+            model: route?.model ?? "unknown",
+            toolNames: nil,
+            toolCallCount: toolCallCount,
+            failoverCount: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            estimatedCostUsdMicros: 0,
+            latencyMs: 0,
+            credentialMode: LLMRoutingContext.credentialMode
+        )
+        await AgentTurnTraceRecorder(fluent: fluent, logger: logger).record(turn)
+    }
+
     private func removeExpiredLocalExecutions(tenantID: UUID) async throws {
         let expired = try await PreparedLocalExecution.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$expiresAt < Date())
@@ -741,6 +780,12 @@ struct ConversationController {
                         content: assistantBuffer,
                         provider: route?.provider,
                         model: route?.model
+                    )
+                    await recordTurnTrace(
+                        tenantID: memoryTenantID,
+                        messageID: messageID,
+                        route: route,
+                        toolCallCount: toolCallIDs.count
                     )
                     conversation.updatedAt = Date()
                     try await conversation.save(on: fluent.db())

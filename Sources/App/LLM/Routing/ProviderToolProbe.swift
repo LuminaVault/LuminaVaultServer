@@ -64,18 +64,10 @@ enum ProviderToolProbe {
     /// tool does not: a model narrating "I would call lookup_job_status" is
     /// precisely the failure being detected.
     static func verdict(from data: Data) -> Verdict {
-        guard
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = root["choices"] as? [[String: Any]],
-            let message = choices.first?["message"] as? [String: Any]
-        else {
+        guard let message = OpenAICompletionReader.assistantMessage(from: data) else {
             return .unknown
         }
-        if let toolCalls = message["tool_calls"] as? [[String: Any]], !toolCalls.isEmpty {
-            return .supported
-        }
-        // Legacy single-function shape, still emitted by some gateways.
-        if let functionCall = message["function_call"] as? [String: Any], functionCall["name"] != nil {
+        if !OpenAICompletionReader.toolCallNames(in: message).isEmpty {
             return .supported
         }
         // A reply with neither a tool call nor content tells us nothing; a

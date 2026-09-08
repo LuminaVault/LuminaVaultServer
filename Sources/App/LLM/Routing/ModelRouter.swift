@@ -90,6 +90,13 @@ enum LLMRoutingContext {
     /// the current routed call. Managed mode must never silently spend a
     /// user's BYOK balance, and BYOK mode must never fall back to the pool.
     @TaskLocal static var credentialMode: LLMBrainMode?
+    /// The assistant turn this routed call produced, when there is one.
+    ///
+    /// Lets `agent_turn_traces` attach a trace to the message a user is
+    /// looking at. Nil for routed calls that are not conversation turns —
+    /// skill runs, workflow nodes, one-shot classifiers — whose traces are
+    /// still recorded, just unattached.
+    @TaskLocal static var conversationMessageID: UUID?
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

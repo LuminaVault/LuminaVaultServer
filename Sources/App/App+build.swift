@@ -1325,6 +1325,15 @@ func buildRouter(
         logger: Logger(label: "lv.cost-ledger")
     )
 
+    // What each routed turn actually did. The model was already computed and
+    // sent on the live response but never persisted — so a chat thread
+    // reopened on another device lost its model badge — and the tools a model
+    // called were never recorded anywhere at all.
+    let agentTurnTraceRecorder = AgentTurnTraceRecorder(
+        fluent: services.fluent,
+        logger: Logger(label: "lv.agent-trace")
+    )
+
     let parallelStore = ParallelExecutionStore(
         fluent: services.fluent,
         logger: Logger(label: "lv.cerberus.parallel.store")
@@ -1340,6 +1349,7 @@ func buildRouter(
         logger: routingLogger,
         usageMeter: usageMeterService,
         costLedger: costLedgerService,
+        traceRecorder: agentTurnTraceRecorder,
         failoverLogger: providerFailoverLogger,
         routerTelemetry: routerTelemetry,
         parallelExecutor: parallelExecutor
