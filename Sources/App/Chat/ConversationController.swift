@@ -11,6 +11,7 @@ import SQLKit
 extension ConversationDTO: @retroactive ResponseEncodable {}
 extension ConversationListResponse: @retroactive ResponseEncodable {}
 extension ConversationDetailResponse: @retroactive ResponseEncodable {}
+extension AgentTurnTracesResponse: @retroactive ResponseEncodable {}
 extension ConversationPrepareResponse: @retroactive ResponseEncodable {}
 extension ConversationCommitResponse: @retroactive ResponseEncodable {}
 extension LocalToolInvokeResponse: @retroactive ResponseEncodable {}
@@ -96,6 +97,7 @@ struct ConversationController {
         router.post("", use: create)
         router.get("", use: list)
         router.get("/:id", use: getOne)
+        router.get("/:id/traces", use: traces)
         router.delete("/:id", use: delete)
         (streamRouter ?? router).post("/:id/messages/stream", use: streamReply)
         if hybridExecutionEnabled {
@@ -169,10 +171,52 @@ struct ConversationController {
             .filter(\.$conversationID == id)
             .sort(\.$createdAt, .ascending)
             .all()
+        // One query for the whole thread's traces rather than one per
+        // message: a long conversation would otherwise issue a query per turn
+        // just to render a badge.
+        let messageIDs = messages.compactMap(\.id)
+        let traces = try await AgentTurnTrace.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$conversationMessageID ~~ messageIDs)
+            .all()
+        var traceByMessage: [UUID: AgentTurnTrace] = [:]
+        for trace in traces {
+            guard let messageID = trace.conversationMessageID else { continue }
+            traceByMessage[messageID] = trace
+        }
         return try ConversationDetailResponse(
             conversation: conversation.toDTO(),
-            messages: messages.map { try $0.toDTO() }
+            messages: messages.map { try $0.toDTO(trace: $0.id.flatMap { traceByMessage[$0] }) }
         )
+    }
+
+    /// `GET /v1/conversations/:id/traces` — what each turn in this thread
+    /// actually did.
+    ///
+    /// The detail response already carries the summary (model, tool count).
+    /// This is the expansion behind it: which tools ran, whether the preferred
+    /// provider failed and we fell over, tokens, cost and latency. Kept a
+    /// separate call so opening a thread does not pay for detail nobody has
+    /// asked to see yet.
+    @Sendable
+    func traces(_: Request, ctx: AppRequestContext) async throws -> AgentTurnTracesResponse {
+        let id = try Self.parseID(ctx)
+        let tenantID = try ctx.requireTenantID()
+        // Proves the thread belongs to this tenant before any trace is read.
+        _ = try await fetch(tenantID: tenantID, id: id)
+        let messageIDs = try await ConversationMessage.query(on: fluent.db())
+            .filter(\.$conversationID == id)
+            .all()
+            .compactMap(\.id)
+        guard !messageIDs.isEmpty else {
+            return AgentTurnTracesResponse(traces: [])
+        }
+        let rows = try await AgentTurnTrace.query(on: fluent.db())
+            .filter(\.$tenantID == tenantID)
+            .filter(\.$conversationMessageID ~~ messageIDs)
+            .sort(\.$occurredAt, .ascending)
+            .all()
+        return AgentTurnTracesResponse(traces: rows.compactMap { $0.toDTO() })
     }
 
     @Sendable

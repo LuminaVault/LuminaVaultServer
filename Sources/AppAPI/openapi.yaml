@@ -3824,6 +3824,34 @@ paths:
         '404':
           description: Conversation not found.
 
+  /v1/conversations/{id}/traces:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Conversations]
+      operationId: conversationTraces
+      summary: What each turn in this thread actually did.
+      description: |
+        The expansion behind the summary on `ConversationMessageDTO`: which
+        tools ran, whether the preferred provider failed and we fell over to
+        another, tokens, cost and latency.
+
+        A separate call so opening a thread does not pay for detail nobody has
+        asked to see. `toolNames` may be empty while `toolCallCount` is not —
+        the streaming path observes tool invocations without seeing their
+        names.
+      responses:
+        '200':
+          description: Traces for this conversation's turns, oldest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentTurnTracesResponse' }
+        '404':
+          description: Conversation not found.
+
   /v1/conversations/{id}/messages/stream:
     parameters:
       - in: path
@@ -11113,7 +11141,71 @@ components:
           type: array
           items: { type: string, format: uuid }
         parallelExecutionID: { type: string, format: uuid }
+        provider:
+          allOf: [{ $ref: '#/components/schemas/ProviderID' }]
+          nullable: true
+          description: Which provider produced this turn. Absent on user turns.
+        model:
+          type: string
+          nullable: true
+          description: |
+            Which model produced this turn.
+
+            Previously the wire carried neither this nor `toolCallCount`, so a
+            client could show a model badge only for turns the device itself
+            produced and a thread reopened elsewhere lost it.
+        toolCallCount:
+          type: integer
+          nullable: true
+          description: |
+            How many tools the assistant invoked. Zero is a real answer — the
+            turn ran without tools — and null means unknown.
         createdAt: { type: string, format: date-time }
+
+    AgentTurnTraceDTO:
+      type: object
+      required: [id, provider, model, toolNames, toolCallCount, failoverCount, tokensIn, tokensOut, estimatedCostUsdMicros, latencyMs, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        conversationMessageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Null for routed calls that are not conversation turns — skill runs,
+            workflow nodes, one-shot classifiers.
+        provider: { $ref: '#/components/schemas/ProviderID' }
+        model: { type: string }
+        toolNames:
+          type: array
+          items: { type: string }
+          description: Tool names in call order; may be empty when only a count is known.
+        toolCallCount: { type: integer }
+        failoverCount:
+          type: integer
+          description: |
+            Candidates tried before this one succeeded. Greater than zero means
+            the preferred provider failed and we fell over.
+        tokensIn: { type: integer }
+        tokensOut: { type: integer }
+        estimatedCostUsdMicros:
+          type: integer
+          description: |
+            Micro-USD. Whose money depends on `credentialMode` — ours for
+            `managed`, the user's own provider balance for `byok`.
+        latencyMs: { type: integer }
+        credentialMode:
+          allOf: [{ $ref: '#/components/schemas/LLMBrainMode' }]
+          nullable: true
+        occurredAt: { type: string, format: date-time }
+
+    AgentTurnTracesResponse:
+      type: object
+      required: [traces]
+      properties:
+        traces:
+          type: array
+          items: { $ref: '#/components/schemas/AgentTurnTraceDTO' }
 
     ConversationCreateRequest:
       type: object

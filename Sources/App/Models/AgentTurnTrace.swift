@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 /// The tool names for one turn, wrapped in a **keyed** type.
 ///
@@ -97,5 +98,28 @@ final class AgentTurnTrace: Model, TenantModel, @unchecked Sendable {
         self.estimatedCostUsdMicros = estimatedCostUsdMicros
         self.latencyMs = latencyMs
         self.credentialMode = credentialMode
+    }
+}
+
+extension AgentTurnTrace {
+    /// nil when the row has no id yet — it has not been saved, so there is
+    /// nothing a client could reference.
+    func toDTO() -> AgentTurnTraceDTO? {
+        guard let id, let providerID = ProviderID(rawValue: provider) else { return nil }
+        return AgentTurnTraceDTO(
+            id: id,
+            conversationMessageId: conversationMessageID,
+            provider: providerID,
+            model: model,
+            toolNames: toolCalls?.names ?? [],
+            toolCallCount: toolCalls?.count ?? 0,
+            failoverCount: failoverCount,
+            tokensIn: Int(tokensIn),
+            tokensOut: Int(tokensOut),
+            estimatedCostUsdMicros: Int(estimatedCostUsdMicros),
+            latencyMs: Int(latencyMs),
+            credentialMode: credentialMode.flatMap(LLMBrainMode.init(rawValue:)),
+            occurredAt: occurredAt ?? Date()
+        )
     }
 }
