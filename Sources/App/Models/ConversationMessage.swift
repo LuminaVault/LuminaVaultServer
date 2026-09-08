@@ -48,7 +48,10 @@ final class ConversationMessage: Model, @unchecked Sendable {
     /// Convert to the wire DTO. Defaults `role` to `.user` if the row
     /// somehow contains an unknown string — defensive only; the API
     /// layer rejects unknown roles before insert.
-    func toDTO() throws -> ConversationMessageDTO {
+    /// `trace` supplies the model that produced this turn, which lives in
+    /// `agent_turn_traces` rather than on the message row. Passing nil yields
+    /// the previous shape exactly — the badge fields simply stay absent.
+    func toDTO(trace: AgentTurnTrace? = nil) throws -> ConversationMessageDTO {
         try ConversationMessageDTO(
             id: requireID(),
             conversationId: conversationID,
@@ -56,6 +59,12 @@ final class ConversationMessage: Model, @unchecked Sendable {
             content: content,
             sourceMemoryIDs: sourceMemoryIDs,
             parallelExecutionID: parallelExecutionID,
+            provider: trace.flatMap { ProviderID(rawValue: $0.provider) },
+            model: trace?.model,
+            // The message row is authoritative for the count — it is written
+            // in the same transaction as the message itself. The trace is only
+            // consulted for a turn that predates that column being populated.
+            toolCallCount: toolCallCount,
             createdAt: createdAt ?? Date()
         )
     }

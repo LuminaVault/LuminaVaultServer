@@ -37,6 +37,72 @@ struct AgentTurnTraceRoundTripTests {
         try await sql.raw("DELETE FROM users WHERE username LIKE 'trace-%'").run()
     }
 
+    /// A trace names the model, the tools and the cost of a turn. Leaking one
+    /// across tenants would disclose another user's activity, so the query is
+    /// filtered on `tenant_id` and not merely on the message ids it was handed.
+    @Test
+    func `traces are scoped to their tenant`() async throws {
+        try await withTestFluent(label: "lv.test.trace.isolation") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            try await Self.truncate(fluent)
+
+            let owner = UUID()
+            let other = UUID()
+            try await Self.makeUser(owner, "trace-owner").save(on: fluent.db())
+            try await Self.makeUser(other, "trace-other").save(on: fluent.db())
+
+            let recorder = AgentTurnTraceRecorder(fluent: fluent, logger: Logger(label: "test.trace"))
+            for tenant in [owner, other] {
+                await recorder.record(.init(
+                    tenantID: tenant, conversationMessageID: nil,
+                    provider: .openai, model: "gpt-4o-mini",
+                    toolNames: ["secret_tool"], toolCallCount: nil, failoverCount: 0,
+                    tokensIn: 1, tokensOut: 1, estimatedCostUsdMicros: 1, latencyMs: 1,
+                    credentialMode: .managed
+                ))
+            }
+
+            let ownerRows = try await AgentTurnTrace.query(on: fluent.db())
+                .filter(\.$tenantID == owner).all()
+            #expect(ownerRows.count == 1)
+            #expect(ownerRows.allSatisfy { $0.tenantID == owner })
+        }
+    }
+
+    /// The DTO is what a client sees; it must not invent a count for a turn
+    /// whose tools we never learned.
+    @Test
+    func `the DTO reports names and counts as recorded`() async throws {
+        try await withTestFluent(label: "lv.test.trace.dto") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            try await Self.truncate(fluent)
+
+            let tenantID = UUID()
+            try await Self.makeUser(tenantID, "trace-dto").save(on: fluent.db())
+            let recorder = AgentTurnTraceRecorder(fluent: fluent, logger: Logger(label: "test.trace"))
+            // Streaming shape: a count, no names.
+            await recorder.record(.init(
+                tenantID: tenantID, conversationMessageID: nil,
+                provider: .anthropic, model: "claude-sonnet-4-6",
+                toolNames: nil, toolCallCount: 3, failoverCount: 1,
+                tokensIn: 10, tokensOut: 20, estimatedCostUsdMicros: 30, latencyMs: 40,
+                credentialMode: .byok
+            ))
+
+            let row = try #require(
+                try await AgentTurnTrace.query(on: fluent.db()).filter(\.$tenantID == tenantID).first()
+            )
+            let dto = try #require(row.toDTO())
+            #expect(dto.toolCallCount == 3)
+            #expect(dto.toolNames.isEmpty, "the streaming path never learned the names")
+            #expect(dto.failoverCount == 1)
+            #expect(dto.credentialMode == .byok)
+            #expect(dto.provider == .anthropic)
+        }
+    }
+
     /// The assertion that matters: tool names come back as names, not as a
     /// JSON string that happens to contain them.
     @Test

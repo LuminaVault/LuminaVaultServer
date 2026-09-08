@@ -23,7 +23,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         // v5.0.0 — `MemoryCitationDTO` on `QueryHitDTO`: retrieval hits carry
         // source path, heading trail, and line range so an answer can be checked.
-        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "5.8.0"),
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "5.9.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
