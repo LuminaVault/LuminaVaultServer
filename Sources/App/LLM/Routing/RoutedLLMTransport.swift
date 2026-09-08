@@ -29,6 +29,9 @@ struct RoutedLLMTransport: HermesChatTransport {
     /// incur and make "what does a user cost" answer wrongly in the
     /// expensive direction.
     let costLedger: CostLedgerService?
+    /// Records what the turn actually did — which model, which tools.
+    /// Optional so test and minimal wirings behave exactly as before.
+    let traceRecorder: AgentTurnTraceRecorder?
     /// HER-252 — append-only telemetry sink for failover events. Optional
     /// so non-production wirings (tests, single-gateway deployments)
     /// can skip the DB write.
@@ -50,6 +53,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         logger: Logger,
         usageMeter: UsageMeterService? = nil,
         costLedger: CostLedgerService? = nil,
+        traceRecorder: AgentTurnTraceRecorder? = nil,
         failoverLogger: ProviderFailoverLogger? = nil,
         routerTelemetry: RouterTelemetryService? = nil,
         parallelExecutor: ParallelExecutor? = nil
@@ -61,6 +65,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         self.logger = logger
         self.usageMeter = usageMeter
         self.costLedger = costLedger
+        self.traceRecorder = traceRecorder
         self.failoverLogger = failoverLogger
         self.routerTelemetry = routerTelemetry
         self.parallelExecutor = parallelExecutor ?? ParallelExecutor(
@@ -231,6 +236,38 @@ struct RoutedLLMTransport: HermesChatTransport {
                             }
                         }
                     }
+                }
+                // The trace is written whether or not the upstream reported
+                // usage: a turn with no token counts still chose a model and
+                // may have called tools, which is the part a user can see.
+                if let traceRecorder, let user, let tenantID = try? user.requireID(),
+                   let providerID = candidate.provider.toShared()
+                {
+                    var traceIn = 0
+                    var traceOut = 0
+                    Self.extractUsage(from: metadata, mtokIn: &traceIn, mtokOut: &traceOut)
+                    let toolNames = OpenAICompletionReader.assistantMessage(from: metadata.data)
+                        .map { OpenAICompletionReader.toolCallNames(in: $0) }
+                    let turn = AgentTurnTraceRecorder.Turn(
+                        tenantID: LLMRoutingContext.billingTenantID ?? tenantID,
+                        conversationMessageID: LLMRoutingContext.conversationMessageID,
+                        provider: providerID,
+                        model: candidate.modelID,
+                        toolNames: toolNames,
+                        failoverCount: fallbackCount,
+                        tokensIn: traceIn,
+                        tokensOut: traceOut,
+                        estimatedCostUsdMicros: Self.catalogCost(
+                            provider: providerID,
+                            model: candidate.modelID,
+                            tokensIn: traceIn,
+                            tokensOut: traceOut,
+                            cerberus: decision.cerberus
+                        ),
+                        latencyMs: Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000),
+                        credentialMode: credentialMode
+                    )
+                    Task { await traceRecorder.record(turn) }
                 }
                 if let cerberus = decision.cerberus, let routerTelemetry {
                     var tokensIn = 0
