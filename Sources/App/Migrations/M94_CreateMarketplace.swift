@@ -1,6 +1,7 @@
 import FluentKit
 import Foundation
 import LuminaVaultShared
+import SQLKit
 
 struct M94_CreateMarketplace: AsyncMigration {
     func prepare(on database: any Database) async throws {
@@ -112,8 +113,24 @@ struct M94_CreateMarketplace: AsyncMigration {
         // A system publisher cannot reference a synthetic user through the FK.
         // Seed it only when an admin user exists, otherwise runtime bootstrap
         // creates it lazily.
-        if let admin = try await User.query(on: database).filter(\.$isAdmin == true).first() {
-            publisher.ownerUserID = try admin.requireID()
+        // Read the admin id with raw SQL rather than `User.query(on:)`.
+        //
+        // A Fluent model query selects every column the *model* declares, and
+        // this migration runs long before later ones add their columns. The
+        // moment anyone adds a field to `User`, priming a fresh database dies
+        // here with `column users.<new field> does not exist` — 31 migrations
+        // before the one that creates it. Selecting the single column this
+        // actually needs decouples the migration from the model's future.
+        guard let sql = database as? any SQLDatabase else {
+            throw MarketplaceMigrationError.requiresSQL
+        }
+        struct AdminIDRow: Decodable { let id: UUID }
+        let adminID = try await sql.raw("SELECT id FROM users WHERE is_admin = TRUE LIMIT 1")
+            .first(decoding: AdminIDRow.self)?
+            .id
+
+        if let adminID {
+            publisher.ownerUserID = adminID
             try await publisher.create(on: database)
             for entry in PluginCatalog.entries.values.sorted(by: { $0.dto.slug < $1.dto.slug }) {
                 let dto = entry.dto
@@ -159,3 +176,5 @@ struct M94_CreateMarketplace: AsyncMigration {
         try await database.schema(MarketplacePublisher.schema).delete()
     }
 }
+
+private enum MarketplaceMigrationError: Error { case requiresSQL }
