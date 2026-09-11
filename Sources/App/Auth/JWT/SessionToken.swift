@@ -16,6 +16,13 @@ struct SessionToken: JWTPayload {
     var issuedAt: IssuedAtClaim?
     var jti: String
     var hpid: String?
+    /// Capability scope. `nil` is an ordinary user session — the only kind
+    /// `JWTAuthenticator` will accept. A non-nil scope marks a restricted
+    /// machine token that is valid *only* on the route group that names it
+    /// (see `SessionToken.Scope` and `AudioJWTAuthenticator`).
+    ///
+    /// Optional so every token minted before this claim existed stays valid.
+    var scp: String?
 
     enum CodingKeys: String, CodingKey {
         case subject = "sub"
@@ -23,6 +30,13 @@ struct SessionToken: JWTPayload {
         case issuedAt = "iat"
         case jti
         case hpid
+        case scp
+    }
+
+    enum Scope {
+        /// Audio proxy access for a tenant's Hermes container: the OpenAI-shaped
+        /// `/v1/audio/*` routes and nothing else.
+        static let audio = "audio"
     }
 
     init(
@@ -30,13 +44,15 @@ struct SessionToken: JWTPayload {
         expiration: Date,
         issuedAt: Date? = nil,
         jti: String = UUID().uuidString,
-        hpid: String? = nil
+        hpid: String? = nil,
+        scp: String? = nil
     ) {
         subject = .init(value: userID.uuidString)
         self.expiration = .init(value: expiration)
         self.issuedAt = issuedAt.map { IssuedAtClaim(value: $0) }
         self.jti = jti
         self.hpid = hpid
+        self.scp = scp
     }
 
     func verify(using _: some JWTAlgorithm) async throws {

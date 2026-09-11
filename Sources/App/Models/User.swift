@@ -52,6 +52,11 @@ final class User: Model, @unchecked Sendable {
     /// Set `false` to fall back to Hermes' built-in file memory. Takes effect on
     /// the tenant container's next restart (drift rewrite re-seeds config.yaml).
     @Field(key: "mnemosyne_enabled") var mnemosyneEnabled: Bool
+    /// Revocation clock for this tenant's scoped audio tokens. Any token
+    /// issued at or before this instant is refused. Bumping it invalidates
+    /// every outstanding audio credential for the tenant in one write, which
+    /// is why there is no per-token denylist.
+    @OptionalField(key: "hermes_audio_token_epoch") var hermesAudioTokenEpoch: Date?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

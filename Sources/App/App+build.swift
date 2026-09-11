@@ -809,9 +809,19 @@ func buildRouter(
                     // Empty disables the flag, for hosts whose cgroup driver
                     // does not support the limit.
                     memoryLimit: reader.string(forKey: "hermes.perTenant.memoryLimit", default: "512m"),
-                    cpuLimit: reader.string(forKey: "hermes.perTenant.cpuLimit", default: "1.0")
+                    cpuLimit: reader.string(forKey: "hermes.perTenant.cpuLimit", default: "1.0"),
+                    // Where tenant containers send speech-to-text. Must include
+                    // the `/v1` suffix. Empty (the default) leaves voice
+                    // unconfigured — no credential is minted and Hermes keeps
+                    // its own defaults, which is the pre-existing behaviour.
+                    audioProxyBaseURL: reader.string(forKey: "hermes.audioProxy.baseURL", default: "")
                 ),
-                logger: Logger(label: "lv.hermes-tenant")
+                logger: Logger(label: "lv.hermes-tenant"),
+                audioTokenService: HermesAudioTokenService(
+                    jwtKeys: services.jwtKeys,
+                    jwtKID: services.jwtKID,
+                    fluent: services.fluent
+                )
             )
             // The reaper `evictIdle()` was documented as having since
             // HER-240a, and never had. Containers run
@@ -1571,6 +1581,45 @@ func buildRouter(
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserPerMinute, storage: rateLimitStorage))
         .add(middleware: RateLimitMiddleware(policy: .transcribeByUserDaily, storage: rateLimitStorage))
     transcribeController.addRoutes(to: transcribeGroup)
+
+    // OpenAI-shaped audio surface. Same `TranscribeService` as
+    // `/v1/transcribe` above — only the wire format and the error envelope
+    // differ — so a tenant's Hermes container can point its OpenAI speech
+    // client here instead of at a provider directly. That is what keeps
+    // voice spend inside entitlement, rate limiting and usage metering.
+    //
+    // Middleware order matters: the envelope middleware is outermost so it
+    // can rewrite both thrown errors (rate limits) and returned ones (the
+    // 402 paywall body) into the shape the OpenAI SDK can read.
+    //
+    // `platformFunded` is deliberately NOT set. It would floor this route at
+    // trial/pro/ultimate and hard-402 free tenants; voice is instead offered
+    // to every tier and bounded by the tier-scaled daily cap below.
+    let openAIAudioController = OpenAIAudioController(
+        service: transcribeService,
+        logger: transcribeLogger
+    )
+    // Transcription and speech get separate buckets: one is billed upstream
+    // per second of audio, the other per character of output, so a shared
+    // limit would mis-price both.
+    let audioTranscriptionsGroup = router.group("/v1/audio/transcriptions")
+        .add(middleware: OpenAIErrorEnvelopeMiddleware())
+        .add(middleware: AudioJWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+        // A 25 MB upload is 25 MB resident while it is buffered, so bound how
+        // many a single tenant can have in flight.
+        .add(middleware: InFlightLimitMiddleware(maxConcurrent: 2))
+        .add(middleware: RateLimitMiddleware(policy: .audioTranscriptionsByUserPerMinute, storage: rateLimitStorage))
+        .add(middleware: RateLimitMiddleware(policy: .audioTranscriptionsByUserDaily, storage: rateLimitStorage))
+    openAIAudioController.addTranscriptionRoutes(to: audioTranscriptionsGroup)
+
+    let audioSpeechGroup = router.group("/v1/audio/speech")
+        .add(middleware: OpenAIErrorEnvelopeMiddleware())
+        .add(middleware: AudioJWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent))
+        .add(middleware: EntitlementMiddleware(requires: .chat, enforcementEnabled: services.billingEnforcementEnabled))
+        .add(middleware: RateLimitMiddleware(policy: .audioSpeechByUserPerMinute, storage: rateLimitStorage))
+        .add(middleware: RateLimitMiddleware(policy: .audioSpeechByUserDaily, storage: rateLimitStorage))
+    openAIAudioController.addSpeechRoutes(to: audioSpeechGroup)
 
     // HER-205 — POST /v1/vision/embed. Image embedding endpoint that
     // returns a 1536-dim vector compatible with `memories.embedding`.

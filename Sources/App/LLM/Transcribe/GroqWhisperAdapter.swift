@@ -130,12 +130,23 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
         return body
     }
 
+    /// Groq and OpenAI both infer the audio decoder from the *filename
+    /// extension* in the multipart part, not from its content type — a
+    /// correctly-typed body sent as `audio.bin` is rejected with a 400. So
+    /// every mime the API layer accepts must map to a real extension here.
+    /// The `audio.bin` default is unreachable for accepted input and exists
+    /// only so the function stays total.
     static func filename(for mime: String) -> String {
         switch mime {
-        case "audio/m4a": "audio.m4a"
-        case "audio/wav": "audio.wav"
+        case "audio/m4a", "audio/x-m4a": "audio.m4a"
+        case "audio/mp4": "audio.mp4"
+        case "audio/wav", "audio/x-wav", "audio/wave": "audio.wav"
         case "audio/mpeg": "audio.mp3"
+        case "audio/mpga": "audio.mpga"
         case "audio/webm": "audio.webm"
+        case "audio/ogg", "audio/vorbis": "audio.ogg"
+        case "audio/opus": "audio.opus"
+        case "audio/flac", "audio/x-flac": "audio.flac"
         default: "audio.bin"
         }
     }

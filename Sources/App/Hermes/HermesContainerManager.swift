@@ -47,6 +47,11 @@ actor HermesContainerManager {
         /// disables the flag. Same reasoning as `memoryLimit`: a busy tenant
         /// should saturate its own share, not the box.
         let cpuLimit: String
+        /// Origin of the LuminaVault audio proxy, including `/v1`, that tenant
+        /// containers send speech-to-text at. Empty disables voice seeding
+        /// entirely — no credential is minted and no `stt:`/`tts:` block is
+        /// written, leaving the tenant on Hermes' own defaults.
+        let audioProxyBaseURL: String
         init(
             image: String,
             network: String,
@@ -57,7 +62,8 @@ actor HermesContainerManager {
             defaultModel: String = "hermes-3",
             mnemosyneDefault: Bool = true,
             memoryLimit: String = "",
-            cpuLimit: String = ""
+            cpuLimit: String = "",
+            audioProxyBaseURL: String = ""
         ) {
             self.image = image
             self.network = network
@@ -69,6 +75,7 @@ actor HermesContainerManager {
             self.mnemosyneDefault = mnemosyneDefault
             self.memoryLimit = memoryLimit
             self.cpuLimit = cpuLimit
+            self.audioProxyBaseURL = audioProxyBaseURL
         }
     }
 
@@ -84,6 +91,10 @@ actor HermesContainerManager {
     private let config: Config
     private let logger: Logger
     private let now: @Sendable () -> Date
+    /// Mints the scoped credential seeded into each tenant's `.env` for the
+    /// audio proxy. `nil` (or an empty `config.audioProxyBaseURL`) leaves
+    /// voice unconfigured.
+    private let audioTokenService: HermesAudioTokenService?
     /// HER-330 — overrides `config.image` after a self-update so subsequent
     /// `dockerRun` / `reprovisionAll` calls spawn tenants on the new image.
     /// `nil` means "use `config.image`". Set via `setImage`.
@@ -113,7 +124,8 @@ actor HermesContainerManager {
         secretBox: SecretBox,
         config: Config,
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        audioTokenService: HermesAudioTokenService? = nil
     ) {
         self.docker = docker
         self.fluent = fluent
@@ -121,6 +133,75 @@ actor HermesContainerManager {
         self.config = config
         self.logger = logger
         self.now = now
+        self.audioTokenService = audioTokenService
+    }
+
+    /// Builds the audio-proxy seed for a tenant, reusing the credential
+    /// already on disk when there is one.
+    ///
+    /// Reuse is not an optimisation — it is what keeps seeding idempotent.
+    /// The token is part of the `.env` content that `writeIfDrifted`
+    /// SHA-256-compares, so minting a fresh one on every call would rewrite
+    /// the file on every restart and destroy the drift signal. Rotation is
+    /// therefore explicit (`rotateAudioToken`), not incidental.
+    private func audioProxySeed(tenantID: UUID, volumePath: String) async -> HermesAudioProxySeed? {
+        guard !config.audioProxyBaseURL.isEmpty, let audioTokenService else { return nil }
+
+        if let existing = existingAudioToken(volumePath: volumePath) {
+            return HermesAudioProxySeed(baseURL: config.audioProxyBaseURL, token: existing)
+        }
+        do {
+            let token = try await audioTokenService.mint(tenantID: tenantID)
+            return HermesAudioProxySeed(baseURL: config.audioProxyBaseURL, token: token)
+        } catch {
+            // Voice is not worth failing a container launch over. Seeding
+            // without the block leaves the tenant exactly where they were
+            // before this feature existed.
+            logger.warning("audio token mint failed for \(tenantID): \(error)")
+            return nil
+        }
+    }
+
+    /// Reads `VOICE_TOOLS_OPENAI_KEY` back out of a seeded `.env`, if present.
+    private func existingAudioToken(volumePath: String) -> String? {
+        guard let contents = try? String(contentsOfFile: "\(volumePath)/.env", encoding: .utf8)
+        else { return nil }
+        for line in contents.split(separator: "\n") {
+            let prefix = "VOICE_TOOLS_OPENAI_KEY="
+            guard line.hasPrefix(prefix) else { continue }
+            let raw = String(line.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespaces)
+            // Values are single-quoted by `HermesTenantConfigTemplate.envQuote`.
+            let unquoted = raw.hasPrefix("'") && raw.hasSuffix("'") && raw.count >= 2
+                ? String(raw.dropFirst().dropLast())
+                : raw
+            return unquoted.isEmpty ? nil : unquoted
+        }
+        return nil
+    }
+
+    /// Revokes the tenant's outstanding audio credentials so the next seed
+    /// mints a fresh one. Called before recreating a container on a gateway
+    /// change, which bounds how long a leaked token stays useful.
+    private func rotateAudioToken(tenantID: UUID, volumePath: String) async {
+        guard !config.audioProxyBaseURL.isEmpty, let audioTokenService else { return }
+        do {
+            try await audioTokenService.revoke(tenantID: tenantID)
+            // Drop the stale value so `audioProxySeed` mints rather than reuses.
+            try? removeAudioTokenLine(volumePath: volumePath)
+        } catch {
+            logger.warning("audio token rotation failed for \(tenantID): \(error)")
+        }
+    }
+
+    private func removeAudioTokenLine(volumePath: String) throws {
+        let path = "\(volumePath)/.env"
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        let kept = contents
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.hasPrefix("VOICE_TOOLS_OPENAI_KEY=") }
+            .joined(separator: "\n")
+        try kept.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     /// Returns a handle to the tenant's running container. Spawns the
@@ -351,12 +432,13 @@ actor HermesContainerManager {
         // Falls back to the operator default when no User row is loaded.
         let mnemosyneEnabled = try await User.find(tenantID, on: fluent.db())?.mnemosyneEnabled
             ?? config.mnemosyneDefault
-        try HermesTenantConfigTemplate.seed(
+        try await HermesTenantConfigTemplate.seed(
             volumePath: volumePath,
             apiKey: apiServerKey,
             defaultModel: config.defaultModel,
             gateways: gateways,
-            mnemosyneEnabled: mnemosyneEnabled
+            mnemosyneEnabled: mnemosyneEnabled,
+            audioProxy: audioProxySeed(tenantID: tenantID, volumePath: volumePath)
         )
         // Resource ceilings, when configured. Applied at `run` time, so an
         // existing container keeps whatever it was created with until
@@ -449,12 +531,13 @@ actor HermesContainerManager {
         let gateways = try await gatewaySeeds(tenantID: tenantID)
         let mnemosyneEnabled = try await User.find(tenantID, on: fluent.db())?.mnemosyneEnabled
             ?? config.mnemosyneDefault
-        try HermesTenantConfigTemplate.seed(
+        try await HermesTenantConfigTemplate.seed(
             volumePath: volumePath,
             apiKey: decrypt(row: row, tenantID: tenantID),
             defaultModel: config.defaultModel,
             gateways: gateways,
-            mnemosyneEnabled: mnemosyneEnabled
+            mnemosyneEnabled: mnemosyneEnabled,
+            audioProxy: audioProxySeed(tenantID: tenantID, volumePath: volumePath)
         )
         return gateways.reduce(0) { $0 + HermesGatewayCatalog.envVars($1.gatewayID, config: $1.config).count }
     }
@@ -475,6 +558,13 @@ actor HermesContainerManager {
         }
         // Idempotent: `rm -f` is a no-op if the container is already gone.
         _ = try? await docker.run(args: ["rm", "-f", row.containerName])
+        // A gateway change already costs a container recreate, so rotating the
+        // audio credential here is free and caps the useful life of a leaked
+        // one. `dockerRun`'s seed mints the replacement.
+        await rotateAudioToken(
+            tenantID: tenantID,
+            volumePath: "\(config.dataRootBase)/\(tenantID.uuidString.lowercased())"
+        )
         try await dockerRun(
             containerName: row.containerName,
             port: row.port,

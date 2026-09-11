@@ -26,6 +26,11 @@ struct JWTAuthenticator: AuthenticatorMiddleware {
         } catch {
             return nil
         }
+        // Scoped tokens are machine credentials for one route group. They
+        // must never authenticate a general session — a tenant's Hermes
+        // container holds one, so accepting it here would turn a container
+        // compromise into full account access.
+        guard payload.scp == nil else { return nil }
         guard let userID = payload.userID else { return nil }
         return try await User.find(userID, on: fluent.db())
     }

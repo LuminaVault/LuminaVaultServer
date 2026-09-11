@@ -22,7 +22,7 @@ enum HermesGatewayCatalog {
         .telegram: Entry(
             displayName: "Telegram",
             iconSlug: "telegram",
-            description: "Chat with Lumina from Telegram via a bot you control.",
+            description: "Chat with Lumina from Telegram via a bot you control. Send a voice message and it is transcribed automatically.",
             requiredFields: [
                 HermesGatewayField(
                     key: "bot_token",

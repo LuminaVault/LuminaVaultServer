@@ -63,6 +63,29 @@ struct RateLimitPolicy {
         case .archived: 0.1
         }
     }
+
+    /// Tier ladder for the metered voice routes.
+    ///
+    /// Voice is offered on every tier rather than paywalled, so this — not
+    /// `EntitlementMiddleware` — is what bounds free-tier spend. The daily
+    /// policy's `max` is the paid budget; free and lapsed get a small
+    /// fraction of it, enough to try dictation and feel the product without
+    /// funding an unbounded transcription bill.
+    ///
+    /// Deliberately flatter at the top than `standardTierScale`: the cost
+    /// here is provider seconds-of-audio, not our own capacity, so paid tiers
+    /// get headroom rather than a multiple.
+    @Sendable
+    static func voiceTierScale(_ tier: UserTier?) -> Double {
+        switch tier {
+        case .ultimate: 2
+        case .pro: 1.5
+        case .trial, .none: 1
+        // 0.05 of the 200/day daily cap is 10 voice messages a day.
+        case .free, .lapsed: 0.05
+        case .archived: 0.05
+        }
+    }
 }
 
 /// Token-bucket rate limiter on top of any `PersistDriver`. Hummingbird
@@ -301,6 +324,41 @@ extension RateLimitPolicy {
     /// `/v1/transcribe`.
     static let transcribeByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
     static let transcribeByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
+
+    /// `POST /v1/audio/transcriptions` — the OpenAI-shaped STT surface a
+    /// tenant's Hermes container calls for voice messages.
+    ///
+    /// Separate buckets from `/v1/transcribe` on purpose. That route is sized
+    /// for a person tapping a mic button in the app; this one carries a whole
+    /// conversation, where a voice note, its transcript echo and a retry can
+    /// land inside the same minute. 20/min absorbs that without letting a
+    /// redelivery storm run away.
+    ///
+    /// The daily cap is where cost actually lives, and it is tier-scaled so
+    /// free tenants get a usable taste (10/day) rather than a paywall.
+    ///
+    /// The per-minute bucket is deliberately **not** tier-scaled. Scaling it
+    /// would give a free user 1/min, so two voice notes in quick succession —
+    /// ordinary behaviour, well inside their daily allowance — would 429. Burst
+    /// shape and daily cost are different concerns; only the latter varies by
+    /// what someone pays.
+    static let audioTranscriptionsByUserPerMinute = RateLimitPolicy(
+        max: 20, window: 60, keyBuilder: userOrIPKey
+    )
+    static let audioTranscriptionsByUserDaily = RateLimitPolicy(
+        max: 200, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
+    )
+
+    /// `POST /v1/audio/speech` — spoken replies. Defined alongside its
+    /// transcription counterpart so the two ladders stay visibly related, and
+    /// because synthesis is billed per character while transcription is
+    /// billed per second: one shared bucket would mis-price both.
+    static let audioSpeechByUserPerMinute = RateLimitPolicy(
+        max: 30, window: 60, keyBuilder: userOrIPKey
+    )
+    static let audioSpeechByUserDaily = RateLimitPolicy(
+        max: 1000, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
+    )
 
     // HER-213 — vision-embed mirrors the transcribe ladder (expensive
     // GPU-backed provider call). Per-minute cap stops accidental loops;

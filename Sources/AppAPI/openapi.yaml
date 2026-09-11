@@ -3317,7 +3317,50 @@ paths:
     post:
       tags: [LLM]
       operationId: llmTranscribe
-      summary: Speech-to-text (HER-203). Multipart audio upload.
+      # The spec previously declared multipart/form-data here while the
+      # implementation has always read a raw body. Corrected in favour of the
+      # implementation: no client generated from this spec was calling it, and
+      # the OpenAI-shaped /v1/audio/transcriptions below now covers the
+      # multipart case properly.
+      summary: Speech-to-text (HER-203). Raw audio body, 10 MB cap.
+      requestBody:
+        required: true
+        content:
+          audio/m4a:   { schema: { type: string, format: binary } }
+          audio/mp4:   { schema: { type: string, format: binary } }
+          audio/wav:   { schema: { type: string, format: binary } }
+          audio/mpeg:  { schema: { type: string, format: binary } }
+          audio/mpga:  { schema: { type: string, format: binary } }
+          audio/webm:  { schema: { type: string, format: binary } }
+          audio/ogg:   { schema: { type: string, format: binary } }
+          audio/opus:  { schema: { type: string, format: binary } }
+          audio/flac:  { schema: { type: string, format: binary } }
+      responses:
+        '200':
+          description: Transcription result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TranscribeResponse' }
+        '413':
+          description: Audio body exceeded the 10 MB cap.
+        '415':
+          description: Content-Type was not an accepted audio format.
+
+  /v1/audio/transcriptions:
+    post:
+      tags: [LLM]
+      operationId: openAIAudioTranscriptions
+      summary: >-
+        Speech-to-text in OpenAI's wire format. Lets a tenant's Hermes
+        container point its OpenAI speech client at LuminaVault instead of at
+        a provider directly, so voice spend passes through entitlement, rate
+        limiting and usage metering.
+      description: >-
+        Errors use OpenAI's envelope ({"error":{"message",...}}) rather than
+        the LuminaVault error shape, because the OpenAI SDK reads
+        error.message and callers surface it to end users. Audio format is
+        resolved from the file part's filename extension first and its
+        Content-Type second. Accepts up to 25 MB.
       requestBody:
         required: true
         content:
@@ -3325,10 +3368,53 @@ paths:
             schema: { $ref: '#/components/schemas/TranscribeMultipartRequest' }
       responses:
         '200':
-          description: Transcription result.
+          description: >-
+            Transcript. Shape follows the request's response_format:
+            {"text": ...} for json, the verbose object for verbose_json, and a
+            text/plain body for text, srt and vtt.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TranscribeResponse' }
+              schema: { $ref: '#/components/schemas/OpenAITranscriptionJSON' }
+            text/plain:
+              schema: { type: string }
+        '400':
+          description: Malformed multipart body, missing file part, or unsupported format.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIErrorEnvelope' }
+        '413':
+          description: Audio file exceeded the 25 MB cap.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIErrorEnvelope' }
+        '429':
+          description: Voice rate limit or daily allowance exhausted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIErrorEnvelope' }
+
+  /v1/audio/speech:
+    post:
+      tags: [LLM]
+      operationId: openAIAudioSpeech
+      summary: Text-to-speech in OpenAI's wire format. Not yet implemented.
+      description: >-
+        Mounted but returns 501. Tenant containers are configured to send
+        synthesis here on purpose: Hermes treats any unrecognised TTS provider
+        name as its free, unmetered Edge TTS fallback, so pointing at a route
+        that refuses cleanly is what makes "spoken replies are off" actually
+        true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenAISpeechRequest' }
+      responses:
+        '501':
+          description: Spoken replies are not enabled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAIErrorEnvelope' }
 
   /v1/tts:
     post:
@@ -10382,22 +10468,86 @@ components:
 
     # ── Transcribe (HER-203) ──
 
+    # OpenAI's audio-transcription form. The file field is named `file`, not
+    # `audio` — it was previously documented with the wrong field name, and
+    # with no implementation reading it the error went unnoticed.
     TranscribeMultipartRequest:
       type: object
-      required: [audio]
+      required: [file]
       properties:
-        audio:
+        file:
           type: string
           format: binary
+          description: >-
+            Audio bytes. The filename matters: the format is resolved from its
+            extension before the part's Content-Type, because upstream
+            providers dispatch on the extension.
         model: { type: string }
         language: { type: string }
+        prompt: { type: string }
+        temperature: { type: number }
+        response_format:
+          type: string
+          enum: [json, text, verbose_json, srt, vtt]
+          default: json
 
+    # Mirrors the server DTO, which carries more than the text.
     TranscribeResponse:
+      type: object
+      required: [id, text, language, confidence, duration_seconds]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        language: { type: string }
+        confidence: { type: number }
+        duration_seconds: { type: number }
+        segments:
+          type: array
+          items:
+            type: object
+            required: [start, end, text]
+            properties:
+              start: { type: number }
+              end: { type: number }
+              text: { type: string }
+
+    # ── OpenAI-shaped audio surface ──
+
+    OpenAIErrorEnvelope:
+      type: object
+      required: [error]
+      description: >-
+        OpenAI's error shape. Load-bearing rather than cosmetic: the OpenAI SDK
+        builds APIStatusError.message from error.message, and callers relay
+        that text to end users.
+      properties:
+        error:
+          type: object
+          required: [message, type]
+          properties:
+            message: { type: string }
+            type: { type: string }
+            code: { type: string, nullable: true }
+            param: { type: string, nullable: true }
+
+    OpenAITranscriptionJSON:
       type: object
       required: [text]
       properties:
         text: { type: string }
-        durationSec: { type: number }
+
+    OpenAISpeechRequest:
+      type: object
+      required: [input]
+      properties:
+        model: { type: string }
+        input: { type: string }
+        voice: { type: string }
+        response_format:
+          type: string
+          enum: [mp3, opus]
+          default: mp3
+        speed: { type: number }
 
     # ── TTS (HER-204) ──
 

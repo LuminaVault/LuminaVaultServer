@@ -30,7 +30,8 @@ struct HermesTenantConfigSeedTests {
         try HermesTenantConfigTemplate.seed(
             volumePath: volume,
             apiKey: "deadbeef-test-key",
-            defaultModel: "hermes-3"
+            defaultModel: "hermes-3",
+            audioProxy: nil
         )
 
         let configContent = try Self.read("\(volume)/config.yaml")
@@ -56,12 +57,12 @@ struct HermesTenantConfigSeedTests {
         let volume = try Self.makeTempVolume()
         defer { _ = try? FileManager.default.removeItem(atPath: volume) }
 
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "stable", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "stable", defaultModel: "hermes-3", audioProxy: nil)
         let configPath = "\(volume)/config.yaml"
         let firstMtime = try FileManager.default.attributesOfItem(atPath: configPath)[.modificationDate] as? Date
 
         try await Task.sleep(nanoseconds: 1_100_000_000)
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "stable", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "stable", defaultModel: "hermes-3", audioProxy: nil)
         let secondMtime = try FileManager.default.attributesOfItem(atPath: configPath)[.modificationDate] as? Date
 
         #expect(firstMtime == secondMtime, "identical content must not trigger a rewrite")
@@ -72,14 +73,14 @@ struct HermesTenantConfigSeedTests {
         let volume = try Self.makeTempVolume()
         defer { _ = try? FileManager.default.removeItem(atPath: volume) }
 
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "k1", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "k1", defaultModel: "hermes-3", audioProxy: nil)
 
         let configPath = "\(volume)/config.yaml"
         try "tampered".write(toFile: configPath, atomically: true, encoding: .utf8)
         let firstMtime = try FileManager.default.attributesOfItem(atPath: configPath)[.modificationDate] as? Date
 
         try await Task.sleep(nanoseconds: 1_100_000_000)
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "k1", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "k1", defaultModel: "hermes-3", audioProxy: nil)
         let secondMtime = try FileManager.default.attributesOfItem(atPath: configPath)[.modificationDate] as? Date
 
         #expect(firstMtime != secondMtime, "drifted content must trigger a rewrite")
@@ -92,11 +93,11 @@ struct HermesTenantConfigSeedTests {
         let volume = try Self.makeTempVolume()
         defer { _ = try? FileManager.default.removeItem(atPath: volume) }
 
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "old-key", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "old-key", defaultModel: "hermes-3", audioProxy: nil)
         let envPath = "\(volume)/.env"
         #expect(try Self.read(envPath).contains("API_SERVER_KEY=old-key"))
 
-        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "new-key", defaultModel: "hermes-3")
+        try HermesTenantConfigTemplate.seed(volumePath: volume, apiKey: "new-key", defaultModel: "hermes-3", audioProxy: nil)
         #expect(try Self.read(envPath).contains("API_SERVER_KEY=new-key"))
         #expect(try !(Self.read(envPath).contains("old-key")))
     }
@@ -109,7 +110,7 @@ struct HermesTenantConfigSeedTests {
     /// single memory layer rather than competing with MEMORY.md/USER.md.
     @Test
     func `configYAML wires mnemosyne and disables native memory when enabled`() {
-        let yaml = HermesTenantConfigTemplate.configYAML(defaultModel: "hermes-3", mnemosyneEnabled: true)
+        let yaml = HermesTenantConfigTemplate.configYAML(defaultModel: "hermes-3", mnemosyneEnabled: true, audioProxy: nil)
 
         #expect(yaml.contains("mcp_servers:"))
         #expect(yaml.contains("mnemosyne:"))
@@ -124,7 +125,7 @@ struct HermesTenantConfigSeedTests {
     /// override is emitted — Hermes falls back to its built-in file memory.
     @Test
     func `configYAML omits mnemosyne and leaves native memory when disabled`() {
-        let yaml = HermesTenantConfigTemplate.configYAML(defaultModel: "hermes-3", mnemosyneEnabled: false)
+        let yaml = HermesTenantConfigTemplate.configYAML(defaultModel: "hermes-3", mnemosyneEnabled: false, audioProxy: nil)
 
         #expect(!yaml.contains("mnemosyne"))
         #expect(!yaml.contains("memory_enabled: false"))
