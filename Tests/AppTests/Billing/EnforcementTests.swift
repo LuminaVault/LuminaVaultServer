@@ -106,6 +106,10 @@ struct EnforcementTests {
                 let paywall = try testJSONDecoder().decode(PaywallResponse.self, from: Data(buffer: response.body))
                 #expect(paywall.paywall)
                 #expect(paywall.paywallId == "default")
+                // The client and the web app have decoded this field since
+                // they were written; the server never sent it, so every 402
+                // rendered the generic "requires an upgraded plan" sentence.
+                #expect(paywall.requiredTier == "pro")
             }
         }
     }
@@ -115,6 +119,32 @@ struct EnforcementTests {
         #expect(EntitlementMiddleware.paywallID(for: .skillVaultRun) == "ultimate_upsell")
         #expect(EntitlementMiddleware.paywallID(for: .privacyBYOKey) == "ultimate_upsell")
         #expect(EntitlementMiddleware.paywallID(for: .healthIngest) == "default")
+    }
+
+    /// The paywall id and the required tier are two encodings of one decision,
+    /// so they are asserted together for every capability rather than
+    /// separately for a couple — that is how they drift.
+    @Test
+    func `the paywall hint and the required tier never disagree`() {
+        for capability in Capability.allCases {
+            let id = EntitlementMiddleware.paywallID(for: capability)
+            let tier = EntitlementMiddleware.minimumPurchasableTier(for: capability)
+            #expect(
+                (id == "ultimate_upsell") == (tier == .ultimate),
+                "\(capability): paywallId \(id) disagrees with requiredTier \(tier)"
+            )
+        }
+    }
+
+    /// Never `free` or `trial`: "this feature requires the Free plan" is
+    /// nonsense to show someone who just hit a paywall, and neither is
+    /// something they can buy.
+    @Test
+    func `the required tier is always something you can actually buy`() {
+        for capability in Capability.allCases {
+            let tier = EntitlementMiddleware.minimumPurchasableTier(for: capability)
+            #expect(tier == .pro || tier == .ultimate, "\(capability) offered an unpurchasable \(tier)")
+        }
     }
 
     @Test
@@ -131,6 +161,57 @@ struct EnforcementTests {
                 body: Self.healthBody()
             ) { response in
                 #expect(response.status == .ok)
+            }
+        }
+    }
+
+    /// `/v1/auth/me/billing` used to return the raw `users.tier` column.
+    ///
+    /// A founder or tester granted `ultimate` therefore sailed past every
+    /// server-side 402 while the app still rendered them as lapsed and drew a
+    /// paywall over everything — the override was live and invisible. The
+    /// override is resolved server-side, once, and reported here.
+    @Test
+    func `me billing reports the effective tier not the stored column`() async throws {
+        let app = try await buildApplication(reader: Self.reader(enforcementEnabled: true))
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.setBillingState(userID: auth.userId, tier: .lapsed, override: .ultimate)
+
+            try await client.execute(
+                uri: "/v1/auth/me/billing",
+                method: .get,
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let billing = try testJSONDecoder().decode(MeBillingResponse.self, from: Data(buffer: response.body))
+                #expect(billing.tier == .ultimate)
+                // The raw column still ships alongside, so support can see why.
+                #expect(billing.tierOverride == "ultimate")
+                #expect(billing.inTrial == false)
+            }
+        }
+    }
+
+    /// An expired trial is `free`, and `inTrial` must say so — it drives the
+    /// countdown banner, which would otherwise keep counting down from a date
+    /// that has already passed.
+    @Test
+    func `me billing reports free without a trial countdown`() async throws {
+        let app = try await buildApplication(reader: Self.reader(enforcementEnabled: true))
+        try await app.test(.router) { client in
+            let auth = try await Self.register(client: client)
+            try await Self.setBillingState(userID: auth.userId, tier: .free)
+
+            try await client.execute(
+                uri: "/v1/auth/me/billing",
+                method: .get,
+                headers: [.authorization: "Bearer \(auth.accessToken)"]
+            ) { response in
+                #expect(response.status == .ok)
+                let billing = try testJSONDecoder().decode(MeBillingResponse.self, from: Data(buffer: response.body))
+                #expect(billing.tier == .free)
+                #expect(billing.inTrial == false)
             }
         }
     }

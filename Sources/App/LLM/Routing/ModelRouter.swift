@@ -145,7 +145,7 @@ struct TableModelRouter: ModelRouter {
         switch effective {
         case .pro, .ultimate:
             return .pro
-        case .trial, .lapsed, .archived:
+        case .free, .trial, .lapsed, .archived:
             return .free
         }
     }

@@ -130,19 +130,24 @@ actor UsageMeterService {
     /// across all models for this tenant and compares against the tier cap.
     ///
     /// - Pro / Ultimate: always `.allow`.
-    /// - Trial / free: `.allow` < 80% → `.degrade` at 80% → `.deny` at 100%.
-    /// - Lapsed: `.allow` — see below.
+    /// - Trial: `.allow` < 80% → `.degrade` at 80% → `.deny` at 100%.
+    /// - Free / Lapsed: `.allow` — see below.
     /// - Archived: always `.deny` (read-only, 0 cap).
     func checkBudget(tenantID: UUID, tier: UserTier) async -> BudgetDecision {
         switch tier {
         case .pro, .ultimate:
             return .allow
-        case .lapsed:
-            // Lapsed users are now degraded onto the free lane by
+        case .free, .lapsed:
+            // Free and lapsed users are degraded onto the free lane by
             // `FreeLanePolicy` inside the router, which costs nothing. Denying
             // here would 429 them before the lane is ever reachable, so the
             // metering decision has to defer to the routing decision. The lane's
             // own per-user daily grace (`FreeLaneGate`) is what bounds them.
+            //
+            // Deliberately *not* also applying the trial Mtok cap: that ceiling
+            // counts tokens while the lane counts requests, so the two would
+            // fire at different moments, and only the lane's 429 carries the
+            // upgrade/add-key CTAs. One tier, one ceiling.
             return .allow
         case .archived:
             return .deny(retryAfter: Self.hoursUntilUTCMidnight())

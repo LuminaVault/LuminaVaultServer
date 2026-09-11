@@ -54,7 +54,12 @@ struct RateLimitPolicy {
         case .ultimate: 4
         case .pro: 2
         case .trial, .none: 1
-        case .lapsed: 0.34
+        // Free and lapsed share a scale for the same reason they share a
+        // capability row. At 0.34 the chat policy gives 10/60s, far above the
+        // 20/day free-lane grace — so the *lane* stays the binding constraint
+        // and an exhausted free user always gets `free_lane_exhausted` with
+        // its upgrade/add-key CTAs, never a bare rate-limit 429 with none.
+        case .free, .lapsed: 0.34
         case .archived: 0.1
         }
     }

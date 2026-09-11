@@ -53,6 +53,12 @@ services:
       # --- Billing ---
       BILLING_ENFORCEMENT_ENABLED: ${BILLING_ENFORCEMENT_ENABLED:-true}
       BILLING_COLD_STORAGE_PATH: ${BILLING_COLD_STORAGE_PATH:-}
+      # Comma list of `email=tier` (`pro`/`ultimate`; a bare email grants
+      # `ultimate`). Stamps `users.tier_override` on sign-in — founders and
+      # testers. Note this resolves to empty unless the variable is also
+      # present in `.env.production` on the host, which the deploy pipeline
+      # writes from repository secrets; adding it here alone does nothing.
+      BILLING_TIER_OVERRIDE_EMAILS: ${BILLING_TIER_OVERRIDE_EMAILS:-}
       REVENUECAT_WEBHOOK_SECRET: ${REVENUECAT_WEBHOOK_SECRET:-}
       # --- Usage metering ---
       USAGE_FREE_MTOK_DAILY: ${USAGE_FREE_MTOK_DAILY:-1.0}

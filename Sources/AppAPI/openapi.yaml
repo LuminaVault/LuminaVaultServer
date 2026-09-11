@@ -761,7 +761,11 @@ paths:
         '200':
           description: Created workflow.
           content: { application/json: { schema: { $ref: '#/components/schemas/WorkflowDetailDTO' } } }
-        '402': { description: Workflow creation requires Pro or Ultimate. }
+        '402':
+          description: Workflow creation requires Pro or Ultimate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
 
   /v1/workflows/{id}:
     get:
@@ -2038,7 +2042,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HermesRun' }
         '400': { description: 'Empty prompt (`prompt_required`).' }
-        '402': { description: Chat entitlement required. }
+        '402':
+          description: Chat entitlement required.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
         '404': { description: 'Referenced conversation not found (`conversation_not_found`).' }
         '429': { description: 'Rate limited, or too many concurrent runs (`hermes_runs_limit`).' }
         '501': { description: 'This Hermes has no runs API (`hermes_runs_unsupported`).' }
@@ -3252,6 +3260,9 @@ paths:
               schema: { $ref: '#/components/schemas/ChatResponse' }
         '402':
           description: Entitlement / billing block.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
         '403':
           description: |
             Policy block before upstream LLM call. When BYOK mode is active and
@@ -4864,6 +4875,9 @@ paths:
               schema: { $ref: '#/components/schemas/PluginInstallDTO' }
         '402':
           description: Premium plugin requires a paid subscription (premium_required).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
 
   /v1/plugins/installs/{id}:
     patch:
@@ -5413,6 +5427,9 @@ paths:
           description: Not a slash command.
         '402':
           description: Tier entitlement or daily-cap exhaustion.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
         '404':
           description: Unknown skill.
 
@@ -5439,6 +5456,9 @@ paths:
               schema: { $ref: '#/components/schemas/SkillRunResponse' }
         '402':
           description: Tier entitlement or daily-cap exhaustion.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaywallResponse' }
         '404':
           description: Unknown skill.
 
@@ -7373,11 +7393,28 @@ components:
             Toggle Mnemosyne as the tenant's default memory layer. `false`
             falls back to Hermes' native file memory; applied on next restart.
 
+    PaywallResponse:
+      type: object
+      description: |
+        Body of every `402` raised by `EntitlementMiddleware`.
+
+        `requiredTier` is the lowest tier a user could *buy* to clear the gate
+        — never `free` or `trial`, which are not purchasable. Clients decoded
+        this field long before the server sent it, so a missing value must
+        stay tolerable: decode it as optional and fall back to generic copy.
+      required: [paywall, paywallId, requiredTier]
+      properties:
+        paywall: { type: boolean }
+        paywallId: { type: string, enum: [default, ultimate_upsell] }
+        requiredTier: { type: string, enum: [pro, ultimate] }
+
     MeBillingResponse:
       type: object
       required: [tier, tierOverride, inTrial, daysRemaining, enforcementEnabled]
       properties:
-        tier: { type: string, enum: [trial, pro, ultimate, lapsed, archived] }
+        # The *effective* tier: `tierOverride` is already folded in by the
+        # server. Clients render this directly and never resolve the ladder.
+        tier: { type: string, enum: [free, trial, pro, ultimate, lapsed, archived] }
         tierExpiresAt: { type: string, format: date-time }
         tierOverride: { type: string }
         inTrial: { type: boolean }
@@ -8019,7 +8056,7 @@ components:
       type: object
       required: [tier, canAuthor, activeRuns, activeRunLimit, minimumScheduleMinutes, perRunLimitUsdMicros, dailyLimitUsdMicros, dailySpentUsdMicros, monthlyLimitUsdMicros, monthlySpentUsdMicros, managedInferenceAvailable, freeFallbackActive]
       properties:
-        tier: { type: string, enum: [trial, pro, ultimate, lapsed, archived] }
+        tier: { type: string, enum: [free, trial, pro, ultimate, lapsed, archived] }
         canAuthor: { type: boolean }
         activeRuns: { type: integer }
         activeRunLimit: { type: integer }
@@ -12445,7 +12482,11 @@ components:
       type: object
       required: [override]
       properties:
-        override: { type: string, enum: [none, trial, pro, ultimate, lapsed, archived] }
+        # A `TierOverride`, not a `UserTier`: `BillingAdminController`
+        # rejects anything outside this set with a 400. The spec used to list
+        # the `UserTier` cases here, which documented four values the endpoint
+        # has never accepted.
+        override: { type: string, enum: [none, pro, ultimate] }
         expiresAt: { type: string, format: date-time }
 
     TierOverrideResponse:

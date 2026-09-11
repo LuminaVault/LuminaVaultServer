@@ -282,6 +282,20 @@ struct TierAwareRateLimitTests {
         #expect(lapsed == 10)
     }
 
+    /// Free shares lapsed's scale on purpose. 10/60s sits far above the free
+    /// lane's 20/day grace, so the *lane* stays the binding constraint — which
+    /// is what guarantees an exhausted free user gets `free_lane_exhausted`,
+    /// carrying the upgrade and add-key CTAs, rather than a bare rate-limit
+    /// 429 that offers them nothing.
+    @Test
+    func `free shares the lapsed bucket and stays above the lane grace`() {
+        let chat = RateLimitPolicy.chatByUser
+        let free = chat.effectiveMax(for: .free)
+        #expect(free == chat.effectiveMax(for: .lapsed))
+        #expect(free == 10)
+        #expect(free < chat.effectiveMax(for: .trial))
+    }
+
     /// A scale must never produce 0: that would 429 every request, which is an
     /// entitlement decision made in a different middleware.
     @Test

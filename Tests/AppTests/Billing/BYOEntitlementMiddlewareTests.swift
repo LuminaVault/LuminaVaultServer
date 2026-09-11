@@ -15,10 +15,14 @@ import Testing
 /// harness never tears them down. The middleware is what changed, so mount
 /// just the middleware.
 ///
-/// The behaviour under test: everyone becomes `lapsed` 14 days after signup
-/// (`LapseArchiverJob`), and `lapsed` denies chat, capture, memory search and
-/// the knowledge graph — so a user on their own Hermes or their own key was
-/// 402'd for inference the platform never paid for.
+/// The behaviour under test: a user on their own Hermes or their own key must
+/// not be 402'd for inference the platform never paid for.
+///
+/// Chat, memory query and capture are now free on every tier but `archived`,
+/// so the BYO exemption no longer shows up on those capabilities — it is only
+/// observable on the ones a non-paying tier still lacks (`memoGenerator`,
+/// `kbCompile`, `memoryCompile`, `healthIngest`, `skillBuiltinRun`). Those are
+/// the probes used below.
 struct BYOEntitlementMiddlewareTests {
     /// Stands in for `JWTAuthenticator` + `HermesResolutionMiddleware`.
     private struct StubContextMiddleware: RouterMiddleware {
@@ -87,21 +91,21 @@ struct BYOEntitlementMiddlewareTests {
 
     @Test
     func `a lapsed user with nothing of their own is still charged`() async throws {
-        let status = try await Self.probe(capability: .chat, tier: .lapsed, resolution: nil)
+        let status = try await Self.probe(capability: .memoGenerator, tier: .lapsed, resolution: nil)
         #expect(status.code == 402)
     }
 
     /// A managed-Hermes tenant is on our compute, so the paywall stands.
     @Test
     func `resolving to the managed hermes is not a BYO signal`() async throws {
-        let status = try await Self.probe(capability: .chat, tier: .lapsed, resolution: Self.managedHermes)
+        let status = try await Self.probe(capability: .memoGenerator, tier: .lapsed, resolution: Self.managedHermes)
         #expect(status.code == 402)
     }
 
     @Test
     func `a credential closure returning false does not exempt`() async throws {
         let status = try await Self.probe(
-            capability: .memoryQuery,
+            capability: .kbCompile,
             tier: .lapsed,
             resolution: nil,
             hasUsableCredential: { _ in false }
@@ -109,11 +113,24 @@ struct BYOEntitlementMiddlewareTests {
         #expect(status.code == 402)
     }
 
+    /// Chat needs no BYO signal any more — it is free outright. Kept as its
+    /// own case so that if chat is ever re-gated, this fails loudly rather
+    /// than hiding behind an exemption.
+    @Test
+    func `chat needs no BYO signal on a non-paying tier`() async throws {
+        for tier in [UserTier.free, .lapsed] {
+            for capability in [Capability.chat, .memoryQuery, .capture] {
+                let status = try await Self.probe(capability: capability, tier: tier, resolution: nil)
+                #expect(status == .ok, "\(tier).\(capability) should not need a BYO signal")
+            }
+        }
+    }
+
     // MARK: - BYO passes
 
     @Test
     func `a lapsed user on their own hermes is not charged`() async throws {
-        for capability in [Capability.chat, .capture, .memoryQuery, .memoGenerator, .memoryCompile, .healthIngest] {
+        for capability in [Capability.memoGenerator, .memoryCompile, .healthIngest, .kbCompile, .skillBuiltinRun] {
             let status = try await Self.probe(capability: capability, tier: .lapsed, resolution: Self.ownHermes)
             #expect(status == .ok, "\(capability) should pass for a BYO-Hermes tenant")
         }
@@ -125,7 +142,7 @@ struct BYOEntitlementMiddlewareTests {
     @Test
     func `a lapsed user with their own key is not charged`() async throws {
         let status = try await Self.probe(
-            capability: .memoryQuery,
+            capability: .memoryCompile,
             tier: .lapsed,
             resolution: nil,
             hasUsableCredential: { _ in true }
@@ -169,12 +186,69 @@ struct BYOEntitlementMiddlewareTests {
         }
     }
 
+    /// The money leak that making chat free would otherwise open.
+    ///
+    /// `free` and `lapsed` hold `.chat` and `.memoryQuery` outright, so
+    /// entitlement alone would let them onto `/v1/transcribe` (Groq),
+    /// `/v1/tts` (OpenAI) and `/v1/vision` (Cohere) — none of which has a free
+    /// lane or a bring-your-own path. `platformFunded` carries a tier floor of
+    /// `trial` for exactly this reason.
+    @Test
+    func `platform-funded routes are closed to non-paying tiers`() async throws {
+        for tier in [UserTier.free, .lapsed, .archived] {
+            for capability in [Capability.chat, .memoryQuery] {
+                let status = try await Self.probe(
+                    capability: capability,
+                    tier: tier,
+                    resolution: nil,
+                    platformFunded: true
+                )
+                #expect(status.code == 402, "\(tier).\(capability) must not spend a platform key")
+            }
+        }
+    }
+
+    /// The floor is `trial`, not `pro` — a trial user is a prospective
+    /// customer with a clock running, which is who these routes sell to.
+    @Test
+    func `platform-funded routes stay open to trial and above`() async throws {
+        for tier in [UserTier.trial, .pro, .ultimate] {
+            let status = try await Self.probe(
+                capability: .chat,
+                tier: tier,
+                resolution: nil,
+                platformFunded: true
+            )
+            #expect(status == .ok, "\(tier) should reach a platform-funded route")
+        }
+    }
+
+    /// A `tier_override` clears the floor, so founders and testers on a
+    /// granted `ultimate` keep transcription and TTS.
+    @Test
+    func `a tier override clears the platform-funded floor`() async throws {
+        let router = Router(context: AppRequestContext.self)
+        let overridden = Self.user(tier: .free)
+        overridden.tierOverride = TierOverride.ultimate.rawValue
+        router.add(middleware: StubContextMiddleware(user: overridden, resolution: nil))
+        router.add(middleware: EntitlementMiddleware(
+            requires: .chat,
+            enforcementEnabled: true,
+            platformFunded: true
+        ))
+        router.get("/probe") { _, _ -> String in "ok" }
+        let app = Application(router: router)
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/probe", method: .get) { #expect($0.status == .ok) }
+        }
+    }
+
     /// The same capability, same tenant, same signals — exempt when the route
     /// runs on their key. This pair is the whole distinction.
     @Test
     func `the same capability passes on a user-funded route`() async throws {
         let status = try await Self.probe(
-            capability: .chat,
+            capability: .memoGenerator,
             tier: .lapsed,
             resolution: Self.ownHermes,
             hasUsableCredential: { _ in true },

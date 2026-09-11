@@ -105,7 +105,7 @@ struct WorkflowTierPolicyTests {
         #expect(policy.monthlyUsdMicros == expectation.monthMicros)
     }
 
-    @Test("Non-authoring tiers have no execution allowance", arguments: [UserTier.trial, .lapsed, .archived])
+    @Test("Non-authoring tiers have no execution allowance", arguments: [UserTier.free, .trial, .lapsed, .archived])
     func nonAuthoringTiers(tier: UserTier) {
         let policy = WorkflowTierPolicy.policy(for: tier)
 

@@ -4,7 +4,7 @@ The single record of what we sell and what must be configured for it to work.
 Five artifacts used to carry four different price lists; if any of them
 disagrees with this file, this file is right and the other is a bug.
 
-Last reconciled 2026-09-07 (server `a5a02fe`, client `f560e12`).
+Last reconciled 2026-09-11 (free tier, `M124_AddFreeTier`).
 
 ---
 
@@ -33,35 +33,59 @@ RevenueCat. Adding it in ASC alone produces a webhook that retries forever.
 
 ## Tiers
 
-`users.tier`, CHECK-constrained by `M15_AddTierFields` to exactly:
-`trial`, `pro`, `ultimate`, `lapsed`, `archived`.
+`users.tier`, CHECK-constrained by `M15_AddTierFields` and widened by
+`M124_AddFreeTier` to exactly: `free`, `trial`, `pro`, `ultimate`, `lapsed`,
+`archived`.
 
-There is **no `free` tier and no `byok` tier**, however marketing describes
-them. The free lane (`FreeLanePolicy`) and the BYO exemption
-(`BYOEntitlementPolicy`) are orthogonal mechanisms, not rows in this column.
+There is still **no `byok` tier**, however marketing describes it. The BYO
+exemption (`BYOEntitlementPolicy`) is an orthogonal mechanism, not a row in
+this column. The free *lane* (`FreeLanePolicy`) is likewise not the same thing
+as the free *tier*: the tier says what you may call, the lane says who pays
+for it.
 
 | Tier | How you get here | What it grants |
 |---|---|---|
+| `free` | your 14-day trial ended | chat, memory and capture on the free lane, 20 messages/day; read and export your vault. No workflows, no skills, no platform-funded routes |
 | `trial` | signup, 14 days | everything except the four ultimate-only capabilities |
 | `pro` | a Pro SKU | the same, and keeps it |
 | `ultimate` | an Ultimate SKU | everything |
-| `lapsed` | trial or subscription expired | vault read + export only |
+| `lapsed` | a **paid** subscription expired | the same as `free`, plus a 90-day archive clock |
 | `archived` | 90 days lapsed | nothing; vault moved to cold storage |
 
 Hard delete at 365 days archived (`LapseArchiverJob`). `tier_override`
 (`none|pro|ultimate`, admin-only) raises the floor and **exempts a user from
 lapsing entirely** — the mechanism to use for testers.
 
+Note `lapsed` is no longer where an expired trial lands: `LapseArchiverJob`
+sends a trial to `free` and only a lapsed *subscription* to `lapsed`. Before
+the split, "your subscription expired" was the copy shown to someone who had
+never subscribed, and it started a cold-storage clock on them.
+
 ### Capability matrix
 
 `Sources/App/Billing/EntitlementChecker.swift` is authoritative. Summary:
 
-- **Always, except archived:** `vaultRead`, `vaultExport`
-- **trial / pro / ultimate:** `capture`, `healthIngest`, `chat`, `memoryQuery`,
-  `memoGenerator`, `skillBuiltinRun`, `kbCompile`, `memoryCompile`,
-  `workflowAutomation`
+- **Always, except archived:** `vaultRead`, `vaultExport`, `chat`,
+  `memoryQuery`, `capture`
+- **trial / pro / ultimate:** `healthIngest`, `memoGenerator`,
+  `skillBuiltinRun`, `kbCompile`, `memoryCompile`, `workflowAutomation`
 - **ultimate only:** `skillVaultRun`, `privacyBYOKey`, `privacyContextRouter`,
   `mlxOnDevice`
+
+`free` and `lapsed` share a row deliberately. An ex-subscriber getting
+strictly less than someone who never paid is indefensible; the two differ only
+in the archive clock and the storage ceiling (`free` 1 GiB, `lapsed` no
+growth).
+
+Chat being free costs nothing by construction: a non-paying tier reaches an
+LLM only through `FreeLanePolicy`'s zero-cost lane, capped daily by
+`FreeLaneGate`. What that argument does **not** cover is the three routes that
+spend a platform key with no bring-your-own path — `/v1/transcribe` (Groq),
+`/v1/tts` (OpenAI), `/v1/vision` (Cohere). They are marked `platformFunded` at
+the mount, and that flag now carries a **tier floor of `trial`** as well as
+suppressing the BYO exemption. Without the floor, entitlement alone would hand
+every free account 200 transcriptions, 1000 TTS calls and 200 vision embeds a
+day on our account.
 
 ### BYO exemption
 
@@ -147,13 +171,30 @@ TestFlight builds the **Beta** configuration, whose `LV_RC_API_KEY` is empty.
 tester who reaches the paywall sees "Subscriptions unavailable", which is
 accurate for a build that cannot sell.
 
-**What will bite testers is enforcement, not RevenueCat.**
+The empty Beta `LV_RC_API_KEY` is **correct and needs no RevenueCat dashboard
+change.** A tester who reaches the paywall should see "Purchases aren't
+available in this build", with a working Close — if they instead see a bare
+mascot and nothing else, that is a client bug in `PaywallView`, not a
+misconfiguration.
+
+**What used to bite testers is enforcement, not RevenueCat.**
 `BILLING_ENFORCEMENT_ENABLED` defaults to **true** in
 `docker-compose.production.yml` when the variable is unset — the opposite of
-the code default — and `LapseArchiverJob` flips every account to `lapsed` 14
-days after signup. A lapsed tester with no Hermes and no key gets 402s on
-chat, capture, memory and the Brain tab, and the paywall cannot sell them a
-way out.
+the code default — and `LapseArchiverJob` moves every account off `trial` 14
+days after signup. That tester now lands on `free`, which keeps chat, memory
+and capture, so the cliff is much smaller than it was: what they lose is
+workflows, skills, the compilers, and transcription/TTS/vision.
+
+Two ways to grant a tester the full product — they are idempotent with each
+other, and either one also exempts the account from `LapseArchiverJob`:
+
+- `BILLING_TIER_OVERRIDE_EMAILS` — a comma list of `email=tier` (a bare email
+  grants `ultimate`). Stamped onto `users.tier_override` by
+  `DefaultAuthService.issueTokens`, so it applies on the account's **next
+  sign-in or token refresh**, never mid-session. It must be present in
+  `.env.production` on the host, not merely passed through
+  `docker-compose.production.yml`, or it resolves to empty.
+- The admin call below, for an immediate grant.
 
 Give each tester an override instead of disabling enforcement globally — a
 user with an override is skipped by the lapse job entirely:
@@ -202,6 +243,13 @@ Recorded so they are not rediscovered:
 - **No per-tenant USD cap.** `cost_ledger` now records managed spend, but
   `billing.managedDailyCapUsdMicros` defaults to 0 (disabled) — it ships as a
   meter, and setting a cap needs real numbers from it first.
+- **No dormancy reaper for `free`.** `LapseArchiverJob` only ever archives
+  `lapsed` rows, so a `free` account is never cold-stored and never hard
+  deleted, however long it sits idle. Per account this is bounded by the 1 GiB
+  `free` storage ceiling; across accounts it is not bounded at all. The fix is
+  a dormancy rule keyed on last login — which needs a `last_seen_at` column
+  that does not exist, because `tier_expires_at` on a `free` row is a stale
+  trial timestamp and using it would delete live users' vaults.
 - **The free lane's OpenRouter leg holds 45 requests/day platform-wide**
   against a per-user grace of 20, so roughly three active free users exhaust
   it. This is not the outage it looks like: legs cascade, and the next one

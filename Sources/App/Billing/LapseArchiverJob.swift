@@ -7,7 +7,11 @@ import LuminaVaultShared
 import ServiceLifecycle
 
 struct LapseArchiverSummary: Codable, ResponseEncodable {
+    /// Paid subscriptions that ended. Distinct from `movedToFree`: only these
+    /// start the 90-day archive clock.
     let lapsed: Int
+    /// Trials that ran out. These land on `free` and are never archived.
+    let movedToFree: Int
     let archived: Int
     let hardDeleted: Int
     let failures: [LapseArchiverFailure]
@@ -42,6 +46,7 @@ struct LapseArchiverJob {
     func run(now: Date = Date()) async throws -> LapseArchiverSummary {
         let users = try await User.query(on: fluent.db()).all()
         var lapsed = 0
+        var movedToFree = 0
         var archived = 0
         var hardDeleted = 0
         var failures: [LapseArchiverFailure] = []
@@ -49,8 +54,10 @@ struct LapseArchiverJob {
         for user in users {
             guard let userID = user.id else { continue }
             do {
-                if try await lapseIfExpired(user, now: now) {
-                    lapsed += 1
+                switch try await lapseIfExpired(user, now: now) {
+                case .lapsed: lapsed += 1
+                case .movedToFree: movedToFree += 1
+                case .none: break
                 }
             } catch {
                 failures.append(.init(userID: userID, phase: "lapse", error: String(describing: error)))
@@ -79,23 +86,44 @@ struct LapseArchiverJob {
             }
         }
 
-        logger.info("billing.lapse_archiver lapsed=\(lapsed) archived=\(archived) hardDeleted=\(hardDeleted) failures=\(failures.count)")
-        return LapseArchiverSummary(lapsed: lapsed, archived: archived, hardDeleted: hardDeleted, failures: failures)
+        logger.info("billing.lapse_archiver lapsed=\(lapsed) movedToFree=\(movedToFree) archived=\(archived) hardDeleted=\(hardDeleted) failures=\(failures.count)")
+        return LapseArchiverSummary(lapsed: lapsed, movedToFree: movedToFree, archived: archived, hardDeleted: hardDeleted, failures: failures)
     }
 
-    private func lapseIfExpired(_ user: User, now: Date) async throws -> Bool {
+    /// What an expiry did, if anything.
+    enum ExpiryOutcome {
+        case none
+        /// A trial ran out. Lands on `free` — chat and capture on the
+        /// zero-cost lane, and no archive clock.
+        case movedToFree
+        /// A paid subscription ended. Lands on `lapsed`, which is the only
+        /// tier `archiveIfPastGrace` looks at.
+        case lapsed
+    }
+
+    /// Note the destination depends on what the user was *before*.
+    ///
+    /// Before `free` existed, both transitions wrote `lapsed`, which made
+    /// "your subscription expired" the copy shown to someone who had never
+    /// subscribed. Splitting them gives `lapsed` exactly one meaning and keeps
+    /// the cold-storage clock on the population it was designed for.
+    private func lapseIfExpired(_ user: User, now: Date) async throws -> ExpiryOutcome {
         guard user.tierOverrideEnum == .none,
               [UserTier.trial.rawValue, UserTier.pro.rawValue, UserTier.ultimate.rawValue].contains(user.tier),
               let expiresAt = user.tierExpiresAt,
               expiresAt < now
         else {
-            return false
+            return .none
         }
-        user.tier = UserTier.lapsed.rawValue
+        let wasTrial = user.tier == UserTier.trial.rawValue
+        user.tier = wasTrial ? UserTier.free.rawValue : UserTier.lapsed.rawValue
         try await user.save(on: fluent.db())
         let userID = try user.requireID()
-        logger.info("billing.user_lapsed", metadata: ["userID": .string(userID.uuidString)])
-        return true
+        logger.info(
+            wasTrial ? "billing.user_moved_to_free" : "billing.user_lapsed",
+            metadata: ["userID": .string(userID.uuidString)]
+        )
+        return wasTrial ? .movedToFree : .lapsed
     }
 
     private func archiveIfPastGrace(_ user: User, now: Date) async throws -> Bool {

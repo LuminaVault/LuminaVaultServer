@@ -167,6 +167,8 @@ func buildApplication(
             .filter { !$0.isEmpty },
         adminToken: reader.string(forKey: "admin.token", default: ""),
         billingEnforcementEnabled: reader.string(forKey: "billing.enforcementEnabled", default: "false").lowercased() == "true",
+        // `BILLING_TIER_OVERRIDE_EMAILS` — `email=tier,...`; see TierOverrideAllowlist.
+        billingTierOverrideEmails: reader.string(forKey: "billing.tierOverrideEmails", default: ""),
         billingColdStoragePath: reader.string(
             forKey: "billing.coldStoragePath",
             default: URL(fileURLWithPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"))
@@ -475,6 +477,10 @@ func buildRouter(
         verificationCodeGenerator: verifyGen,
         hermesProfileService: hermesProfileService,
         soulService: soulService,
+        tierOverrides: TierOverrideAllowlist(
+            parsing: services.billingTierOverrideEmails,
+            logger: Logger(label: "lv.billing.tier-override")
+        ),
         logger: Logger(label: "lv.auth")
     )
     let webAuthnService = WebAuthnService(
@@ -2329,7 +2335,11 @@ func buildRouter(
                 ultimate: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.ultimateBytes"), default: 1024 * 1024 * 1024 * 1024)),
                 // A lapsed tenant keeps read and export, which is the whole
                 // content of the tier, so the ceiling only stops growth.
-                lapsed: 0
+                lapsed: 0,
+                // Free keeps capture, so it needs a real ceiling. It is also
+                // the one tier `LapseArchiverJob` never archives, so this is
+                // the only bound on what a free vault holds — forever.
+                free: StorageQuotaService.limit(reader.int(forKey: ConfigKey("storage.quota.freeBytes"), default: 1024 * 1024 * 1024))
             ),
             enabled: reader.bool(forKey: ConfigKey("storage.quota.enabled"), default: true),
             logger: Logger(label: "lv.storage-quota")
@@ -3578,14 +3588,14 @@ private func updatePrivacyHandler(
     }
 }
 
-struct MeBillingResponse: ResponseEncodable, Encodable {
-    let tier: String
-    let tierExpiresAt: Date?
-    let tierOverride: String
-    let inTrial: Bool
-    let daysRemaining: Int
-    let enforcementEnabled: Bool
-}
+/// The shared DTO is a plain `Codable` in `LuminaVaultShared`; Hummingbird's
+/// response path needs `ResponseEncodable`, which is the server's concern.
+extension MeBillingResponse: @retroactive ResponseEncodable {}
+
+// `MeBillingResponse` is the shared DTO from `LuminaVaultShared`. A server-local
+// duplicate used to live here with `tier: String`, shadowing the shared
+// `tier: UserTier`; the two then drifted (the shared one never gained
+// `tierExpiresAt`). One wire type, one definition — see CLAUDE.md §3.
 
 private func meBillingHandler(
     enforcementEnabled: Bool
@@ -3599,12 +3609,22 @@ private func meBillingHandler(
             0
         }
 
-        let inTrial = user.tier == "trial" && daysRemaining > 0
+        // Report the *effective* tier — `tier_override` folded in. The raw
+        // column used to be returned here, so a founder or tester granted
+        // `ultimate` sailed past every server-side 402 while the app still
+        // rendered them as lapsed and drew a paywall over everything. The
+        // override is resolved in exactly one place, and this is downstream of
+        // it; `tierOverride` still ships alongside so support can see *why*.
+        let effectiveTier = EntitlementChecker.effectiveTier(
+            tier: user.tierEnum,
+            override: user.tierOverrideEnum
+        )
+        let inTrial = effectiveTier == .trial && daysRemaining > 0
 
         return MeBillingResponse(
-            tier: user.tier,
-            tierExpiresAt: user.tierExpiresAt,
+            tier: effectiveTier,
             tierOverride: user.tierOverride,
+            tierExpiresAt: user.tierExpiresAt,
             inTrial: inTrial,
             daysRemaining: daysRemaining,
             enforcementEnabled: enforcementEnabled

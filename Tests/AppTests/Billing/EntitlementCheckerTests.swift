@@ -4,8 +4,8 @@ import LuminaVaultShared
 import Testing
 
 /// Pure-function tests for `EntitlementChecker`. No DB, no Hummingbird,
-/// no I/O. The full `(tier, override, capability)` matrix has 5 × 3 × 13
-/// = 195 cells; we test ~30 representative cells covering every
+/// no I/O. The full `(tier, override, capability)` matrix has 6 × 3 × 15
+/// = 270 cells; we test ~35 representative cells covering every
 /// equivalence class, plus the override-never-downgrades invariant.
 struct EntitlementCheckerTests {
     /// `workflowAutomation` was defined and mounted on no route, so
@@ -23,7 +23,7 @@ struct EntitlementCheckerTests {
                 "\(tier) should reach the workflow studio"
             )
         }
-        for tier in [UserTier.lapsed, .archived] {
+        for tier in [UserTier.free, .lapsed, .archived] {
             #expect(
                 EntitlementChecker.entitled(tier: tier, override: .none, for: .workflowAutomation) == false,
                 "\(tier) must not drive platform inference through workflows"
@@ -51,21 +51,40 @@ struct EntitlementCheckerTests {
 
     // MARK: - Trial / Pro / Ultimate capabilities
 
+    /// Chat is the free product. Every tier but `archived` holds it — a
+    /// non-paying tier reaches an LLM only through `FreeLanePolicy`'s
+    /// zero-cost lane, capped daily by `FreeLaneGate`, so entitlement here
+    /// costs nothing. Routes that spend a platform key with no
+    /// bring-your-own path are gated separately, by `platformFunded`.
     @Test
-    func `chat allowed for active tiers`() {
-        #expect(EntitlementChecker.entitled(tier: .trial, override: .none, for: .chat))
-        #expect(EntitlementChecker.entitled(tier: .pro, override: .none, for: .chat))
-        #expect(EntitlementChecker.entitled(tier: .ultimate, override: .none, for: .chat))
-        #expect(!EntitlementChecker.entitled(tier: .lapsed, override: .none, for: .chat))
+    func `chat allowed on every tier but archived`() {
+        for tier in [UserTier.free, .trial, .pro, .ultimate, .lapsed] {
+            #expect(EntitlementChecker.entitled(tier: tier, override: .none, for: .chat),
+                    "\(tier) should reach chat")
+        }
         #expect(!EntitlementChecker.entitled(tier: .archived, override: .none, for: .chat))
     }
 
+    /// `/v1/conversations` — the surface the iOS app actually streams chat
+    /// through, listing included — is gated on `.memoryQuery`, not `.chat`.
+    /// Granting one without the other leaves the Chats tab itself 402ing.
     @Test
-    func `capture allowed for active tiers`() {
-        #expect(EntitlementChecker.entitled(tier: .trial, override: .none, for: .capture))
-        #expect(EntitlementChecker.entitled(tier: .pro, override: .none, for: .capture))
-        #expect(EntitlementChecker.entitled(tier: .ultimate, override: .none, for: .capture))
-        #expect(!EntitlementChecker.entitled(tier: .lapsed, override: .none, for: .capture))
+    func `memory query tracks chat exactly`() {
+        for tier in UserTier.allCases {
+            #expect(
+                EntitlementChecker.entitled(tier: tier, override: .none, for: .memoryQuery)
+                    == EntitlementChecker.entitled(tier: tier, override: .none, for: .chat),
+                "\(tier): memoryQuery must not diverge from chat"
+            )
+        }
+    }
+
+    @Test
+    func `capture allowed on every tier but archived`() {
+        for tier in [UserTier.free, .trial, .pro, .ultimate, .lapsed] {
+            #expect(EntitlementChecker.entitled(tier: tier, override: .none, for: .capture))
+        }
+        #expect(!EntitlementChecker.entitled(tier: .archived, override: .none, for: .capture))
     }
 
     @Test
@@ -73,6 +92,7 @@ struct EntitlementCheckerTests {
         #expect(EntitlementChecker.entitled(tier: .trial, override: .none, for: .skillBuiltinRun))
         #expect(EntitlementChecker.entitled(tier: .pro, override: .none, for: .skillBuiltinRun))
         #expect(EntitlementChecker.entitled(tier: .ultimate, override: .none, for: .skillBuiltinRun))
+        #expect(!EntitlementChecker.entitled(tier: .free, override: .none, for: .skillBuiltinRun))
         #expect(!EntitlementChecker.entitled(tier: .lapsed, override: .none, for: .skillBuiltinRun))
         #expect(!EntitlementChecker.entitled(tier: .archived, override: .none, for: .skillBuiltinRun))
     }
@@ -82,7 +102,7 @@ struct EntitlementCheckerTests {
         for tier in [UserTier.trial, .pro, .ultimate] {
             #expect(EntitlementChecker.entitled(tier: tier, override: .none, for: .kbCompile))
         }
-        for tier in [UserTier.lapsed, .archived] {
+        for tier in [UserTier.free, .lapsed, .archived] {
             #expect(!EntitlementChecker.entitled(tier: tier, override: .none, for: .kbCompile))
         }
     }
@@ -92,7 +112,7 @@ struct EntitlementCheckerTests {
         for tier in [UserTier.trial, .pro, .ultimate] {
             #expect(EntitlementChecker.entitled(tier: tier, override: .none, for: .memoryCompile))
         }
-        for tier in [UserTier.lapsed, .archived] {
+        for tier in [UserTier.free, .lapsed, .archived] {
             #expect(!EntitlementChecker.entitled(tier: tier, override: .none, for: .memoryCompile))
         }
     }
@@ -104,6 +124,7 @@ struct EntitlementCheckerTests {
         #expect(!EntitlementChecker.entitled(tier: .trial, override: .none, for: .skillVaultRun))
         #expect(!EntitlementChecker.entitled(tier: .pro, override: .none, for: .skillVaultRun))
         #expect(EntitlementChecker.entitled(tier: .ultimate, override: .none, for: .skillVaultRun))
+        #expect(!EntitlementChecker.entitled(tier: .free, override: .none, for: .skillVaultRun))
         #expect(!EntitlementChecker.entitled(tier: .lapsed, override: .none, for: .skillVaultRun))
     }
 
@@ -128,12 +149,34 @@ struct EntitlementCheckerTests {
 
     // MARK: - Lapsed / archived
 
+    /// The free row, stated exhaustively. Everything outside this set either
+    /// spends our money (`healthIngest`, the compilers, workflows, and the
+    /// platform-funded routes) or is the paid surface itself.
+    static let freeCapabilities: Set<Capability> = [
+        .vaultRead, .vaultExport, .chat, .memoryQuery, .capture,
+    ]
+
     @Test
-    func `lapsed gets only vault read and export`() {
+    func `free gets chat memory and capture and nothing else`() {
         for cap in Capability.allCases {
-            let allowed = EntitlementChecker.entitled(tier: .lapsed, override: .none, for: cap)
-            let expected = (cap == .vaultRead || cap == .vaultExport)
-            #expect(allowed == expected, "lapsed.\(cap) expected \(expected), got \(allowed)")
+            let allowed = EntitlementChecker.entitled(tier: .free, override: .none, for: cap)
+            let expected = Self.freeCapabilities.contains(cap)
+            #expect(allowed == expected, "free.\(cap) expected \(expected), got \(allowed)")
+        }
+    }
+
+    /// An ex-subscriber must never get strictly less than someone who never
+    /// paid. The two tiers differ only in the archive clock
+    /// (`LapseArchiverJob` runs on `lapsed`, never on `free`) and the storage
+    /// ceiling — never in what they can do.
+    @Test
+    func `lapsed matches free exactly`() {
+        for cap in Capability.allCases {
+            #expect(
+                EntitlementChecker.entitled(tier: .lapsed, override: .none, for: cap)
+                    == EntitlementChecker.entitled(tier: .free, override: .none, for: cap),
+                "lapsed.\(cap) diverged from free"
+            )
         }
     }
 
@@ -155,6 +198,15 @@ struct EntitlementCheckerTests {
                 #expect(allowed, "tier=\(tier) override=.ultimate cap=\(cap) should always allow")
             }
         }
+    }
+
+    @Test
+    func `override pro raises free to pro`() {
+        #expect(EntitlementChecker.entitled(tier: .free, override: .pro, for: .skillBuiltinRun))
+        #expect(EntitlementChecker.entitled(tier: .free, override: .pro, for: .workflowAutomation))
+        #expect(!EntitlementChecker.entitled(tier: .free, override: .pro, for: .skillVaultRun))
+        #expect(EntitlementChecker.effectiveTier(tier: .free, override: .pro) == .pro)
+        #expect(EntitlementChecker.effectiveTier(tier: .free, override: .ultimate) == .ultimate)
     }
 
     @Test
@@ -213,9 +265,17 @@ struct EntitlementCheckerTests {
     func `user extension decodes unrecognized tier as lapsed`() {
         let u = User(email: "x@y.test", username: "x", passwordHash: "stub", tier: "garbage")
         #expect(u.tierEnum == .lapsed)
-        // Lapsed → vault read OK, chat denied.
+        // Vault read survives: a schema-drift bug must not take an
+        // authenticated user's own notes away from them.
         #expect(u.entitled(for: .vaultRead))
-        #expect(!u.entitled(for: .chat))
+        // Chat is now granted here, because `lapsed` grants it. Deliberate —
+        // the free lane is zero-cost and day-capped, so the blast radius of a
+        // row we could not parse is 20 free messages.
+        #expect(u.entitled(for: .chat))
+        // What the fallback still denies is everything that spends money.
+        #expect(!u.entitled(for: .skillBuiltinRun))
+        #expect(!u.entitled(for: .workflowAutomation))
+        #expect(!u.entitled(for: .skillVaultRun))
     }
 
     @Test

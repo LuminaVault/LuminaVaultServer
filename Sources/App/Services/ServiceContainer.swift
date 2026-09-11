@@ -88,6 +88,9 @@ struct ServiceContainer {
     let adminToken: String
     /// Billing gate. Defaults false so enforcement can ship dark.
     let billingEnforcementEnabled: Bool
+    /// `BILLING_TIER_OVERRIDE_EMAILS` — raw `email=tier,...` list; parsed by
+    /// `TierOverrideAllowlist` where `DefaultAuthService` is built.
+    let billingTierOverrideEmails: String
     /// Local cold-storage root for lapsed vault archival.
     let billingColdStoragePath: String
     /// X (Twitter) OAuth 2.0 client ID — audit/audience reference; iOS does
