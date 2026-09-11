@@ -5,8 +5,8 @@ import ServiceLifecycle
 
 /// HER-203 — env-loaded provider credential snapshot for the STT layer.
 /// Mirrors `ProviderConfig` from the chat-routing layer but scoped to
-/// transcription. Empty `apiKey` disables the provider (so deployments
-/// only configure what they own).
+/// transcription. A provider with neither a key nor a base URL is disabled,
+/// so deployments only configure what they own.
 struct TranscribeProviderConfig: Hashable {
     let kind: TranscribeProviderKind
     let apiKey: String
@@ -17,8 +17,16 @@ struct TranscribeProviderConfig: Hashable {
     /// re-pricing the whole rate card.
     let mtokPerSecond: Double
 
+    /// A provider is usable once it has *either* a credential or an endpoint.
+    ///
+    /// The in-cluster whisper service takes no API key — access is controlled
+    /// by NetworkPolicy — so requiring one would leave it permanently
+    /// disabled. A configured base URL is the deliberate act that enables it.
     var isEnabled: Bool {
-        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return baseURL != nil
     }
 }
 
@@ -63,10 +71,10 @@ actor TranscribeProviderRegistry: Service {
         adapters: [any TranscribeProviderAdapter],
         logger: Logger
     ) -> TranscribeProviderRegistry {
-        let activeRaw = reader.string(forKey: ConfigKey("transcribe.provider"), default: "groq")
+        let activeRaw = reader.string(forKey: ConfigKey("transcribe.provider"), default: "openai_compatible")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        let active = TranscribeProviderKind(rawValue: activeRaw) ?? .groq
+        let active = TranscribeProviderKind(rawValue: activeRaw) ?? .openaiCompatible
         return TranscribeProviderRegistry(
             active: active,
             configs: loadConfigs(from: reader),
@@ -112,7 +120,7 @@ actor TranscribeProviderRegistry: Service {
         kind: TranscribeProviderKind,
         reader: ConfigReader
     ) -> TranscribeProviderConfig? {
-        let key = kind.rawValue
+        let key = kind.configKey
         let apiKey = reader.string(forKey: ConfigKey("transcribe.provider.\(key).apiKey"), isSecret: true, default: "")
         let rawBaseURL = reader.string(forKey: ConfigKey("transcribe.provider.\(key).baseURL"), default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -131,17 +139,22 @@ actor TranscribeProviderRegistry: Service {
 
     private static func defaultModel(for kind: TranscribeProviderKind) -> String {
         switch kind {
-        case .groq: "whisper-large-v3"
-        case .openai: "whisper-1"
-        case .replicate: "openai/whisper"
+        // The model the in-cluster service preloads. A hosted endpoint needs
+        // its own name set explicitly; there is no safe cross-vendor default.
+        case .openaiCompatible: "Systran/faster-whisper-small.en"
         case .stub: "stub"
         }
     }
 
+    /// Mtok-equivalent per second of audio, for the usage meter.
+    ///
+    /// Zero by default: the in-cluster service costs nothing per request, so
+    /// metering it as though it did would invent spend. A deployment pointing
+    /// at a paid endpoint sets `transcribe.ratecard.<kind>.mtokPerSecond`
+    /// explicitly.
     private static func defaultRateCard(for kind: TranscribeProviderKind) -> Double {
         switch kind {
-        case .groq, .openai, .replicate: 0.0001
-        case .stub: 0.0
+        case .openaiCompatible, .stub: 0.0
         }
     }
 }

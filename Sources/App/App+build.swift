@@ -1533,15 +1533,25 @@ func buildRouter(
     // and returns 503 via the service layer.
     let transcribeLogger = Logger(label: "lv.transcribe")
     var transcribeAdapters: [any TranscribeProviderAdapter] = []
-    let groqAPIKey = reader.string(forKey: "transcribe.provider.groq.apiKey", isSecret: true, default: "")
-    if !groqAPIKey.isEmpty {
-        let groqBaseRaw = reader.string(forKey: "transcribe.provider.groq.baseURL", default: "https://api.groq.com")
-        let groqBase = URL(string: groqBaseRaw) ?? URL(string: "https://api.groq.com")!
-        let groqModel = reader.string(forKey: "transcribe.provider.groq.model", default: "whisper-large-v3")
-        transcribeAdapters.append(GroqWhisperAdapter(
-            apiKey: groqAPIKey,
-            baseURL: groqBase,
-            model: groqModel,
+    // Speech-to-text points at the cluster's own whisper service by default:
+    // free per request, no credential, and no audio leaving the cluster. See
+    // `~/Work/production/CLAUDE.md` — adding a paid speech API is not allowed.
+    // The base URL includes the version prefix, matching how every
+    // OpenAI-compatible endpoint publishes itself.
+    let transcribeBaseRaw = reader.string(
+        forKey: "transcribe.provider.openai.baseURL",
+        default: "http://whisper.horus.svc.cluster.local:8000/v1"
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+    if let transcribeBase = URL(string: transcribeBaseRaw), !transcribeBaseRaw.isEmpty {
+        transcribeAdapters.append(OpenAICompatibleTranscribeAdapter(
+            // Empty for the in-cluster service, which authenticates by
+            // NetworkPolicy. Set only when pointing at a hosted endpoint.
+            apiKey: reader.string(forKey: "transcribe.provider.openai.apiKey", isSecret: true, default: ""),
+            baseURL: transcribeBase,
+            model: reader.string(
+                forKey: "transcribe.provider.openai.model",
+                default: "Systran/faster-whisper-small.en"
+            ),
             session: .shared,
             logger: transcribeLogger
         ))

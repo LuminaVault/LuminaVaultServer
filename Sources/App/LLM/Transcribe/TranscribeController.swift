@@ -17,7 +17,7 @@ struct TranscribeController {
     static let maxBodyBytes: Int = 10 * 1024 * 1024
 
     /// Every entry must have a real extension in
-    /// `GroqWhisperAdapter.filename(for:)` — upstream picks its decoder from
+    /// `OpenAICompatibleTranscribeAdapter.filename(for:)` — upstream picks its decoder from
     /// the filename, so accepting a mime we cannot name is a 400 waiting to
     /// happen. `audio/ogg` and `audio/opus` are here for Telegram voice
     /// notes, which are Opus-in-Ogg.

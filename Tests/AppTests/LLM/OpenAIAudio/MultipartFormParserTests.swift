@@ -86,10 +86,10 @@ struct MultipartFormParserTests {
     /// Round-trip against the writer we already ship, so the two stay honest
     /// about the same format.
     @Test
-    func roundTripsBodyProducedByGroqWhisperAdapter() throws {
+    func roundTripsBodyProducedByTheAdapter() throws {
         let audio = Data((0 ..< 512).map { UInt8($0 % 256) })
         let boundary = "roundtripboundary"
-        let written = GroqWhisperAdapter.buildMultipartBody(
+        let written = OpenAICompatibleTranscribeAdapter.buildMultipartBody(
             boundary: boundary,
             audio: audio,
             filename: "audio.ogg",

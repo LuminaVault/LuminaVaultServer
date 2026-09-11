@@ -2,15 +2,15 @@
 import Foundation
 import Testing
 
-/// Unit tests for the Groq Whisper adapter's wire shaping.
+/// Unit tests for the OpenAI-compatible transcription adapter's wire shaping.
 ///
-/// The invariant these exist to protect: Groq and OpenAI select the audio
+/// The invariant these exist to protect: Whisper-family endpoints select the audio
 /// decoder from the *filename extension* in the multipart part, ignoring its
 /// `Content-Type`. A body that is correctly typed but named `audio.bin` is
 /// rejected upstream with a 400. So `TranscribeController.acceptedMimes` and
-/// `GroqWhisperAdapter.filename(for:)` have to agree, and nothing enforces
+/// `OpenAICompatibleTranscribeAdapter.filename(for:)` have to agree, and nothing enforces
 /// that at compile time.
-struct GroqWhisperAdapterTests {
+struct OpenAICompatibleTranscribeAdapterTests {
     // MARK: - Filename mapping
 
     /// The load-bearing test. Any mime the API layer accepts must map to a
@@ -19,7 +19,7 @@ struct GroqWhisperAdapterTests {
     @Test
     func everyAcceptedMimeMapsToARealExtension() {
         for mime in TranscribeController.acceptedMimes {
-            let filename = GroqWhisperAdapter.filename(for: mime)
+            let filename = OpenAICompatibleTranscribeAdapter.filename(for: mime)
             #expect(
                 filename != "audio.bin",
                 "\(mime) is accepted by the API but has no filename mapping, so upstream will 400"
@@ -35,8 +35,8 @@ struct GroqWhisperAdapterTests {
     /// managed-voice path depends on, so it gets its own assertion.
     @Test
     func telegramVoiceNoteFormatsAreMapped() {
-        #expect(GroqWhisperAdapter.filename(for: "audio/ogg") == "audio.ogg")
-        #expect(GroqWhisperAdapter.filename(for: "audio/opus") == "audio.opus")
+        #expect(OpenAICompatibleTranscribeAdapter.filename(for: "audio/ogg") == "audio.ogg")
+        #expect(OpenAICompatibleTranscribeAdapter.filename(for: "audio/opus") == "audio.opus")
         #expect(TranscribeController.acceptedMimes.contains("audio/ogg"))
         #expect(TranscribeController.acceptedMimes.contains("audio/opus"))
     }
@@ -53,15 +53,36 @@ struct GroqWhisperAdapterTests {
         ("audio/flac", "audio.flac"),
     ])
     func knownMimesMapToExpectedFilenames(mime: String, expected: String) {
-        #expect(GroqWhisperAdapter.filename(for: mime) == expected)
+        #expect(OpenAICompatibleTranscribeAdapter.filename(for: mime) == expected)
     }
 
     /// The default stays reachable for genuinely unknown input — the function
     /// must remain total rather than trapping.
     @Test
     func unknownMimeFallsBackToBinary() {
-        #expect(GroqWhisperAdapter.filename(for: "application/octet-stream") == "audio.bin")
-        #expect(GroqWhisperAdapter.filename(for: "") == "audio.bin")
+        #expect(OpenAICompatibleTranscribeAdapter.filename(for: "application/octet-stream") == "audio.bin")
+        #expect(OpenAICompatibleTranscribeAdapter.filename(for: "") == "audio.bin")
+    }
+
+    // MARK: - Endpoint shaping
+
+    /// `baseURL` carries the version prefix, so the adapter appends only the
+    /// endpoint path. The previous Groq-specific version appended
+    /// `/openai/v1` itself, which against a base that already ends in `/v1`
+    /// produces `/v1/openai/v1/audio/transcriptions` and a 404.
+    @Test(arguments: [
+        ("http://whisper.horus.svc.cluster.local:8000/v1",
+         "http://whisper.horus.svc.cluster.local:8000/v1/audio/transcriptions"),
+        ("https://api.openai.com/v1", "https://api.openai.com/v1/audio/transcriptions"),
+        // A vendor whose version prefix is not at the root carries it in the
+        // configured value rather than in our code.
+        ("https://api.groq.com/openai/v1", "https://api.groq.com/openai/v1/audio/transcriptions"),
+    ])
+    func appendsOnlyTheEndpointPathToTheConfiguredBase(base: String, expected: String) throws {
+        let url = try #require(URL(string: base))
+            .appendingPathComponent("audio")
+            .appendingPathComponent("transcriptions")
+        #expect(url.absoluteString == expected)
     }
 
     // MARK: - Multipart wire shape
@@ -69,10 +90,10 @@ struct GroqWhisperAdapterTests {
     @Test
     func multipartBodyCarriesFilenameAndMimeForOgg() throws {
         let audio = Data([0x4F, 0x67, 0x67, 0x53]) // "OggS"
-        let body = GroqWhisperAdapter.buildMultipartBody(
+        let body = OpenAICompatibleTranscribeAdapter.buildMultipartBody(
             boundary: "testboundary",
             audio: audio,
-            filename: GroqWhisperAdapter.filename(for: "audio/ogg"),
+            filename: OpenAICompatibleTranscribeAdapter.filename(for: "audio/ogg"),
             mime: "audio/ogg",
             model: "whisper-large-v3"
         )
@@ -91,7 +112,7 @@ struct GroqWhisperAdapterTests {
     @Test
     func multipartBodyPreservesAudioBytesVerbatim() {
         let audio = Data((0 ..< 256).map { UInt8($0) })
-        let body = GroqWhisperAdapter.buildMultipartBody(
+        let body = OpenAICompatibleTranscribeAdapter.buildMultipartBody(
             boundary: "b",
             audio: audio,
             filename: "audio.ogg",

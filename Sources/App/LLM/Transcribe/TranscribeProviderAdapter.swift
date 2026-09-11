@@ -3,8 +3,9 @@ import LuminaVaultShared
 import NIOCore
 
 /// HER-203 — uniform interface every upstream STT (speech-to-text)
-/// provider implements. v1 ships with `GroqWhisperAdapter`; OpenAI /
-/// Replicate / on-device Whisper drop in via additional conformances.
+/// provider implements. Ships with `OpenAICompatibleTranscribeAdapter`,
+/// which covers the cluster's own whisper service and every hosted provider
+/// serving the same wire format.
 ///
 /// Implementations:
 /// - MUST translate the provider's native audio-transcription wire shape
@@ -16,19 +17,37 @@ import NIOCore
 protocol TranscribeProviderAdapter: Sendable {
     var kind: TranscribeProviderKind { get }
 
-    /// Send a single transcription request. `audio` carries the raw bytes
-    /// of an `audio/{m4a,wav,mpeg,webm}` file; `mime` is the verbatim
-    /// `Content-Type` the controller validated upstream.
+    /// Send a single transcription request. `audio` carries the raw bytes of
+    /// an audio file whose type is in `TranscribeController.acceptedMimes`;
+    /// `mime` is the verbatim `Content-Type` the controller validated upstream.
     func transcribe(audio: ByteBuffer, mime: String) async throws -> TranscribeUpstreamResult
 }
 
-/// Stable identifier per provider. Map 1:1 to the `transcribe.provider`
-/// env knob — `transcribe.provider=groq` selects `.groq`.
+/// Stable identifier per provider. Maps 1:1 to the `transcribe.provider` env
+/// knob — `transcribe.provider=openai_compatible` selects `.openaiCompatible`.
+///
+/// There is deliberately one real case. Every endpoint worth talking to serves
+/// the OpenAI `/audio/transcriptions` shape, so which one you reach is a base
+/// URL rather than a code path — that is what keeps moving between the
+/// in-cluster service and a hosted one a configuration change.
 enum TranscribeProviderKind: String, CaseIterable {
-    case groq
-    case openai
-    case replicate
+    case openaiCompatible = "openai_compatible"
     case stub
+
+    /// Segment used in `transcribe.provider.<segment>.*` config keys.
+    ///
+    /// Deliberately *not* the raw value. The selector reads
+    /// `TRANSCRIBE_PROVIDER=openai_compatible`, but its settings live under
+    /// `TRANSCRIBE_PROVIDER_OPENAI_BASEURL` / `_MODEL` — the names the rest of
+    /// the estate already uses (see `platform/infra/docs/transcription.md`).
+    /// Deriving the segment from the raw value would silently rename them to
+    /// `TRANSCRIBE_PROVIDER_OPENAI_COMPATIBLE_*` and read nothing.
+    var configKey: String {
+        switch self {
+        case .openaiCompatible: "openai"
+        case .stub: "stub"
+        }
+    }
 }
 
 /// Normalized result returned from any `TranscribeProviderAdapter`. The
@@ -37,8 +56,10 @@ struct TranscribeUpstreamResult {
     let text: String
     let language: String
     /// Confidence in `[0,1]`. Providers that don't expose a single number
-    /// (Groq returns per-segment `avg_logprob`) should map their native
-    /// signal to this range; see `GroqWhisperAdapter` for the convention.
+    /// (Whisper-family endpoints return per-segment `avg_logprob`) should map
+    /// their native signal to this range; see
+    /// `OpenAICompatibleTranscribeAdapter` for the convention. Endpoints that
+    /// return only `{"text": ...}` report `0` — unknown, not zero-confidence.
     let confidence: Double
     /// Duration of the transcribed audio in seconds. Used by
     /// `UsageMeterService` to compute the mtok-equivalent billing unit.

@@ -7,13 +7,23 @@ import NIOCore
     import FoundationNetworking
 #endif
 
-/// HER-203 — `TranscribeProviderAdapter` wrapping Groq's Whisper endpoint.
-/// Groq exposes an OpenAI-compatible `/openai/v1/audio/transcriptions`
-/// surface — the same multipart/form-data shape OpenAI Whisper accepts.
-/// Selected at boot when `transcribe.provider=groq` (default) and
-/// `transcribe.provider.groq.apiKey` is non-empty.
-struct GroqWhisperAdapter: TranscribeProviderAdapter {
-    let kind: TranscribeProviderKind = .groq
+/// Speech-to-text over the OpenAI `/audio/transcriptions` wire format.
+///
+/// Named for the **wire format, not a vendor**, deliberately: the cluster's own
+/// whisper service, OpenAI and Groq all serve the same multipart shape, so
+/// moving between them is a base-URL change rather than a new adapter. See
+/// `~/Work/production/CLAUDE.md` — paid speech APIs are not to be added, and
+/// the in-cluster service at `whisper.horus.svc.cluster.local` is the default.
+///
+/// `baseURL` is expected to include the API version prefix (e.g.
+/// `http://whisper.horus.svc.cluster.local:8000/v1`), matching how every
+/// OpenAI-compatible endpoint publishes itself.
+///
+/// `apiKey` is optional. The in-cluster service authenticates by NetworkPolicy
+/// rather than a credential, so an empty key simply omits the `Authorization`
+/// header instead of sending `Bearer ` with nothing after it.
+struct OpenAICompatibleTranscribeAdapter: TranscribeProviderAdapter {
+    let kind: TranscribeProviderKind = .openaiCompatible
     let apiKey: String
     let baseURL: URL
     let model: String
@@ -21,9 +31,9 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
     let logger: Logger
 
     init(
-        apiKey: String,
-        baseURL: URL = URL(string: "https://api.groq.com")!,
-        model: String = "whisper-large-v3",
+        apiKey: String = "",
+        baseURL: URL,
+        model: String,
         session: URLSession = .shared,
         logger: Logger
     ) {
@@ -35,16 +45,19 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
     }
 
     func transcribe(audio: ByteBuffer, mime: String) async throws -> TranscribeUpstreamResult {
+        // `baseURL` already carries the version prefix, so only the endpoint
+        // path is appended here. Groq's own base (`https://api.groq.com`) needs
+        // `/openai/v1` included in the configured value.
         let url = baseURL
-            .appendingPathComponent("openai")
-            .appendingPathComponent("v1")
             .appendingPathComponent("audio")
             .appendingPathComponent("transcriptions")
 
         let boundary = "Boundary-\(UUID().uuidString)"
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         req.httpBody = Self.buildMultipartBody(
             boundary: boundary,
@@ -69,16 +82,16 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
         guard (200 ..< 300).contains(status) else {
             let preview = String(data: data.prefix(512), encoding: .utf8)
             if status == 429 || (500 ..< 600).contains(status) {
-                logger.error("groq whisper transient \(status): \(preview ?? "<binary>")")
+                logger.error("transcribe transient \(status): \(preview ?? "<binary>")")
                 throw TranscribeProviderError.transient(provider: kind, status: status, body: preview)
             }
-            logger.error("groq whisper permanent \(status): \(preview ?? "<binary>")")
+            logger.error("transcribe permanent \(status): \(preview ?? "<binary>")")
             throw TranscribeProviderError.permanent(provider: kind, status: status, body: preview)
         }
 
-        let decoded: GroqVerboseJSON
+        let decoded: TranscriptionVerboseJSON
         do {
-            decoded = try JSONDecoder().decode(GroqVerboseJSON.self, from: data)
+            decoded = try JSONDecoder().decode(TranscriptionVerboseJSON.self, from: data)
         } catch {
             throw TranscribeProviderError.decode(provider: kind, underlying: error)
         }
@@ -156,7 +169,7 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
     /// geometric-mean per-segment token probability; averaging across
     /// segments gives a single number for clients. Returns 0 when there
     /// are no segments — the wire DTO requires a Double.
-    static func aggregateConfidence(_ segments: [GroqSegment]?) -> Double {
+    static func aggregateConfidence(_ segments: [TranscriptionSegmentJSON]?) -> Double {
         guard let segments, !segments.isEmpty else { return 0 }
         let probs = segments.compactMap { seg in
             seg.avgLogprob.map { exp($0) }
@@ -169,14 +182,14 @@ struct GroqWhisperAdapter: TranscribeProviderAdapter {
 
 // MARK: - Wire DTOs (Groq verbose_json)
 
-struct GroqVerboseJSON: Decodable {
+struct TranscriptionVerboseJSON: Decodable {
     let text: String
     let language: String?
     let duration: Double?
-    let segments: [GroqSegment]?
+    let segments: [TranscriptionSegmentJSON]?
 }
 
-struct GroqSegment: Decodable {
+struct TranscriptionSegmentJSON: Decodable {
     let start: Double
     let end: Double
     let text: String

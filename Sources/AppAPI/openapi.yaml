@@ -3323,6 +3323,11 @@ paths:
       # the OpenAI-shaped /v1/audio/transcriptions below now covers the
       # multipart case properly.
       summary: Speech-to-text (HER-203). Raw audio body, 10 MB cap.
+      description: >-
+        Backed by the cluster's own transcription service by default
+        (whisper.horus.svc.cluster.local), which is free per request and keeps
+        audio inside the cluster. The provider is an OpenAI-compatible base
+        URL, so moving to a hosted endpoint is configuration, not code.
       requestBody:
         required: true
         content:

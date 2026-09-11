@@ -10,7 +10,7 @@ import NIOCore
 /// clear of one. The body is size-capped by the caller before it reaches
 /// here, so this does no streaming and no incremental buffering.
 ///
-/// It is the read counterpart to `GroqWhisperAdapter.buildMultipartBody`,
+/// It is the read counterpart to `OpenAICompatibleTranscribeAdapter.buildMultipartBody`,
 /// which writes the same format — the two are tested against each other.
 enum MultipartFormParser {
     struct Part: Sendable {
