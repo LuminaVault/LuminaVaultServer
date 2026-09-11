@@ -26,6 +26,31 @@ struct FreeLanePolicyTests {
         #expect(verdict == FreeLaneVerdict(trigger: .notEntitled, forced: true))
     }
 
+    /// The tier chat became free for. Same verdict as `lapsed` — they are the
+    /// same routing population, and the reason the lane was built.
+    @Test("free managed user is forced onto the free lane")
+    func freeManagedIsForced() {
+        let verdict = FreeLanePolicy.evaluate(Self.input(tier: .free))
+        #expect(verdict == FreeLaneVerdict(trigger: .notEntitled, forced: true))
+    }
+
+    /// The whole of "`:free` models if and only if they did not bring a key":
+    /// rule 1 runs before the tier switch, so a free user with a spendable
+    /// credential keeps their own models on their own dime and is never
+    /// charged against the lane's daily grace.
+    @Test("free user with a real key keeps their own models")
+    func freeWithKeyIsHonoured() {
+        #expect(FreeLanePolicy.evaluate(Self.input(tier: .free, mode: .byok, hasKey: true)) == nil)
+        #expect(FreeLanePolicy.honoursUserChoice(Self.input(tier: .free, mode: .byok, hasKey: true)))
+    }
+
+    @Test("free byok user with no key gets the lane, not a dead end")
+    func freeByokWithoutKeyIsForced() {
+        let verdict = FreeLanePolicy.evaluate(Self.input(tier: .free, mode: .byok, hasKey: false))
+        #expect(verdict?.trigger == .notEntitled)
+        #expect(verdict?.forced == true)
+    }
+
     /// The case that would otherwise be a 403 dead end: BYOK selected, no key
     /// stored, no entitlement. They get a working free answer instead.
     @Test("lapsed byok user with no key gets the free lane, not a dead end")

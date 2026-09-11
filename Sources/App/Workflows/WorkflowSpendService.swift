@@ -18,7 +18,7 @@ struct WorkflowTierPolicy: Sendable, Equatable {
             .init(activeRunLimit: 1, minimumScheduleMinutes: 60, perRunUsdMicros: 200_000, dailyUsdMicros: 500_000, monthlyUsdMicros: 2_000_000)
         case .ultimate:
             .init(activeRunLimit: 3, minimumScheduleMinutes: 5, perRunUsdMicros: 1_000_000, dailyUsdMicros: 2_000_000, monthlyUsdMicros: 8_000_000)
-        case .trial, .lapsed, .archived:
+        case .free, .trial, .lapsed, .archived:
             .init(activeRunLimit: 0, minimumScheduleMinutes: 0, perRunUsdMicros: 0, dailyUsdMicros: 0, monthlyUsdMicros: 0)
         }
     }

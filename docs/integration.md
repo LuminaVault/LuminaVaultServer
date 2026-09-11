@@ -361,7 +361,8 @@ default; prod must set the ones marked **required**.
 | `ADMIN_TOKEN` | `""` | recommended | Shared secret for `/v1/admin/*`. Empty disables admin endpoints (404). |
 | `REVENUECAT_WEBHOOK_SECRET` | `""` | yes for billing | RevenueCat webhook shared secret |
 | `BILLING_ENFORCEMENT_ENABLED` | `false` | yes when monetized | returns 402 for expired users on metered endpoints |
-| `BILLING_TIER_OVERRIDE_EMAILS` | `""` | optional | Comma list of `email=tier` (`pro` or `ultimate`; bare email = `ultimate`). Listed accounts get `users.tier_override` stamped on every sign-in, same effect as the admin tier-override call. For founders/testers. |
+| `BILLING_TIER_OVERRIDE_EMAILS` | `""` | optional | Comma list of `email=tier` (`pro` or `ultimate`; bare email = `ultimate`). Listed accounts get `users.tier_override` stamped on every sign-in, same effect as the admin tier-override call. For founders/testers. Applied at token issuance only, so it lands on the next login or refresh, not mid-session; and it must reach `.env.production` on the host, not only `docker-compose.production.yml`. |
+| `STORAGE_QUOTA_FREE_BYTES` | `1073741824` | optional | Total vault ceiling for the `free` tier (1 GiB). `LapseArchiverJob` never archives a free account, so this is the only bound on what one holds. `0` means no growth; a negative value means unlimited. |
 | `LLM_PROVIDER_OPENAI_APIKEY` | `""` | optional | enables OpenAI chat/TTS fallback |
 | `LLM_PROVIDER_OPENROUTER_APIKEY` | `""` | optional | enables OpenRouter fallback |
 | `LLM_PROVIDER_ANTHROPIC_APIKEY` | `""` | optional | enables Anthropic fallback |

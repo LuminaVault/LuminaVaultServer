@@ -96,11 +96,14 @@ enum FreeLanePolicy {
             return input.platformPaidManagedAvailable
                 ? nil
                 : FreeLaneVerdict(trigger: .platformUnavailable, forced: true)
-        case .lapsed, .archived:
+        case .free, .lapsed, .archived:
             break
         }
 
-        // 4. Lapsed: trial expired or subscription cancelled. The forced lane.
+        // 4. Free and lapsed: never paid, or stopped paying. The forced lane.
+        //    Note rule 1 ran first, so a free user who brought a real key keeps
+        //    their own models on their own dime — the lane is for the people we
+        //    would otherwise be buying tokens for.
         //    (BYOK-with-zero-keys is handled by rule 2b above, for every tier.)
         return FreeLaneVerdict(trigger: .notEntitled, forced: true)
     }

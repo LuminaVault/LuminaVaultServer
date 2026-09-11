@@ -25,6 +25,18 @@ struct StorageQuotaServiceTests {
         #expect(limits.bytes(for: .archived) == Int64(0))
     }
 
+    /// Free keeps capture, so unlike lapsed it needs room to write — and
+    /// because `LapseArchiverJob` never archives a free account, this ceiling
+    /// is the only thing bounding what one holds.
+    @Test
+    func `free has a real ceiling it can grow into`() throws {
+        let free = try #require(limits.bytes(for: .free))
+        let trial = try #require(limits.bytes(for: .trial))
+        #expect(free == Int64(1024 * 1024 * 1024))
+        #expect(free > 0)
+        #expect(free < trial)
+    }
+
     @Test
     func `sizes format at the unit a human would use`() {
         #expect(StorageQuotaService.format(0) == "0 B")
@@ -49,7 +61,7 @@ struct StorageQuotaServiceTests {
     /// hand a lapsed tenant unlimited storage — the exact opposite of intent.
     @Test
     func `unlimited and no-growth are different values`() {
-        let unlimited = StorageQuotaService.Limits(trial: nil, pro: nil, ultimate: nil, lapsed: nil)
+        let unlimited = StorageQuotaService.Limits(trial: nil, pro: nil, ultimate: nil, lapsed: nil, free: nil)
         #expect(unlimited.bytes(for: .trial) == nil)
         #expect(limits.bytes(for: .lapsed) == Int64(0))
         #expect(limits.bytes(for: .lapsed) != nil)

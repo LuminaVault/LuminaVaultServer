@@ -73,7 +73,7 @@ enum EntitlementChecker {
             switch tier {
             case .ultimate: .ultimate // never downgrade
             case .pro: .pro
-            case .trial, .lapsed, .archived: .pro
+            case .free, .trial, .lapsed, .archived: .pro
             }
         case .ultimate:
             .ultimate
@@ -83,23 +83,35 @@ enum EntitlementChecker {
     /// Per-capability access table. Mirrors the spec gating matrix:
     /// - Always-on (read your data, export your data): allowed in every
     ///   tier *except* `archived` (where vault is in cold storage).
-    /// - Capture / health ingest / chat / memory / built-in skills /
-    ///   kb-compile: allowed for trial / pro / ultimate.
+    /// - Chat / memory query / capture: allowed on **every** tier but
+    ///   `archived`. These are the free product. Non-paying tiers reach an
+    ///   LLM only through `FreeLanePolicy`'s zero-cost lane, capped per day
+    ///   by `FreeLaneGate`, so "entitled" here costs us nothing by
+    ///   construction. Routes that spend a platform key with no
+    ///   bring-your-own path are *not* covered by this — they are gated
+    ///   separately by `EntitlementMiddleware.platformFunded`.
+    /// - Health ingest / memo generator / built-in skills / kb-compile /
+    ///   memory-compile / workflow automation: trial / pro / ultimate.
     /// - Ultimate-only (vault-authored skills, BYO key, context router,
     ///   MLX on-device): self-evident.
-    /// - Lapsed: gets nothing beyond vault read + export.
+    /// - Free and lapsed share a row. An ex-subscriber getting strictly less
+    ///   than someone who never paid is indefensible; they differ only in
+    ///   the archive clock (`LapseArchiverJob` runs on `lapsed`, never on
+    ///   `free`) and the storage ceiling.
     /// - Archived: gets nothing — even vault read goes through support.
     private static func matchEntitlement(effective: UserTier, for cap: Capability) -> Bool {
         switch cap {
         case .vaultRead, .vaultExport:
             effective != .archived
 
-        case .capture, .healthIngest, .chat,
-             .memoryQuery, .memoGenerator,
+        case .chat, .memoryQuery, .capture:
+            effective != .archived
+
+        case .healthIngest, .memoGenerator,
              .skillBuiltinRun, .kbCompile, .memoryCompile:
             switch effective {
             case .trial, .pro, .ultimate: true
-            case .lapsed, .archived: false
+            case .free, .lapsed, .archived: false
             }
 
         // Trial is included deliberately. The tier exists to demonstrate the
@@ -111,7 +123,7 @@ enum EntitlementChecker {
         case .workflowAutomation:
             switch effective {
             case .trial, .pro, .ultimate: true
-            case .lapsed, .archived: false
+            case .free, .lapsed, .archived: false
             }
 
         case .skillVaultRun, .privacyBYOKey, .privacyContextRouter, .mlxOnDevice:
@@ -125,6 +137,10 @@ enum EntitlementChecker {
 extension User {
     /// Decoded tier. Falls back to `.lapsed` if the DB row holds an
     /// unrecognized value — fail-safe rather than crash on schema drift.
+    ///
+    /// Deliberately **not** `.free`, tempting as that is now that `free` is
+    /// the common tier: fail-safe means failing toward *less* access, and a
+    /// row we cannot parse must not be handed chat on our lane.
     var tierEnum: UserTier {
         UserTier(rawValue: tier) ?? .lapsed
     }

@@ -32,12 +32,18 @@ struct StorageQuotaService: Sendable {
         /// A lapsed tenant keeps read and export — that is the whole content
         /// of the tier — so its ceiling only has to stop *growth*.
         let lapsed: Int64?
+        /// Free keeps capture, so unlike `lapsed` it needs a real ceiling
+        /// rather than zero. It is also the one tier `LapseArchiverJob` never
+        /// touches, so whatever a free vault holds, it holds indefinitely —
+        /// this number is the only thing bounding that.
+        let free: Int64?
 
         static let `default` = Limits(
             trial: 5 * 1024 * 1024 * 1024,
             pro: 100 * 1024 * 1024 * 1024,
             ultimate: 1024 * 1024 * 1024 * 1024,
-            lapsed: 0
+            lapsed: 0,
+            free: 1024 * 1024 * 1024
         )
 
         func bytes(for tier: UserTier) -> Int64? {
@@ -45,6 +51,7 @@ struct StorageQuotaService: Sendable {
             case .trial: trial
             case .pro: pro
             case .ultimate: ultimate
+            case .free: free
             case .lapsed, .archived: lapsed
             }
         }

@@ -431,9 +431,14 @@ actor WorkflowService {
         return tier
     }
 
+    /// Read parity with `lapsed`: someone who can no longer *author* a
+    /// workflow can still see the ones they already have. `free` joins that
+    /// set for the same reason. This is an `==` chain rather than a `switch`,
+    /// so a new `UserTier` case will not be flagged by the compiler here —
+    /// grep for `.lapsed` when adding one.
     private func requireReadAccess(tenantID: UUID) async throws {
         let tier = try await effectiveTier(tenantID: tenantID)
-        guard tier == .pro || tier == .ultimate || tier == .lapsed else {
+        guard tier == .pro || tier == .ultimate || tier == .lapsed || tier == .free else {
             throw WorkflowServiceError.forbidden
         }
     }

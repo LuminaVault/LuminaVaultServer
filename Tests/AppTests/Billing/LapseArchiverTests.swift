@@ -117,8 +117,11 @@ struct LapseArchiverTests {
         try Data("hello".utf8).write(to: raw.appendingPathComponent("note.md"))
     }
 
+    /// A trial that runs out lands on `free`, not `lapsed`. Before the split,
+    /// "your subscription expired" was the copy shown to someone who had never
+    /// subscribed — and it started a cold-storage clock on them.
     @Test
-    func `expired trial becomes lapsed`() async throws {
+    func `expired trial becomes free`() async throws {
         try await Self.withHarness { h in
             let now = Date()
             let user = Self.makeUser(tier: .trial, expiresAt: now.addingTimeInterval(-60))
@@ -126,9 +129,51 @@ struct LapseArchiverTests {
 
             let summary = try await h.job.run(now: now)
 
-            #expect(summary.lapsed == 1)
+            #expect(summary.movedToFree == 1)
+            #expect(summary.lapsed == 0)
             let reloaded = try #require(try await User.find(user.requireID(), on: h.fluent.db()))
-            #expect(reloaded.tier == UserTier.lapsed.rawValue)
+            #expect(reloaded.tier == UserTier.free.rawValue)
+        }
+    }
+
+    /// A paid subscription ending still lands on `lapsed`, which is the only
+    /// tier `archiveIfPastGrace` looks at.
+    @Test
+    func `expired paid subscription becomes lapsed`() async throws {
+        for tier in [UserTier.pro, .ultimate] {
+            try await Self.withHarness { h in
+                let now = Date()
+                let user = Self.makeUser(tier: tier, expiresAt: now.addingTimeInterval(-60))
+                try await user.save(on: h.fluent.db())
+
+                let summary = try await h.job.run(now: now)
+
+                #expect(summary.lapsed == 1)
+                #expect(summary.movedToFree == 0)
+                let reloaded = try #require(try await User.find(user.requireID(), on: h.fluent.db()))
+                #expect(reloaded.tier == UserTier.lapsed.rawValue)
+            }
+        }
+    }
+
+    /// Deliberate, and the reason `free` needs a real storage ceiling: a free
+    /// account is never archived and never hard-deleted, however long it sits.
+    /// If this ever starts failing, someone has added `free` to the archive
+    /// sweep — which silently cold-stores the vaults of the entire non-paying
+    /// population.
+    @Test
+    func `a free account is never archived or deleted`() async throws {
+        try await Self.withHarness { h in
+            let now = Date()
+            let user = Self.makeUser(tier: .free, expiresAt: now.addingTimeInterval(-400 * 86400))
+            try await user.save(on: h.fluent.db())
+
+            let summary = try await h.job.run(now: now)
+
+            #expect(summary.archived == 0)
+            #expect(summary.hardDeleted == 0)
+            let reloaded = try #require(try await User.find(user.requireID(), on: h.fluent.db()))
+            #expect(reloaded.tier == UserTier.free.rawValue)
         }
     }
 
