@@ -3588,8 +3588,8 @@ private func updatePrivacyHandler(
     }
 }
 
-// The shared DTO is a plain `Codable` in `LuminaVaultShared`; Hummingbird's
-// response path needs `ResponseEncodable`, which is the server's concern.
+/// The shared DTO is a plain `Codable` in `LuminaVaultShared`; Hummingbird's
+/// response path needs `ResponseEncodable`, which is the server's concern.
 extension MeBillingResponse: @retroactive ResponseEncodable {}
 
 // `MeBillingResponse` is the shared DTO from `LuminaVaultShared`. A server-local

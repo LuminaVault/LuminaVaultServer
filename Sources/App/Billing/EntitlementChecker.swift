@@ -138,9 +138,16 @@ extension User {
     /// Decoded tier. Falls back to `.lapsed` if the DB row holds an
     /// unrecognized value — fail-safe rather than crash on schema drift.
     ///
-    /// Deliberately **not** `.free`, tempting as that is now that `free` is
-    /// the common tier: fail-safe means failing toward *less* access, and a
-    /// row we cannot parse must not be handed chat on our lane.
+    /// Still `.lapsed` and not `.free`, though the two now share a capability
+    /// row: `lapsed` is the lower of the two everywhere it still differs (no
+    /// storage growth), so it remains the conservative choice.
+    ///
+    /// Note what this fallback no longer buys: `lapsed` grants chat now, so an
+    /// unparseable row does reach the free lane. That is deliberate rather
+    /// than overlooked — the lane is zero-cost and day-capped, whereas falling
+    /// back to `.archived` to deny it would take vault read away from a real,
+    /// authenticated user over a schema-drift bug. Losing your notes is the
+    /// worse failure than being handed 20 free messages.
     var tierEnum: UserTier {
         UserTier(rawValue: tier) ?? .lapsed
     }

@@ -54,8 +54,13 @@ struct TierOverrideAllowlist: Sendable, Equatable {
         self.overrides = overrides
     }
 
-    var isEmpty: Bool { overrides.isEmpty }
-    var count: Int { overrides.count }
+    var isEmpty: Bool {
+        overrides.isEmpty
+    }
+
+    var count: Int {
+        overrides.count
+    }
 
     func override(forEmail email: String) -> TierOverride? {
         overrides[email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]

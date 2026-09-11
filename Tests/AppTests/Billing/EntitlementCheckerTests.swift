@@ -265,9 +265,17 @@ struct EntitlementCheckerTests {
     func `user extension decodes unrecognized tier as lapsed`() {
         let u = User(email: "x@y.test", username: "x", passwordHash: "stub", tier: "garbage")
         #expect(u.tierEnum == .lapsed)
-        // Lapsed → vault read OK, chat denied.
+        // Vault read survives: a schema-drift bug must not take an
+        // authenticated user's own notes away from them.
         #expect(u.entitled(for: .vaultRead))
-        #expect(!u.entitled(for: .chat))
+        // Chat is now granted here, because `lapsed` grants it. Deliberate —
+        // the free lane is zero-cost and day-capped, so the blast radius of a
+        // row we could not parse is 20 free messages.
+        #expect(u.entitled(for: .chat))
+        // What the fallback still denies is everything that spends money.
+        #expect(!u.entitled(for: .skillBuiltinRun))
+        #expect(!u.entitled(for: .workflowAutomation))
+        #expect(!u.entitled(for: .skillVaultRun))
     }
 
     @Test
