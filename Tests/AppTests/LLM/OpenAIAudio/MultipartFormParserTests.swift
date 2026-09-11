@@ -10,7 +10,6 @@ import Testing
 /// call. Its file payload deliberately embeds `\r\n--notaboundary` — the
 /// shape that truncates a parser which searches for the delimiter alone
 /// instead of CRLF-then-delimiter.
-@Suite
 struct MultipartFormParserTests {
     static let realBoundary = "957a64b387861839220bf7620e771fe7"
 

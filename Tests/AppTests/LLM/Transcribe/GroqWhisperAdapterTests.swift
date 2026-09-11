@@ -10,7 +10,6 @@ import Testing
 /// rejected upstream with a 400. So `TranscribeController.acceptedMimes` and
 /// `GroqWhisperAdapter.filename(for:)` have to agree, and nothing enforces
 /// that at compile time.
-@Suite
 struct GroqWhisperAdapterTests {
     // MARK: - Filename mapping
 

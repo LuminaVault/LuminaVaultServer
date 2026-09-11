@@ -11,7 +11,6 @@ import Testing
 /// The security property being protected: a tenant's Hermes container holds a
 /// scoped token. If that token ever authenticated a general session, a
 /// container compromise would become full account access.
-@Suite
 struct SessionTokenScopeTests {
     static func keys() async throws -> (JWTKeyCollection, JWKIdentifier) {
         let kid = JWKIdentifier(string: "test")
@@ -49,7 +48,7 @@ struct SessionTokenScopeTests {
             issuedAt: Date()
         )
 
-        let decoded = try await keys.verify(try await keys.sign(token, kid: kid), as: SessionToken.self)
+        let decoded = try await keys.verify(keys.sign(token, kid: kid), as: SessionToken.self)
         #expect(decoded.scp == nil)
     }
 
@@ -63,7 +62,9 @@ struct SessionTokenScopeTests {
             var sub: SubjectClaim
             var exp: ExpirationClaim
             var jti: String
-            func verify(using _: some JWTAlgorithm) async throws { try exp.verifyNotExpired() }
+            func verify(using _: some JWTAlgorithm) async throws {
+                try exp.verifyNotExpired()
+            }
         }
         let legacy = LegacyToken(
             sub: .init(value: UUID().uuidString),
@@ -98,7 +99,9 @@ struct SessionTokenScopeTests {
         var payloadSegment = segments[1]
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
-        while payloadSegment.count % 4 != 0 { payloadSegment += "=" }
+        while payloadSegment.count % 4 != 0 {
+            payloadSegment += "="
+        }
 
         let data = try #require(Data(base64Encoded: payloadSegment))
         let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -185,21 +185,21 @@ enum HermesTenantConfigTemplate {
             baseConfig + """
 
 
-        stt:
-          enabled: true
-          echo_transcripts: true
-          provider: openai
-          openai:
-            base_url: "\(proxy.baseURL)"
-            model: "\(proxy.sttModel)"
+            stt:
+              enabled: true
+              echo_transcripts: true
+              provider: openai
+              openai:
+                base_url: "\(proxy.baseURL)"
+                model: "\(proxy.sttModel)"
 
-        tts:
-          provider: openai
-          openai:
-            base_url: "\(proxy.baseURL)"
-            model: "\(proxy.ttsModel)"
-            voice: "\(proxy.ttsVoice)"
-        """
+            tts:
+              provider: openai
+              openai:
+                base_url: "\(proxy.baseURL)"
+                model: "\(proxy.ttsModel)"
+                voice: "\(proxy.ttsVoice)"
+            """
         } ?? baseConfig
 
         guard mnemosyneEnabled else {

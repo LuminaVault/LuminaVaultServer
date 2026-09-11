@@ -13,7 +13,6 @@ import Testing
 ///  2. Changing the rendering for tenants who have no audio proxy configured.
 ///     The seed is SHA-256 drift-compared, so a stray byte rewrites
 ///     `config.yaml` for every existing container on its next restart.
-@Suite
 struct HermesAudioProxySeedTests {
     static let proxy = HermesAudioProxySeed(
         baseURL: "https://api.luminavault.app/v1",

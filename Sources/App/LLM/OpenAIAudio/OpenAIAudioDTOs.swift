@@ -24,7 +24,7 @@ struct OpenAIErrorEnvelope: Codable, ResponseEncodable {
         error = Payload(message: message, type: type, code: code, param: param)
     }
 
-    // Conventional `type` values, matching what the SDK's consumers expect.
+    /// Conventional `type` values, matching what the SDK's consumers expect.
     static func invalidRequest(_ message: String, code: String? = nil, param: String? = nil) -> Self {
         .init(message: message, type: "invalid_request_error", code: code, param: param)
     }

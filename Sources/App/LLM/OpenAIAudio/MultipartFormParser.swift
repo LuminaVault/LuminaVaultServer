@@ -153,7 +153,9 @@ enum MultipartFormParser {
                     matched = false
                     break
                 }
-                if matched { return i }
+                if matched {
+                    return i
+                }
             }
             i += 1
         }
@@ -172,7 +174,9 @@ enum MultipartFormParser {
                 .lowercased()
             let value = String(line[line.index(after: colon)...])
                 .trimmingCharacters(in: .whitespaces)
-            if headers[key] == nil { headers[key] = value }
+            if headers[key] == nil {
+                headers[key] = value
+            }
         }
         return headers
     }
