@@ -22,12 +22,20 @@ struct AuthFlowTests {
     /// Setup + guaranteed Fluent shutdown so the AsyncKit ConnectionPool
     /// deinit assertion doesn't crash the runner.
     private static func withHarness<T: Sendable>(
+        tierOverrides: TierOverrideAllowlist = .empty,
         _ body: @Sendable (Harness) async throws -> T
     ) async throws -> T {
-        try await withTestFluentHarness(label: "test.auth", setup: makeHarness(fluent:), body)
+        try await withTestFluentHarness(
+            label: "test.auth",
+            setup: { fluent in try await makeHarness(fluent: fluent, tierOverrides: tierOverrides) },
+            body
+        )
     }
 
-    private static func makeHarness(fluent: Fluent) async throws -> Harness {
+    private static func makeHarness(
+        fluent: Fluent,
+        tierOverrides: TierOverrideAllowlist = .empty
+    ) async throws -> Harness {
         let logger = Logger(label: "test.auth")
         await fluent.migrations.add(M00_EnableExtensions())
         await fluent.migrations.add(M01_CreateUser())
@@ -88,6 +96,7 @@ struct AuthFlowTests {
                 hermesDataRoot: tmpRoot.appendingPathComponent("hermes").path,
                 logger: logger
             ),
+            tierOverrides: tierOverrides,
             logger: logger
         )
         return Harness(service: service, fluent: fluent, recorder: recorder)
@@ -122,6 +131,44 @@ struct AuthFlowTests {
             #expect(profile != nil)
             #expect(profile?.hermesProfileID == "hermes-\(username)")
             #expect(profile?.status == "ready")
+        }
+    }
+
+    /// `BILLING_TIER_OVERRIDE_EMAILS` — an ops allowlist that stamps
+    /// `users.tier_override` whenever a listed email gets a session, so the
+    /// founder/testers can exercise every tier-gated feature without a
+    /// RevenueCat purchase or a per-user admin call.
+    @Test
+    func `allowlisted email is stamped with its tier override on every session`() async throws {
+        let allowlist = TierOverrideAllowlist(parsing: "Founder@Example.com=ultimate")
+        try await Self.withHarness(tierOverrides: allowlist) { h in
+            let password = "CorrectHorseBatteryStaple1!"
+
+            // Registration stamps immediately, matching case-insensitively.
+            let founderName = Self.randomUsername()
+            _ = try await h.service.register(email: "founder@example.com", username: founderName, password: password)
+            let founder = try #require(
+                try await User.query(on: h.fluent.db()).filter(\.$username == founderName).first()
+            )
+            #expect(founder.tierOverride == "ultimate")
+            #expect(founder.tier == "trial", "the RevenueCat-driven tier is untouched; only the override is stamped")
+
+            // Anyone else keeps the default.
+            let strangerName = Self.randomUsername()
+            _ = try await h.service.register(email: Self.randomEmail(), username: strangerName, password: password)
+            let stranger = try #require(
+                try await User.query(on: h.fluent.db()).filter(\.$username == strangerName).first()
+            )
+            #expect(stranger.tierOverride == "none")
+
+            // An account that predates the allowlist is stamped on its next login.
+            founder.tierOverride = "none"
+            try await founder.save(on: h.fluent.db())
+            _ = try await h.service.login(email: "founder@example.com", password: password, requireMFA: false)
+            let founderAgain = try #require(
+                try await User.query(on: h.fluent.db()).filter(\.$username == founderName).first()
+            )
+            #expect(founderAgain.tierOverride == "ultimate")
         }
     }
 
