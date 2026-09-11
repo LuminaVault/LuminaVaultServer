@@ -167,6 +167,8 @@ func buildApplication(
             .filter { !$0.isEmpty },
         adminToken: reader.string(forKey: "admin.token", default: ""),
         billingEnforcementEnabled: reader.string(forKey: "billing.enforcementEnabled", default: "false").lowercased() == "true",
+        // `BILLING_TIER_OVERRIDE_EMAILS` — `email=tier,...`; see TierOverrideAllowlist.
+        billingTierOverrideEmails: reader.string(forKey: "billing.tierOverrideEmails", default: ""),
         billingColdStoragePath: reader.string(
             forKey: "billing.coldStoragePath",
             default: URL(fileURLWithPath: reader.string(forKey: "vault.rootPath", default: "/tmp/luminavault"))
@@ -475,6 +477,10 @@ func buildRouter(
         verificationCodeGenerator: verifyGen,
         hermesProfileService: hermesProfileService,
         soulService: soulService,
+        tierOverrides: TierOverrideAllowlist(
+            parsing: services.billingTierOverrideEmails,
+            logger: Logger(label: "lv.billing.tier-override")
+        ),
         logger: Logger(label: "lv.auth")
     )
     let webAuthnService = WebAuthnService(

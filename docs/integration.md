@@ -361,6 +361,7 @@ default; prod must set the ones marked **required**.
 | `ADMIN_TOKEN` | `""` | recommended | Shared secret for `/v1/admin/*`. Empty disables admin endpoints (404). |
 | `REVENUECAT_WEBHOOK_SECRET` | `""` | yes for billing | RevenueCat webhook shared secret |
 | `BILLING_ENFORCEMENT_ENABLED` | `false` | yes when monetized | returns 402 for expired users on metered endpoints |
+| `BILLING_TIER_OVERRIDE_EMAILS` | `""` | optional | Comma list of `email=tier` (`pro` or `ultimate`; bare email = `ultimate`). Listed accounts get `users.tier_override` stamped on every sign-in, same effect as the admin tier-override call. For founders/testers. |
 | `LLM_PROVIDER_OPENAI_APIKEY` | `""` | optional | enables OpenAI chat/TTS fallback |
 | `LLM_PROVIDER_OPENROUTER_APIKEY` | `""` | optional | enables OpenRouter fallback |
 | `LLM_PROVIDER_ANTHROPIC_APIKEY` | `""` | optional | enables Anthropic fallback |

@@ -49,6 +49,9 @@ struct DefaultAuthService: AuthService {
     let verificationCodeGenerator: any OTPCodeGenerator
     let hermesProfileService: HermesProfileService
     let soulService: SOULService
+    /// `BILLING_TIER_OVERRIDE_EMAILS` — stamps `users.tier_override` for listed
+    /// emails on every session. Empty by default.
+    var tierOverrides: TierOverrideAllowlist = .empty
     let logger: Logger
 
     let accessTokenLifetime: TimeInterval = 60 * 60 // 1 hour
@@ -404,6 +407,7 @@ struct DefaultAuthService: AuthService {
 
     func issueTokens(for user: User) async throws -> AuthResponse {
         let userID = try user.requireID()
+        try await applyTierOverrideAllowlist(to: user)
         // HER-29 — only a ready profile's ID belongs in the token. A degraded
         // gateway leaves a `pending-<uuid>` sentinel row; leaking that into
         // `hpid` would hand clients an endpoint that doesn't exist yet.
@@ -434,6 +438,23 @@ struct DefaultAuthService: AuthService {
             mfaChallengeId: nil,
             vaultInitialized: user.vaultInitialized
         )
+    }
+
+    /// Every session passes through `issueTokens`, so an allowlisted email is
+    /// stamped the first time it signs in after the list changes and never
+    /// written again while the row already matches. Only ever raises: the
+    /// list cannot hold `none`, and a stored `ultimate` is left alone when
+    /// the list says `pro`.
+    private func applyTierOverrideAllowlist(to user: User) async throws {
+        guard let granted = tierOverrides.override(forEmail: user.email) else { return }
+        let current = TierOverride(rawValue: user.tierOverride) ?? .none
+        guard current != granted, current != .ultimate else { return }
+        user.tierOverride = granted.rawValue
+        try await user.save(on: fluent.db())
+        logger.info("tier override stamped from allowlist", metadata: [
+            "user_id": .string(user.id?.uuidString ?? "?"),
+            "tier_override": .string(granted.rawValue),
+        ])
     }
 
     /// Issues an "MFA pending" placeholder response: no tokens, just the challengeId.
