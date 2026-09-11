@@ -139,9 +139,10 @@ actor TranscribeProviderRegistry: Service {
 
     private static func defaultModel(for kind: TranscribeProviderKind) -> String {
         switch kind {
-        // The model the in-cluster service preloads. A hosted endpoint needs
-        // its own name set explicitly; there is no safe cross-vendor default.
-        case .openaiCompatible: "Systran/faster-whisper-small.en"
+        // The multilingual model the in-cluster service preloads. A hosted
+        // endpoint needs its own name set explicitly; there is no safe
+        // cross-vendor default.
+        case .openaiCompatible: "Systran/faster-whisper-small"
         case .stub: "stub"
         }
     }

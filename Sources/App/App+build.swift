@@ -1548,9 +1548,14 @@ func buildRouter(
             // NetworkPolicy. Set only when pointing at a hosted endpoint.
             apiKey: reader.string(forKey: "transcribe.provider.openai.apiKey", isSecret: true, default: ""),
             baseURL: transcribeBase,
+            // The multilingual model, not `.en`. `.en` is smaller and better
+            // at English, but LuminaVault ships in sixteen locales and a
+            // whisper model given the wrong language returns confident
+            // nonsense rather than an error. Deployments that are
+            // English-only can set `.en` explicitly.
             model: reader.string(
                 forKey: "transcribe.provider.openai.model",
-                default: "Systran/faster-whisper-small.en"
+                default: "Systran/faster-whisper-small"
             ),
             session: .shared,
             logger: transcribeLogger
