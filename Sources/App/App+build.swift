@@ -569,6 +569,26 @@ func buildRouter(
 
     // Protected (JWT-required) routes
     let jwtAuthenticator = JWTAuthenticator(jwtKeys: services.jwtKeys, fluent: services.fluent)
+    // QR-from-mobile web sign-in. The browser starts a pairing and polls it;
+    // the signed-in app scans the QR and approves, which mints that account's
+    // tokens for the browser. Without this the web client's pairing tab 404s,
+    // and an account created with Apple/Google on the phone has no way onto
+    // the web at all.
+    //
+    // Records live in the rate-limit driver rather than a private
+    // MemoryPersistDriver: it is already registered with the ServiceGroup, and
+    // it becomes the shared Valkey driver whenever RATE_LIMIT_STORAGE_KIND=redis
+    // — which is exactly the multi-replica requirement in PairingController's
+    // own doc comment. Keys are namespaced `pairing:<id>`, so they cannot
+    // collide with limiter counters.
+    PairingController(
+        service: authService,
+        storage: rateLimitStorage,
+        rateLimitStorage: rateLimitStorage,
+        telemetry: authTelemetry,
+        generator: DefaultOTPCodeGenerator(),
+        logger: Logger(label: "lv.auth.pairing")
+    ).addRoutes(to: router, authenticator: jwtAuthenticator)
     // HER-273 — resolve active Hermes persona from inbound
     // `X-Hermes-Profile: <slug>` header. Lazy-creates a "default"
     // persona row when a pre-B1 tenant first touches a wired route.
