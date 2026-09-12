@@ -70,15 +70,18 @@ actor JWKSCache {
 
 struct AppleOAuthProvider: OAuthProvider {
     let name = "apple"
-    let audience: String // your Apple Sign in client_id (Service ID)
+    /// The App ID a native sign-in is audienced to, plus the Services ID the
+    /// web flow uses. They are different values for the same product, which is
+    /// why this cannot be a single string.
+    let audiences: Set<String>
     let issuer: String = "https://appleid.apple.com"
     let jwks: JWKSCache
 
-    init(audience: String,
+    init(audiences: Set<String>,
          jwksURL: URL = URL(string: "https://appleid.apple.com/auth/keys")!,
          session: URLSession = .shared)
     {
-        self.audience = audience
+        self.audiences = audiences
         jwks = JWKSCache(url: jwksURL, session: session)
     }
 
@@ -86,7 +89,9 @@ struct AppleOAuthProvider: OAuthProvider {
         let keys = try await jwks.current()
         let payload = try await keys.verify(idToken, as: AppleIDClaims.self)
         guard payload.iss.value == issuer else { throw OAuthError.invalidToken }
-        guard payload.aud.value.contains(audience) else { throw OAuthError.invalidToken }
+        guard payload.aud.value.contains(where: { audiences.contains($0) }) else {
+            throw OAuthError.invalidToken
+        }
         guard let email = payload.email, !email.isEmpty else { throw OAuthError.missingClaims }
         let verified = payload.emailVerified?.value ?? false
         guard verified else { throw OAuthError.unverifiedEmail }

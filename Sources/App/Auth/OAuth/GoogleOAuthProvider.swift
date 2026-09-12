@@ -24,15 +24,17 @@ private struct GoogleIDClaims: JWTPayload {
 
 struct GoogleOAuthProvider: OAuthProvider {
     let name = "google"
-    let audience: String // your OAuth 2.0 client_id
+    /// Every OAuth 2.0 client id whose tokens this server accepts — one per
+    /// platform. A token is valid when its `aud` names any of them.
+    let audiences: Set<String>
     let issuers: Set<String> = ["https://accounts.google.com", "accounts.google.com"]
     let jwks: JWKSCache
 
-    init(audience: String,
+    init(audiences: Set<String>,
          jwksURL: URL = URL(string: "https://www.googleapis.com/oauth2/v3/certs")!,
          session: URLSession = .shared)
     {
-        self.audience = audience
+        self.audiences = audiences
         jwks = JWKSCache(url: jwksURL, session: session)
     }
 
@@ -40,7 +42,11 @@ struct GoogleOAuthProvider: OAuthProvider {
         let keys = try await jwks.current()
         let payload = try await keys.verify(idToken, as: GoogleIDClaims.self)
         guard issuers.contains(payload.iss.value) else { throw OAuthError.invalidToken }
-        guard payload.aud.value.contains(audience) else { throw OAuthError.invalidToken }
+        // `aud` is itself a list, so this is an intersection: the token must
+        // name at least one audience this server was configured to accept.
+        guard payload.aud.value.contains(where: { audiences.contains($0) }) else {
+            throw OAuthError.invalidToken
+        }
         guard let email = payload.email, !email.isEmpty else { throw OAuthError.missingClaims }
         let verified = payload.emailVerified ?? false
         guard verified else { throw OAuthError.unverifiedEmail }
