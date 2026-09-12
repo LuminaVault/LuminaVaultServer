@@ -147,8 +147,11 @@ struct WebAuthnEnrolmentAuthTests {
                 headers: [.authorization: "Bearer \(victim.token)"]
             ) { response in
                 #expect(response.status == .ok)
+                // Qualified: LuminaVaultShared ships a DTO of the same name,
+                // and WebAuthnService.swift still carries its inline copy
+                // pending the shared-package swap in docs/her-216-followups.md.
                 let list = try testJSONDecoder().decode(
-                    WebAuthnCredentialListResponse.self,
+                    App.WebAuthnCredentialListResponse.self,
                     from: Data(buffer: response.body)
                 )
                 #expect(list.credentials.isEmpty)
