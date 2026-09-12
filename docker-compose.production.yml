@@ -112,13 +112,19 @@ services:
       # --- CORS (prod MUST set explicit origins) ---
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWEDORIGINS:?required}
       # --- WebAuthn ---
+      # Container var names below are what ConfigReader derives from
+      # webauthn.relyingPartyId/-Name/-Origin — do not "tidy" them back to
+      # the un-underscored host-var spelling. The `${A:-${B:-default}}`
+      # chain reads the `.env.example`-documented (underscored) host var
+      # first and falls back to the older un-underscored spelling so an
+      # existing `.env` set that way doesn't regress.
       WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
-      WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYINGPARTYID:-}
-      WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
+      WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYING_PARTY_ID:-${WEBAUTHN_RELYINGPARTYID:-}}
+      WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYING_PARTY_NAME:-${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}}
       # Comma-separated list. Web (app.luminavault.fyi) and iOS native
       # (luminavault.fyi) present different origins under one relying-party
       # ID; a single value cannot serve both.
-      WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
+      WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYING_PARTY_ORIGIN:-${WEBAUTHN_RELYINGPARTYORIGIN:-}}
       # --- APNS (push) ---
       # bundle id (= APNs topic) and team id are public + stable → baked.
       # To enable push: drop ./secrets/apns-key.p8 on the VPS and set

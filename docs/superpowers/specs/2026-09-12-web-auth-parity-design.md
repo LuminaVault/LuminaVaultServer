@@ -137,11 +137,13 @@ existing bearer-token transport unchanged.
 
 ### 3. WebAuthn origins
 
-`origin: String` becomes `origins: Set<String>`, populated from a
-comma-separated `WEBAUTHN_RELYING_PARTY_ORIGIN`. Validation becomes membership
-rather than equality. A single configured value keeps behaving exactly as it
-does today, which is what every current deployment has — the same compatibility
-property #197 relied on.
+`origin: String` becomes `origins: [String]` (an ordered, de-duplicated list,
+not a `Set`), populated from a comma-separated `WEBAUTHN_RELYING_PARTY_ORIGIN`
+— order is load-bearing: it decides which manager sees a ceremony first, and
+therefore which manager's error is preferred when every attempt fails.
+Validation becomes membership rather than equality. A single configured value
+keeps behaving exactly as it does today, which is what every current
+deployment has — the same compatibility property #197 relied on.
 
 No other WebAuthn change: username-first, no resident keys, no discoverable
 credentials.

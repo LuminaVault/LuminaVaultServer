@@ -174,6 +174,25 @@ struct WebAuthnService {
         !managers.isEmpty
     }
 
+    /// True when `error` is the vendored library's client-data origin
+    /// mismatch: `CollectedClientData.CollectedClientDataVerifyError
+    /// .originDoesNotMatch`, thrown by `CollectedClientData.verify(...)` in
+    /// `swift-webauthn` (`Sources/WebAuthn/Ceremonies/Shared/
+    /// CollectedClientData.swift`) when `origin != relyingPartyOrigin`.
+    ///
+    /// That enum is `internal` to the `WebAuthn` module — its own test
+    /// target only sees it via `@testable import` — so unlike every other
+    /// ceremony failure (which surfaces as the public `WebAuthnError`), it
+    /// cannot be named or `is`/`as`-cast to from here. Matching the fully
+    /// qualified runtime description is the only signal that survives the
+    /// module boundary. Every other error a ceremony can throw in this file
+    /// (`WebAuthnError.*`, `credentialIDAlreadyExists` from the registration
+    /// callback) has a distinct spelling, so this is unambiguous in
+    /// practice.
+    private func isOriginMismatch(_ error: any Error) -> Bool {
+        String(reflecting: error) == "WebAuthn.CollectedClientData.CollectedClientDataVerifyError.originDoesNotMatch"
+    }
+
     /// Run a ceremony against each accepted origin, returning the first
     /// success.
     ///
@@ -183,18 +202,33 @@ struct WebAuthnService {
     /// weakening: a credential that verifies under one accepted origin is
     /// genuinely valid for that origin.
     ///
-    /// The last error is rethrown so a genuinely bad credential still reports
-    /// the library's own reason rather than a generic failure.
+    /// An origin mismatch is the *expected, uninteresting* failure when
+    /// probing multiple origins: a genuine client's ceremony matches exactly
+    /// one manager and mismatches the rest, so most attempts "fail" this way
+    /// by design. The error that escapes is therefore the first NON-mismatch
+    /// error seen, falling back to the last error only if every attempt was
+    /// a mismatch — otherwise a real failure on a non-last manager (a
+    /// cloned-authenticator `potentialReplayAttack`, a duplicate
+    /// `credentialIDAlreadyExists`, ...) would be silently replaced by the
+    /// next manager's origin mismatch. With a single manager this is a
+    /// no-op: whatever it throws is what escapes, mismatch or not.
     func firstVerifying<T>(
         _ ceremony: (WebAuthnManager) async throws -> T
     ) async throws -> T {
         var lastError: (any Error)?
+        var firstNonOriginMismatch: (any Error)?
         for manager in managers {
             do {
                 return try await ceremony(manager)
             } catch {
                 lastError = error
+                if firstNonOriginMismatch == nil, !isOriginMismatch(error) {
+                    firstNonOriginMismatch = error
+                }
             }
+        }
+        if let firstNonOriginMismatch {
+            throw firstNonOriginMismatch
         }
         throw lastError ?? HTTPError(.serviceUnavailable, message: "webauthn disabled")
     }
