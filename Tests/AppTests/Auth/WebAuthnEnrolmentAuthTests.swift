@@ -53,6 +53,26 @@ struct WebAuthnEnrolmentAuthTests {
         ByteBuffer(string: "{\"username\":\"\(username)\"}")
     }
 
+    /// The credential list as it appears on the wire.
+    ///
+    /// Declared locally rather than reusing the server's DTO: `LuminaVaultShared`
+    /// ships a `WebAuthnCredentialListResponse` and `WebAuthnService.swift` still
+    /// carries its own inline copy (item 1 of docs/her-216-followups.md), so the
+    /// bare name is ambiguous here and the module-qualified form pushed the
+    /// expression past the type checker's limit.
+    private struct CredentialListBody: Decodable {
+        struct Item: Decodable { let id: String }
+        let credentials: [Item]
+    }
+
+    private static func decodeCredentials(_ body: ByteBuffer) throws -> [CredentialListBody.Item] {
+        try testJSONDecoder().decode(CredentialListBody.self, from: Data(buffer: body)).credentials
+    }
+
+    private static func decodeAuthResponse(_ buffer: ByteBuffer) throws -> AuthResponse {
+        try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: buffer))
+    }
+
     /// Registers a fresh account and returns its username + access token.
     private static func makeUser(
         _ client: some TestClientProtocol
@@ -63,7 +83,7 @@ struct WebAuthnEnrolmentAuthTests {
             method: .post,
             headers: [.contentType: "application/json"],
             body: registerBody(email: email, username: username)
-        ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
+        ) { try Self.decodeAuthResponse($0.body) }
         return (username, auth.accessToken)
     }
 
@@ -147,14 +167,8 @@ struct WebAuthnEnrolmentAuthTests {
                 headers: [.authorization: "Bearer \(victim.token)"]
             ) { response in
                 #expect(response.status == .ok)
-                // Qualified: LuminaVaultShared ships a DTO of the same name,
-                // and WebAuthnService.swift still carries its inline copy
-                // pending the shared-package swap in docs/her-216-followups.md.
-                let list = try testJSONDecoder().decode(
-                    App.WebAuthnCredentialListResponse.self,
-                    from: Data(buffer: response.body)
-                )
-                #expect(list.credentials.isEmpty)
+                let list = try Self.decodeCredentials(response.body)
+                #expect(list.isEmpty)
             }
         }
     }
