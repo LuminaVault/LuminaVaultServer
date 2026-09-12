@@ -47,7 +47,7 @@ struct TranscribeProviderConfigTests {
     @Test
     func `the imputed rate applies with no other transcribe config set`() async {
         let registry = Self.registry(env: [
-            "transcribe.ratecard.openai.imputedUsdPerAudioMinute": cfg("0.006"),
+            "transcribe.ratecard.openai.imputedUsdPerAudioMinute": cfg(0.006),
         ])
         let card = await registry.rateCard(for: .openaiCompatible)
         #expect(card.imputedUsdMicros(durationSeconds: 60) == 6000)
