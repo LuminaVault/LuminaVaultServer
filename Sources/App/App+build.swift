@@ -2954,6 +2954,27 @@ func buildRouter(
         )
     ).addRoutes(to: memoryAdminGroup)
 
+    // Admin: usage_events retention. Disabled unless
+    // `USAGE_EVENTS_RETENTION_DAYS` is set — deleting a tenant's usage history
+    // is irreversible, so it stays an explicit operator decision. Driven by
+    // the host cron like the memory sweep above, rather than an in-process
+    // timer that would run once per replica.
+    let usageRetentionGroup = router.group("/v1/admin/usage-events")
+        .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+    UsageEventsAdminController(
+        service: UsageEventsRetentionService(
+            fluent: services.fluent,
+            policy: UsageEventsRetentionPolicy(
+                retentionDays: reader.int(forKey: "usageEvents.retentionDays", default: 0),
+                batchSize: reader.int(
+                    forKey: "usageEvents.retentionBatchSize",
+                    default: UsageEventsRetentionPolicy.defaultBatchSize
+                )
+            ),
+            logger: Logger(label: "lv.usage-events.retention")
+        )
+    ).addRoutes(to: usageRetentionGroup)
+
     // Admin: billing tier override. Shared-secret gated; used for support,
     // TestFlight, and internal accounts without changing RevenueCat state.
     let billingAdminGroup = router.group("/v1/admin")
