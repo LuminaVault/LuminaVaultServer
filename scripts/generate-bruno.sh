@@ -69,15 +69,40 @@ echo "    target: ${DEST}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+# --collection-format is required from bru CLI v4: the default flipped to
+# `opencollection`, which emits .yml instead of .bru. Without this flag a
+# regen deletes every .bru in the collection and replaces it with a parallel
+# set of .yml — a 400-file diff that looks like a catastrophe and forces
+# everyone's Bruno app onto v4. Ask for the format the collection is actually
+# in. (v3 has no such flag; see the guard below, which covers both.)
+BRU_FORMAT_ARGS=()
+if bru import openapi --help 2>/dev/null | grep -q -- '--collection-format'; then
+  BRU_FORMAT_ARGS=(--collection-format bru)
+fi
+
 bru import openapi \
   --source "${SPEC}" \
   --output "${TMP_DIR}" \
   --collection-name "LuminaVaultServer" \
-  --group-by tags
+  --group-by tags \
+  "${BRU_FORMAT_ARGS[@]+"${BRU_FORMAT_ARGS[@]}"}"
 
 GENERATED="${TMP_DIR}/LuminaVaultServer"
 if [ ! -d "${GENERATED}" ]; then
   echo "error: bru produced no LuminaVaultServer collection under ${TMP_DIR}" >&2
+  exit 1
+fi
+
+# The rsync below runs with --delete against a checked-in collection, so a
+# generator that silently changes output format would wipe it. Refuse rather
+# than sync: a regen that produces no .bru files has not produced this
+# collection, whatever else it produced.
+GENERATED_BRU_COUNT="$(find "${GENERATED}" -type f -name '*.bru' | wc -l | tr -d ' ')"
+if [ "${GENERATED_BRU_COUNT}" -eq 0 ]; then
+  echo "error: bru produced no .bru files — refusing to sync over ${DEST}" >&2
+  echo "hint: bru CLI $(bru --version 2>/dev/null | head -1) may have changed its default" >&2
+  echo "      output format. Check \`bru import openapi --help\` for a format flag." >&2
+  find "${GENERATED}" -type f | sed 's|^|      generated: |' | head -5 >&2
   exit 1
 fi
 
