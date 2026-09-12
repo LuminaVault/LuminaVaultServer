@@ -9,9 +9,14 @@ import HummingbirdTesting
 import Logging
 import Testing
 
-/// Verifies the /options endpoints don't leak user existence. Both
+/// Verifies the sign-in /options endpoint doesn't leak user existence. Both
 /// registered and unregistered usernames must receive a 200 with a
 /// well-formed challenge — only /finish reveals whether the user exists.
+///
+/// Registration has no anti-enumeration property to test any more: enrolment
+/// is authenticated and can only ever act on the caller's own account, so
+/// there is no username to probe. Those cases moved to
+/// `WebAuthnEnrolmentAuthTests`.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct WebAuthnAntiEnumerationTests {
     private static let webAuthnReader = ConfigReader(providers: [
@@ -36,32 +41,6 @@ struct WebAuthnAntiEnumerationTests {
         ]),
     ])
 
-    private static func registerBody(email: String, username: String, password: String) -> ByteBuffer {
-        ByteBuffer(string: """
-        {"email":"\(email)","username":"\(username)","password":"\(password)"}
-        """)
-    }
-
-    @Test
-    func `begin registration returns 200 for unknown username`() async throws {
-        let app = try await buildApplication(reader: Self.webAuthnReader)
-        try await app.test(.router) { client in
-            // Username never registered.
-            let unknown = "ghost-\(UUID().uuidString.prefix(6).lowercased())"
-            try await client.execute(
-                uri: "/v1/auth/webauthn/register/options",
-                method: .post,
-                headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: "{\"username\":\"\(unknown)\"}")
-            ) { response in
-                #expect(response.status == .ok)
-                // Body should contain a challenge — proves we issued real-looking options
-                let raw = String(buffer: response.body)
-                #expect(raw.contains("challenge"))
-            }
-        }
-    }
-
     @Test
     func `begin authentication returns 200 for unknown username`() async throws {
         let app = try await buildApplication(reader: Self.webAuthnReader)
@@ -76,34 +55,6 @@ struct WebAuthnAntiEnumerationTests {
                 #expect(response.status == .ok)
                 let raw = String(buffer: response.body)
                 #expect(raw.contains("challenge"))
-            }
-        }
-    }
-
-    @Test
-    func `begin registration returns 200 for known username`() async throws {
-        let app = try await buildApplication(reader: Self.webAuthnReader)
-        try await app.test(.router) { client in
-            let username = "wax\(UUID().uuidString.prefix(6).lowercased())"
-            // Register a real user first.
-            try await client.execute(
-                uri: "/v1/auth/register",
-                method: .post,
-                headers: [.contentType: "application/json"],
-                body: Self.registerBody(
-                    email: "wax-\(UUID().uuidString.prefix(6).lowercased())@test.luminavault",
-                    username: username,
-                    password: "CorrectHorseBatteryStaple1!"
-                )
-            ) { _ in }
-
-            try await client.execute(
-                uri: "/v1/auth/webauthn/register/options",
-                method: .post,
-                headers: [.contentType: "application/json"],
-                body: ByteBuffer(string: "{\"username\":\"\(username)\"}")
-            ) { response in
-                #expect(response.status == .ok)
             }
         }
     }

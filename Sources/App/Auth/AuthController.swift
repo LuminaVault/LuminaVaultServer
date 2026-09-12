@@ -30,11 +30,18 @@ struct AuthController {
         router.group("/v1/auth").add(middleware: rl(.sendVerifyByIP)).post("/email/send-verify", use: sendVerification)
         router.group("/v1/auth").add(middleware: rl(.confirmEmailByIP)).post("/email/confirm", use: confirmEmail)
 
+        // Passkey sign-in is unauthenticated because it *is* the sign-in, but
+        // `authenticate/begin` takes a username, so it gets the same per-IP
+        // limiter the other username-taking auth routes have. Enrolment is not
+        // mounted here — it lives on the JWT-protected group in `App+build`.
+        let webAuthnPublicGroup = router.group("/v1/auth")
+            .add(middleware: rl(.webAuthnAuthenticateByIP))
+        webAuthnService.addRoutes(to: webAuthnPublicGroup)
+
         // Routes without rate limiting share their own group.
         let unlimitedGroup = router.group("/v1/auth")
         unlimitedGroup.post("/logout", use: logout)
         unlimitedGroup.post("/oauth/:provider/exchange", use: oauthExchange)
-        webAuthnService.addRoutes(to: unlimitedGroup)
     }
 
     @Sendable

@@ -249,6 +249,13 @@ extension RateLimitPolicy {
     static let mfaResendByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
     static let sendVerifyByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
     static let confirmEmailByIP = RateLimitPolicy(max: 10, window: 300) { req, _ in ipKey(req) }
+    /// Passkey sign-in. `authenticate/begin` accepts a username and always
+    /// returns options, so it is a cheap oracle unless it is bounded.
+    static let webAuthnAuthenticateByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
+    /// Passkey enrolment and credential management. Already behind a bearer
+    /// token, so key it per user rather than per IP — everyone on one NAT
+    /// otherwise shares a bucket for a route only their own session can call.
+    static let webAuthnEnrolByUser = RateLimitPolicy(max: 20, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-94: Per-user policies for protected, capacity-sensitive routes.
     /// Keyed via `userOrIPKey` so a single bad actor with one account cannot

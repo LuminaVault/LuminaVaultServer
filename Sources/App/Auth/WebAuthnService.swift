@@ -8,11 +8,16 @@ import WebAuthn
 
 // MARK: - DTOs
 
+/// Enrolment is authenticated, so the account is taken from the bearer
+/// token, never from the body. `username` is retained only for wire
+/// compatibility with shipped clients and is validated against the
+/// authenticated user rather than used to look one up.
 struct WebAuthnBeginRegistrationRequest: Codable {
     let username: String
     let displayName: String?
 }
 
+/// See `WebAuthnBeginRegistrationRequest` — `username` is advisory.
 struct WebAuthnFinishRegistrationRequest: Codable {
     let username: String
     let credentialCreationData: RegistrationCredential
@@ -77,20 +82,29 @@ actor WebAuthnChallengeStore {
     private var authentications: [String: Entry] = [:]
     private let ttl: TimeInterval = 300
 
-    func storeRegistration(username: String, challenge: [UInt8]) {
-        registrations[username] = Entry(challenge: challenge, expiresAt: Date().addingTimeInterval(ttl))
+    /// Registration challenges are keyed by user id, never by username.
+    /// Enrolment is an authenticated ceremony, so the key has to be the thing
+    /// the caller actually proved. Keying by a body-supplied username is what
+    /// allowed a challenge issued for one account to be redeemed against
+    /// another.
+    func storeRegistration(userID: UUID, challenge: [UInt8]) {
+        registrations[userID.uuidString] = Entry(
+            challenge: challenge,
+            expiresAt: Date().addingTimeInterval(ttl)
+        )
     }
 
-    func registration(username: String) -> [UInt8]? {
-        guard let e = registrations[username], e.expiresAt > Date() else {
-            registrations[username] = nil
+    func registration(userID: UUID) -> [UInt8]? {
+        let key = userID.uuidString
+        guard let e = registrations[key], e.expiresAt > Date() else {
+            registrations[key] = nil
             return nil
         }
         return e.challenge
     }
 
-    func clearRegistration(username: String) {
-        registrations[username] = nil
+    func clearRegistration(userID: UUID) {
+        registrations[userID.uuidString] = nil
     }
 
     func storeAuthentication(username: String, challenge: [UInt8]) {
@@ -233,26 +247,50 @@ struct WebAuthnService {
         throw lastError ?? HTTPError(.serviceUnavailable, message: "webauthn disabled")
     }
 
+    /// Unauthenticated routes: passkey *sign-in* only.
+    ///
+    /// Enrolment does not belong here. Binding a credential to an account is
+    /// an authenticated act — see `addAuthenticatedRoutes`. These two are the
+    /// sign-in ceremony itself, so they cannot require a session.
     func addRoutes(to group: RouterGroup<AppRequestContext>) {
         guard enabled else { return }
         // HER-216 — `/begin` is the canonical path; `/options` retained as
         // deprecated alias for any in-flight client still on the older
         // naming. Remove the alias once iOS ships HER-216 to TestFlight.
-        group.post("/webauthn/register/begin", use: beginRegistration)
-        group.post("/webauthn/register/options", use: beginRegistration)
-        group.post("/webauthn/register/finish", use: finishRegistration)
         group.post("/webauthn/authenticate/begin", use: beginAuthentication)
         group.post("/webauthn/authenticate/options", use: beginAuthentication)
         group.post("/webauthn/authenticate/finish", use: finishAuthentication)
     }
 
-    /// Authenticated routes: list / delete enrolled passkeys for the
-    /// current user. Mounted by `AuthController` under the JWT-protected
-    /// group so the `userID()` lookup is safe.
+    /// Authenticated routes: enrol a passkey, and list / delete the ones the
+    /// current user already has. Mounted under the JWT-protected group so
+    /// every handler here can trust `ctx.identity`.
+    ///
+    /// Enrolment lives here deliberately. When these routes were mounted on
+    /// the unauthenticated group and resolved the account from a body-supplied
+    /// username, any caller who knew a username could bind their own
+    /// authenticator to that account and then sign in as its owner.
     func addAuthenticatedRoutes(to group: RouterGroup<AppRequestContext>) {
         guard enabled else { return }
+        group.post("/webauthn/register/begin", use: beginRegistration)
+        group.post("/webauthn/register/options", use: beginRegistration)
+        group.post("/webauthn/register/finish", use: finishRegistration)
         group.get("/webauthn/credentials", use: listCredentials)
         group.delete("/webauthn/credentials/:credentialId", use: deleteCredential)
+    }
+
+    /// Enrolment takes its account from the bearer token. The body's
+    /// `username` is accepted for wire compatibility and must agree; it is
+    /// never used to find a user.
+    private func enrollingUser(_ ctx: AppRequestContext, claimed: String) throws -> (User, UUID) {
+        guard let user = ctx.identity, let userID = user.id else {
+            throw HTTPError(.unauthorized, message: "missing identity")
+        }
+        let claimed = claimed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !claimed.isEmpty, claimed.lowercased() != user.username.lowercased() {
+            throw HTTPError(.forbidden, message: "username does not match the authenticated user")
+        }
+        return (user, userID)
     }
 
     @Sendable
@@ -293,25 +331,18 @@ struct WebAuthnService {
             throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
         }
         let body = try await req.decode(as: WebAuthnBeginRegistrationRequest.self, context: ctx)
+        let (user, userID) = try enrollingUser(ctx, claimed: body.username)
 
-        // Anti-enumeration: don't 404 when the username is unknown — that
-        // leaks "this account exists" to scanners. Issue a syntactically
-        // valid challenge anyway. The flow will fail at /finish (where the
-        // attacker's `RegistrationCredential` doesn't match a real user).
-        let userIDBytes: [UInt8] = if let user = try await repo.findUser(byUsername: body.username) {
-            try Array(user.requireID().uuidString.utf8)
-        } else {
-            // Generate a deterministic-but-opaque pseudo-id so attackers
-            // can't time-side-channel based on response shape.
-            Array(UUID().uuidString.utf8)
-        }
+        // No anti-enumeration branch is needed: the caller is authenticated
+        // and can only ever enrol for themselves, so there is no unknown
+        // username to leak.
         let userEntity = PublicKeyCredentialUserEntity(
-            id: userIDBytes,
-            name: body.username,
-            displayName: body.displayName ?? body.username
+            id: Array(userID.uuidString.utf8),
+            name: user.username,
+            displayName: body.displayName ?? user.username
         )
         let options = manager.beginRegistration(user: userEntity)
-        await store.storeRegistration(username: body.username, challenge: Array(options.challenge))
+        await store.storeRegistration(userID: userID, challenge: Array(options.challenge))
         return WebAuthnBeginRegistrationResponse(options: options)
     }
 
@@ -319,13 +350,10 @@ struct WebAuthnService {
     func finishRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnFinishRegistrationResponse {
         guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
         let body = try await req.decode(as: WebAuthnFinishRegistrationRequest.self, context: ctx)
-        guard let challenge = await store.registration(username: body.username) else {
+        let (_, tenantID) = try enrollingUser(ctx, claimed: body.username)
+        guard let challenge = await store.registration(userID: tenantID) else {
             throw HTTPError(.badRequest, message: "missing or expired registration challenge")
         }
-        guard let user = try await repo.findUser(byUsername: body.username) else {
-            throw HTTPError(.notFound, message: "user not found")
-        }
-        let tenantID = try user.requireID()
         let db = fluent.db()
         let credential = try await firstVerifying { manager in try await manager.finishRegistration(
             challenge: challenge,
@@ -344,7 +372,7 @@ struct WebAuthnService {
             signCount: credential.signCount
         )
         try await row.save(on: db)
-        await store.clearRegistration(username: body.username)
+        await store.clearRegistration(userID: tenantID)
         return WebAuthnFinishRegistrationResponse(credentialID: credential.id)
     }
 

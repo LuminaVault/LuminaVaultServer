@@ -439,7 +439,10 @@ paths:
       tags: [Auth]
       operationId: authWebAuthnRegisterBegin
       summary: Begin WebAuthn passkey registration — returns PublicKeyCredentialCreationOptions.
-      security: []
+      description: >-
+        Authenticated. The credential is bound to the bearer token's user;
+        `username` in the body is accepted for wire compatibility and must
+        match that user, but is never used to look an account up.
       requestBody:
         required: true
         content:
@@ -451,6 +454,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WebAuthnOptions' }
+        '401':
+          description: Not authenticated.
+        '403':
+          description: Body `username` does not match the authenticated user.
         '503':
           description: WebAuthn disabled (WEBAUTHN_ENABLED=false).
 
@@ -459,7 +466,9 @@ paths:
       tags: [Auth]
       operationId: authWebAuthnRegisterFinish
       summary: Finalise WebAuthn credential registration.
-      security: []
+      description: >-
+        Authenticated. See `authWebAuthnRegisterBegin` — the credential is
+        bound to the bearer token's user.
       requestBody:
         required: true
         content:
@@ -471,6 +480,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WebAuthnFinishRegistrationResponse' }
+        '401':
+          description: Not authenticated.
+        '403':
+          description: Body `username` does not match the authenticated user.
 
   /v1/auth/webauthn/authenticate/begin:
     post:
