@@ -117,11 +117,97 @@ struct AnalyticsController {
         """).first(decoding: Row.self)
         let embedding = try await EmbeddingUsage.query(on: fluent.db())
             .filter(\.$tenantID == userID).filter(\.$yearMonth == EmbeddingUsage.yearMonth()).first()
+        let voice = try await voiceUsage(sql: sql, tenantID: userID, since: start)
+        let tokensIn = Int(row?.tin ?? 0)
+        let tokensOut = Int(row?.tout ?? 0)
+        let sessions = Int(row?.sessions ?? 0)
+        let costCents = Self.cents(fromUsdMicros: row?.cost ?? 0)
         return UsageSummaryResponse(
-            llmTokensIn: Int(row?.tin ?? 0), llmTokensOut: Int(row?.tout ?? 0),
-            embeddingTokens: Int(embedding?.tokensUsed ?? 0), sessionsCount: Int(row?.sessions ?? 0),
-            estimatedCostCents: Int((row?.cost ?? 0) / 10000), periodStart: start, periodEnd: now
+            llmTokensIn: tokensIn,
+            llmTokensOut: tokensOut,
+            embeddingTokens: Int(embedding?.tokensUsed ?? 0),
+            sessionsCount: sessions,
+            estimatedCostCents: costCents,
+            voice: voice,
+            periodStart: start,
+            periodEnd: now
         )
+    }
+
+    /// Voice transcription usage for the period, split by channel.
+    ///
+    /// Reads the per-request `usage_events` rows rather than `usage_meter`:
+    /// the aggregate cannot distinguish a Telegram voice note from an iOS mic
+    /// recording, and has no notion of an attempt that failed.
+    ///
+    /// Returns `nil` when there are no rows at all — an absent block reads as
+    /// "voice is not in use here", which is true, where a block of zeroes
+    /// would imply a feature that ran and did nothing.
+    func voiceUsage(
+        sql: any SQLDatabase,
+        tenantID: UUID,
+        since: Date
+    ) async throws -> VoiceUsageSummaryDTO? {
+        struct VoiceRow: Decodable {
+            let channel: String
+            let calls: Int64
+            let failed: Int64
+            let duration_ms: Int64
+            let real_micros: Int64
+            let imputed_micros: Int64
+        }
+
+        let rows = try await sql.raw("""
+        SELECT COALESCE(metadata->>'channel', 'unknown')                        AS channel,
+               COUNT(*)::bigint                                                 AS calls,
+               COUNT(*) FILTER (WHERE metadata->>'outcome' <> 'ok')::bigint     AS failed,
+               COALESCE(SUM(amount), 0)::bigint                                 AS duration_ms,
+               COALESCE(SUM((metadata->>'usdMicros')::bigint), 0)::bigint       AS real_micros,
+               COALESCE(SUM((metadata->>'imputedUsdMicros')::bigint), 0)::bigint AS imputed_micros
+        FROM usage_events
+        WHERE tenant_id = \(bind: tenantID)
+          AND metric = \(bind: VoiceUsageEventStore.metric)
+          AND occurred_at >= \(bind: since)
+        GROUP BY 1
+        ORDER BY duration_ms DESC
+        """).all(decoding: VoiceRow.self)
+
+        guard !rows.isEmpty else { return nil }
+
+        let byChannel = rows.map {
+            VoiceChannelUsageDTO(
+                channel: $0.channel,
+                calls: Int($0.calls),
+                failedCalls: Int($0.failed),
+                audioMinutes: Self.minutes(fromMilliseconds: $0.duration_ms),
+                realCostCents: Self.cents(fromUsdMicros: $0.real_micros),
+                imputedCostCents: Self.cents(fromUsdMicros: $0.imputed_micros)
+            )
+        }
+
+        // Totals are summed from the raw columns, not from the rounded
+        // per-channel values: rounding first then adding drifts by up to a
+        // cent per channel, and a total that disagrees with its own breakdown
+        // is the kind of thing that costs an hour to not-find a bug in.
+        return VoiceUsageSummaryDTO(
+            calls: rows.reduce(0) { $0 + Int($1.calls) },
+            failedCalls: rows.reduce(0) { $0 + Int($1.failed) },
+            audioMinutes: Self.minutes(fromMilliseconds: rows.reduce(0) { $0 + $1.duration_ms }),
+            realCostCents: Self.cents(fromUsdMicros: rows.reduce(0) { $0 + $1.real_micros }),
+            imputedCostCents: Self.cents(fromUsdMicros: rows.reduce(0) { $0 + $1.imputed_micros }),
+            byChannel: byChannel
+        )
+    }
+
+    /// Audio minutes, to one decimal — the precision a dashboard shows.
+    static func minutes(fromMilliseconds milliseconds: Int64) -> Double {
+        (Double(milliseconds) / 60000.0 * 10).rounded() / 10
+    }
+
+    /// Micro-USD to whole cents. Matches how `estimatedCostCents` is derived
+    /// above, so the two costs on this response share a unit.
+    static func cents(fromUsdMicros micros: Int64) -> Int {
+        Int(micros / 10000)
     }
 
     @Sendable

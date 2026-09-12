@@ -5,7 +5,7 @@ import Hummingbird
 // LuminaVaultShared v0.11.0 per the "wire-types-only" boundary. They now
 // live server-side; the iOS client builds its own decoders.
 
-struct TranscribeSegment: Codable {
+struct TranscribeSegment: Codable, Sendable {
     let start: Double
     let end: Double
     let text: String

@@ -70,6 +70,17 @@ struct TranscribeController {
             throw HTTPError(.contentTooLarge, message: "audio body exceeds \(Self.maxBodyBytes) byte cap")
         }
 
-        return try await service.transcribe(audio: buffer, mime: mime, tenantID: tenantID)
+        // This route is the iOS app's own microphone surface, so `app` is the
+        // right default rather than `unknown`. The header still wins when
+        // present — nothing stops another first-party client from arriving
+        // here and naming itself.
+        let channel = request.headers[OpenAIAudioController.channelHeader] ?? "app"
+
+        return try await service.transcribe(
+            audio: buffer,
+            mime: mime,
+            tenantID: tenantID,
+            channel: channel
+        )
     }
 }

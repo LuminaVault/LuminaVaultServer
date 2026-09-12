@@ -15,6 +15,15 @@ func cfg(_ value: Int) -> ConfigValue {
     .init(.int(value), isSecret: false)
 }
 
+/// A `double` ConfigValue. `ConfigReader.double(forKey:)` reads the stored
+/// type rather than coercing, so a rate written as `cfg("0.006")` reads back
+/// as the default and the test silently measures nothing. (An env var is a
+/// different path: `EnvironmentVariablesProvider` parses the string into the
+/// requested type, which is why the same key works there as a string.)
+func cfg(_ value: Double) -> ConfigValue {
+    .init(.double(value), isSecret: false)
+}
+
 /// Hummingbird's default response encoder emits dates as ISO-8601 strings
 /// (see `RequestContext` extension in the framework). `JSONDecoder()`
 /// defaults to `.deferredToDate` which expects a numeric. Every test that

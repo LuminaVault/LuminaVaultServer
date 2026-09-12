@@ -3328,6 +3328,8 @@ paths:
         (whisper.horus.svc.cluster.local), which is free per request and keeps
         audio inside the cluster. The provider is an OpenAI-compatible base
         URL, so moving to a hosted endpoint is configuration, not code.
+      parameters:
+        - $ref: '#/components/parameters/LuminaChannelHeader'
       requestBody:
         required: true
         content:
@@ -3366,6 +3368,8 @@ paths:
         error.message and callers surface it to end users. Audio format is
         resolved from the file part's filename extension first and its
         Content-Type second. Accepts up to 25 MB.
+      parameters:
+        - $ref: '#/components/parameters/LuminaChannelHeader'
       requestBody:
         required: true
         content:
@@ -6986,6 +6990,19 @@ components:
       description: RevenueCat webhook shared secret (`revenuecat.webhookSecret`).
 
   parameters:
+    LuminaChannelHeader:
+      in: header
+      name: X-Lumina-Channel
+      required: false
+      description: >-
+        The messaging platform this audio arrived on ("telegram", "discord",
+        …), used only to attribute usage metering. Advisory: an absent or
+        unrecognised value is recorded as "unknown" and never rejects the
+        request, because a voice note must not fail over attribution. The
+        value is reduced to a bare [a-z0-9_-] token, truncated at the first
+        character outside that set. /v1/transcribe defaults to "app" when the
+        header is absent, since that route is the iOS microphone surface.
+      schema: { type: string, maxLength: 32, example: telegram }
     TeamID:
       in: path
       name: teamID
@@ -8521,8 +8538,59 @@ components:
         embeddingTokens: { type: integer, minimum: 0 }
         sessionsCount: { type: integer, minimum: 0 }
         estimatedCostCents: { type: integer, minimum: 0, description: Coarse blended estimate, not billing-accurate. }
+        voice: { $ref: '#/components/schemas/VoiceUsageSummary' }
         periodStart: { type: string, format: date-time }
         periodEnd: { type: string, format: date-time }
+
+    VoiceUsageSummary:
+      type: object
+      required: [calls, failedCalls, audioMinutes, realCostCents, imputedCostCents, byChannel]
+      description: >-
+        Speech-to-text usage for the period, from the per-request usage_events
+        rows. Absent when the caller has transcribed nothing — an empty block
+        of zeroes would imply a feature that ran and did nothing.
+      properties:
+        calls: { type: integer, minimum: 0 }
+        failedCalls:
+          type: integer
+          minimum: 0
+          description: >-
+            Attempts whose outcome was not "ok". Counted because metering only
+            successes makes a failing provider look like a drop in demand.
+        audioMinutes: { type: number, minimum: 0 }
+        realCostCents:
+          type: integer
+          minimum: 0
+          description: >-
+            Money actually spent. Zero while transcription runs on the
+            cluster's own whisper, which bills nothing per request.
+        imputedCostCents:
+          type: integer
+          minimum: 0
+          description: >-
+            What the same audio would have cost at a hosted provider's
+            published rate, when one is configured. Not money owed, and never
+            to be added to realCostCents — it is the self-hosting saving.
+        byChannel:
+          type: array
+          items: { $ref: '#/components/schemas/VoiceChannelUsage' }
+
+    VoiceChannelUsage:
+      type: object
+      required: [channel, calls, failedCalls, audioMinutes, realCostCents, imputedCostCents]
+      properties:
+        channel:
+          type: string
+          description: >-
+            Platform the audio arrived on — telegram, discord, app, or
+            "unknown" when the client did not say. See the X-Lumina-Channel
+            request header.
+          example: telegram
+        calls: { type: integer, minimum: 0 }
+        failedCalls: { type: integer, minimum: 0 }
+        audioMinutes: { type: number, minimum: 0 }
+        realCostCents: { type: integer, minimum: 0 }
+        imputedCostCents: { type: integer, minimum: 0 }
 
     AnalyticsRange:
       type: string

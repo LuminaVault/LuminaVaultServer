@@ -30,6 +30,16 @@ struct OpenAIAudioController {
     /// before it uploads. Telegram tops out below this for voice notes.
     static let maxBodyBytes: Int = 25 * 1024 * 1024
 
+    /// Names the messaging platform a voice note arrived on.
+    ///
+    /// A header rather than a form field because this route must stay
+    /// OpenAI-shaped for every other client: an unknown form field would have
+    /// to be rejected or silently dropped, and neither is a sound default for
+    /// a metering signal. Advisory — absent or unusable values are recorded
+    /// as `unknown` (see `VoiceChannel.sanitized`), never rejected, because a
+    /// user's voice note must not fail over attribution.
+    static let channelHeader = HTTPField.Name("X-Lumina-Channel")!
+
     /// Extension → mime, used to resolve the audio format.
     ///
     /// Extension is checked **before** the part's `Content-Type` because
@@ -133,7 +143,12 @@ struct OpenAIAudioController {
         // `TranscribeProviderRegistry`, not something a tenant container
         // gets to choose. Rejecting them instead would break clients that
         // always send a model name.
-        let result = try await service.transcribe(audio: filePart.body, mime: mime, tenantID: tenantID)
+        let result = try await service.transcribe(
+            audio: filePart.body,
+            mime: mime,
+            tenantID: tenantID,
+            channel: request.headers[Self.channelHeader]
+        )
 
         return try Self.encode(result, as: format)
     }
