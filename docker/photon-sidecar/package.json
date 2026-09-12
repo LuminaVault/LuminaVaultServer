@@ -16,7 +16,8 @@
     "spectrum-ts": "^8.2.1"
   },
   "overrides": {
-    "protobufjs": "8.6.1"
+    "protobufjs": "8.6.6",
+    "@opentelemetry/core": "2.8.0"
   },
   "license": "MIT"
 }

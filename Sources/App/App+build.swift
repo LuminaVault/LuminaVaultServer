@@ -14,8 +14,7 @@ import JWTKit
 import Logging
 import LuminaVaultShared
 import Metrics
-@_spi(Logging) import OTel
-import OTLPGRPC
+import OTel
 import ServiceLifecycle
 import Tracing
 
@@ -3485,71 +3484,67 @@ private actor OTelLatch {
             return services
         }
 
-        let environment = OTelEnvironment.detected()
-        let resourceDetection = OTelResourceDetection(detectors: [
-            OTelProcessResourceDetector(),
-            OTelEnvironmentResourceDetector(environment: environment),
-            .manual(OTelResource(attributes: ["service.name": "\(serviceName)"])),
-        ])
-        let resource = await resourceDetection.resource(environment: environment, logLevel: .info)
+        // swift-otel 1.x replaces the hand-assembled registry/exporter/reader
+        // stack with configuration + per-signal backend factories. Metrics and
+        // traces keep the OTLP/gRPC transport they used under 0.x.
+        var configuration = OTel.Configuration.default
+        configuration.serviceName = serviceName
+        configuration.metrics.exporter = .otlp
+        configuration.metrics.otlpExporter.protocol = .grpc
+        configuration.traces.exporter = .otlp
+        configuration.traces.otlpExporter.protocol = .grpc
+        configuration.logs.enabled = false
 
-        let registry = OTelMetricRegistry()
-        let metricsExporter = try OTLPGRPCMetricExporter(configuration: .init(environment: environment))
-        let metricsReader = OTelPeriodicExportingMetricsReader(
-            resource: resource,
-            producer: registry,
-            exporter: metricsExporter,
-            configuration: .init(environment: environment, exportInterval: .seconds(60))
-        )
-        MetricsSystem.bootstrap(OTLPMetricsFactory(registry: registry))
+        let metricsBackend = try OTel.makeMetricsBackend(configuration: configuration)
+        MetricsSystem.bootstrap(metricsBackend.factory)
 
-        let spanExporter = try OTLPGRPCSpanExporter(configuration: .init(environment: environment))
-        let spanProcessor = OTelBatchSpanProcessor(
-            exporter: spanExporter,
-            configuration: .init(environment: environment)
-        )
-        let tracer = OTelTracer(
-            idGenerator: OTelRandomIDGenerator(),
-            sampler: OTelConstantSampler(isOn: true),
-            propagator: OTelW3CPropagator(),
-            processor: spanProcessor,
-            environment: environment,
-            resource: resource
-        )
-        InstrumentationSystem.bootstrap(tracer)
+        let tracingBackend = try OTel.makeTracingBackend(configuration: configuration)
+        InstrumentationSystem.bootstrap(tracingBackend.factory)
 
         // HER-236: OTLP log pipeline → otel-collector (JSON/HTTP) → PostHog.
         // Opt-in via OTEL_EXPORTER_OTLP_LOGS_ENDPOINT; absent = no log shipping
         // and the stock console handler stays installed.
         //
         // The handler is MULTIPLEXED with stdout rather than replacing it. When
-        // this bootstrap swapped in `OTelLogHandler` alone, every application
+        // this bootstrap swapped in the OTel handler alone, every application
         // log vanished from `kubectl logs`, and if the OTLP export also failed
         // the logs were gone entirely — which is exactly what happened in
-        // staging (Alloy publishes only otlp-grpc:4317 while this ships via
-        // `OTLPHTTPLogExporter`, so nothing was delivered and nothing was
-        // visible locally either). stdout is the floor: it must always work.
+        // staging. stdout is the floor: it must always work.
+        //
+        // This is also why we do NOT call `OTel.bootstrap()`: that one-shot
+        // entry point replaces the logging system outright ("Only Swift OTel
+        // diagnostic logging will use the console logger"), reintroducing that
+        // incident. `makeLoggingBackend` is the library's documented escape
+        // hatch for exactly this case.
         var logsService: (any Service)?
-        if let logsEndpoint = environment["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"],
+        if let logsEndpoint = ProcessInfo.processInfo.environment["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"],
            !logsEndpoint.isEmpty
         {
-            let logExporter = OTLPHTTPLogExporter(endpoint: logsEndpoint)
-            let logProcessor = OTelBatchLogRecordProcessor(
-                exporter: logExporter,
-                configuration: .init(environment: environment)
-            )
+            var logsConfiguration = configuration
+            logsConfiguration.logs.enabled = true
+            logsConfiguration.logs.exporter = .otlp
+            logsConfiguration.logs.otlpExporter.endpoint = logsEndpoint
+            // Matches the JSON body the previous hand-rolled OTLPHTTPLogExporter
+            // posted (content-type: application/json).
+            logsConfiguration.logs.otlpExporter.protocol = .httpJSON
+
+            let loggingBackend = try OTel.makeLoggingBackend(configuration: logsConfiguration)
             LoggingSystem.bootstrap { label in
                 var console = StreamLogHandler.standardOutput(label: label)
                 console.logLevel = logLevel
                 return MultiplexLogHandler([
                     console,
-                    OTelLogHandler(processor: logProcessor, logLevel: logLevel, resource: resource),
+                    loggingBackend.factory(label),
                 ])
             }
-            logsService = logProcessor
+            logsService = loggingBackend.service
         }
 
-        let bundle = OTelServices(metrics: metricsReader, tracer: tracer, logs: logsService)
+        let bundle = OTelServices(
+            metrics: metricsBackend.service,
+            tracer: tracingBackend.service,
+            logs: logsService
+        )
         services = bundle
         return bundle
     }

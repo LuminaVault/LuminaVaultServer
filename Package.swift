@@ -32,7 +32,7 @@ let package = Package(
         // `webauthn.enabled` (default false); revisit when a stable 1.0 ships.
         .package(url: "https://github.com/swift-server/swift-webauthn.git", exact: "1.0.0-beta.1"),
         .package(url: "https://github.com/swift-server-community/APNSwift.git", from: "6.0.0"),
-        .package(url: "https://github.com/slashmo/swift-otel.git", from: "0.10.0"),
+        .package(url: "https://github.com/slashmo/swift-otel.git", from: "1.5.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
         // HER-236: OTLPHTTPLogExporter posts JSON log batches to the otel-collector.
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.33.0"),
@@ -58,7 +58,6 @@ let package = Package(
                               .product(name: "WebAuthn", package: "swift-webauthn"),
                               .product(name: "APNS", package: "APNSwift"),
                               .product(name: "OTel", package: "swift-otel"),
-                              .product(name: "OTLPGRPC", package: "swift-otel"),
                               .product(name: "AsyncHTTPClient", package: "async-http-client"),
                               .product(name: "Valkey", package: "valkey-swift"),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
