@@ -147,11 +147,16 @@ services:
       OAUTH_APPLE_CLIENTID: ${OAUTH_APPLE_CLIENTID:-}
       OAUTH_GOOGLE_CLIENTID: ${OAUTH_GOOGLE_CLIENTID:-}
       OAUTH_X_CLIENTID: ${OAUTH_X_CLIENTID:-}
-      # Passkeys / WebAuthn.
+      # Passkeys / WebAuthn. Container var names below are what ConfigReader
+      # derives from webauthn.relyingPartyId/-Name/-Origin — do not "tidy"
+      # them back to the un-underscored spelling; the app can't read that.
+      # The `${A:-${B:-default}}` chain reads the `.env.example`-documented
+      # (underscored) host var first, falling back to the older
+      # un-underscored spelling so an existing `.env` set that way still works.
       WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
-      WEBAUTHN_RELYINGPARTYID: ${WEBAUTHN_RELYINGPARTYID:-localhost}
-      WEBAUTHN_RELYINGPARTYNAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
-      WEBAUTHN_RELYINGPARTYORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-http://localhost:8080}
+      WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYING_PARTY_ID:-${WEBAUTHN_RELYINGPARTYID:-localhost}}
+      WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYING_PARTY_NAME:-${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}}
+      WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYING_PARTY_ORIGIN:-${WEBAUTHN_RELYINGPARTYORIGIN:-http://localhost:8080}}
       # Phone OTP + email magic-link delivery. Default to logging (OTP→stderr);
       # set SMS_KIND=twilio / EMAIL_KIND=resend + creds for real delivery.
       SMS_KIND: ${SMS_KIND:-logging}

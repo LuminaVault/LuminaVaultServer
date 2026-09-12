@@ -116,22 +116,121 @@ struct WebAuthnService {
     let enabled: Bool
     let relyingPartyID: String
     let relyingPartyName: String
-    let relyingPartyOrigin: String
+    let relyingPartyOrigins: [String]
     let fluent: Fluent
     let repo: any AuthRepository
     let authService: any AuthService
     let logger: Logger
     private let store = WebAuthnChallengeStore()
 
-    private var manager: WebAuthnManager? {
-        guard enabled, !relyingPartyID.isEmpty, !relyingPartyOrigin.isEmpty else { return nil }
-        return WebAuthnManager(
-            configuration: .init(
-                relyingPartyID: relyingPartyID,
-                relyingPartyName: relyingPartyName,
-                relyingPartyOrigin: relyingPartyOrigin
-            )
-        )
+    /// Split a configured origin list into ordered, de-duplicated entries.
+    ///
+    /// Comma-separated so it stays one environment variable, matching how
+    /// `parseOAuthAudiences` handles multi-value OAuth audiences (PR #197).
+    /// Blanks are dropped rather than preserved: an empty entry builds a
+    /// manager with an empty origin, which fails every ceremony with an error
+    /// that points nowhere near the trailing comma that caused it.
+    static func parseOrigins(_ raw: String) -> [String] {
+        var seen = Set<String>()
+        return raw
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// One manager per accepted origin.
+    ///
+    /// `WebAuthnManager.Configuration.relyingPartyOrigin` is a single `String`
+    /// and the library verifies against it internally (see
+    /// `WebAuthnManager.swift` — the configured origin is passed straight into
+    /// the ceremony), so accepting several origins means holding several
+    /// managers rather than widening a config value.
+    var managers: [WebAuthnManager] {
+        guard enabled, !relyingPartyID.isEmpty else { return [] }
+        // Re-filter blanks here rather than trusting `parseOrigins` to have
+        // done it: `relyingPartyOrigins` is a plain `[String]`, so anything
+        // that builds a `WebAuthnService` directly with an empty entry (a
+        // future test double, a second call site) would otherwise construct
+        // a manager with an empty origin — the exact failure this property
+        // must never produce.
+        return relyingPartyOrigins
+            .filter { !$0.isEmpty }
+            .map { origin in
+                WebAuthnManager(
+                    configuration: .init(
+                        relyingPartyID: relyingPartyID,
+                        relyingPartyName: relyingPartyName,
+                        relyingPartyOrigin: origin
+                    )
+                )
+            }
+    }
+
+    /// Whether any ceremony can run at all. Distinct from `enabled`: a
+    /// deployment can have the feature on and the origins unset, which is a
+    /// misconfiguration rather than a deliberate opt-out.
+    var isConfigured: Bool {
+        !managers.isEmpty
+    }
+
+    /// True when `error` is the vendored library's client-data origin
+    /// mismatch: `CollectedClientData.CollectedClientDataVerifyError
+    /// .originDoesNotMatch`, thrown by `CollectedClientData.verify(...)` in
+    /// `swift-webauthn` (`Sources/WebAuthn/Ceremonies/Shared/
+    /// CollectedClientData.swift`) when `origin != relyingPartyOrigin`.
+    ///
+    /// That enum is `internal` to the `WebAuthn` module — its own test
+    /// target only sees it via `@testable import` — so unlike every other
+    /// ceremony failure (which surfaces as the public `WebAuthnError`), it
+    /// cannot be named or `is`/`as`-cast to from here. Matching the fully
+    /// qualified runtime description is the only signal that survives the
+    /// module boundary. Every other error a ceremony can throw in this file
+    /// (`WebAuthnError.*`, `credentialIDAlreadyExists` from the registration
+    /// callback) has a distinct spelling, so this is unambiguous in
+    /// practice.
+    private func isOriginMismatch(_ error: any Error) -> Bool {
+        String(reflecting: error) == "WebAuthn.CollectedClientData.CollectedClientDataVerifyError.originDoesNotMatch"
+    }
+
+    /// Run a ceremony against each accepted origin, returning the first
+    /// success.
+    ///
+    /// Every attempt is a full cryptographic verification by the library, so
+    /// this asks "is this credential valid for *any* origin we accept" — the
+    /// same intersection semantics #197 gave OAuth audiences. It is not a
+    /// weakening: a credential that verifies under one accepted origin is
+    /// genuinely valid for that origin.
+    ///
+    /// An origin mismatch is the *expected, uninteresting* failure when
+    /// probing multiple origins: a genuine client's ceremony matches exactly
+    /// one manager and mismatches the rest, so most attempts "fail" this way
+    /// by design. The error that escapes is therefore the first NON-mismatch
+    /// error seen, falling back to the last error only if every attempt was
+    /// a mismatch — otherwise a real failure on a non-last manager (a
+    /// cloned-authenticator `potentialReplayAttack`, a duplicate
+    /// `credentialIDAlreadyExists`, ...) would be silently replaced by the
+    /// next manager's origin mismatch. With a single manager this is a
+    /// no-op: whatever it throws is what escapes, mismatch or not.
+    func firstVerifying<T>(
+        _ ceremony: (WebAuthnManager) async throws -> T
+    ) async throws -> T {
+        var lastError: (any Error)?
+        var firstNonOriginMismatch: (any Error)?
+        for manager in managers {
+            do {
+                return try await ceremony(manager)
+            } catch {
+                lastError = error
+                if firstNonOriginMismatch == nil, !isOriginMismatch(error) {
+                    firstNonOriginMismatch = error
+                }
+            }
+        }
+        if let firstNonOriginMismatch {
+            throw firstNonOriginMismatch
+        }
+        throw lastError ?? HTTPError(.serviceUnavailable, message: "webauthn disabled")
     }
 
     func addRoutes(to group: RouterGroup<AppRequestContext>) {
@@ -190,7 +289,9 @@ struct WebAuthnService {
 
     @Sendable
     func beginRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnBeginRegistrationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard let manager = managers.first else {
+            throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
+        }
         let body = try await req.decode(as: WebAuthnBeginRegistrationRequest.self, context: ctx)
 
         // Anti-enumeration: don't 404 when the username is unknown — that
@@ -216,7 +317,7 @@ struct WebAuthnService {
 
     @Sendable
     func finishRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnFinishRegistrationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
         let body = try await req.decode(as: WebAuthnFinishRegistrationRequest.self, context: ctx)
         guard let challenge = await store.registration(username: body.username) else {
             throw HTTPError(.badRequest, message: "missing or expired registration challenge")
@@ -226,7 +327,7 @@ struct WebAuthnService {
         }
         let tenantID = try user.requireID()
         let db = fluent.db()
-        let credential = try await manager.finishRegistration(
+        let credential = try await firstVerifying { manager in try await manager.finishRegistration(
             challenge: challenge,
             credentialCreationData: body.credentialCreationData,
             confirmCredentialIDNotRegisteredYet: { credentialID in
@@ -235,7 +336,7 @@ struct WebAuthnService {
                     .first()
                 return existing == nil
             }
-        )
+        ) }
         let row = WebAuthnCredential(
             tenantID: tenantID,
             credentialID: credential.id,
@@ -249,7 +350,9 @@ struct WebAuthnService {
 
     @Sendable
     func beginAuthentication(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnBeginAuthenticationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard let manager = managers.first else {
+            throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
+        }
         let body = try await req.decode(as: WebAuthnBeginAuthenticationRequest.self, context: ctx)
         // Anti-enumeration: emit options even for unknown usernames.
         // /finish performs the real credential lookup and returns 401 when
@@ -261,7 +364,7 @@ struct WebAuthnService {
 
     @Sendable
     func finishAuthentication(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
         let body = try await req.decode(as: WebAuthnFinishAuthenticationRequest.self, context: ctx)
         guard let challenge = await store.authentication(username: body.username) else {
             throw HTTPError(.badRequest, message: "missing or expired authentication challenge")
@@ -283,12 +386,12 @@ struct WebAuthnService {
             throw HTTPError(.unauthorized, message: "credential not registered")
         }
 
-        let verified = try manager.finishAuthentication(
+        let verified = try await firstVerifying { manager in try manager.finishAuthentication(
             credential: body.credential,
             expectedChallenge: challenge,
             credentialPublicKey: Array(row.publicKey),
             credentialCurrentSignCount: UInt32(row.signCount)
-        )
+        ) }
         row.signCount = Int64(verified.newSignCount)
         try await row.save(on: db)
         await store.clearAuthentication(username: body.username)
