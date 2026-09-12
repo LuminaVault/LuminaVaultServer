@@ -29,28 +29,21 @@ struct TranscribeService {
         tenantID: UUID,
         channel: String? = nil
     ) async throws -> TranscribeResponse {
-        let startedAt = ContinuousClock.now
-        let occurredAt = Date()
-        let resolvedChannel = VoiceChannel.sanitized(channel)
-        let audioBytes = Int64(audio.readableBytes)
-
         let kind = await registry.activeKindResolved()
         let model = await registry.model(for: kind) ?? ""
+        let attempt = Attempt(
+            tenantID: tenantID,
+            occurredAt: Date(),
+            startedAt: ContinuousClock.now,
+            channel: VoiceChannel.sanitized(channel),
+            kind: kind,
+            model: model,
+            audioBytes: Int64(audio.readableBytes)
+        )
 
         guard let adapter = await registry.active() else {
             logger.error("no active transcribe provider — check transcribe.provider env knob")
-            await meterAttempt(
-                tenantID: tenantID,
-                occurredAt: occurredAt,
-                channel: resolvedChannel,
-                kind: kind,
-                model: model,
-                outcome: .noProvider,
-                durationSeconds: 0,
-                startedAt: startedAt,
-                audioBytes: audioBytes,
-                language: nil
-            )
+            await meter(attempt, outcome: .noProvider)
             throw HTTPError(.serviceUnavailable, message: "transcribe provider not configured")
         }
 
@@ -59,18 +52,7 @@ struct TranscribeService {
             result = try await adapter.transcribe(audio: audio, mime: mime)
         } catch let providerError as TranscribeProviderError {
             logger.error("transcribe provider error: \(providerError)")
-            await meterAttempt(
-                tenantID: tenantID,
-                occurredAt: occurredAt,
-                channel: resolvedChannel,
-                kind: kind,
-                model: model,
-                outcome: VoiceUsageOutcome(providerError: providerError),
-                durationSeconds: 0,
-                startedAt: startedAt,
-                audioBytes: audioBytes,
-                language: nil
-            )
+            await meter(attempt, outcome: VoiceUsageOutcome(providerError: providerError))
             switch providerError {
             case .permanent:
                 throw HTTPError(.badGateway, message: "transcribe upstream rejected request")
@@ -98,16 +80,10 @@ struct TranscribeService {
             segments: result.segments
         )
 
-        await meterAttempt(
-            tenantID: tenantID,
-            occurredAt: occurredAt,
-            channel: resolvedChannel,
-            kind: kind,
-            model: model,
+        await meter(
+            attempt,
             outcome: .ok,
             durationSeconds: result.durationSeconds,
-            startedAt: startedAt,
-            audioBytes: audioBytes,
             language: result.language,
             idempotencyKey: response.id
         )
@@ -117,6 +93,23 @@ struct TranscribeService {
 
     // MARK: - Metering
 
+    /// Everything about a transcription attempt that is fixed before the
+    /// upstream call, gathered once.
+    ///
+    /// A struct rather than a long parameter list: the three metering call
+    /// sites differ only in how the attempt *ended*, so passing the same
+    /// seven values through each of them was both noise and an easy place to
+    /// transpose two arguments of the same type.
+    private struct Attempt {
+        let tenantID: UUID
+        let occurredAt: Date
+        let startedAt: ContinuousClock.Instant
+        let channel: String
+        let kind: TranscribeProviderKind
+        let model: String
+        let audioBytes: Int64
+    }
+
     /// Record one attempt to the per-request ledger and to the live metrics.
     ///
     /// Awaited rather than fired into a detached `Task`: a per-request row is
@@ -125,32 +118,29 @@ struct TranscribeService {
     /// when a failure spike is most worth having recorded. (The repo rule
     /// against fire-and-forget `Task` says the same thing.) The store swallows
     /// its own errors, so this cannot fail the request.
-    private func meterAttempt(
-        tenantID: UUID,
-        occurredAt: Date,
-        channel: String,
-        kind: TranscribeProviderKind,
-        model: String,
+    ///
+    /// `durationSeconds` defaults to zero because a failed attempt has no
+    /// audio duration to bill — only a successful one passes it.
+    private func meter(
+        _ attempt: Attempt,
         outcome: VoiceUsageOutcome,
-        durationSeconds: Double,
-        startedAt: ContinuousClock.Instant,
-        audioBytes: Int64,
-        language: String?,
+        durationSeconds: Double = 0,
+        language: String? = nil,
         idempotencyKey: String? = nil
     ) async {
-        let rateCard = await registry.rateCard(for: kind)
+        let rateCard = await registry.rateCard(for: attempt.kind)
 
         let event = VoiceUsageEvent(
-            tenantID: tenantID,
-            occurredAt: occurredAt,
-            channel: channel,
+            tenantID: attempt.tenantID,
+            occurredAt: attempt.occurredAt,
+            channel: attempt.channel,
             surface: VoiceUsageEvent.voiceNoteSurface,
-            provider: kind.rawValue,
-            model: model,
+            provider: attempt.kind.rawValue,
+            model: attempt.model,
             outcome: outcome,
             durationMilliseconds: Self.milliseconds(fromSeconds: durationSeconds),
-            latencyMilliseconds: Self.milliseconds(since: startedAt),
-            audioBytes: audioBytes,
+            latencyMilliseconds: Self.milliseconds(since: attempt.startedAt),
+            audioBytes: attempt.audioBytes,
             language: language,
             // Real spend. The in-cluster whisper service bills nothing per
             // request, and a hosted provider's true invoice is reconciled

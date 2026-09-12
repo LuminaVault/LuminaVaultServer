@@ -12,7 +12,7 @@ import Testing
 /// at all, and everything downstream of the config — the model name on each
 /// usage row, the imputed rate card — has to work in exactly that case.
 struct TranscribeProviderConfigTests {
-    static func registry(env: [String: ConfigValue] = [:]) -> TranscribeProviderRegistry {
+    static func registry(env: [AbsoluteConfigKey: ConfigValue] = [:]) -> TranscribeProviderRegistry {
         TranscribeProviderRegistry.from(
             reader: ConfigReader(providers: [InMemoryProvider(values: env)]),
             adapters: [],
