@@ -139,15 +139,56 @@ struct WebAuthnService {
             .filter { seen.insert($0).inserted }
     }
 
-    private var manager: WebAuthnManager? {
-        guard enabled, !relyingPartyID.isEmpty, !relyingPartyOrigin.isEmpty else { return nil }
-        return WebAuthnManager(
-            configuration: .init(
-                relyingPartyID: relyingPartyID,
-                relyingPartyName: relyingPartyName,
-                relyingPartyOrigin: relyingPartyOrigin
+    /// One manager per accepted origin.
+    ///
+    /// `WebAuthnManager.Configuration.relyingPartyOrigin` is a single `String`
+    /// and the library verifies against it internally (see
+    /// `WebAuthnManager.swift` — the configured origin is passed straight into
+    /// the ceremony), so accepting several origins means holding several
+    /// managers rather than widening a config value.
+    var managers: [WebAuthnManager] {
+        guard enabled, !relyingPartyID.isEmpty else { return [] }
+        return relyingPartyOrigins.map { origin in
+            WebAuthnManager(
+                configuration: .init(
+                    relyingPartyID: relyingPartyID,
+                    relyingPartyName: relyingPartyName,
+                    relyingPartyOrigin: origin
+                )
             )
-        )
+        }
+    }
+
+    /// Whether any ceremony can run at all. Distinct from `enabled`: a
+    /// deployment can have the feature on and the origins unset, which is a
+    /// misconfiguration rather than a deliberate opt-out.
+    var isConfigured: Bool {
+        !managers.isEmpty
+    }
+
+    /// Run a ceremony against each accepted origin, returning the first
+    /// success.
+    ///
+    /// Every attempt is a full cryptographic verification by the library, so
+    /// this asks "is this credential valid for *any* origin we accept" — the
+    /// same intersection semantics #197 gave OAuth audiences. It is not a
+    /// weakening: a credential that verifies under one accepted origin is
+    /// genuinely valid for that origin.
+    ///
+    /// The last error is rethrown so a genuinely bad credential still reports
+    /// the library's own reason rather than a generic failure.
+    func firstVerifying<T>(
+        _ ceremony: (WebAuthnManager) async throws -> T
+    ) async throws -> T {
+        var lastError: (any Error)?
+        for manager in managers {
+            do {
+                return try await ceremony(manager)
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? HTTPError(.serviceUnavailable, message: "webauthn disabled")
     }
 
     func addRoutes(to group: RouterGroup<AppRequestContext>) {
@@ -206,7 +247,9 @@ struct WebAuthnService {
 
     @Sendable
     func beginRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnBeginRegistrationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard let manager = managers.first else {
+            throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
+        }
         let body = try await req.decode(as: WebAuthnBeginRegistrationRequest.self, context: ctx)
 
         // Anti-enumeration: don't 404 when the username is unknown — that
@@ -232,7 +275,7 @@ struct WebAuthnService {
 
     @Sendable
     func finishRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnFinishRegistrationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
         let body = try await req.decode(as: WebAuthnFinishRegistrationRequest.self, context: ctx)
         guard let challenge = await store.registration(username: body.username) else {
             throw HTTPError(.badRequest, message: "missing or expired registration challenge")
@@ -242,7 +285,7 @@ struct WebAuthnService {
         }
         let tenantID = try user.requireID()
         let db = fluent.db()
-        let credential = try await manager.finishRegistration(
+        let credential = try await firstVerifying { manager in try await manager.finishRegistration(
             challenge: challenge,
             credentialCreationData: body.credentialCreationData,
             confirmCredentialIDNotRegisteredYet: { credentialID in
@@ -251,7 +294,7 @@ struct WebAuthnService {
                     .first()
                 return existing == nil
             }
-        )
+        ) }
         let row = WebAuthnCredential(
             tenantID: tenantID,
             credentialID: credential.id,
@@ -265,7 +308,9 @@ struct WebAuthnService {
 
     @Sendable
     func beginAuthentication(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnBeginAuthenticationResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard let manager = managers.first else {
+            throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
+        }
         let body = try await req.decode(as: WebAuthnBeginAuthenticationRequest.self, context: ctx)
         // Anti-enumeration: emit options even for unknown usernames.
         // /finish performs the real credential lookup and returns 401 when
@@ -277,7 +322,7 @@ struct WebAuthnService {
 
     @Sendable
     func finishAuthentication(_ req: Request, ctx: AppRequestContext) async throws -> AuthResponse {
-        guard let manager else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
         let body = try await req.decode(as: WebAuthnFinishAuthenticationRequest.self, context: ctx)
         guard let challenge = await store.authentication(username: body.username) else {
             throw HTTPError(.badRequest, message: "missing or expired authentication challenge")
@@ -299,12 +344,12 @@ struct WebAuthnService {
             throw HTTPError(.unauthorized, message: "credential not registered")
         }
 
-        let verified = try manager.finishAuthentication(
+        let verified = try await firstVerifying { manager in try manager.finishAuthentication(
             credential: body.credential,
             expectedChallenge: challenge,
             credentialPublicKey: Array(row.publicKey),
             credentialCurrentSignCount: UInt32(row.signCount)
-        )
+        ) }
         row.signCount = Int64(verified.newSignCount)
         try await row.save(on: db)
         await store.clearAuthentication(username: body.username)

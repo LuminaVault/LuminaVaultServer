@@ -486,7 +486,7 @@ func buildRouter(
         enabled: services.webAuthnEnabled,
         relyingPartyID: services.webAuthnRelyingPartyID,
         relyingPartyName: services.webAuthnRelyingPartyName,
-        relyingPartyOrigin: services.webAuthnRelyingPartyOrigin,
+        relyingPartyOrigins: WebAuthnService.parseOrigins(services.webAuthnRelyingPartyOrigin),
         fluent: services.fluent,
         repo: authRepo,
         authService: authService,
