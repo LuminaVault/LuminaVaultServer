@@ -21,6 +21,7 @@ struct AchievementsServiceTests {
             try await fluent.shutdown()
             return result
         } catch {
+            recordErrorDetail(error)
             try? await fluent.shutdown()
             throw error
         }
@@ -70,6 +71,7 @@ struct AchievementsServiceTests {
             try await fluent.migrate()
             return fluent
         } catch {
+            recordErrorDetail(error)
             try? await fluent.shutdown()
             throw error
         }
