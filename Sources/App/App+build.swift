@@ -584,9 +584,12 @@ func buildRouter(
     meGroup.get("/me/billing", use: meBillingHandler(enforcementEnabled: services.billingEnforcementEnabled))
     meGroup.get("/me/usage", use: meUsageHandler(fluent: services.fluent))
 
-    // HER-216 — authenticated passkey management (list / revoke).
+    // HER-216 — authenticated passkey enrolment + management (list / revoke).
+    // Enrolment is here, not on the public auth group: binding a credential to
+    // an account requires proving you own the account.
     let webAuthnAuthedGroup = router.group("/v1/auth")
         .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .webAuthnEnrolByUser, storage: rateLimitStorage))
     webAuthnService.addAuthenticatedRoutes(to: webAuthnAuthedGroup)
 
     let billingGroup = router.group("/v1/billing")
