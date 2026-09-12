@@ -1,5 +1,5 @@
 {
-  "originHash" : "e81f51ad2b2aa1810545f3eb8f09185f99362c6417888d7c007692d111a3639b",
+  "originHash" : "948e696d15714c759df8086220b6ef4c430feecdc4b64ac80d2b22468bdab871",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -56,12 +56,30 @@
       }
     },
     {
-      "identity" : "grpc-swift",
+      "identity" : "grpc-swift-2",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/grpc/grpc-swift.git",
+      "location" : "https://github.com/grpc/grpc-swift-2.git",
       "state" : {
-        "revision" : "6a8927df5a91710b414caba4f8a088dead4633db",
-        "version" : "1.27.5"
+        "revision" : "ac33066eb6edb1a21a6ca172ea8184a9b06f3cc7",
+        "version" : "2.4.3"
+      }
+    },
+    {
+      "identity" : "grpc-swift-nio-transport",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/grpc/grpc-swift-nio-transport.git",
+      "state" : {
+        "revision" : "eaad084d6c26ff1f2e96f9c2ab76ef84d7165ab6",
+        "version" : "2.9.2"
+      }
+    },
+    {
+      "identity" : "grpc-swift-protobuf",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/grpc/grpc-swift-protobuf.git",
+      "state" : {
+        "revision" : "176c5a434fd76f6f479848d1a8f7d44967534168",
+        "version" : "2.4.1"
       }
     },
     {
@@ -384,8 +402,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/slashmo/swift-otel.git",
       "state" : {
-        "revision" : "1e719806d05b13fe1976903ce3d468a5f11c8ed2",
-        "version" : "0.12.0"
+        "revision" : "10f2d41a8787167ea49b6055082b178e7b2fe911",
+        "version" : "1.5.0"
       }
     },
     {
@@ -429,8 +447,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-otel/swift-w3c-trace-context.git",
       "state" : {
-        "revision" : "3da4b79545b38cf5551f1c525d800756f38cb697",
-        "version" : "1.0.0-beta.3"
+        "revision" : "5da9b143ba6046734de3fa51dafea28290174e4e",
+        "version" : "1.0.0-beta.5"
       }
     },
     {
