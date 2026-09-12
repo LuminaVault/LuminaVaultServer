@@ -129,4 +129,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M123_CreateAgentTurnTraces())
     await fluent.migrations.add(M124_AddFreeTier())
     await fluent.migrations.add(M125_AddHermesAudioTokenEpoch())
+    await fluent.migrations.add(M126_AddVoiceUsageMetrics())
 }

@@ -192,11 +192,20 @@ services:
       VISION_EMBED_PROVIDER_COHERE_BASEURL: ${VISION_EMBED_PROVIDER_COHERE_BASEURL:-}
       VISION_EMBED_PROVIDER_COHERE_MODEL: ${VISION_EMBED_PROVIDER_COHERE_MODEL:-embed-english-v3.0}
       # --- STT / Transcribe ---
-      TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-groq}
-      TRANSCRIBE_PROVIDER_GROQ_APIKEY: ${TRANSCRIBE_PROVIDER_GROQ_APIKEY:-}
-      TRANSCRIBE_PROVIDER_GROQ_BASEURL: ${TRANSCRIBE_PROVIDER_GROQ_BASEURL:-https://api.groq.com}
-      TRANSCRIBE_PROVIDER_GROQ_MODEL: ${TRANSCRIBE_PROVIDER_GROQ_MODEL:-whisper-large-v3}
-      TRANSCRIBE_RATECARD_GROQ_MTOKPERSECOND: ${TRANSCRIBE_RATECARD_GROQ_MTOKPERSECOND:-0.0001}
+      # The cluster's own whisper: free per request, no credential (guarded by
+      # NetworkPolicy), no audio leaving the cluster. A new consumer must also
+      # be named in `allow-whisper` in the infra repo's
+      # cluster/network-policies/horus.yaml, or this looks exactly like the
+      # service being down. See platform/infra/docs/transcription.md.
+      #
+      # The former TRANSCRIBE_PROVIDER_GROQ_* / TRANSCRIBE_RATECARD_GROQ_*
+      # variables are gone: `groq` is no longer a TranscribeProviderKind, so
+      # nothing read them. Remove them from the sealed secrets too.
+      TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-openai_compatible}
+      TRANSCRIBE_PROVIDER_OPENAI_BASE_URL: ${TRANSCRIBE_PROVIDER_OPENAI_BASE_URL:-http://whisper.horus.svc.cluster.local:8000/v1}
+      TRANSCRIBE_PROVIDER_OPENAI_MODEL: ${TRANSCRIBE_PROVIDER_OPENAI_MODEL:-Systran/faster-whisper-small}
+      TRANSCRIBE_PROVIDER_OPENAI_API_KEY: ${TRANSCRIBE_PROVIDER_OPENAI_API_KEY:-}
+      TRANSCRIBE_RATECARD_OPENAI_IMPUTED_USD_PER_AUDIO_MINUTE: ${TRANSCRIBE_RATECARD_OPENAI_IMPUTED_USD_PER_AUDIO_MINUTE:-0}
       # --- Observability (app → otel-collector → {jaeger, posthog, debug}) ---
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_SERVICE_NAME: luminavault

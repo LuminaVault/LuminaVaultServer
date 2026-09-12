@@ -1525,11 +1525,11 @@ func buildRouter(
     llmController.addRoutes(to: llmGroup)
 
     // HER-203 — STT (speech-to-text) endpoint. Single configured provider
-    // per boot (`transcribe.provider`, default `groq`). Registry stays
-    // separate from the chat-routing `ProviderRegistry` so STT failover
-    // policy can evolve independently. Adapters register only when the
-    // provider's apiKey is set; with none configured the route mounts
-    // and returns 503 via the service layer.
+    // per boot (`transcribe.provider`, default `openai_compatible`, which is
+    // the cluster's own whisper). Registry stays separate from the
+    // chat-routing `ProviderRegistry` so STT failover policy can evolve
+    // independently. An unresolvable base URL leaves no adapter registered
+    // and the route returns 503 via the service layer.
     let transcribeLogger = Logger(label: "lv.transcribe")
     var transcribeAdapters: [any TranscribeProviderAdapter] = []
     // Speech-to-text points at the cluster's own whisper service by default:
@@ -1539,7 +1539,7 @@ func buildRouter(
     // OpenAI-compatible endpoint publishes itself.
     let transcribeBaseRaw = reader.string(
         forKey: "transcribe.provider.openai.baseURL",
-        default: "http://whisper.horus.svc.cluster.local:8000/v1"
+        default: TranscribeProviderRegistry.inClusterWhisperBaseURL.absoluteString
     ).trimmingCharacters(in: .whitespacesAndNewlines)
     if let transcribeBase = URL(string: transcribeBaseRaw), !transcribeBaseRaw.isEmpty {
         transcribeAdapters.append(OpenAICompatibleTranscribeAdapter(
@@ -1563,9 +1563,12 @@ func buildRouter(
     // Test-only stub adapter — selected exclusively via
     // `transcribe.provider=stub`. The branch is unreachable in prod
     // unless someone sets that env var; the adapter has no network I/O.
-    let transcribeProviderName = reader.string(forKey: "transcribe.provider", default: "groq")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
+    let transcribeProviderName = reader.string(
+        forKey: "transcribe.provider",
+        default: TranscribeProviderKind.openaiCompatible.rawValue
+    )
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+    .lowercased()
     if transcribeProviderName == "stub" {
         transcribeAdapters.append(StubTranscribeAdapter(
             text: reader.string(forKey: "transcribe.stub.text", default: "stub transcript"),
@@ -1583,6 +1586,7 @@ func buildRouter(
     let transcribeService = TranscribeService(
         registry: transcribeRegistry,
         usageMeter: usageMeterService,
+        voiceUsage: VoiceUsageEventStore(fluent: services.fluent, logger: transcribeLogger),
         logger: transcribeLogger
     )
     let transcribeController = TranscribeController(

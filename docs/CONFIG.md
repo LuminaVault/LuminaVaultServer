@@ -261,6 +261,7 @@ Deployment-level LLM keys are optional fallbacks. Empty values mean the provider
 - Ollama: `LLM_PROVIDER_OLLAMA_BASEURL`
 - Vision: `VISION_EMBED_PROVIDER_COHERE_APIKEY`
 - Speech-to-text: `TRANSCRIBE_PROVIDER_GROQ_APIKEY`
+- Speech-to-text shadow pricing: `TRANSCRIBE_RATECARD_OPENAI_IMPUTED_USD_PER_AUDIO_MINUTE` (default `0` — off). USD per audio-minute at a hosted provider's published rate, recorded on each `usage_events` row as `imputedUsdMicros` so "what would this traffic cost hosted" is answerable. Never reaches `cost_ledger`: the in-cluster whisper bills nothing, so real spend stays `0`. See [voice-metering.md](voice-metering.md).
 - TTS: `LLM_PROVIDER_OPENAI_APIKEY` with `TTS_PROVIDER=openai`
 - Gemini fallback: `GEMINI_API_KEY`
 

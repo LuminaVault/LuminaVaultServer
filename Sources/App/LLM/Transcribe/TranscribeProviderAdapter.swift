@@ -38,10 +38,17 @@ enum TranscribeProviderKind: String, CaseIterable {
     ///
     /// Deliberately *not* the raw value. The selector reads
     /// `TRANSCRIBE_PROVIDER=openai_compatible`, but its settings live under
-    /// `TRANSCRIBE_PROVIDER_OPENAI_BASEURL` / `_MODEL` — the names the rest of
-    /// the estate already uses (see `platform/infra/docs/transcription.md`).
-    /// Deriving the segment from the raw value would silently rename them to
-    /// `TRANSCRIBE_PROVIDER_OPENAI_COMPATIBLE_*` and read nothing.
+    /// `TRANSCRIBE_PROVIDER_OPENAI_*`. Deriving the segment from the raw value
+    /// would silently rename them to `TRANSCRIBE_PROVIDER_OPENAI_COMPATIBLE_*`
+    /// and read nothing.
+    ///
+    /// Note the *suffix* spelling, which an earlier version of this comment
+    /// got wrong: `ConfigReader` encodes `…openai.baseURL` as
+    /// `TRANSCRIBE_PROVIDER_OPENAI_BASE_URL`, inserting `_` where a lowercase
+    /// letter meets an uppercase one. The flattened `_BASEURL` / `_APIKEY`
+    /// spellings load nothing here — unlike the chat-routing registry, this
+    /// path carries no legacy aliases. `TranscribeProviderConfigTests` pins
+    /// both the spellings that work and the ones that silently do not.
     var configKey: String {
         switch self {
         case .openaiCompatible: "openai"
@@ -52,7 +59,7 @@ enum TranscribeProviderKind: String, CaseIterable {
 
 /// Normalized result returned from any `TranscribeProviderAdapter`. The
 /// service layer converts this into the wire `TranscribeResponse`.
-struct TranscribeUpstreamResult {
+struct TranscribeUpstreamResult: Sendable {
     let text: String
     let language: String
     /// Confidence in `[0,1]`. Providers that don't expose a single number
