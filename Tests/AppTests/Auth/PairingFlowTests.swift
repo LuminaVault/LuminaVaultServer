@@ -144,7 +144,12 @@ struct PairingFlowTests {
 
             try await client.execute(uri: "/v1/auth/pairing/\(start.pairingId)", method: .get) { response in
                 #expect(response.status == .ok)
-                #expect(try Self.decodePoll(response.body).approved == false)
+                // Bind, then assert. `#expect` expands its argument into a
+                // position this closure will not propagate a throw from, so
+                // `#expect(try ...)` here fails to build — matching how the
+                // other polls in this file are already written.
+                let poll = try Self.decodePoll(response.body)
+                #expect(poll.approved == false)
             }
         }
     }
