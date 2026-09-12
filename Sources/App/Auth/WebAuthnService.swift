@@ -279,18 +279,27 @@ struct WebAuthnService {
         group.delete("/webauthn/credentials/:credentialId", use: deleteCredential)
     }
 
-    /// Enrolment takes its account from the bearer token. The body's
-    /// `username` is accepted for wire compatibility and must agree; it is
-    /// never used to find a user.
-    private func enrollingUser(_ ctx: AppRequestContext, claimed: String) throws -> (User, UUID) {
+    /// The account enrolment will act on, taken from the bearer token.
+    ///
+    /// Call this *before* decoding the body. `jwtAuthenticator` is an
+    /// `AuthenticatorMiddleware`: it hydrates `ctx.identity` but does not
+    /// reject, so the handler is what enforces authentication. Decoding first
+    /// means an unauthenticated caller gets their input parsed and a 400 about
+    /// its shape, instead of the 401 that should end the request.
+    private func enrollingUser(_ ctx: AppRequestContext) throws -> (User, UUID) {
         guard let user = ctx.identity, let userID = user.id else {
             throw HTTPError(.unauthorized, message: "missing identity")
         }
+        return (user, userID)
+    }
+
+    /// The body's `username` is accepted for wire compatibility and must agree
+    /// with the authenticated user; it is never used to find one.
+    private func requireClaimMatches(_ claimed: String, _ user: User) throws {
         let claimed = claimed.trimmingCharacters(in: .whitespacesAndNewlines)
         if !claimed.isEmpty, claimed.lowercased() != user.username.lowercased() {
             throw HTTPError(.forbidden, message: "username does not match the authenticated user")
         }
-        return (user, userID)
     }
 
     @Sendable
@@ -330,8 +339,9 @@ struct WebAuthnService {
         guard let manager = managers.first else {
             throw HTTPError(.serviceUnavailable, message: "webauthn disabled")
         }
+        let (user, userID) = try enrollingUser(ctx)
         let body = try await req.decode(as: WebAuthnBeginRegistrationRequest.self, context: ctx)
-        let (user, userID) = try enrollingUser(ctx, claimed: body.username)
+        try requireClaimMatches(body.username, user)
 
         // No anti-enumeration branch is needed: the caller is authenticated
         // and can only ever enrol for themselves, so there is no unknown
@@ -349,8 +359,9 @@ struct WebAuthnService {
     @Sendable
     func finishRegistration(_ req: Request, ctx: AppRequestContext) async throws -> WebAuthnFinishRegistrationResponse {
         guard isConfigured else { throw HTTPError(.serviceUnavailable, message: "webauthn disabled") }
+        let (user, tenantID) = try enrollingUser(ctx)
         let body = try await req.decode(as: WebAuthnFinishRegistrationRequest.self, context: ctx)
-        let (_, tenantID) = try enrollingUser(ctx, claimed: body.username)
+        try requireClaimMatches(body.username, user)
         guard let challenge = await store.registration(userID: tenantID) else {
             throw HTTPError(.badRequest, message: "missing or expired registration challenge")
         }

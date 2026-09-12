@@ -121,18 +121,40 @@ struct WebAuthnEnrolmentAuthTests {
         }
     }
 
+    /// Regression: this body has no `credentialCreationData`, so decoding it
+    /// fails. The handler must answer 401 anyway.
+    ///
+    /// `jwtAuthenticator` is an `AuthenticatorMiddleware` — it hydrates
+    /// `ctx.identity` but does not reject, so the handler enforces
+    /// authentication. When it decoded before checking identity, production
+    /// answered 400 (a complaint about the body's shape) to a caller who had
+    /// not authenticated at all. Untrusted input must not be parsed first.
     @Test
     func `finish registration without a bearer is rejected`() async throws {
         let app = try await buildApplication(reader: Self.webAuthnReader)
         try await app.test(.router) { client in
             let victim = try await Self.makeUser(client)
-            // Body shape is irrelevant: the 401 comes from the middleware,
-            // before the handler ever decodes it.
             try await client.execute(
                 uri: "/v1/auth/webauthn/register/finish",
                 method: .post,
                 headers: [.contentType: "application/json"],
                 body: Self.beginBody(username: victim.username)
+            ) { response in
+                #expect(response.status == .unauthorized)
+            }
+        }
+    }
+
+    /// Same property on `begin`, with a body that cannot decode at all.
+    @Test
+    func `begin registration with an undecodable body is still 401`() async throws {
+        let app = try await buildApplication(reader: Self.webAuthnReader)
+        try await app.test(.router) { client in
+            try await client.execute(
+                uri: "/v1/auth/webauthn/register/begin",
+                method: .post,
+                headers: [.contentType: "application/json"],
+                body: ByteBuffer(string: "{\"not-a-field\":123}")
             ) { response in
                 #expect(response.status == .unauthorized)
             }
