@@ -148,15 +148,23 @@ struct WebAuthnService {
     /// managers rather than widening a config value.
     var managers: [WebAuthnManager] {
         guard enabled, !relyingPartyID.isEmpty else { return [] }
-        return relyingPartyOrigins.map { origin in
-            WebAuthnManager(
-                configuration: .init(
-                    relyingPartyID: relyingPartyID,
-                    relyingPartyName: relyingPartyName,
-                    relyingPartyOrigin: origin
+        // Re-filter blanks here rather than trusting `parseOrigins` to have
+        // done it: `relyingPartyOrigins` is a plain `[String]`, so anything
+        // that builds a `WebAuthnService` directly with an empty entry (a
+        // future test double, a second call site) would otherwise construct
+        // a manager with an empty origin — the exact failure this property
+        // must never produce.
+        return relyingPartyOrigins
+            .filter { !$0.isEmpty }
+            .map { origin in
+                WebAuthnManager(
+                    configuration: .init(
+                        relyingPartyID: relyingPartyID,
+                        relyingPartyName: relyingPartyName,
+                        relyingPartyOrigin: origin
+                    )
                 )
-            )
-        }
+            }
     }
 
     /// Whether any ceremony can run at all. Distinct from `enabled`: a
