@@ -1695,6 +1695,7 @@ func buildRouter(
     )
     let visionEmbedController = VisionEmbedController(
         service: visionEmbedService,
+        memories: MemoryRepository(fluent: services.fluent),
         logger: visionEmbedLogger
     )
     let visionEmbedGroup = router.group("/v1/vision")

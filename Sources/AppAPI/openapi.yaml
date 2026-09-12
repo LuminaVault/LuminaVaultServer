@@ -3474,6 +3474,45 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/VisionEmbedResponse' }
 
+  /v1/vision/search:
+    post:
+      tags: [LLM]
+      operationId: llmVisionSearch
+      summary: Find the memories nearest an image (HER-205 follow-up).
+      description: |
+        Embeds the image and runs its vector against `memories.embedding`,
+        which `/v1/vision/embed` already documents itself as compatible with.
+        No OCR step: image and memory vectors share a space by construction,
+        so there is no text in the middle to mistranslate the picture.
+
+        Raw image body, same media types and 8 MB cap as `/v1/vision/embed`.
+      parameters:
+        - in: query
+          name: limit
+          description: 1–50, default 10. Out-of-range values are rejected rather than clamped.
+          schema: { type: integer, default: 10 }
+      requestBody:
+        required: true
+        content:
+          image/png:  { schema: { type: string, format: binary } }
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          image/heic: { schema: { type: string, format: binary } }
+      responses:
+        '200':
+          description: Nearest memories, closest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VisionSearchResponse' }
+        '400':
+          description: limit out of range.
+        '415':
+          description: Unsupported image media type.
+        '413':
+          description: Image body exceeded the 8 MB cap.
+        '503':
+          description: No vision embed provider configured.
+
   # ────────────────────────────── Memory ────────────────────────────────
 
   /v1/memory:
@@ -10668,6 +10707,28 @@ components:
         embedding:
           type: array
           items: { type: number }
+
+    VisionSearchResponse:
+      type: object
+      required: [hits, model]
+      properties:
+        hits:
+          type: array
+          items: { $ref: '#/components/schemas/VisionSearchHit' }
+        model:
+          type: string
+          description: Which provider answered; results are only comparable within one model.
+
+    VisionSearchHit:
+      type: object
+      required: [id, content, distance]
+      properties:
+        id: { type: string, format: uuid }
+        content: { type: string }
+        distance:
+          type: number
+          description: pgvector cosine distance — smaller is closer.
+        createdAt: { type: [string, 'null'], format: date-time }
 
     # ── Memory ──
 
