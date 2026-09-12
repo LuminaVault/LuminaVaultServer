@@ -144,7 +144,8 @@ struct PairingFlowTests {
 
             try await client.execute(uri: "/v1/auth/pairing/\(start.pairingId)", method: .get) { response in
                 #expect(response.status == .ok)
-                #expect(try Self.decodePoll(response.body).approved == false)
+                let poll = try Self.decodePoll(response.body)
+                #expect(poll.approved == false)
             }
         }
     }
