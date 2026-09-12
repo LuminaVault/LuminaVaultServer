@@ -15,6 +15,14 @@ func cfg(_ value: Int) -> ConfigValue {
     .init(.int(value), isSecret: false)
 }
 
+/// A `bool` ConfigValue. Same trap as `cfg(Double)` below: `ConfigReader`
+/// reads the stored type rather than coercing, so `cfg("false")` for a key
+/// read via `reader.bool(forKey:)` yields the *default*, and a test that means
+/// to switch a feature off silently leaves it on.
+func cfg(_ value: Bool) -> ConfigValue {
+    .init(.bool(value), isSecret: false)
+}
+
 /// A `double` ConfigValue. `ConfigReader.double(forKey:)` reads the stored
 /// type rather than coercing, so a rate written as `cfg("0.006")` reads back
 /// as the default and the test silently measures nothing. (An env var is a
