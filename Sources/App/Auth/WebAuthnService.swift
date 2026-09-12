@@ -116,12 +116,28 @@ struct WebAuthnService {
     let enabled: Bool
     let relyingPartyID: String
     let relyingPartyName: String
-    let relyingPartyOrigin: String
+    let relyingPartyOrigins: [String]
     let fluent: Fluent
     let repo: any AuthRepository
     let authService: any AuthService
     let logger: Logger
     private let store = WebAuthnChallengeStore()
+
+    /// Split a configured origin list into ordered, de-duplicated entries.
+    ///
+    /// Comma-separated so it stays one environment variable, matching how
+    /// `parseOAuthAudiences` handles multi-value OAuth audiences (PR #197).
+    /// Blanks are dropped rather than preserved: an empty entry builds a
+    /// manager with an empty origin, which fails every ceremony with an error
+    /// that points nowhere near the trailing comma that caused it.
+    static func parseOrigins(_ raw: String) -> [String] {
+        var seen = Set<String>()
+        return raw
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+    }
 
     private var manager: WebAuthnManager? {
         guard enabled, !relyingPartyID.isEmpty, !relyingPartyOrigin.isEmpty else { return nil }
