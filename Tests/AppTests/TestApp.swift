@@ -109,11 +109,19 @@ private var dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] {
 /// `StubChatAdapter` under `.hermesGateway`, so a `managed`-mode chat
 /// returns a canned reply with no upstream call. Scoped to tests that
 /// assert an actual LLM reply; other DB tests keep the default gateway.
+/// - Parameter freeLaneEnabled: leave `true` to exercise the free lane, or set
+///   `false` when a test asserts on a user's *stored* LLM preference. With the
+///   lane on, `LLMPreferencesController` canonicalises reads to managed for a
+///   user who cannot actually use their choice — a fresh signup is free-tier
+///   with no credential — so a BYOK round-trip reads back as managed even
+///   though it persisted correctly. `FreeLaneGateTests` covers that policy.
 func dbTestReaderWithStubChat(
-    replyContent: String = "Hello from the LuminaVault default brain."
+    replyContent: String = "Hello from the LuminaVault default brain.",
+    freeLaneEnabled: Bool = true
 ) -> ConfigReader {
     var values = dbTestConfigValues
     values["llm.provider"] = cfg("stub")
     values["llm.stub.replyContent"] = cfg(replyContent)
+    values["freelane.enabled"] = cfg(freeLaneEnabled ? "true" : "false")
     return ConfigReader(providers: [InMemoryProvider(values: values)])
 }

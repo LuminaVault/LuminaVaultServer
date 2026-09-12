@@ -131,7 +131,9 @@ struct LLMPreferencesControllerTests {
             #expect(put.primaryProvider == .anthropic)
             #expect(put.primaryModel == "claude-opus-4-7")
             #expect(put.fallbackChain.count == 1)
-            #expect(put.fallbackChain[0].provider == .openai)
+            // `.first`, not `[0]`: `#expect` records and continues, so a
+            // subscript on an empty chain traps and aborts the whole run.
+            #expect(put.fallbackChain.first?.provider == .openai)
 
             let profiles = try await client.execute(
                 uri: "/v1/router",
