@@ -3524,9 +3524,19 @@ private actor OTelLatch {
             logsConfiguration.logs.enabled = true
             logsConfiguration.logs.exporter = .otlp
             logsConfiguration.logs.otlpExporter.endpoint = logsEndpoint
-            // Matches the JSON body the previous hand-rolled OTLPHTTPLogExporter
-            // posted (content-type: application/json).
-            logsConfiguration.logs.otlpExporter.protocol = .httpJSON
+            // gRPC, not HTTP. The collector this ships to (Alloy, in the
+            // `observability` namespace) exposes 4317 and 12345 only — there is
+            // no 4318, so OTLP/HTTP has nowhere to land. Posting HTTP/1.1 at the
+            // gRPC port makes swift-otel's batch processor fail every export
+            // with `NIOHTTP1.HTTPParserError: invalid constant string`, observed
+            // on api-staging once this migration made the failure visible.
+            //
+            // The hand-rolled OTLPHTTPLogExporter this replaced had the same
+            // mismatch and said so in its own comment ("Alloy publishes only
+            // otlp-grpc:4317 while this ships via OTLPHTTPLogExporter, so
+            // nothing was delivered"), so HER-236 log shipping has never
+            // actually worked. This is the fix for that, not a regression.
+            logsConfiguration.logs.otlpExporter.protocol = .grpc
 
             let loggingBackend = try OTel.makeLoggingBackend(configuration: logsConfiguration)
             LoggingSystem.bootstrap { label in
