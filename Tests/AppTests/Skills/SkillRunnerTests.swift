@@ -67,6 +67,7 @@ struct SkillRunnerTests {
             return result
         } catch {
             try? await fluent.shutdown()
+            recordErrorDetail(error)
             try? FileManager.default.removeItem(at: tmpRoot)
             throw error
         }
