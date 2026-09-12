@@ -122,6 +122,6 @@ func dbTestReaderWithStubChat(
     var values = dbTestConfigValues
     values["llm.provider"] = cfg("stub")
     values["llm.stub.replyContent"] = cfg(replyContent)
-    values["freelane.enabled"] = cfg(freeLaneEnabled ? "true" : "false")
+    values["freelane.enabled"] = cfg(freeLaneEnabled)
     return ConfigReader(providers: [InMemoryProvider(values: values)])
 }

@@ -121,8 +121,10 @@ struct ConversationE2ETests {
                 #expect(resp.status == .ok)
                 let list = try Self.decodeConversationList(resp.body)
                 #expect(list.conversations.count == 3)
-                #expect(list.conversations[0].title == "three")
-                #expect(list.conversations[2].title == "one")
+                // `#expect` records and continues, so subscripting a short
+                // list here traps and aborts the whole integration run.
+                #expect(list.conversations.first?.title == "three")
+                #expect(list.conversations.dropFirst(2).first?.title == "one")
             }
         }
     }
