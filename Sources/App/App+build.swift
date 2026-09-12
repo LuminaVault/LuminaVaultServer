@@ -494,11 +494,15 @@ func buildRouter(
     )
 
     var oauthProviders: [String: any OAuthProvider] = [:]
-    if !services.appleClientID.isEmpty {
-        oauthProviders["apple"] = AppleOAuthProvider(audience: services.appleClientID)
+    // A provider is registered only when it has at least one audience. An
+    // empty or comma-only value means "not configured" exactly as before.
+    let appleAudiences = parseOAuthAudiences(services.appleClientID)
+    if !appleAudiences.isEmpty {
+        oauthProviders["apple"] = AppleOAuthProvider(audiences: appleAudiences)
     }
-    if !services.googleClientID.isEmpty {
-        oauthProviders["google"] = GoogleOAuthProvider(audience: services.googleClientID)
+    let googleAudiences = parseOAuthAudiences(services.googleClientID)
+    if !googleAudiences.isEmpty {
+        oauthProviders["google"] = GoogleOAuthProvider(audiences: googleAudiences)
     }
     // HER-200 M3 / audit S-01 — single config key controls rate-limit
     // storage. Memory is fine for single-process; `redis` wires the shared

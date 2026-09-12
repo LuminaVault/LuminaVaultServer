@@ -41,7 +41,7 @@ struct GoogleOAuthProviderTests {
     }
 
     private static func makeFixture(
-        audience: String = Self.testAudience
+        audiences: Set<String> = [Self.testAudience]
     ) async throws -> Fixture {
         let normalizedModulus = Self.testModulus
             .replacingOccurrences(of: "\n", with: "")
@@ -73,7 +73,7 @@ struct GoogleOAuthProviderTests {
         let session = URLSession(configuration: config)
 
         let provider = GoogleOAuthProvider(
-            audience: audience,
+            audiences: audiences,
             jwksURL: Self.jwksURL,
             session: session
         )
@@ -142,6 +142,48 @@ struct GoogleOAuthProviderTests {
         await #expect(throws: OAuthError.invalidToken) {
             _ = try await fix.provider.verify(idToken: token)
         }
+    }
+
+    @Test
+    func `a token for either configured audience is accepted`() async throws {
+        // The reason this change exists: iOS and web present different client
+        // ids for the same product, and both must verify against one server.
+        let ios = "ios-client.apps.googleusercontent.com"
+        let web = "web-client.apps.googleusercontent.com"
+        let fix = try await Self.makeFixture(audiences: [ios, web])
+
+        for audience in [ios, web] {
+            let token = try await Self.signToken(on: fix.signer, aud: audience)
+            let info = try await fix.provider.verify(idToken: token)
+            #expect(info.providerUserID == "google-sub-12345")
+        }
+    }
+
+    @Test
+    func `an audience outside the configured set is still rejected`() async throws {
+        // Widening to a set must not turn into accepting anything.
+        let fix = try await Self.makeFixture(
+            audiences: ["ios-client.apps.googleusercontent.com", "web-client.apps.googleusercontent.com"]
+        )
+        let token = try await Self.signToken(on: fix.signer, aud: "attacker.apps.googleusercontent.com")
+        await #expect(throws: OAuthError.invalidToken) {
+            _ = try await fix.provider.verify(idToken: token)
+        }
+    }
+
+    @Test
+    func `audience parsing splits, trims and drops blanks`() {
+        #expect(parseOAuthAudiences("a,b") == ["a", "b"])
+        #expect(parseOAuthAudiences(" a , b ") == ["a", "b"])
+        // A trailing comma or an all-comma value must not create an empty
+        // audience — an empty string in the set would match a token with an
+        // empty `aud` entry.
+        #expect(parseOAuthAudiences("a,,b,") == ["a", "b"])
+        #expect(parseOAuthAudiences("").isEmpty)
+        #expect(parseOAuthAudiences(" , ").isEmpty)
+        // Unchanged single values keep working, which is what every existing
+        // deployment has configured today.
+        #expect(parseOAuthAudiences("only-one") == ["only-one"])
     }
 
     @Test
