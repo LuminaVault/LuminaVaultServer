@@ -115,6 +115,9 @@ services:
       WEBAUTHN_ENABLED: ${WEBAUTHN_ENABLED:-false}
       WEBAUTHN_RELYING_PARTY_ID: ${WEBAUTHN_RELYINGPARTYID:-}
       WEBAUTHN_RELYING_PARTY_NAME: ${WEBAUTHN_RELYINGPARTYNAME:-LuminaVault}
+      # Comma-separated list. Web (app.luminavault.fyi) and iOS native
+      # (luminavault.fyi) present different origins under one relying-party
+      # ID; a single value cannot serve both.
       WEBAUTHN_RELYING_PARTY_ORIGIN: ${WEBAUTHN_RELYINGPARTYORIGIN:-}
       # --- APNS (push) ---
       # bundle id (= APNs topic) and team id are public + stable → baked.

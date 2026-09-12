@@ -436,6 +436,26 @@ diff /tmp/env-keys /tmp/code-keys
 ```
 
 Any code-only key needs an `.env.example` entry. Any env-only key may be safe to delete.
+
+### WebAuthn / Passkeys
+
+`WEBAUTHN_RELYING_PARTY_ID` must equal the browser's origin domain or be a
+registrable parent of it. A sibling subdomain is rejected by the browser
+before the request is sent, which is why `api.luminavault.fyi` cannot serve a
+web app on `app.luminavault.fyi`.
+
+`WEBAUTHN_RELYING_PARTY_ORIGIN` is a comma-separated list. Web and iOS native
+present different origins under one relying-party ID, so one value cannot
+serve both; a single value keeps behaving exactly as it did.
+
+Passkey credentials are bound to the relying-party ID. Changing it invalidates
+every registered credential and forces all users to re-enrol.
+
+**Known ceiling:** WebAuthn challenges are held in an in-memory dictionary in
+`WebAuthnService`, so a `begin` on one API replica and a `finish` on another
+will not find the challenge. Passkeys work only while the API runs a single
+replica. See `docs/superpowers/plans/2026-05-29-p1-redis-stateless-api.md`.
+
 # Hybrid local execution
 
 - `HYBRID_EXECUTION_ENABLED` gates hybrid preferences, conversation prepare/commit, and local memory synchronization; default `true`.
