@@ -152,6 +152,32 @@ counting the zero from a failure would drag the median toward nothing and hide
 a change in what users actually send. The failure *count* is still there, in
 the requests counter.
 
+## Retention
+
+`usage_events` takes one row per transcription attempt, so it grows with
+voice traffic. Retention is **off by default** — deleting usage history is
+irreversible, so it stays a deliberate operator decision rather than
+something that starts happening because a service was wired in.
+
+```
+USAGE_EVENTS_RETENTION_DAYS=90
+```
+
+Then sweep from the host cron, as with the memory prune:
+
+```
+curl -X POST -H "X-Admin-Token: $T" $BASE/v1/admin/usage-events/prune
+```
+
+Deletes in batches by primary key rather than one `DELETE ... WHERE
+occurred_at < cutoff`, which would hold a single long lock over a table the
+transcription path writes to synchronously. A sweep stops after 20 batches
+and reports `moreRemaining: true`; run it again rather than raising the batch
+size, which is how a maintenance job starts blocking writes.
+
+The response echoes the policy, so a cron that finds `"enabled": false`
+reports a misconfiguration instead of quietly doing nothing every night.
+
 ## Not yet metered
 
 `POST /v1/audio/speech` returns 501, so spoken replies produce no rows. The
