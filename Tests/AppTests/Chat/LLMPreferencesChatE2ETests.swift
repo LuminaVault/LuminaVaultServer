@@ -137,7 +137,17 @@ struct LLMPreferencesChatE2ETests {
     func `byok preference with a non-empty fallback chain persists and round-trips`() async throws {
         // Directly exercises the jsonb bind that was broken: a fallback chain
         // with one step must save (200) and read back with the step intact.
-        let app = try await buildApplication(reader: dbTestReaderWithStubChat())
+        //
+        // Free lane off. This test is about persistence, and with the lane on
+        // `LLMPreferencesController.effectiveWire` canonicalises the response
+        // to managed for a user who cannot use their choice — a fresh signup is
+        // free-tier with no credential — so a correctly stored BYOK preference
+        // reads back as `.managed` with an empty chain. That canonicalisation
+        // is deliberate and `FreeLaneGateTests` covers it; asserting it here
+        // would only re-test the lane and hide the jsonb bind this guards.
+        let app = try await buildApplication(
+            reader: dbTestReaderWithStubChat(freeLaneEnabled: false)
+        )
         try await app.test(.router) { client in
             let token = try await Self.signUpThenSignIn(client: client)
 
@@ -153,9 +163,14 @@ struct LLMPreferencesChatE2ETests {
                 let prefs = try Self.decodePrefs(resp.body)
                 #expect(prefs.mode == .byok)
                 #expect(prefs.primaryProvider == .anthropic)
+                // `#expect` records and continues, so a subscript here would
+                // trap on an empty array and abort the entire run — which is
+                // how this failure previously truncated xunit and let the job
+                // report success. Bind first, assert second.
                 #expect(prefs.fallbackChain.count == 1)
-                #expect(prefs.fallbackChain[0].provider == .openai)
-                #expect(prefs.fallbackChain[0].model == "gpt-4o")
+                let step = prefs.fallbackChain.first
+                #expect(step?.provider == .openai)
+                #expect(step?.model == "gpt-4o")
             }
 
             try await client.execute(
@@ -166,7 +181,7 @@ struct LLMPreferencesChatE2ETests {
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
                 #expect(prefs.fallbackChain.count == 1)
-                #expect(prefs.fallbackChain[0].provider == .openai)
+                #expect(prefs.fallbackChain.first?.provider == .openai)
             }
         }
     }
