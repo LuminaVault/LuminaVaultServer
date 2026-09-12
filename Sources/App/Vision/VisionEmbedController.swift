@@ -13,6 +13,9 @@ import LuminaVaultShared
 /// route group in `App+build.swift`.
 struct VisionEmbedController {
     let service: VisionEmbedService
+    /// Only needed by `/search`, which runs the image's vector against
+    /// `memories.embedding` — the same column `/embed?indexAs=memory` writes.
+    let memories: MemoryRepository
     let logger: Logger
     /// Hard cap on the image body. Anything larger short-circuits with
     /// `413 Payload Too Large` before we touch the upstream provider.
@@ -27,6 +30,101 @@ struct VisionEmbedController {
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("/embed", use: embed)
+        router.post("/search", use: search)
+    }
+
+    /// Default and ceiling for `?limit=`. The ceiling exists because each hit
+    /// carries full memory content, and an unbounded limit on a vector scan is
+    /// an easy way to return several megabytes by accident.
+    static let defaultSearchLimit = 10
+    static let maxSearchLimit = 50
+
+    /// `POST /v1/vision/search` — find the memories nearest an image.
+    ///
+    /// iOS does this by running on-device OCR and searching with the extracted
+    /// text. A browser has no equivalent, and the obvious server-side answer —
+    /// OCR the image, then search — would mean adding a vision-LLM round trip
+    /// and a provider to configure.
+    ///
+    /// It is not needed. `/embed` already returns a vector documented as
+    /// "compatible with `memories.embedding`", and `indexAs=memory` writes into
+    /// that very column, so image and memory vectors share a space by
+    /// construction. Searching is therefore embed-then-ANN: no OCR, no second
+    /// provider, no text in the middle to mistranslate the picture.
+    ///
+    /// Uses the document arm (`semanticSearch`) rather than the hybrid one,
+    /// because the hybrid path's lexical half needs query text that an image
+    /// does not have.
+    @Sendable
+    func search(_ request: Request, ctx: AppRequestContext) async throws -> VisionSearchResponse {
+        let user = try ctx.requireIdentity()
+        let tenantID = try user.requireID()
+
+        let mime = Self.contentType(of: request)
+        guard Self.acceptedMimes.contains(mime) else {
+            throw HTTPError(.unsupportedMediaType, message: "Content-Type must be one of: \(Self.acceptedMimes.sorted().joined(separator: ", "))")
+        }
+
+        if let lengthHeader = request.headers[.contentLength],
+           let declared = Int(lengthHeader),
+           declared > Self.maxBodyBytes
+        {
+            throw HTTPError(.contentTooLarge, message: "image body exceeds \(Self.maxBodyBytes) byte cap")
+        }
+
+        let limit = try Self.parseSearchLimit(from: request)
+
+        let buffer: ByteBuffer
+        do {
+            buffer = try await request.body.collect(upTo: Self.maxBodyBytes)
+        } catch {
+            logger.warning("vision search body collect failed: \(error)")
+            throw HTTPError(.contentTooLarge, message: "image body exceeds \(Self.maxBodyBytes) byte cap")
+        }
+
+        // `indexAsMemory: nil` — searching must never write. The same service
+        // call with a memory id is what `/embed` uses to index.
+        let embedded = try await service.embed(
+            image: buffer,
+            mime: mime,
+            tenantID: tenantID,
+            indexAsMemory: nil
+        )
+
+        let results = try await memories.semanticSearch(
+            queryEmbedding: embedded.embedding,
+            limit: limit,
+            context: ctx
+        )
+
+        return VisionSearchResponse(
+            hits: results.map {
+                VisionSearchHit(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
+            },
+            model: embedded.model
+        )
+    }
+
+    /// The bare media type, without any `; charset=` or other parameters.
+    static func contentType(of request: Request) -> String {
+        (request.headers[.contentType] ?? "")
+            .split(separator: ";")
+            .first
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            ?? ""
+    }
+
+    /// Parses `?limit=`, rejecting nonsense rather than silently clamping it:
+    /// a caller asking for 500 results has misunderstood something, and
+    /// quietly returning 50 hides that.
+    static func parseSearchLimit(from request: Request) throws -> Int {
+        guard let raw = request.uri.queryParameters["limit"].map(String.init) else {
+            return defaultSearchLimit
+        }
+        guard let value = Int(raw), value > 0, value <= maxSearchLimit else {
+            throw HTTPError(.badRequest, message: "limit must be an integer between 1 and \(maxSearchLimit)")
+        }
+        return value
     }
 
     @Sendable
@@ -34,11 +132,7 @@ struct VisionEmbedController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
 
-        let mime = (request.headers[.contentType] ?? "")
-            .split(separator: ";")
-            .first
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            ?? ""
+        let mime = Self.contentType(of: request)
         guard Self.acceptedMimes.contains(mime) else {
             throw HTTPError(.unsupportedMediaType, message: "Content-Type must be one of: \(Self.acceptedMimes.sorted().joined(separator: ", "))")
         }
