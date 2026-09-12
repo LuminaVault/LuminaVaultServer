@@ -1,5 +1,8 @@
 # WebAuthn Multi-Origin Implementation Plan
 
+> **Two repos.** Tasks 1-3 are `LuminaVaultServer`. Task 4 is
+> `LuminaVaultWebApp` and unrelated to WebAuthn — branch and PR it separately.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let one LuminaVault deployment accept WebAuthn ceremonies from more than one origin, so web (`https://app.luminavault.fyi`) and iOS native (`https://luminavault.fyi`) can both use passkeys under the relying-party ID `luminavault.fyi`.
@@ -475,12 +478,127 @@ work only while the API runs a single replica."
 
 ---
 
+### Task 4: Replace the Svelte scaffold favicon — **repo: LuminaVaultWebApp**
+
+Unrelated to WebAuthn. Carried here because it is a two-line fix that would
+otherwise wait for a plan of its own. **Different repo** — branch, commit and
+PR it separately from Tasks 1–3.
+
+**Files:**
+- Modify: `src/routes/+layout.svelte:7,23`
+- Delete: `src/lib/assets/favicon.svg`
+- Test: `src/lib/brand/favicon.test.ts` (create)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: nothing.
+
+The tab icon is still SvelteKit's scaffold logo — `src/lib/assets/favicon.svg`
+literally contains `<title>svelte-logo</title>`, imported at `+layout.svelte:7`
+and bound at `:23`. The Lumina mark already ships as `/icons/pwa-192.png`,
+referenced by both `static/manifest.webmanifest` and the `apple-touch-icon` in
+`src/app.html`, so the fix points the favicon at the asset the rest of the app
+already treats as canonical. There is no Lumina brand SVG in the repo; if one
+is added later, prefer it (an SVG favicon scales to every density) and keep the
+PNG as the fallback.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/brand/favicon.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const layout = readFileSync(
+	fileURLToPath(new URL('../../routes/+layout.svelte', import.meta.url)),
+	'utf8'
+);
+
+describe('favicon', () => {
+	// The scaffold favicon shipped for months without anyone noticing, because
+	// a wrong tab icon looks like a loading state. Assert on the artifact, not
+	// on a rendered head: the bug was a stale import, and an import is what
+	// this catches.
+	it('does not ship the SvelteKit scaffold logo', () => {
+		expect(
+			existsSync(fileURLToPath(new URL('../assets/favicon.svg', import.meta.url)))
+		).toBe(false);
+		expect(layout).not.toContain('$lib/assets/favicon.svg');
+	});
+
+	it('points the tab icon at the canonical Lumina mark', () => {
+		expect(layout).toContain('/icons/pwa-192.png');
+	});
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `bun run test:unit -- favicon` (check `package.json` for the exact script
+name; `bunx vitest run src/lib/brand/favicon.test.ts` also works).
+Expected: FAIL on both assertions — the file exists and the layout imports it.
+
+- [ ] **Step 3: Make the change**
+
+In `src/routes/+layout.svelte`, delete line 7:
+
+```ts
+	import favicon from '$lib/assets/favicon.svg';
+```
+
+and change line 23 from `<link rel="icon" href={favicon} />` to:
+
+```svelte
+	<link rel="icon" href="/icons/pwa-192.png" />
+```
+
+Then delete the asset:
+
+```bash
+git rm src/lib/assets/favicon.svg
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `bunx vitest run src/lib/brand/favicon.test.ts`
+Expected: PASS, 2 tests.
+
+Then confirm nothing else referenced it:
+
+```bash
+grep -rn "assets/favicon" src/ && echo "STILL REFERENCED" || echo "clean"
+```
+
+Expected: `clean`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/routes/+layout.svelte src/lib/brand/favicon.test.ts
+git commit -m "fix(brand): use the Lumina mark as the tab icon
+
+The favicon was still SvelteKit's scaffold logo — the asset literally
+contained <title>svelte-logo</title>. Points at /icons/pwa-192.png,
+which static/manifest.webmanifest and the apple-touch-icon in app.html
+already treat as the canonical mark, and deletes the scaffold asset.
+
+Tested by asserting the scaffold file is gone and the layout no longer
+imports it. A wrong tab icon looks like a loading state, which is why
+this survived months of use — so the guard is on the artifact rather
+than on a rendered head."
+```
+
+---
+
 ## Self-Review
 
-**Spec coverage.** This plan implements the spec's *"Server — WebAuthn origin
+**Spec coverage.** Tasks 1-3 implement the spec's *"Server — WebAuthn origin
 set"* (sequencing step 1) and the `WEBAUTHN_RELYING_PARTY_ORIGIN` half of its
-configuration section. Deliberately **not** covered here, each needing its own
-plan or a human:
+configuration section. Task 4 is outside this spec entirely — a favicon fix in
+another repo, carried here so it does not need a plan of its own. Deliberately
+**not** covered here, each needing its own plan or a human:
 
 | Spec section | Where it lands |
 |---|---|
