@@ -98,6 +98,23 @@ var dbTestReader: ConfigReader {
     return ConfigReader(providers: [InMemoryProvider(values: values)])
 }
 
+/// `dbTestReader` with the free lane switched off.
+///
+/// With the lane on, `LLMPreferencesController.effectiveWire` canonicalises
+/// reads to managed for a user who cannot act on their choice — and a freshly
+/// registered test user is free-tier with no credential. A suite asserting what
+/// the controller *stored* has to turn the lane off; one asserting the lane
+/// itself belongs in `FreeLaneGateTests`.
+///
+/// `cfg(Bool)`, not `cfg("false")`: `ConfigReader` reads the stored type rather
+/// than coercing, so a string reads back as the default and switches nothing.
+var dbTestReaderFreeLaneOff: ConfigReader {
+    var values = dbTestConfigValuesBase
+    values["postgres.database"] = cfg(TestDatabaseIsolation.resolvedDatabase)
+    values["freelane.enabled"] = cfg(false)
+    return ConfigReader(providers: [InMemoryProvider(values: values)])
+}
+
 private var dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] {
     var values = dbTestConfigValuesBase
     values["postgres.database"] = cfg(TestDatabaseIsolation.resolvedDatabase)

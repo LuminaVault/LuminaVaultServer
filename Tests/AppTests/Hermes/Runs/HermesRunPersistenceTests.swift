@@ -37,6 +37,9 @@ struct HermesRunPersistenceTests {
                 passwordHash: "stub"
             )
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             let run = try HermesRun(
                 tenantID: user.requireID(),
                 hermesRunID: "run_\(suffix)",
@@ -99,6 +102,9 @@ struct HermesRunPersistenceTests {
                 passwordHash: "stub"
             )
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             let tenantID = try user.requireID()
             try await ApnsCategoryPrefs(tenantID: tenantID).save(on: fluent.db())
 

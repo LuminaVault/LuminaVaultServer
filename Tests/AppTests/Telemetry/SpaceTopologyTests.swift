@@ -17,6 +17,9 @@ struct SpaceTopologyTests {
             passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
+        // M90: tenant_id references vaults(id). Registration provisions the
+        // vault; a test saving a User directly must do the same.
+        try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
         // M90 repointed `spaces.tenant_id` → `vaults(id)`; the personal vault
         // id matches the user id. Seed it so Space inserts satisfy the FK.
         if let sql = fluent.db() as? any SQLDatabase {

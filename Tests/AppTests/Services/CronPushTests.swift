@@ -50,6 +50,9 @@ struct CronPushTests {
             let slug = "cron\(UUID().uuidString.prefix(6).lowercased())"
             let user = User(email: "\(slug)@test.luminavault", username: slug, passwordHash: "stub")
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             let userID = try user.requireID()
             try await DeviceToken(tenantID: userID, token: UUID().uuidString, platform: "ios").save(on: fluent.db())
 

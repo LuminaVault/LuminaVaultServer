@@ -1,8 +1,46 @@
 # Web auth parity — Google, Apple, Passkeys
 
 **Date:** 2026-09-12
-**Status:** Approved design, not implemented
+**Status:** SUPERSEDED for OAuth (2026-09-13). Still current for passkeys.
 **Repos:** LuminaVaultServer, LuminaVaultWebApp, LuminaVaultInfra
+
+> ## Superseded: the OAuth half was not built this way
+>
+> Web Google and Apple sign-in shipped as an **id_token** flow, not the
+> server-side redirect this document specifies. The browser obtains an
+> id_token (Google Identity Services; Sign in with Apple JS with
+> `usePopup: true`) and POSTs it to the **existing**
+> `POST /v1/auth/oauth/{provider}/exchange`, which verifies it against the
+> provider's JWKS. PR #197 had already made the audiences a comma-separated
+> set, which is what lets one server accept both the native and web client ids.
+>
+> What that means for the design below:
+>
+> - **`authorize` / `callback` / `session` were never needed.** Sections 1 and 2
+>   describe routes that do not exist and are not planned.
+> - **No client secret, no `.p8`, no ES256.** Those exist to mint a client
+>   secret for Apple's `/auth/token` in the authorization-code flow. Verifying
+>   an id_token uses Apple's public keys.
+> - **No `/auth/callback` page.** With `usePopup: true` Apple returns via
+>   `web_message`/postMessage rather than a form POST, so there is no return
+>   URL to land on — though Apple does require the *parent page* URL to be a
+>   registered return URL.
+> - **The one-time-code fragment handoff in section 2 is moot**, since no
+>   redirect carries tokens.
+> - **Client ids ship as plain `env`** in `apps/api/values-production.yaml`
+>   (infra #145), not as sealed secrets: a client id is a public identifier, an
+>   explicit `env` entry wins over the same key arriving via `envFrom`, and it
+>   triggers the rollout a secret-only edit would not.
+>
+> **Sections 3 and 5 still stand.** The relying-party analysis is unchanged and
+> still unimplemented: production answers `rpId: api.luminavault.fyi`, a page on
+> `app.luminavault.fyi` can assert only the apex or its own host, and web
+> passkeys are impossible until `WEBAUTHN_RELYING_PARTY_ID` becomes
+> `luminavault.fyi`. The apex now serves its AASA (web app `e99d209`).
+>
+> Kept rather than deleted: the constraints it records — why the RP ID cannot be
+> a sibling subdomain, and why the challenge store caps the API at one replica —
+> are still the reasons behind decisions in the code.
 
 ## Problem
 

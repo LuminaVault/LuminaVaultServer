@@ -35,6 +35,9 @@ struct SkillRunCapGuardTests {
             let username = "scg-\(UUID().uuidString.prefix(8).lowercased())"
             let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             let result = try await body(Harness(fluent: fluent, user: user))
             try await fluent.shutdown()
             return result

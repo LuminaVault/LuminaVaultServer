@@ -67,7 +67,7 @@ struct LLMPreferencesControllerTests {
 
     @Test
     func `put canonicalizes managed mode to the server route`() async throws {
-        let app = try await buildApplication(reader: dbTestReader)
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
             let body = ByteBuffer(string: """
@@ -115,7 +115,7 @@ struct LLMPreferencesControllerTests {
 
     @Test
     func `put persists byok mode with explicit primary and fallback`() async throws {
-        let app = try await buildApplication(reader: dbTestReader)
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
             let body = ByteBuffer(string: """
