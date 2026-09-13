@@ -88,13 +88,13 @@ struct ParallelController {
                     }
                 }
                 do {
-                    try await CerberusStreamContext.$sink.withValue(sink) {
-                        try await LLMRoutingContext.$parallelRequest.withValue(effective) {
-                            try await LLMRoutingContext.$parallelStrategy.withValue(effective.strategy) {
-                                try await LLMRoutingContext.$cerberusScope.withValue(
+                    try await LLMRoutingContext.withValues({ $0.cerberusSink = sink }) {
+                        try await LLMRoutingContext.withValues({ $0.parallelRequest = effective }) {
+                            try await LLMRoutingContext.withValues({ $0.parallelStrategy = effective.strategy }) {
+                                try await LLMRoutingContext.withValues({ $0.cerberusScope =
                                     CerberusRequestScope(surface: .query, spaceID: effective.spaceID)
-                                ) {
-                                    try await LLMRoutingContext.$currentUser.withValue(user) {
+                                }) {
+                                    try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
                                         for try await chunk in transport.chatStream(
                                             payload: payload,
                                             sessionKey: tenantID.uuidString,

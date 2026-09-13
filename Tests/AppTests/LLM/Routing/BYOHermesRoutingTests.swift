@@ -77,7 +77,7 @@ struct BYOHermesRoutingTests {
     @Test
     func `a BYO tenant is routed to their own gateway, not a platform provider`() async throws {
         try await withTestFluent(label: "lv.test.byo.routing") { fluent in
-            let decision = await LLMRoutingContext.$currentResolution.withValue(Self.ownGateway) {
+            let decision = await LLMRoutingContext.withValues({ $0.currentResolution = Self.ownGateway }) {
                 await Self.router(fluent: fluent).pick(forModel: nil, capability: .high, user: Self.user())
             }
             #expect(decision.primary.provider == .hermesGateway)
@@ -90,7 +90,7 @@ struct BYOHermesRoutingTests {
     @Test
     func `a BYO tenant has no platform fallback to leak to`() async throws {
         try await withTestFluent(label: "lv.test.byo.routing.fallbacks") { fluent in
-            let decision = await LLMRoutingContext.$currentResolution.withValue(Self.ownGateway) {
+            let decision = await LLMRoutingContext.withValues({ $0.currentResolution = Self.ownGateway }) {
                 await Self.router(fluent: fluent).pick(forModel: nil, capability: .high, user: Self.user())
             }
             #expect(decision.fallbacks.isEmpty)
@@ -102,7 +102,7 @@ struct BYOHermesRoutingTests {
     @Test
     func `the decision still reports itself as deferred to hermes`() async throws {
         try await withTestFluent(label: "lv.test.byo.routing.metadata") { fluent in
-            let decision = await LLMRoutingContext.$currentResolution.withValue(Self.ownGateway) {
+            let decision = await LLMRoutingContext.withValues({ $0.currentResolution = Self.ownGateway }) {
                 await Self.router(fluent: fluent).pick(forModel: nil, capability: .high, user: Self.user())
             }
             #expect(decision.cerberus?.deferredToHermes == true)
@@ -123,7 +123,7 @@ struct BYOHermesRoutingTests {
                 authHeader: nil,
                 isUserOverride: false
             )
-            let decision = await LLMRoutingContext.$currentResolution.withValue(managed) {
+            let decision = await LLMRoutingContext.withValues({ $0.currentResolution = managed }) {
                 await Self.router(fluent: fluent).pick(forModel: nil, capability: .high, user: Self.user())
             }
             #expect(decision.primary.provider == .anthropic)

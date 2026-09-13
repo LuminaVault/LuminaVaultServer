@@ -487,8 +487,8 @@ actor SkillRunner {
                 stream: false
             )
             let payload = try JSONEncoder().encode(body)
-            let metadata = try await LLMRoutingContext.$currentUser.withValue(routingUser) {
-                try await LLMRoutingContext.$cerberusScope.withValue(routingScope) {
+            let metadata = try await LLMRoutingContext.withValues({ $0.currentUser = routingUser }) {
+                try await LLMRoutingContext.withValues({ $0.cerberusScope = routingScope }) {
                     try await transport.chatCompletionsWithMetadata(
                         payload: payload,
                         sessionKey: tenantID.uuidString,

@@ -83,7 +83,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         let requestedModel = Self.extractModel(from: payload)
         let user = await currentUser()
         let prompt = Self.extractLatestUserPrompt(from: payload)
-        var decision = await LLMRoutingContext.$cerberusPrompt.withValue(prompt) {
+        var decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
             await router.pick(forModel: requestedModel, capability: capability, user: user)
         }
         if let forced = LLMRoutingContext.forcedRoute,
@@ -177,7 +177,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 let credentialMode = decision.credentialMode
                     ?? decision.cerberus?.mode
                     ?? LLMRoutingContext.credentialMode
-                let metadata = try await LLMRoutingContext.$credentialMode.withValue(credentialMode) {
+                let metadata = try await LLMRoutingContext.withValues({ $0.credentialMode = credentialMode }) {
                     try await adapter.chatCompletionsWithMetadata(
                         payload: candidatePayload,
                         sessionKey: sessionKey,
@@ -391,7 +391,7 @@ struct RoutedLLMTransport: HermesChatTransport {
             let requestedModel = Self.extractModel(from: payload)
             let user = await currentUser()
             let prompt = Self.extractLatestUserPrompt(from: payload)
-            var decision = await LLMRoutingContext.$cerberusPrompt.withValue(prompt) {
+            var decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
                 await router.pick(forModel: requestedModel, capability: capability, user: user)
             }
             if let forced = LLMRoutingContext.forcedRoute,
@@ -492,7 +492,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                     let credentialMode = decision.credentialMode
                         ?? decision.cerberus?.mode
                         ?? LLMRoutingContext.credentialMode
-                    let candidateStream = LLMRoutingContext.$credentialMode.withValue(credentialMode) {
+                    let candidateStream = LLMRoutingContext.withValues({ $0.credentialMode = credentialMode }) {
                         adapter.chatStream(
                             payload: candidatePayload,
                             sessionKey: sessionKey,

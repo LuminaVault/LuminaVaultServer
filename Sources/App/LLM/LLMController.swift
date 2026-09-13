@@ -115,16 +115,16 @@ struct LLMController {
 
         return try await telemetry.observe("llm.chat") {
             let userID = try user.requireID()
-            let response = try await LLMRoutingContext.$cerberusScope.withValue(
+            let response = try await LLMRoutingContext.withValues({ $0.cerberusScope =
                 CerberusRequestScope(surface: .chat)
-            ) {
+            }) {
                 // Bind the latest user turn so the Cerberus task/complexity
                 // classifiers see real text instead of an empty prompt.
-                try await LLMRoutingContext.$cerberusPrompt.withValue(
+                try await LLMRoutingContext.withValues({ $0.cerberusPrompt =
                     finalBody.messages.last { $0.role == "user" }?.content ?? ""
-                ) {
-                    try await LLMRoutingContext.$currentUser.withValue(user) {
-                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                }) {
+                    try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                        try await LLMRoutingContext.withValues({ $0.currentResolution = hermesResolution }) {
                             try await service.chat(
                                 sessionKey: userID.uuidString,
                                 sessionID: finalBody.sessionID,

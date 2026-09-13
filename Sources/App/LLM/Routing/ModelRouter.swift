@@ -68,35 +68,86 @@ struct RouteDecision: Hashable {
 /// + Authorization header when `isUserOverride == true`. Avoids threading
 /// `Resolution` through every consumer service signature.
 enum LLMRoutingContext {
-    @TaskLocal static var currentUser: User?
-    @TaskLocal static var currentResolution: HermesEndpointResolver.Resolution?
-    @TaskLocal static var cerberusScope: CerberusRequestScope?
-    @TaskLocal static var cerberusPrompt: String?
+    /// HER-330 — every routing value lives in ONE task-local.
+    ///
+    /// These used to be a dozen separate `@TaskLocal`s, and `streamReply`
+    /// bound ten of them nested inside an unstructured `Task`. That
+    /// segfaulted the server on every chat message:
+    /// `swift_task_localValuePush` allocates on the async stack, but SIL
+    /// does not model that allocation, so the surrounding
+    /// `alloc_stack`/`dealloc_stack` push twice and pop once
+    /// (swiftlang/swift#67559). Exposure scales with how many pushes stack
+    /// up in one async frame — four bindings in `LLMController` never
+    /// crashed, ten here always did.
+    ///
+    /// One struct means one push no matter how many values a caller binds.
+    /// The accessors below keep the original names, so the ~50 read sites
+    /// are unchanged.
+    struct Values: Sendable {
+        var currentUser: User?
+        var currentResolution: HermesEndpointResolver.Resolution?
+        var cerberusScope: CerberusRequestScope?
+        var cerberusPrompt: String?
+        var parallelStrategy: ParallelStrategyDTO?
+        var parallelRequest: ParallelExecutionRequestDTO?
+        var forcedRoute: RouterModelRouteDTO?
+        var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)?
+        var analyticsVaultID: UUID?
+        var billingTenantID: UUID?
+        var credentialMode: LLMBrainMode?
+        var conversationMessageID: UUID?
+        /// Streaming sinks live here too, so a streaming caller binds
+        /// everything in the same single push. `CerberusStreamContext` and
+        /// `FailoverNoticeContext` read them back under their own names.
+        var cerberusSink: (@Sendable (QueryStreamEvent) -> Void)?
+        var failoverSink: (@Sendable (ProviderFailoverNotice) -> Void)?
+
+        init() {}
+    }
+
+    @TaskLocal static var values = Values()
+
+    /// Binds any subset of the routing values in a single task-local push.
+    /// Values not touched by `mutate` are inherited from the enclosing
+    /// scope, so nesting behaves exactly as separate `@TaskLocal`s did.
+    static func withValues<Result>(
+        _ mutate: (inout Values) -> Void,
+        operation: () async throws -> Result
+    ) async rethrows -> Result {
+        var next = values
+        mutate(&next)
+        return try await $values.withValue(next, operation: operation)
+    }
+
+    static var currentUser: User? { values.currentUser }
+    static var currentResolution: HermesEndpointResolver.Resolution? { values.currentResolution }
+    static var cerberusScope: CerberusRequestScope? { values.cerberusScope }
+    static var cerberusPrompt: String? { values.cerberusPrompt }
     /// Explicit per-turn multi-model override. `nil` preserves the active
     /// Router profile's normal sequential/ensemble behavior.
-    @TaskLocal static var parallelStrategy: ParallelStrategyDTO?
-    @TaskLocal static var parallelRequest: ParallelExecutionRequestDTO?
+    static var parallelStrategy: ParallelStrategyDTO? { values.parallelStrategy }
+    static var parallelRequest: ParallelExecutionRequestDTO? { values.parallelRequest }
     /// Exact per-conversation route selected by “Ask another model”. Unlike
     /// ordinary routing this has no silent fallback.
-    @TaskLocal static var forcedRoute: RouterModelRouteDTO?
-    @TaskLocal static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)?
+    static var forcedRoute: RouterModelRouteDTO? { values.forcedRoute }
+    static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)? { values.routeOutcomeSink }
     /// Validated vault attribution for analytics. Callers that do not set it
     /// intentionally fall back to the actor's personal vault.
-    @TaskLocal static var analyticsVaultID: UUID?
+    static var analyticsVaultID: UUID? { values.analyticsVaultID }
     /// Account charged for AI usage. Team vaults bind this to their billing
     /// sponsor while preserving `currentUser` for personal routing/privacy.
-    @TaskLocal static var billingTenantID: UUID?
+    static var billingTenantID: UUID? { values.billingTenantID }
     /// Selects platform-managed versus user-owned provider credentials for
     /// the current routed call. Managed mode must never silently spend a
     /// user's BYOK balance, and BYOK mode must never fall back to the pool.
-    @TaskLocal static var credentialMode: LLMBrainMode?
+    static var credentialMode: LLMBrainMode? { values.credentialMode }
     /// The assistant turn this routed call produced, when there is one.
     ///
     /// Lets `agent_turn_traces` attach a trace to the message a user is
     /// looking at. Nil for routed calls that are not conversation turns —
     /// skill runs, workflow nodes, one-shot classifiers — whose traces are
     /// still recorded, just unattached.
-    @TaskLocal static var conversationMessageID: UUID?
+    static var conversationMessageID: UUID? { values.conversationMessageID }
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

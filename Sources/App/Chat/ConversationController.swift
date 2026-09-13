@@ -708,55 +708,47 @@ struct ConversationController {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
-                    // Bind routing task-locals and create/consume the upstream
-                    // stream in one structured block. Creating the AsyncStream
-                    // outside this Task and then pushing a second @TaskLocal
-                    // here segfaults on Linux (swift_task_localValuePush).
-                    try await LLMRoutingContext.$analyticsVaultID.withValue(memoryTenantID) {
-                        try await LLMRoutingContext.$billingTenantID.withValue(billingSponsorID) {
-                            try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                                try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
-                                    try await CerberusStreamContext.$sink.withValue(cerberusSink) {
-                                        try await LLMRoutingContext.$parallelStrategy.withValue(requestedParallelStrategy) {
-                                            try await LLMRoutingContext.$cerberusScope.withValue(
-                                                CerberusRequestScope(
-                                                    surface: .chat,
-                                                    spaceID: conversation.spaceID,
-                                                    conversationID: conversationID
-                                                )
-                                            ) {
-                                                try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                                                    try await LLMRoutingContext.$currentUser.withValue(user) {
-                                                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                                            let chunks = streamService.chatStream(
-                                                                sessionKey: sessionKey,
-                                                                sessionID: sessionID,
-                                                                request: chatRequest
-                                                            )
-                                                            for try await chunk in chunks {
-                                                                if Task.isCancelled {
-                                                                    break
-                                                                }
-                                                                if let toolCallID = chunk.toolCallID {
-                                                                    toolCallIDs.insert(toolCallID)
-                                                                }
-                                                                if !chunk.delta.isEmpty {
-                                                                    if firstTokenMs == nil {
-                                                                        firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                                                        logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
-                                                                    }
-                                                                    tokenCount += 1
-                                                                    assistantBuffer.append(chunk.delta)
-                                                                    continuation.yield(.token(chunk.delta))
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                    // Bind every routing value in ONE task-local push, and
+                    // create/consume the upstream stream inside it. This was
+                    // ten nested `withValue` calls, which segfaulted the
+                    // process on every chat message via
+                    // `swift_task_localValuePush` — see `LLMRoutingContext.Values`.
+                    try await LLMRoutingContext.withValues {
+                        $0.analyticsVaultID = memoryTenantID
+                        $0.billingTenantID = billingSponsorID
+                        $0.routeOutcomeSink = routeSink
+                        $0.forcedRoute = forcedRoute
+                        $0.cerberusSink = cerberusSink
+                        $0.parallelStrategy = requestedParallelStrategy
+                        $0.cerberusScope = CerberusRequestScope(
+                            surface: .chat,
+                            spaceID: conversation.spaceID,
+                            conversationID: conversationID
+                        )
+                        $0.failoverSink = fallbackSink
+                        $0.currentUser = user
+                        $0.currentResolution = hermesResolution
+                    } operation: {
+                        let chunks = streamService.chatStream(
+                            sessionKey: sessionKey,
+                            sessionID: sessionID,
+                            request: chatRequest
+                        )
+                        for try await chunk in chunks {
+                            if Task.isCancelled {
+                                break
+                            }
+                            if let toolCallID = chunk.toolCallID {
+                                toolCallIDs.insert(toolCallID)
+                            }
+                            if !chunk.delta.isEmpty {
+                                if firstTokenMs == nil {
+                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                    logger.info("chat first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
                                 }
+                                tokenCount += 1
+                                assistantBuffer.append(chunk.delta)
+                                continuation.yield(.token(chunk.delta))
                             }
                         }
                     }

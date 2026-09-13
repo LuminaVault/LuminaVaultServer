@@ -80,8 +80,8 @@ struct QueryController {
         let actorID = try user.requireID()
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
         let tenantID = access.vaultID
-        let answer = try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
-            try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
+        let answer = try await LLMRoutingContext.withValues({ $0.analyticsVaultID = tenantID }) {
+            try await LLMRoutingContext.withValues({ $0.billingTenantID = access.billingSponsorUserID }) {
                 try await service.search(
                     tenantID: tenantID,
                     sessionKey: tenantID.uuidString,
@@ -227,12 +227,12 @@ struct QueryController {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
-                    try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
-                        try await LLMRoutingContext.$billingTenantID.withValue(billingSponsorID) {
-                            try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                                try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                                    try await LLMRoutingContext.$currentUser.withValue(user) {
-                                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
+                    try await LLMRoutingContext.withValues({ $0.analyticsVaultID = tenantID }) {
+                        try await LLMRoutingContext.withValues({ $0.billingTenantID = billingSponsorID }) {
+                            try await LLMRoutingContext.withValues({ $0.routeOutcomeSink = routeSink }) {
+                                try await LLMRoutingContext.withValues({ $0.failoverSink = fallbackSink }) {
+                                    try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                                        try await LLMRoutingContext.withValues({ $0.currentResolution = hermesResolution }) {
                                             let chunks = streamService.chatStream(
                                                 sessionKey: sessionKey,
                                                 sessionID: sessionID,

@@ -337,17 +337,17 @@ actor WorkflowEngine: Service {
             let freeLaneRoute = FreeLaneCatalog.routes()[0]
             let freeRoute = RouterModelRouteDTO(provider: freeLaneRoute.provider, model: freeLaneRoute.model)
             func send(forcedRoute: RouterModelRouteDTO?) async throws -> Data {
-                try await LLMRoutingContext.$currentUser.withValue(user) {
-                    try await LLMRoutingContext.$cerberusScope.withValue(.init(
+                try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                    try await LLMRoutingContext.withValues({ $0.cerberusScope = .init(
                         surface: .workflow,
                         workflowID: workflowID,
                         conversationID: run.conversationID
-                    )) {
-                        try await LLMRoutingContext.$credentialMode.withValue(mode) {
-                            try await LLMRoutingContext.$forcedRoute.withValue(forcedRoute) {
-                                try await LLMRoutingContext.$routeOutcomeSink.withValue({ route in
+                    ) }) {
+                        try await LLMRoutingContext.withValues({ $0.credentialMode = mode }) {
+                            try await LLMRoutingContext.withValues({ $0.forcedRoute = forcedRoute }) {
+                                try await LLMRoutingContext.withValues({ $0.routeOutcomeSink = { route in
                                     routeCapture.record(route)
-                                }) {
+                                } }) {
                                     try await transport.chatCompletions(
                                         payload: payload,
                                         sessionKey: run.tenantID.uuidString,

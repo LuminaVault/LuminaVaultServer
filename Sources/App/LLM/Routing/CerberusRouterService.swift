@@ -152,7 +152,13 @@ struct BYOKKeysRequiredError: Error, Equatable, HTTPResponseError {
 }
 
 enum CerberusStreamContext {
-    @TaskLocal static var sink: (@Sendable (QueryStreamEvent) -> Void)?
+    /// Backed by `LLMRoutingContext.values` so a streaming caller binds this
+    /// alongside the routing values in one task-local push — see the note on
+    /// `LLMRoutingContext.Values`. Bind it with
+    /// `LLMRoutingContext.withValues { $0.cerberusSink = ... }`.
+    static var sink: (@Sendable (QueryStreamEvent) -> Void)? {
+        LLMRoutingContext.values.cerberusSink
+    }
 }
 
 enum RouterTaskClassifier {

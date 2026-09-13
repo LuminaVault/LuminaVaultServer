@@ -122,7 +122,7 @@ struct BYOKFailClosedTests {
 
         let adapter = Self.openAICompatible(kind: kind)
         await #expect(throws: BYOKKeysRequiredError.self) {
-            try await LLMRoutingContext.$credentialMode.withValue(.byok) {
+            try await LLMRoutingContext.withValues({ $0.credentialMode = .byok }) {
                 try await adapter.chatCompletionsWithMetadata(
                     payload: Self.payload, sessionKey: "k", sessionID: nil
                 )
@@ -144,7 +144,7 @@ struct BYOKFailClosedTests {
             userCredentials: nil
         )
         await #expect(throws: BYOKKeysRequiredError.self) {
-            try await LLMRoutingContext.$credentialMode.withValue(.byok) {
+            try await LLMRoutingContext.withValues({ $0.credentialMode = .byok }) {
                 try await adapter.chatCompletionsWithMetadata(
                     payload: Self.payload, sessionKey: "k", sessionID: nil
                 )
@@ -166,7 +166,7 @@ struct BYOKFailClosedTests {
             userCredentials: nil
         )
         await #expect(throws: BYOKKeysRequiredError.self) {
-            try await LLMRoutingContext.$credentialMode.withValue(.byok) {
+            try await LLMRoutingContext.withValues({ $0.credentialMode = .byok }) {
                 try await adapter.chatCompletionsWithMetadata(
                     payload: Self.payload, sessionKey: "k", sessionID: nil
                 )
@@ -191,7 +191,7 @@ struct BYOKFailClosedTests {
             userCredentials: nil
         )
         await #expect(throws: BYOKKeysRequiredError.self) {
-            try await LLMRoutingContext.$credentialMode.withValue(.byok) {
+            try await LLMRoutingContext.withValues({ $0.credentialMode = .byok }) {
                 try await adapter.chatCompletionsWithMetadata(
                     payload: Self.payload, sessionKey: "k", sessionID: nil
                 )
@@ -211,7 +211,7 @@ struct BYOKFailClosedTests {
         defer { StubProtocol.handler = nil }
 
         let adapter = Self.openAICompatible(kind: .openRouter)
-        _ = try await LLMRoutingContext.$credentialMode.withValue(.managed) {
+        _ = try await LLMRoutingContext.withValues({ $0.credentialMode = .managed }) {
             try await adapter.chatCompletionsWithMetadata(
                 payload: Self.payload, sessionKey: "k", sessionID: nil
             )
