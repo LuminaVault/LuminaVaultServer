@@ -8,7 +8,7 @@ import LuminaVaultShared
 import Testing
 
 /// HER-36 — proves the `memory_upsert` tool dispatch path actually
-/// persists rows to the `memories` table during kb-compile. The stub
+/// persists rows to the `memories` table during memory-compile. The stub
 /// transport scripts two turns:
 ///
 ///   1. Assistant emits two `tool_calls` for `memory_upsert` with
@@ -117,7 +117,7 @@ struct MemoryCompileMemoryUpsertTests {
             }
 
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",

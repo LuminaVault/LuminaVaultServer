@@ -8,7 +8,7 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-/// HER-293 — HTTP coverage for `GET /v1/kb-compile/pending`. The endpoint
+/// HER-293 — HTTP coverage for `GET /v1/memory-compile/pending`. The endpoint
 /// powers the iOS "Sync & Learn" disabled-state UX (HER-108) and must:
 ///
 ///   * Require auth (401 without a Bearer token).
@@ -72,7 +72,7 @@ struct KBCompilePendingTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(
-                uri: "/v1/kb-compile/pending",
+                uri: "/v1/memory-compile/pending",
                 method: .get
             ) { response in
                 #expect(response.status == .unauthorized)
@@ -88,7 +88,7 @@ struct KBCompilePendingTests {
         try await app.test(.router) { client in
             let auth = try await Self.register(client: client)
             try await client.execute(
-                uri: "/v1/kb-compile/pending",
+                uri: "/v1/memory-compile/pending",
                 method: .get,
                 headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
@@ -117,7 +117,7 @@ struct KBCompilePendingTests {
             )
 
             try await client.execute(
-                uri: "/v1/kb-compile/pending",
+                uri: "/v1/memory-compile/pending",
                 method: .get,
                 headers: [.authorization: "Bearer \(auth.accessToken)"]
             ) { response in
@@ -142,7 +142,7 @@ struct KBCompilePendingTests {
             _ = try await Self.seedVaultFile(tenantID: tenantA.userId, path: "a/two.md")
 
             try await client.execute(
-                uri: "/v1/kb-compile/pending",
+                uri: "/v1/memory-compile/pending",
                 method: .get,
                 headers: [.authorization: "Bearer \(tenantB.accessToken)"]
             ) { response in
@@ -153,7 +153,7 @@ struct KBCompilePendingTests {
 
             // Sanity: A still sees its own 2.
             try await client.execute(
-                uri: "/v1/kb-compile/pending",
+                uri: "/v1/memory-compile/pending",
                 method: .get,
                 headers: [.authorization: "Bearer \(tenantA.accessToken)"]
             ) { response in
