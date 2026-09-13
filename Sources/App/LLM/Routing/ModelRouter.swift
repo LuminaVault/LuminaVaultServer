@@ -110,13 +110,30 @@ enum LLMRoutingContext {
     /// Binds any subset of the routing values in a single task-local push.
     /// Values not touched by `mutate` are inherited from the enclosing
     /// scope, so nesting behaves exactly as separate `@TaskLocal`s did.
+    ///
+    /// `isolation` is forwarded so `operation` runs in the caller's isolation
+    /// rather than being sent across a boundary — without it, call sites that
+    /// pass a non-Sendable async closure fail to compile.
     static func withValues<Result>(
         _ mutate: (inout Values) -> Void,
+        isolation: isolated (any Actor)? = #isolation,
         operation: () async throws -> Result
     ) async rethrows -> Result {
         var next = values
         mutate(&next)
-        return try await $values.withValue(next, operation: operation)
+        return try await $values.withValue(next, operation: operation, isolation: isolation)
+    }
+
+    /// Synchronous counterpart, mirroring `TaskLocal.withValue`'s own sync
+    /// overload. `RoutedLLMTransport` binds the credential mode around a
+    /// non-async `chatStream` call and must not be forced into an `await`.
+    static func withValues<Result>(
+        _ mutate: (inout Values) -> Void,
+        operation: () throws -> Result
+    ) rethrows -> Result {
+        var next = values
+        mutate(&next)
+        return try $values.withValue(next, operation: operation)
     }
 
     static var currentUser: User? { values.currentUser }
