@@ -11127,14 +11127,21 @@ components:
       properties:
         url: { type: string, format: uri }
         notes: { type: string }
-        spaceId: { type: string, format: uuid }
+        # snake_case on the wire. `AppRequestContext` decodes with no
+        # convertFromSnakeCase and CaptureSafariRequest maps this field
+        # explicitly, so a client sending `spaceId` has it decode as nil and the
+        # link lands unfiled with no error.
+        space_id: { type: string, format: uuid }
 
     CaptureSafariResponse:
       type: object
-      required: [vaultFileId]
+      required: [id, path, status]
       properties:
-        vaultFileId: { type: string, format: uuid }
-        enrichmentStatus: { type: string, enum: [pending, complete, failed] }
+        id: { type: string, format: uuid }
+        # The vault path, already allocated. Returned with the 202 so a client
+        # can show the captured row before enrichment has rewritten the file.
+        path: { type: string }
+        status: { type: string }
 
     # ── Query ──
 
@@ -11809,11 +11816,15 @@ components:
 
     VaultListResponse:
       type: object
-      required: [files]
+      required: [files, limit]
       properties:
         files:
           type: array
           items: { $ref: '#/components/schemas/VaultFileDTO' }
+        limit: { type: integer }
+        # Keyset cursor: pass back as `?before=` for the next page. Absent or
+        # null means the listing is exhausted.
+        nextBefore: { type: string, format: date-time, nullable: true }
 
     VaultUploadResponse:
       type: object
