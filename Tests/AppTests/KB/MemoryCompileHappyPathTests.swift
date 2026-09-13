@@ -7,7 +7,7 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-/// HER-36 happy-path coverage for `POST /v1/kb-compile`. Uses the
+/// HER-36 happy-path coverage for `POST /v1/memory-compile`. Uses the
 /// `kbCompileTransportOverride` hook on `buildApplication` to swap the
 /// real Hermes chat transport for a deterministic stub that returns a
 /// single assistant message with no tool calls — the loop exits after
@@ -110,7 +110,7 @@ struct MemoryCompileHappyPathTests {
 
             // First compile — should pick up the row and flip processedAt.
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",
@@ -140,7 +140,7 @@ struct MemoryCompileHappyPathTests {
             // Second compile — nothing pending now, fast-path returns 0
             // without re-flipping or erroring.
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",

@@ -138,24 +138,6 @@ struct KanbanServiceTests {
         )
     }
 
-    /// Saves the tenant's user *and* its personal vault.
-    ///
-    /// M90 made personal vault ids equal user ids and retrofitted
-    /// `tenant_id REFERENCES vaults(id)` onto the tenant-scoped tables, so a
-    /// tenant with no vault row cannot own a board: every insert into
-    /// `kanban_boards` fails with a foreign-key violation. Registration upholds
-    /// the invariant via `ensurePersonalVault`; a test saving a `User` directly
-    /// has to do the same.
-    private static func saveTenant(
-        _ tenantID: UUID,
-        _ slug: String,
-        on fluent: Fluent
-    ) async throws {
-        let user = makeUser(tenantID, slug)
-        try await user.save(on: fluent.db())
-        try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
-    }
-
     private static func makeService(_ fluent: Fluent) -> KanbanService {
         KanbanService(fluent: fluent)
     }
@@ -194,7 +176,7 @@ struct KanbanServiceTests {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
             let slug = "kb\(UUID().uuidString.prefix(4).lowercased())"
-            try await Self.saveTenant(tenantID, slug, on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, slug), on: fluent.db())
 
             let svc = Self.makeService(fluent)
 
@@ -263,10 +245,9 @@ struct KanbanServiceTests {
     func `stale shared board version cannot mutate content`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(
-                tenantID,
-                "cas\(UUID().uuidString.prefix(4).lowercased())",
-                on: fluent
+            try await saveTenant(
+                Self.makeUser(tenantID, "cas\(UUID().uuidString.prefix(4).lowercased())"),
+                on: fluent.db()
             )
             let service = Self.makeService(fluent)
             let board = try await service.createBoard(tenantID: tenantID, title: "Original")
@@ -307,7 +288,7 @@ struct KanbanServiceTests {
     func `promote authors a job and back-fills the card`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "pr\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "pr\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, vaultRoot) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
 
@@ -349,7 +330,7 @@ struct KanbanServiceTests {
     func `promote is idempotent`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "id\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "id\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -372,7 +353,7 @@ struct KanbanServiceTests {
     func `promote falls back to card body when prompt is absent`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "bd\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "bd\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -393,7 +374,7 @@ struct KanbanServiceTests {
     func `promote applies inline request config in one call`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "rq\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "rq\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -419,7 +400,7 @@ struct KanbanServiceTests {
     func `promote rejects a card without job config`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "nc\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "nc\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -437,7 +418,7 @@ struct KanbanServiceTests {
     func `promote rejects an invalid cron`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "ic\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "ic\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -461,7 +442,7 @@ struct KanbanServiceTests {
     func `promote authors a one-shot job from run_at`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "os\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "os\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, vaultRoot) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
             let card = try await svc.createCard(
@@ -503,7 +484,7 @@ struct KanbanServiceTests {
     func `promote rejects ambiguous schedule (neither or both)`() async throws {
         try await Self.withFluent { fluent in
             let tenantID = UUID()
-            try await Self.saveTenant(tenantID, "am\(UUID().uuidString.prefix(4).lowercased())", on: fluent)
+            try await saveTenant(Self.makeUser(tenantID, "am\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
             let (svc, _) = Self.makePromoteService(fluent)
             let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
 

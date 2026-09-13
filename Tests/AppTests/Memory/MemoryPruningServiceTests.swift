@@ -31,10 +31,7 @@ struct MemoryPruningServiceTests {
 
             let username = "mp-\(UUID().uuidString.prefix(8).lowercased())"
             let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
-            try await user.save(on: fluent.db())
-            // M90: tenant_id references vaults(id). Registration provisions the
-            // vault; a test saving a User directly must do the same.
-            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
+            try await saveTenant(user, on: fluent.db())
 
             return Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
         }, body)

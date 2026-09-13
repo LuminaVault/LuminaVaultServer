@@ -8,7 +8,7 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-/// HER-36 — HTTP-level coverage for `POST /v1/kb-compile`. The Hermes chat
+/// HER-36 — HTTP-level coverage for `POST /v1/memory-compile`. The Hermes chat
 /// transport is constructed by `buildApplication` and cannot be swapped
 /// from a test, so these cases deliberately exercise only the paths that
 /// short-circuit BEFORE the chat loop runs:
@@ -64,11 +64,11 @@ struct MemoryCompileControllerTests {
     // MARK: - Auth
 
     @Test
-    func `unauthenticated kb-compile returns 401`() async throws {
+    func `unauthenticated memory-compile returns 401`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [.contentType: "application/json"],
                 body: Self.compileBody(KBCompileRequest())
@@ -86,7 +86,7 @@ struct MemoryCompileControllerTests {
         try await app.test(.router) { client in
             let auth = try await Self.register(client: client)
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",
@@ -116,7 +116,7 @@ struct MemoryCompileControllerTests {
 
             func compileRunId() async throws -> UUID {
                 try await client.execute(
-                    uri: "/v1/kb-compile",
+                    uri: "/v1/memory-compile",
                     method: .post,
                     headers: [
                         .authorization: "Bearer \(auth.accessToken)",
@@ -141,7 +141,7 @@ struct MemoryCompileControllerTests {
         try await app.test(.router) { client in
             let auth = try await Self.register(client: client)
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",
@@ -181,7 +181,7 @@ struct MemoryCompileControllerTests {
             }
 
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(tenantB.accessToken)",
@@ -212,7 +212,7 @@ struct MemoryCompileControllerTests {
             let auth = try await Self.register(client: client)
 
             try await client.execute(
-                uri: "/v1/kb-compile",
+                uri: "/v1/memory-compile",
                 method: .post,
                 headers: [
                     .authorization: "Bearer \(auth.accessToken)",

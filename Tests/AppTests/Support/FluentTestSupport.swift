@@ -1,4 +1,6 @@
 @testable import App
+import FluentKit
+import Foundation
 import HummingbirdFluent
 import Logging
 import Testing
@@ -35,6 +37,26 @@ func recordErrorDetail(
     // description swift-testing will print by itself.
     guard detailed != String(describing: error) else { return }
     Issue.record("underlying error detail: \(detailed)", sourceLocation: sourceLocation)
+}
+
+/// Saves `user` the way registration does: the row, plus the personal vault
+/// the schema requires.
+///
+/// M90 made every tenant-scoped table point its `tenant_id` at `vaults(id)`
+/// rather than `users(id)`, and M107 repointed the ingestion and knowledge
+/// tables the same way. `DefaultAuthService.ensurePersonalVault` keeps the invariant
+/// on the registration path — a personal vault whose id equals the user id.
+///
+/// A test that saves a `User` directly skips that, so the first insert into
+/// `memories`, `kanban_boards`, `spaces` or `vault_files` fails with
+/// `*_tenant_vault_fk` and the redacted `PSQLError` that hides the reason.
+/// Seed tenants through here rather than `user.save(on:)` so the fixture
+/// matches what a real account looks like.
+@discardableResult
+func saveTenant(_ user: User, on db: any Database) async throws -> UUID {
+    try await user.save(on: db)
+    try await DefaultAuthService.ensurePersonalVault(for: user, on: db)
+    return try user.requireID()
 }
 
 func withTestFluent<Result>(

@@ -78,7 +78,14 @@ struct MeTodayControllerTests {
             ) { response in
                 #expect(response.status == .ok)
                 let today = try Self.decodeToday(response.body)
-                #expect(today.healthSummary == nil)
+                // Both health statements are `COALESCE(SUM(...), 0)`, which
+                // returns exactly one row whatever the table holds, so an
+                // empty tenant reports zero steps rather than no summary.
+                // (`stepsToday` is therefore never nil, which makes the
+                // `if stepsToday == nil, sleepDuration == nil` guard in
+                // `MeTodayService` unreachable — left alone here.)
+                #expect(today.healthSummary?.stepsToday == 0)
+                #expect(today.healthSummary?.sleepLastNight == nil)
                 #expect(today.openSpacesCount >= 0)
                 #expect(today.unlockedAchievementsToday.isEmpty)
             }
