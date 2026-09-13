@@ -78,11 +78,15 @@ struct MeTodayService {
     private func fetchHealthSummary(tenantID: UUID, now: Date) async throws -> MeTodayHealthSummaryDTO? {
         guard let sql = fluent.db() as? any SQLDatabase else { return nil }
         let dayStart = Calendar.current.startOfDay(for: now)
+        // `health_events` discriminates on `event_type`; there is no `type`
+        // column and never has been (`M14_CreateHealthEvent`). The literals
+        // are the ones the iOS client writes through `POST /v1/health` —
+        // `steps` in counts, `sleep_session` in minutes.
         let stepsRows = try await sql.raw("""
         SELECT COALESCE(SUM(value_numeric), 0)::BIGINT AS total
         FROM health_events
         WHERE tenant_id = \(bind: tenantID)
-          AND type = 'steps'
+          AND event_type = 'steps'
           AND recorded_at >= \(bind: dayStart)
         """).all(decoding: HealthSumRow.self)
         let stepsToday = stepsRows.first.map { Int($0.total) }
@@ -92,7 +96,7 @@ struct MeTodayService {
         SELECT COALESCE(SUM(value_numeric), 0)::BIGINT AS total
         FROM health_events
         WHERE tenant_id = \(bind: tenantID)
-          AND type = 'sleep_minutes'
+          AND event_type = 'sleep_session'
           AND recorded_at >= \(bind: prevDay)
           AND recorded_at <  \(bind: dayStart)
         """).all(decoding: HealthSumRow.self)

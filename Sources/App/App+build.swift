@@ -3301,7 +3301,14 @@ func buildRouter(
     ).addRoutes(to: skillsGroup)
 
     // HER-177 — Today-tab skill outputs feed (local skill runs + Hermes job runs).
-    SkillOutputsController(fluent: services.fluent, logger: skillsLogger).addRoutes(to: skillsGroup)
+    // Its own group: the feed is a read the Today surface polls, and on the
+    // shared `/v1/skills` group it inherited `skillRunByUser` — a budget sized
+    // for manual runs that fan out to Hermes inference. A free tenant got
+    // 3/min for opening a tab, which is what took the web Today page down.
+    let skillOutputsGroup = router.group("/v1/skills")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .skillOutputsByUser, storage: rateLimitStorage))
+    SkillOutputsController(fluent: services.fluent, logger: skillsLogger).addRoutes(to: skillOutputsGroup)
 
     // Lumina Jobs P3 — chat→job detection + creation (POST /v1/jobs[/detect]).
     // `/v1/jobs` runs `JobIntentClassifier` — a real LLM call — on every

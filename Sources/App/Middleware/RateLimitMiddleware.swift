@@ -4,6 +4,12 @@ import LuminaVaultShared
 
 /// Per-route rate-limit policy.
 struct RateLimitPolicy {
+    /// Bucket namespace. Two policies keyed the same way (every user-keyed
+    /// policy builds `u:<uuid>`) would otherwise share one counter, so the
+    /// tightest ceiling in flight would govern every route that uses the
+    /// same keyer. The name is what keeps those namespaces disjoint, and it
+    /// must match the static property below so a bucket is greppable.
+    let name: String
     let max: Int
     let window: TimeInterval
     /// Builds the bucket key from the request + context. Use IP, tenantID,
@@ -21,11 +27,13 @@ struct RateLimitPolicy {
     let tierScale: (@Sendable (UserTier?) -> Double)?
 
     init(
+        name: String,
         max: Int,
         window: TimeInterval,
         tierScale: (@Sendable (UserTier?) -> Double)? = nil,
         keyBuilder: @escaping @Sendable (Request, AppRequestContext) -> String
     ) {
+        self.name = name
         self.max = max
         self.window = window
         self.tierScale = tierScale
@@ -102,7 +110,7 @@ struct RateLimitMiddleware: RouterMiddleware {
         context: Context,
         next: (Request, Context) async throws -> Response
     ) async throws -> Response {
-        let key = "rl:" + policy.keyBuilder(request, context)
+        let key = "rl:" + policy.name + ":" + policy.keyBuilder(request, context)
         // Read the tier from the identity the authenticator already attached;
         // no DB work, and `nil` (an unauthenticated or auth-optional route)
         // falls back to the flat `max`.
@@ -239,89 +247,89 @@ extension RateLimitPolicy {
         return "ip:" + ipKey(req)
     }
 
-    static let registerByIP = RateLimitPolicy(max: 5, window: 60) { req, _ in ipKey(req) }
-    static let loginByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
-    static let forgotPasswordByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
-    static let resendResetByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
-    static let resetPasswordByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
-    static let refreshByIP = RateLimitPolicy(max: 30, window: 60) { req, _ in ipKey(req) }
-    static let mfaVerifyByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
-    static let mfaResendByIP = RateLimitPolicy(max: 10, window: 60) { req, _ in ipKey(req) }
-    static let sendVerifyByIP = RateLimitPolicy(max: 5, window: 300) { req, _ in ipKey(req) }
-    static let confirmEmailByIP = RateLimitPolicy(max: 10, window: 300) { req, _ in ipKey(req) }
+    static let registerByIP = RateLimitPolicy(name: "registerByIP", max: 5, window: 60) { req, _ in ipKey(req) }
+    static let loginByIP = RateLimitPolicy(name: "loginByIP", max: 10, window: 60) { req, _ in ipKey(req) }
+    static let forgotPasswordByIP = RateLimitPolicy(name: "forgotPasswordByIP", max: 5, window: 300) { req, _ in ipKey(req) }
+    static let resendResetByIP = RateLimitPolicy(name: "resendResetByIP", max: 5, window: 300) { req, _ in ipKey(req) }
+    static let resetPasswordByIP = RateLimitPolicy(name: "resetPasswordByIP", max: 5, window: 300) { req, _ in ipKey(req) }
+    static let refreshByIP = RateLimitPolicy(name: "refreshByIP", max: 30, window: 60) { req, _ in ipKey(req) }
+    static let mfaVerifyByIP = RateLimitPolicy(name: "mfaVerifyByIP", max: 20, window: 60) { req, _ in ipKey(req) }
+    static let mfaResendByIP = RateLimitPolicy(name: "mfaResendByIP", max: 10, window: 60) { req, _ in ipKey(req) }
+    static let sendVerifyByIP = RateLimitPolicy(name: "sendVerifyByIP", max: 5, window: 300) { req, _ in ipKey(req) }
+    static let confirmEmailByIP = RateLimitPolicy(name: "confirmEmailByIP", max: 10, window: 300) { req, _ in ipKey(req) }
     /// Passkey sign-in. `authenticate/begin` accepts a username and always
     /// returns options, so it is a cheap oracle unless it is bounded.
-    static let webAuthnAuthenticateByIP = RateLimitPolicy(max: 20, window: 60) { req, _ in ipKey(req) }
+    static let webAuthnAuthenticateByIP = RateLimitPolicy(name: "webAuthnAuthenticateByIP", max: 20, window: 60) { req, _ in ipKey(req) }
     /// Passkey enrolment and credential management. Already behind a bearer
     /// token, so key it per user rather than per IP — everyone on one NAT
     /// otherwise shares a bucket for a route only their own session can call.
-    static let webAuthnEnrolByUser = RateLimitPolicy(max: 20, window: 60, keyBuilder: userOrIPKey)
+    static let webAuthnEnrolByUser = RateLimitPolicy(name: "webAuthnEnrolByUser", max: 20, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-94: Per-user policies for protected, capacity-sensitive routes.
     /// Keyed via `userOrIPKey` so a single bad actor with one account cannot
     /// burn the shared per-IP bucket for everyone behind the same NAT, while
     /// still degrading gracefully if the route is ever called unauth'd.
-    static let chatByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let chatByUser = RateLimitPolicy(name: "chatByUser", max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// Audit S9 — `/v1/query` runs the retrieval + agent loop (embedding lookup
     /// + one-or-more Hermes/LLM calls) per request. Previously uncapped → a
     /// single account could drive unbounded Mtok cost / DoS. Same budget as chat.
-    static let queryByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let queryByUser = RateLimitPolicy(name: "queryByUser", max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// Audit S9 — `/v1/conversations` is the multi-turn chat pipeline (same
     /// retrieval + streaming cost as chat). Previously uncapped.
-    static let conversationByUser = RateLimitPolicy(max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
-    static let kbCompileByUser = RateLimitPolicy(max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let conversationByUser = RateLimitPolicy(name: "conversationByUser", max: 30, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let kbCompileByUser = RateLimitPolicy(name: "kbCompileByUser", max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// HER-240 / spec ticket #2: identical policy to kbCompileByUser, exposed
     /// under the new memory-compile name. Both coexist until the legacy
     /// /v1/kb-compile alias is retired.
-    static let memoryCompileByUser = RateLimitPolicy(max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
-    static let captureByUser = RateLimitPolicy(max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
-    static let vaultUploadByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let memoryCompileByUser = RateLimitPolicy(name: "memoryCompileByUser", max: 5, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let captureByUser = RateLimitPolicy(name: "captureByUser", max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let vaultUploadByUser = RateLimitPolicy(name: "vaultUploadByUser", max: 30, window: 60, keyBuilder: userOrIPKey)
     /// Resumable ingestion uses 8 MiB chunks, so a 2 GiB file needs 256
     /// idempotent PUTs. Keep abuse bounded without throttling valid media.
-    static let ingestionUploadByUser = RateLimitPolicy(max: 600, window: 60, keyBuilder: userOrIPKey)
+    static let ingestionUploadByUser = RateLimitPolicy(name: "ingestionUploadByUser", max: 600, window: 60, keyBuilder: userOrIPKey)
     /// HER-91: vault export streams the entire tenant tree. Expensive on
     /// disk + bandwidth, so cap at a handful per 5-minute window per user.
-    static let vaultExportByUser = RateLimitPolicy(max: 3, window: 300, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let vaultExportByUser = RateLimitPolicy(name: "vaultExportByUser", max: 3, window: 300, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// HER-85: SOUL.md is small but writes hit two filesystem paths and could
     /// be abused to spam Hermes profile dirs. Cheap per-user bucket.
-    static let soulByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let soulByUser = RateLimitPolicy(name: "soulByUser", max: 30, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-148: each skill run can fan out to Hermes (one or more LLM calls)
     /// plus filesystem and DB writes. Cap manual `/v1/skills/:name/run`
     /// invocations so a user can't burn their daily Mtok budget by hammering
     /// the endpoint. Cron-/event-triggered runs bypass this middleware.
     /// Final window/max numbers to be tuned in HER-148 sub-tickets.
-    static let skillRunByUser = RateLimitPolicy(max: 10, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let skillRunByUser = RateLimitPolicy(name: "skillRunByUser", max: 10, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// `/v1/jobs` runs an LLM classifier per request (`JobIntentClassifier`),
     /// so it is a paid-inference route wearing a CRUD shape. It had no limit
     /// at all: a loop over `POST /v1/jobs/detect` was unbounded spend.
     /// Matched to `kbCompileByUser`, the nearest per-request-inference route.
-    static let jobsByUser = RateLimitPolicy(max: 20, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let jobsByUser = RateLimitPolicy(name: "jobsByUser", max: 20, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
     /// `/v1/workflows` had no limit either. Studio traffic is bursty — a
     /// canvas save touches several endpoints — so this is looser than jobs
     /// and exists to bound a runaway client, not to shape normal editing.
-    static let workflowsByUser = RateLimitPolicy(max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
+    static let workflowsByUser = RateLimitPolicy(name: "workflowsByUser", max: 60, window: 60, tierScale: standardTierScale, keyBuilder: userOrIPKey)
 
     /// HER-196 — `/v1/achievements` and `/v1/achievements/recent` are
     /// read-only catalog joins; iOS pulls them on Settings → Forms enter
     /// and again on push receipt. 60/min/user covers both legitimate
     /// patterns with margin and shuts off polling abuse.
-    static let achievementsByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let achievementsByUser = RateLimitPolicy(name: "achievementsByUser", max: 60, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-137: phone OTP start. Each call burns an SMS, which costs real
     /// money — toll-fraud bots target this surface. Stacked policies:
     /// 3/min catches burst attempts, 10/day caps the daily SMS budget per IP.
     /// Apply BOTH on the `/v1/auth/phone/start` route.
-    static let phoneStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
-    static let phoneStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
+    static let phoneStartByIPPerMinute = RateLimitPolicy(name: "phoneStartByIPPerMinute", max: 3, window: 60) { req, _ in ipKey(req) }
+    static let phoneStartByIPDaily = RateLimitPolicy(name: "phoneStartByIPDaily", max: 10, window: 86400) { req, _ in ipKey(req) }
 
     /// HER-138: email magic-link start. SES/Mailgun spend is equally toll-
     /// fraud-able as SMS; abusers can also weaponize the endpoint to spam
     /// arbitrary inboxes with OTPs. Mirror the phone policy: 3/min burst
     /// + 10/day budget, both per IP. Apply BOTH on
     /// `/v1/auth/email/start`.
-    static let emailMagicStartByIPPerMinute = RateLimitPolicy(max: 3, window: 60) { req, _ in ipKey(req) }
-    static let emailMagicStartByIPDaily = RateLimitPolicy(max: 10, window: 86400) { req, _ in ipKey(req) }
+    static let emailMagicStartByIPPerMinute = RateLimitPolicy(name: "emailMagicStartByIPPerMinute", max: 3, window: 60) { req, _ in ipKey(req) }
+    static let emailMagicStartByIPDaily = RateLimitPolicy(name: "emailMagicStartByIPDaily", max: 10, window: 86400) { req, _ in ipKey(req) }
 
     /// HER-203: `POST /v1/transcribe` (STT). Each call burns upstream
     /// Whisper-provider seconds-of-audio quota — Groq/OpenAI bill by
@@ -329,8 +337,8 @@ extension RateLimitPolicy {
     /// Stacked policies: 10/min covers normal voice-memo bursts, 200/day
     /// bounds the daily provider bill per tenant. Apply BOTH on
     /// `/v1/transcribe`.
-    static let transcribeByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
-    static let transcribeByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
+    static let transcribeByUserPerMinute = RateLimitPolicy(name: "transcribeByUserPerMinute", max: 10, window: 60, keyBuilder: userOrIPKey)
+    static let transcribeByUserDaily = RateLimitPolicy(name: "transcribeByUserDaily", max: 200, window: 86400, keyBuilder: userOrIPKey)
 
     /// `POST /v1/audio/transcriptions` — the OpenAI-shaped STT surface a
     /// tenant's Hermes container calls for voice messages.
@@ -350,10 +358,10 @@ extension RateLimitPolicy {
     /// shape and daily cost are different concerns; only the latter varies by
     /// what someone pays.
     static let audioTranscriptionsByUserPerMinute = RateLimitPolicy(
-        max: 20, window: 60, keyBuilder: userOrIPKey
+        name: "audioTranscriptionsByUserPerMinute", max: 20, window: 60, keyBuilder: userOrIPKey
     )
     static let audioTranscriptionsByUserDaily = RateLimitPolicy(
-        max: 200, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
+        name: "audioTranscriptionsByUserDaily", max: 200, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
     )
 
     /// `POST /v1/audio/speech` — spoken replies. Defined alongside its
@@ -361,41 +369,66 @@ extension RateLimitPolicy {
     /// because synthesis is billed per character while transcription is
     /// billed per second: one shared bucket would mis-price both.
     static let audioSpeechByUserPerMinute = RateLimitPolicy(
-        max: 30, window: 60, keyBuilder: userOrIPKey
+        name: "audioSpeechByUserPerMinute", max: 30, window: 60, keyBuilder: userOrIPKey
     )
     static let audioSpeechByUserDaily = RateLimitPolicy(
-        max: 1000, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
+        name: "audioSpeechByUserDaily", max: 1000, window: 86400, tierScale: voiceTierScale, keyBuilder: userOrIPKey
     )
 
     // HER-213 — vision-embed mirrors the transcribe ladder (expensive
     // GPU-backed provider call). Per-minute cap stops accidental loops;
     // daily cap covers cost.
-    static let visionEmbedByUserPerMinute = RateLimitPolicy(max: 10, window: 60, keyBuilder: userOrIPKey)
-    static let visionEmbedByUserDaily = RateLimitPolicy(max: 200, window: 86400, keyBuilder: userOrIPKey)
+    static let visionEmbedByUserPerMinute = RateLimitPolicy(name: "visionEmbedByUserPerMinute", max: 10, window: 60, keyBuilder: userOrIPKey)
+    static let visionEmbedByUserDaily = RateLimitPolicy(name: "visionEmbedByUserDaily", max: 200, window: 86400, keyBuilder: userOrIPKey)
 
     /// HER-204: POST /v1/tts. Stacked policies mirroring SMS/email-magic-link
     /// shape — 30/min burst catches abuse, 1000/day caps the per-user budget.
     /// Both keyed per-user (falls back to per-IP when auth degrades).
-    static let ttsByUserPerMinute = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
-    static let ttsByUserDaily = RateLimitPolicy(max: 1000, window: 86400, keyBuilder: userOrIPKey)
+    static let ttsByUserPerMinute = RateLimitPolicy(name: "ttsByUserPerMinute", max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let ttsByUserDaily = RateLimitPolicy(name: "ttsByUserDaily", max: 1000, window: 86400, keyBuilder: userOrIPKey)
 
     /// HER-217: `/v1/settings/hermes` GET/PUT/DELETE/test. Shared bucket
     /// across all four verbs so a hammering client cannot PUT-spin its
     /// way around the test cap. 30/min/user keyed via `userOrIPKey`
     /// falls back to per-IP if auth degrades.
-    static let settingsByUser = RateLimitPolicy(max: 30, window: 60, keyBuilder: userOrIPKey)
+    static let settingsByUser = RateLimitPolicy(name: "settingsByUser", max: 30, window: 60, keyBuilder: userOrIPKey)
 
     /// Unauthenticated `/v1/mcp` attempts from one address. Floor so a
     /// token-guessing loop costs a map lookup rather than a user query.
-    static let mcpAnonymousByIP = RateLimitPolicy(max: 600, window: 60) { req, _ in ipKey(req) }
+    static let mcpAnonymousByIP = RateLimitPolicy(name: "mcpAnonymousByIP", max: 600, window: 60) { req, _ in ipKey(req) }
 
     /// Authenticated MCP calls per account. Generous for a human-driven
     /// agent; low enough that a retry loop is noticed.
-    static let mcpByUser = RateLimitPolicy(max: 120, window: 60, keyBuilder: userOrIPKey)
+    static let mcpByUser = RateLimitPolicy(name: "mcpByUser", max: 120, window: 60, keyBuilder: userOrIPKey)
 
     /// HER-206: `GET /v1/me/today` widget + daily-review digest. Widgets
     /// refresh on 5-15 min timelines and a cache-warm response is
     /// memory-only, so a generous per-minute budget covers worst-case
     /// 10-widget loops on a single device. 60/min/user.
-    static let meTodayByUser = RateLimitPolicy(max: 60, window: 60, keyBuilder: userOrIPKey)
+    static let meTodayByUser = RateLimitPolicy(name: "meTodayByUser", max: 60, window: 60, keyBuilder: userOrIPKey)
+
+    /// HER-177: `GET /v1/skills/outputs` is the Today-tab feed — two indexed,
+    /// limit-bounded reads and nothing else. It was mounted on the
+    /// `/v1/skills` group and so inherited `skillRunByUser`, a budget sized
+    /// for manual runs that fan out to Hermes inference; a free tenant got
+    /// 3/min for opening a tab. Sized like `meTodayByUser`, the other
+    /// polled read surface on the same screen.
+    static let skillOutputsByUser = RateLimitPolicy(name: "skillOutputsByUser", max: 60, window: 60, keyBuilder: userOrIPKey)
+
+    /// Every policy declared above. Exists so a test can assert the names
+    /// are distinct — a duplicate name silently merges two buckets, which
+    /// is the failure this namespace was added to prevent.
+    static let allDeclaredPolicies: [RateLimitPolicy] = [
+        registerByIP, loginByIP, forgotPasswordByIP, resendResetByIP, resetPasswordByIP,
+        refreshByIP, mfaVerifyByIP, mfaResendByIP, sendVerifyByIP, confirmEmailByIP,
+        webAuthnAuthenticateByIP, webAuthnEnrolByUser, chatByUser, queryByUser, conversationByUser,
+        kbCompileByUser, memoryCompileByUser, captureByUser, vaultUploadByUser,
+        ingestionUploadByUser, vaultExportByUser, soulByUser, skillRunByUser, jobsByUser,
+        workflowsByUser, achievementsByUser, phoneStartByIPPerMinute, phoneStartByIPDaily,
+        emailMagicStartByIPPerMinute, emailMagicStartByIPDaily, transcribeByUserPerMinute,
+        transcribeByUserDaily, audioTranscriptionsByUserPerMinute, audioTranscriptionsByUserDaily,
+        audioSpeechByUserPerMinute, audioSpeechByUserDaily, visionEmbedByUserPerMinute,
+        visionEmbedByUserDaily, ttsByUserPerMinute, ttsByUserDaily, settingsByUser,
+        mcpAnonymousByIP, mcpByUser, meTodayByUser, skillOutputsByUser,
+    ]
 }
