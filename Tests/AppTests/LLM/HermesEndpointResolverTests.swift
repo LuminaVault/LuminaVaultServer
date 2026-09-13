@@ -143,8 +143,15 @@ struct HermesEndpointResolverTests {
             let tenantID = try user.requireID()
 
             let sealed = try secretBox.seal("Bearer abc", tenantID: tenantID)
-            var corruptCT = sealed.ciphertext
-            corruptCT[0] ^= 0xFF
+            // Flip a bit through `[UInt8]`, as `SecretBoxTests` does. `Data`
+            // is not guaranteed to be zero-based: CryptoKit's
+            // `SealedBox.ciphertext` is a view into the combined box, so it
+            // starts at 12 — past the nonce — and `seal`'s `ciphertext + tag`
+            // keeps that offset. Subscripting the result at a literal 0 is
+            // out of bounds and traps.
+            var bytes = [UInt8](sealed.ciphertext)
+            bytes[0] ^= 0xFF
+            let corruptCT = Data(bytes)
 
             let row = UserHermesConfig()
             row.tenantID = tenantID
