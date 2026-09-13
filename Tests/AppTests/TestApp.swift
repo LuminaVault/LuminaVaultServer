@@ -1,5 +1,6 @@
 @testable import App
 import Configuration
+import Foundation
 import Hummingbird
 import HummingbirdTesting
 import Logging
