@@ -22,6 +22,11 @@ struct DashboardStreakSQLTests {
                 passwordHash: "x"
             )
             try await user.save(on: fluent.db())
+            // M90 made personal vault ids equal user ids and retrofitted
+            // `tenant_id REFERENCES vaults(id)` onto the tenant-scoped tables.
+            // Registration upholds that; a test that saves a User directly does
+            // not, and every later insert fails the foreign key.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             return try await body(fluent, tenantID)
         }
     }
