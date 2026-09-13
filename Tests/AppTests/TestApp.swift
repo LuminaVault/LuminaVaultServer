@@ -5,6 +5,33 @@ import HummingbirdTesting
 import Logging
 import Testing
 
+/// Decodes `T` from a test response, and on failure says what actually came
+/// back before rethrowing.
+///
+/// A failed request answers with an error envelope, not the success type, so
+/// decoding it reports whichever key it misses first. `Key 'id' not found`
+/// names the shape the test wanted and says nothing about the 4xx that caused
+/// it — eight such failures across four unrelated suites turned out to be one
+/// endpoint returning an error and four tests decoding it.
+///
+/// Rethrows the original `DecodingError`; this only adds the response.
+func decodeReporting<T: Decodable>(
+    _ type: T.Type,
+    from response: TestResponse,
+    sourceLocation: SourceLocation = #_sourceLocation
+) throws -> T {
+    do {
+        return try testJSONDecoder().decode(type, from: Data(buffer: response.body))
+    } catch {
+        let body = String(buffer: response.body)
+        Issue.record(
+            "decoding \(T.self) failed — status \(response.status), body: \(body.prefix(400))",
+            sourceLocation: sourceLocation
+        )
+        throw error
+    }
+}
+
 /// Minimal config for tests that don't touch the database.
 /// `fluent.enabled=false` skips Fluent service registration entirely so tests
 /// boot without any Postgres connection attempt.
