@@ -258,6 +258,50 @@ struct RateLimitMiddlewareTests {
             uri: "/v1/conversations/\(conversationID)/messages/stream"
         )
     }
+
+    /// Two policies keyed the same way must not share a bucket.
+    ///
+    /// The key was `"rl:" + keyBuilder(...)`, and every user-keyed policy
+    /// builds the same `u:<uuid>`. So one tenant had a single global counter
+    /// that chat, skills, `/v1/me/today`, settings and MCP all incremented,
+    /// and the tightest ceiling in flight ended up governing every route —
+    /// which is how a read-only Today feed started 429ing on the manual
+    /// skill-run budget. The policy name is what keeps the namespaces apart.
+    @Test
+    func `policies with different names do not share a bucket`() async throws {
+        let storage = MemoryPersistDriver()
+        let router = Router(context: AppRequestContext.self)
+        let expensive = RateLimitPolicy(name: "test-expensive", max: 1, window: 60, keyBuilder: RateLimitPolicy.userOrIPKey)
+        let cheap = RateLimitPolicy(name: "test-cheap", max: 5, window: 60, keyBuilder: RateLimitPolicy.userOrIPKey)
+        router.group("/expensive")
+            .add(middleware: StubAuth())
+            .add(middleware: RateLimitMiddleware(policy: expensive, storage: storage))
+            .post("") { _, _ in Response(status: .ok) }
+        router.group("/cheap")
+            .add(middleware: StubAuth())
+            .add(middleware: RateLimitMiddleware(policy: cheap, storage: storage))
+            .post("") { _, _ in Response(status: .ok) }
+        let app = Application(router: router)
+
+        try await app.test(.router) { client in
+            let headers: HTTPFields = [.init("x-test-user")!: UUID().uuidString]
+
+            // Burn the expensive policy's single-request budget.
+            try await client.execute(uri: "/expensive", method: .post, headers: headers) { response in
+                #expect(response.status == .ok)
+            }
+            try await client.execute(uri: "/expensive", method: .post, headers: headers) { response in
+                #expect(response.status == .tooManyRequests)
+            }
+
+            // The cheap route has its own budget and must be untouched.
+            for _ in 0 ..< 5 {
+                try await client.execute(uri: "/cheap", method: .post, headers: headers) { response in
+                    #expect(response.status == .ok)
+                }
+            }
+        }
+    }
 }
 
 /// Before this, a `lapsed` account and an Ultimate subscriber were handed
@@ -323,50 +367,6 @@ struct TierAwareRateLimitTests {
     @Test
     func `an absent identity falls back to the base budget`() {
         #expect(RateLimitPolicy.chatByUser.effectiveMax(for: nil) == 30)
-    }
-
-    /// Two policies keyed the same way must not share a bucket.
-    ///
-    /// The key was `"rl:" + keyBuilder(...)`, and every user-keyed policy
-    /// builds the same `u:<uuid>`. So one tenant had a single global counter
-    /// that chat, skills, `/v1/me/today`, settings and MCP all incremented,
-    /// and the tightest ceiling in flight ended up governing every route —
-    /// which is how a read-only Today feed started 429ing on the manual
-    /// skill-run budget. The policy name is what keeps the namespaces apart.
-    @Test
-    func `policies with different names do not share a bucket`() async throws {
-        let storage = MemoryPersistDriver()
-        let router = Router(context: AppRequestContext.self)
-        let expensive = RateLimitPolicy(name: "test-expensive", max: 1, window: 60, keyBuilder: RateLimitPolicy.userOrIPKey)
-        let cheap = RateLimitPolicy(name: "test-cheap", max: 5, window: 60, keyBuilder: RateLimitPolicy.userOrIPKey)
-        router.group("/expensive")
-            .add(middleware: StubAuth())
-            .add(middleware: RateLimitMiddleware(policy: expensive, storage: storage))
-            .post("") { _, _ in Response(status: .ok) }
-        router.group("/cheap")
-            .add(middleware: StubAuth())
-            .add(middleware: RateLimitMiddleware(policy: cheap, storage: storage))
-            .post("") { _, _ in Response(status: .ok) }
-        let app = Application(router: router)
-
-        try await app.test(.router) { client in
-            let headers: HTTPFields = [.init("x-test-user")!: UUID().uuidString]
-
-            // Burn the expensive policy's single-request budget.
-            try await client.execute(uri: "/expensive", method: .post, headers: headers) { response in
-                #expect(response.status == .ok)
-            }
-            try await client.execute(uri: "/expensive", method: .post, headers: headers) { response in
-                #expect(response.status == .tooManyRequests)
-            }
-
-            // The cheap route has its own budget and must be untouched.
-            for _ in 0 ..< 5 {
-                try await client.execute(uri: "/cheap", method: .post, headers: headers) { response in
-                    #expect(response.status == .ok)
-                }
-            }
-        }
     }
 
     /// Every declared policy must carry a distinct name, or two of them
