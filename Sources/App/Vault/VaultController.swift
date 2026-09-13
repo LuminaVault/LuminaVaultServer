@@ -37,7 +37,11 @@ extension VaultFileDTO {
                     tags: $0.tags,
                     isTodo: $0.isTodo,
                     done: $0.done,
-                    dueAt: $0.dueAt
+                    dueAt: $0.dueAt,
+                    // Captured links only; nil for everything else. Without it
+                    // a client cannot distinguish a placeholder note from a
+                    // finished one and has to guess from elapsed time.
+                    enrichmentStatus: $0.enrichmentStatus
                 )
             },
             createdByUserId: row.createdByUserID,
