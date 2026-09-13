@@ -170,17 +170,47 @@ private actor IsolationStore {
         }
         let base = TestDatabaseIsolation.baseDatabase
         if try await databaseExists(base) {
-            do {
-                try await cloneDatabase(from: base, to: name)
-                return
-            } catch {
-                // Template clone fails when ANY session is connected to the
-                // base DB (a locally running dev server is enough). Fall back
-                // to an empty DB and migrate it ourselves.
+            // Template clone fails when ANY session is connected to the base
+            // DB (a locally running dev server is enough, and so is one
+            // Postgres-backed suite that forgot `.integrationDatabase`).
+            // Such a connection is usually short-lived, so retry briefly
+            // before paying for a migration: the fallback costs minutes and
+            // runs serialized on this actor, which is how a 15-second stray
+            // connection turned into a 35-minute CI timeout (#212).
+            var lastError: (any Error)?
+            for attempt in 1 ... Self.cloneAttempts {
+                do {
+                    try await cloneDatabase(from: base, to: name)
+                    return
+                } catch {
+                    lastError = error
+                    if attempt < Self.cloneAttempts {
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                }
             }
+            // Never silent. The fallback is correct but expensive, and when
+            // it fires for every suite at once the run simply goes quiet
+            // until the job is killed — with nothing in the log saying why.
+            Self.warn(
+                """
+                could not clone \(base) into \(name) after \(Self.cloneAttempts) attempts \
+                (\(lastError.map { String(reflecting: $0) } ?? "no error")); \
+                falling back to create-empty + full migrate, which is slow and serialized. \
+                A suite holding a connection to \(base) is missing `.integrationDatabase`.
+                """
+            )
         }
         try await createEmptyDatabase(name)
         try await migrateDatabase(name)
+    }
+
+    /// Retries before falling back. Deliberately small: this runs inside the
+    /// actor, so every attempt also delays the suites queued behind it.
+    private static let cloneAttempts = 3
+
+    private static func warn(_ message: String) {
+        FileHandle.standardError.write(Data("::warning::[test-db-isolation] \(message)\n".utf8))
     }
 
     /// Brings a fresh empty database to the current schema. Without this the
