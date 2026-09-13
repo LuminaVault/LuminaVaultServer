@@ -32,6 +32,9 @@ struct MemoryPruningServiceTests {
             let username = "mp-\(UUID().uuidString.prefix(8).lowercased())"
             let user = User(email: "\(username)@test.luminavault", username: username, passwordHash: "x")
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
 
             return Harness(fluent: fluent, scoring: scoring, pruning: pruning, user: user)
         }, body)
@@ -170,6 +173,9 @@ struct MemoryPruningServiceTests {
             // Second ephemeral user.
             let mallory = User(email: "m-\(UUID()).local", username: "m-\(UUID().uuidString.prefix(6).lowercased())", passwordHash: "x")
             try await mallory.save(on: h.fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: mallory, on: h.fluent.db())
             let aliceID = try h.user.requireID()
             let malloryID = try mallory.requireID()
             let now = Date()

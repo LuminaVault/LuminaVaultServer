@@ -35,5 +35,9 @@ protocol OAuthProvider: Sendable {
     var name: String { get }
     /// Verifies a provider-issued id_token (signature, issuer, audience, expiry)
     /// and returns the identity info needed to link/create a User + OAuthIdentity.
+    ///
+    /// Throws `OAuthError`, and only `OAuthError`, for anything wrong with the
+    /// token itself. `AuthController.oauthExchange` turns that into a 401; any
+    /// other error type escapes as a 500.
     func verify(idToken: String) async throws -> OAuthIdentityInfo
 }

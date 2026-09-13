@@ -40,7 +40,18 @@ struct GoogleOAuthProvider: OAuthProvider {
 
     func verify(idToken: String) async throws -> OAuthIdentityInfo {
         let keys = try await jwks.current()
-        let payload = try await keys.verify(idToken, as: GoogleIDClaims.self)
+        // A token that fails signature, shape or expiry means one thing to the
+        // caller: it cannot be trusted. Let JWTKit's own error escape and it
+        // is not an `OAuthError`, so `AuthController.oauthExchange` misses its
+        // `catch is OAuthError` and the route answers 500 where it means 401.
+        // `jwks.current()` stays outside: a provider we cannot reach is an
+        // availability problem, not a bad token, and keeps its own error.
+        let payload: GoogleIDClaims
+        do {
+            payload = try await keys.verify(idToken, as: GoogleIDClaims.self)
+        } catch {
+            throw OAuthError.invalidToken
+        }
         guard issuers.contains(payload.iss.value) else { throw OAuthError.invalidToken }
         // `aud` is itself a list, so this is an intersection: the token must
         // name at least one audience this server was configured to accept.

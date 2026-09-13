@@ -22,6 +22,9 @@ struct MemoryHitCountUpdateQueueTests {
                 passwordHash: "x"
             )
             try await user.save(on: fluent.db())
+            // M90: tenant_id references vaults(id). Registration provisions the
+            // vault; a test saving a User directly must do the same.
+            try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
             return try await body(fluent, tenantID)
         }
     }

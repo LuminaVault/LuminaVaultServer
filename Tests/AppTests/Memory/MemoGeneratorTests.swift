@@ -87,10 +87,8 @@ struct MemoGeneratorTests {
             passwordHash: "stub"
         )
         try await user.save(on: fluent.db())
-        // M90 made personal vault ids equal user ids and retrofitted
-        // `tenant_id REFERENCES vaults(id)` onto the tenant-scoped tables.
-        // Registration upholds that; a test that saves a User directly does
-        // not, and every later insert fails the foreign key.
+        // M90: tenant_id references vaults(id). Registration provisions the
+        // vault; a test saving a User directly must do the same.
         try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
         return id
     }
