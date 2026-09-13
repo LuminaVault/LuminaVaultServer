@@ -52,7 +52,7 @@ struct VaultUploadSpaceTests {
             """)
         ) { response in
             #expect(response.status == .ok || response.status == .created)
-            return try testJSONDecoder().decode(LuminaVaultShared.SpaceDTO.self, from: Data(buffer: response.body))
+            return try decodeReporting(LuminaVaultShared.SpaceDTO.self, from: response)
         }
     }
 
@@ -91,7 +91,7 @@ struct VaultUploadSpaceTests {
             headers: [.authorization: "Bearer \(token)"]
         ) { response in
             #expect(response.status == .ok)
-            return try testJSONDecoder().decode(VaultFileListResponse.self, from: Data(buffer: response.body)).files
+            return try decodeReporting(VaultFileListResponse.self, from: response).files
         }
     }
 

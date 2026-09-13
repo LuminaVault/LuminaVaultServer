@@ -65,7 +65,7 @@ struct BYOKConsistencyTests {
                 body: ByteBuffer(data: encoded)
             ) { response in
                 #expect(response.status == .ok)
-                let updated = try testJSONDecoder().decode(RouterProfileDTO.self, from: Data(buffer: response.body))
+                let updated = try decodeReporting(RouterProfileDTO.self, from: response)
                 #expect(updated.mode == .byok)
             }
         }
