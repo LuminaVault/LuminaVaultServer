@@ -4,7 +4,20 @@ import Logging
 import LuminaVaultShared
 import Testing
 
-@Suite("Workflow lifecycle integration", .enabled(if: IntegrationTestEnv.runIntegrationOnly))
+/// `.integrationDatabase` is not optional for a Postgres-backed suite.
+/// Without it `TestDatabaseIsolation.resolvedDatabase` has no suite to
+/// resolve and falls back to the *base* database, so `withTestFluent` here
+/// held open connections to `hermes_test` — the template every other suite
+/// clones from. Postgres refuses `CREATE DATABASE ... WITH TEMPLATE` while
+/// any session is connected to the source, so for the 15 seconds this suite
+/// ran, concurrent clones failed and their suites dropped into the
+/// create-empty-then-migrate fallback, serialized behind one actor. That is
+/// what timed the integration job out at 35 minutes (#212).
+@Suite(
+    "Workflow lifecycle integration",
+    .enabled(if: IntegrationTestEnv.runIntegrationOnly),
+    .integrationDatabase
+)
 struct WorkflowLifecycleIntegrationTests {
     @Test func `creates publishes deduplicates and cancels run`() async throws {
         try await withTestFluent(label: "lv.test.workflow.lifecycle") { fluent in
