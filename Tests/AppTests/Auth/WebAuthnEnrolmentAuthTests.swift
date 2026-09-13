@@ -16,26 +16,11 @@ import Testing
 /// token, and the token's user is the only account it can enrol for.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct WebAuthnEnrolmentAuthTests {
-    private static let webAuthnReader = ConfigReader(providers: [
-        InMemoryProvider(values: [
-            "http.host": "127.0.0.1",
-            "http.port": 0,
-            "log.level": "warning",
-            "postgres.host": cfg(TestPostgres.host),
-            "postgres.port": cfg(TestPostgres.port),
-            "postgres.database": cfg(TestDatabaseIsolation.resolvedDatabase),
-            "postgres.user": cfg(TestPostgres.username),
-            "postgres.password": cfg(TestPostgres.password),
-            "fluent.autoMigrate": "true",
-            "jwt.hmac.secret": "test-secret-do-not-use-in-prod-32chars",
-            "jwt.kid": "test-kid",
-            "hermes.gatewayKind": "logging",
-            "vault.rootPath": "/tmp/luminavault-test",
-            "webauthn.enabled": "true",
-            "webauthn.relyingPartyId": "luminavault.test",
-            "webauthn.relyingPartyName": "LuminaVault Test",
-            "webauthn.relyingPartyOrigin": "https://luminavault.test",
-        ]),
+    private static let webAuthnReader = dbTestReader(overriding: [
+        "webauthn.enabled": cfg("true"),
+        "webauthn.relyingPartyId": cfg("luminavault.test"),
+        "webauthn.relyingPartyName": cfg("LuminaVault Test"),
+        "webauthn.relyingPartyOrigin": cfg("https://luminavault.test"),
     ])
 
     private static func randomUser() -> (email: String, username: String) {

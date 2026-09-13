@@ -104,6 +104,29 @@ private var dbTestConfigValues: [AbsoluteConfigKey: ConfigValue] {
     return values
 }
 
+/// DB-backed reader plus per-suite overrides.
+///
+/// Use this instead of hand-rolling a `ConfigReader` for a suite that needs a
+/// couple of extra keys. A reader written from scratch silently omits every
+/// default in `dbTestConfigValuesBase`, and the omissions do not look like
+/// bugs — they look like keys the suite does not care about.
+///
+/// `lv.environment` is the one that bites. It defaults to `dev`, and roughly a
+/// dozen `if fluentEnabled, lvEnvironment != "test"` guards in
+/// `buildApplication` read it to decide whether to append long-running
+/// background services: the cron and reminder schedulers, the ingestion
+/// worker, mirror refresh, analytics maintenance. Those services never
+/// terminate, so `app.test` never finishes tearing down and the test hangs
+/// having already passed — which is exactly how four suites wedged the
+/// integration job until it was killed by its timeout (#212).
+func dbTestReader(overriding overrides: [AbsoluteConfigKey: ConfigValue]) -> ConfigReader {
+    var values = dbTestConfigValues
+    for (key, value) in overrides {
+        values[key] = value
+    }
+    return ConfigReader(providers: [InMemoryProvider(values: values)])
+}
+
 /// DB-backed reader with the deterministic stub chat provider enabled.
 /// `llm.provider=stub` swaps the real `HermesGatewayAdapter` for
 /// `StubChatAdapter` under `.hermesGateway`, so a `managed`-mode chat

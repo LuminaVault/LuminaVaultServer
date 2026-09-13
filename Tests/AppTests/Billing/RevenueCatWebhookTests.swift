@@ -15,24 +15,8 @@ struct RevenueCatWebhookTests {
     private static let password = "CorrectHorseBatteryStaple1!"
 
     private static func reader() -> ConfigReader {
-        ConfigReader(providers: [
-            InMemoryProvider(values: [
-                "http.host": cfg("127.0.0.1"),
-                "http.port": cfg(0),
-                "log.level": cfg("warning"),
-                "postgres.host": cfg(TestPostgres.host),
-                "postgres.port": cfg(TestPostgres.port),
-                "postgres.database": cfg(TestDatabaseIsolation.resolvedDatabase),
-                "postgres.user": cfg(TestPostgres.username),
-                "postgres.password": cfg(TestPostgres.password),
-                "fluent.autoMigrate": cfg("true"),
-                "jwt.hmac.secret": cfg("test-secret-do-not-use-in-prod-32chars"),
-                "jwt.kid": cfg("test-kid"),
-                "hermes.gatewayKind": cfg("logging"),
-                "hermes.dataRoot": cfg("/tmp/luminavault-test-hermes"),
-                "vault.rootPath": cfg("/tmp/luminavault-test"),
-                "revenuecat.webhookSecret": cfg(webhookSecret),
-            ]),
+        dbTestReader(overriding: [
+            "revenuecat.webhookSecret": cfg(webhookSecret),
         ])
     }
 
