@@ -44,7 +44,7 @@ func recordErrorDetail(
 ///
 /// M90 made every tenant-scoped table point its `tenant_id` at `vaults(id)`
 /// rather than `users(id)`, and M107 repointed the ingestion and knowledge
-/// tables the same way. `AuthService.ensurePersonalVault` keeps the invariant
+/// tables the same way. `DefaultAuthService.ensurePersonalVault` keeps the invariant
 /// on the registration path — a personal vault whose id equals the user id.
 ///
 /// A test that saves a `User` directly skips that, so the first insert into
@@ -55,7 +55,7 @@ func recordErrorDetail(
 @discardableResult
 func saveTenant(_ user: User, on db: any Database) async throws -> UUID {
     try await user.save(on: db)
-    try await AuthService.ensurePersonalVault(for: user, on: db)
+    try await DefaultAuthService.ensurePersonalVault(for: user, on: db)
     return try user.requireID()
 }
 
