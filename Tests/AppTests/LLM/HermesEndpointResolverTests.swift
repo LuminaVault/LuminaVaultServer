@@ -6,7 +6,7 @@ import Logging
 import Testing
 
 /// HER-217 — `HermesEndpointResolver` unit tests. Drives the resolver
-/// directly against the test Postgres (via `dbTestReader`) so we cover
+/// directly against the suite's isolated test Postgres so we cover
 /// the row-absent default path, the row-present override path, the
 /// SSRF-rejection error path, and the decrypt-failure path.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
@@ -16,12 +16,26 @@ struct HermesEndpointResolverTests {
 
     /// HER-310 — Spins up a Fluent + SecretBox + SSRFGuard stack, hands
     /// them to `body`, and guarantees `fluent.shutdown()` runs before
-    /// returning. Replaces the prior `makeResolver()` + `defer { Task {
-    /// try? await fluent.shutdown() } }` pattern, which was racy: the
-    /// detached `Task` may not run before `Fluent` deinits, tripping
-    /// AsyncKit's `ConnectionPool.shutdown() was not called before
-    /// deinit` precondition and SIGILL-ing the whole test binary on
-    /// process exit.
+    /// returning.
+    ///
+    /// The shutdown discipline lives in `withTestFluent` rather than being
+    /// repeated here. This helper used to hand-roll it, and also built an
+    /// `Application` it immediately discarded (`_ = app`) for a connection
+    /// it then recreated by hand. That application owned a second `Fluent`
+    /// that nothing ever shut down, because the app was never run through
+    /// its service lifecycle — so on release, `Databases.deinit` reached
+    /// `EventLoopGroupConnectionPool.deinit`, tripped AsyncKit's
+    /// `shutdown() was not called before deinit` precondition, and took the
+    /// whole test binary down with an illegal instruction. It killed the
+    /// integration run mid-flight: the suites that had not finished never
+    /// reported, and `swift test` exited before printing a summary.
+    ///
+    /// The hand-rolled configuration also named `TestPostgres.database` —
+    /// the *base* template database — instead of this suite's clone. Holding
+    /// connections there blocks the concurrent `CREATE DATABASE ... TEMPLATE`
+    /// that every other suite needs (see `PrimeBaseDatabaseTests`).
+    /// `TestPostgres.configuration()`, which `withTestFluent` uses, resolves
+    /// to the isolated clone.
     private static func withResolver<Result>(
         allowPrivate: Bool = true,
         ssrfResolver: any HostResolver = SSRFGuardTests.StubResolver(
@@ -33,27 +47,7 @@ struct HermesEndpointResolverTests {
         ),
         _ body: (HermesEndpointResolver, Fluent, SecretBox) async throws -> Result
     ) async throws -> Result {
-        let app = try await buildApplication(reader: dbTestReader)
-        // Driving the resolver against the *real* services container would
-        // require exposing a hook; the cleanest path is to construct a
-        // private resolver wired to the same Fluent instance the app uses.
-        // `buildApplication` initialises Fluent via `dbTestReader`; we
-        // recreate the same connection here for the resolver under test.
-        _ = app
-        let logger = Logger(label: "lv.test.resolver")
-        let fluent = Fluent(logger: logger)
-        fluent.databases.use(
-            .postgres(configuration: .init(
-                hostname: TestPostgres.host,
-                port: TestPostgres.port,
-                username: TestPostgres.username,
-                password: TestPostgres.password,
-                database: TestPostgres.database,
-                tls: .disable
-            )),
-            as: .psql
-        )
-        do {
+        try await withTestFluent(label: "lv.test.resolver") { fluent in
             let secretBox = try SecretBox(masterKeyBase64: testMasterKeyBase64)
             let ssrfGuard = SSRFGuard(
                 allowPrivateRanges: allowPrivate,
@@ -65,14 +59,9 @@ struct HermesEndpointResolverTests {
                 secretBox: secretBox,
                 ssrfGuard: ssrfGuard,
                 defaultBaseURL: defaultURL,
-                logger: logger
+                logger: Logger(label: "lv.test.resolver")
             )
-            let result = try await body(resolver, fluent, secretBox)
-            try await fluent.shutdown()
-            return result
-        } catch {
-            try? await fluent.shutdown()
-            throw error
+            return try await body(resolver, fluent, secretBox)
         }
     }
 
