@@ -72,9 +72,6 @@ struct HermesMirrorServiceTests {
         let username = Self.slug("u")
         let user = User(id: tenantID, email: "\(username)@test.luminavault", username: username, passwordHash: "stub")
         try await user.save(on: fluent.db())
-        // M90: tenant_id references vaults(id). Registration provisions the
-        // vault; a test saving a User directly must do the same.
-        try await DefaultAuthService.ensurePersonalVault(for: user, on: fluent.db())
         // `spaces.tenant_id` references `vaults.id` (tenant == personal vault).
         try await Vault(id: tenantID, personalOwnerUserID: tenantID, name: "Personal").save(on: fluent.db())
 
