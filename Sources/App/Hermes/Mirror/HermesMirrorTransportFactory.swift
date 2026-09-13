@@ -33,19 +33,58 @@ struct HermesMirrorTransportFactory: HermesMirrorTransportProviding {
     let logger: Logger
 
     /// Cheap classification (one row read plus the resolver, no network).
+    ///
+    /// `.none` is the honest answer for a tenant whose gateway is configured
+    /// but unusable. Reporting `.managed` there would name our own disk as the
+    /// thing serving them, which is not what they asked for and reads on the
+    /// settings screen as though the mirror were working.
     func kind(tenantID: UUID) async -> HermesMirrorTransportKind {
         if await (try? credentials.credentials(tenantID: tenantID)) != nil {
             return .remote
         }
-        if await (try? resolver.resolve(tenantID: tenantID))?.isUserOverride == true {
-            return .remote
+        do {
+            if try await resolver.resolve(tenantID: tenantID).isUserOverride {
+                return .remote
+            }
+        } catch {
+            logger.warning(
+                "byo hermes gateway is configured but unusable",
+                metadata: ["tenant": "\(tenantID)", "error": "\(error)"]
+            )
+            return HermesMirrorTransportKind.none
         }
         return .managed
     }
 
     func transport(tenantID: UUID) async throws -> any HermesMirrorTransport {
         let dashboard = try await credentials.credentials(tenantID: tenantID)
-        let resolution = try? await resolver.resolve(tenantID: tenantID)
+
+        // A configured gateway that will not resolve — a stored URL that is
+        // now private-range, an auth header that will not decrypt — is a
+        // failure the tenant has to be told about.
+        //
+        // This was `try?`. The rejection was swallowed, `ownGateway` came out
+        // nil, and a tenant with no dashboard fell through to the managed
+        // filesystem transport rooted on *our* disk: an empty `skills/`, no
+        // `cron/jobs.json`, `lastStatus: .ok`, zero counts, no error. The same
+        // shape the gateway-only bug had, from a different cause.
+        //
+        // `HermesMirrorService.sync` already records a throw from here as
+        // `lastStatus: .failed` with the error text, which is what the
+        // settings screen renders. Letting it out is the whole fix.
+        var resolution: HermesEndpointResolver.Resolution?
+        do {
+            resolution = try await resolver.resolve(tenantID: tenantID)
+        } catch {
+            // The dashboard is a second way into the same box. If it is
+            // configured, a broken gateway must not take it down as well.
+            guard dashboard != nil else { throw error }
+            logger.warning(
+                "byo hermes gateway unusable; continuing over the dashboard",
+                metadata: ["tenant": "\(tenantID)", "error": "\(error)"]
+            )
+            resolution = nil
+        }
         let ownGateway = resolution?.isUserOverride == true ? resolution : nil
 
         // Either half is enough to talk to the user's own box.
