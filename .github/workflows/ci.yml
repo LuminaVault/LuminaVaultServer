@@ -190,7 +190,14 @@ jobs:
           LOG_LEVEL: error
         # One serial migrate of `hermes_test`; per-suite clones use it as a
         # template so parallel integration boots skip redundant migration work.
-        run: bash scripts/ci-test-wrapper.sh .build/xunit-prime.xml --filter PrimeBaseDatabaseTests --no-parallel
+        #
+        # `--enable-code-coverage` is not needed to migrate a database — it is
+        # here so this step produces the SAME build configuration the test step
+        # below asks for. Without it the two steps want different artifacts and
+        # the package is compiled twice: ~3000 modules here, then ~3000 again
+        # there, costing about 19 minutes of a 35-minute budget and starving
+        # the tests of the time they need to finish (#212).
+        run: bash scripts/ci-test-wrapper.sh .build/xunit-prime.xml --filter PrimeBaseDatabaseTests --no-parallel --enable-code-coverage
 
       - name: Run integration tests (parallel, per-suite DB)
         env:
