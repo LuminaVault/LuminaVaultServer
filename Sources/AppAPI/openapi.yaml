@@ -11810,9 +11810,23 @@ components:
         sha256: { type: string }
         processedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
-        metadata:
-          type: object
-          additionalProperties: true
+        metadata: { $ref: '#/components/schemas/VaultNoteMetadataDTO' }
+
+    # The note sidecar. Any markdown file can carry it; `isTodo` is what makes
+    # a note a todo, and `enrichmentStatus` is set only on captured links.
+    VaultNoteMetadataDTO:
+      type: object
+      properties:
+        title: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        isTodo: { type: boolean }
+        done: { type: boolean }
+        dueAt: { type: string, format: date-time }
+        # pending | done | failed. A captured link is written as a placeholder
+        # and rewritten once the server has fetched the page.
+        enrichmentStatus: { type: string }
 
     VaultListResponse:
       type: object
