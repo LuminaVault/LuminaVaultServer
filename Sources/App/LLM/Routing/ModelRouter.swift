@@ -136,35 +136,70 @@ enum LLMRoutingContext {
         return try $values.withValue(next, operation: operation)
     }
 
-    static var currentUser: User? { values.currentUser }
-    static var currentResolution: HermesEndpointResolver.Resolution? { values.currentResolution }
-    static var cerberusScope: CerberusRequestScope? { values.cerberusScope }
-    static var cerberusPrompt: String? { values.cerberusPrompt }
+    static var currentUser: User? {
+        values.currentUser
+    }
+
+    static var currentResolution: HermesEndpointResolver.Resolution? {
+        values.currentResolution
+    }
+
+    static var cerberusScope: CerberusRequestScope? {
+        values.cerberusScope
+    }
+
+    static var cerberusPrompt: String? {
+        values.cerberusPrompt
+    }
+
     /// Explicit per-turn multi-model override. `nil` preserves the active
     /// Router profile's normal sequential/ensemble behavior.
-    static var parallelStrategy: ParallelStrategyDTO? { values.parallelStrategy }
-    static var parallelRequest: ParallelExecutionRequestDTO? { values.parallelRequest }
+    static var parallelStrategy: ParallelStrategyDTO? {
+        values.parallelStrategy
+    }
+
+    static var parallelRequest: ParallelExecutionRequestDTO? {
+        values.parallelRequest
+    }
+
     /// Exact per-conversation route selected by “Ask another model”. Unlike
     /// ordinary routing this has no silent fallback.
-    static var forcedRoute: RouterModelRouteDTO? { values.forcedRoute }
-    static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)? { values.routeOutcomeSink }
+    static var forcedRoute: RouterModelRouteDTO? {
+        values.forcedRoute
+    }
+
+    static var routeOutcomeSink: (@Sendable (ModelProvenanceDTO) -> Void)? {
+        values.routeOutcomeSink
+    }
+
     /// Validated vault attribution for analytics. Callers that do not set it
     /// intentionally fall back to the actor's personal vault.
-    static var analyticsVaultID: UUID? { values.analyticsVaultID }
+    static var analyticsVaultID: UUID? {
+        values.analyticsVaultID
+    }
+
     /// Account charged for AI usage. Team vaults bind this to their billing
     /// sponsor while preserving `currentUser` for personal routing/privacy.
-    static var billingTenantID: UUID? { values.billingTenantID }
+    static var billingTenantID: UUID? {
+        values.billingTenantID
+    }
+
     /// Selects platform-managed versus user-owned provider credentials for
     /// the current routed call. Managed mode must never silently spend a
     /// user's BYOK balance, and BYOK mode must never fall back to the pool.
-    static var credentialMode: LLMBrainMode? { values.credentialMode }
+    static var credentialMode: LLMBrainMode? {
+        values.credentialMode
+    }
+
     /// The assistant turn this routed call produced, when there is one.
     ///
     /// Lets `agent_turn_traces` attach a trace to the message a user is
     /// looking at. Nil for routed calls that are not conversation turns —
     /// skill runs, workflow nodes, one-shot classifiers — whose traces are
     /// still recorded, just unattached.
-    static var conversationMessageID: UUID? { values.conversationMessageID }
+    static var conversationMessageID: UUID? {
+        values.conversationMessageID
+    }
 }
 
 /// HER-161 — picks an upstream route for a single chat request based on

@@ -92,7 +92,7 @@ struct ParallelController {
                         try await LLMRoutingContext.withValues({ $0.parallelRequest = effective }) {
                             try await LLMRoutingContext.withValues({ $0.parallelStrategy = effective.strategy }) {
                                 try await LLMRoutingContext.withValues({ $0.cerberusScope =
-                                    CerberusRequestScope(surface: .query, spaceID: effective.spaceID)
+                                        CerberusRequestScope(surface: .query, spaceID: effective.spaceID)
                                 }) {
                                     try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
                                         for try await chunk in transport.chatStream(
