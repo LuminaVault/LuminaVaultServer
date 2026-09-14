@@ -68,19 +68,23 @@ enum HermesArtifactExtractor {
     // MARK: - Collection
 
     static func collect(from text: String, push: (String) -> Void) {
-        enumerate(text, pattern: #"!\[(?:[^\]]*)\]\(([^)\s]+)\)"#, group: 1, push)
-        enumerate(text, pattern: #"\[(?:[^\]]+)\]\(([^)\s]+)\)"#, group: 1) { value in
-            if looksLikeArtifact(value) { push(value) }
+        for value in matches(text, pattern: #"!\[(?:[^\]]*)\]\(([^)\s]+)\)"#, group: 1) {
+            push(value)
         }
-        enumerate(text, pattern: #"https?://[^\s<>"')]+"#, group: 0) { value in
-            if looksLikeArtifact(value) { push(value) }
+        for value in matches(text, pattern: #"\[(?:[^\]]+)\]\(([^)\s]+)\)"#, group: 1) where looksLikeArtifact(value) {
+            push(value)
         }
-        enumerate(text, pattern: #"(?:^|[\s("'`])((?:/|~/|\.\.?/)[^\s"'`<>]+(?:\.[A-Za-z0-9]{1,8})?)"#, group: 1, push)
+        for value in matches(text, pattern: #"https?://[^\s<>"')]+"#, group: 0) where looksLikeArtifact(value) {
+            push(value)
+        }
+        for value in matches(text, pattern: #"(?:^|[\s("'`])((?:/|~/|\.\.?/)[^\s"'`<>]+(?:\.[A-Za-z0-9]{1,8})?)"#, group: 1) {
+            push(value)
+        }
         if let parsed = parseJSON(text) {
             collectStrings(parsed, keyPath: "tool_result") { value, keyPath in
                 let normalized = normalize(value)
                 guard !normalized.isEmpty else { return }
-                if (keyHint.contains(where: { keyPath.localizedCaseInsensitiveContains($0) }) || looksLikePathOrURL(normalized)),
+                if keyHint.contains(where: { keyPath.localizedCaseInsensitiveContains($0) }) || looksLikePathOrURL(normalized),
                    looksLikeArtifact(normalized)
                 {
                     push(normalized)
@@ -89,15 +93,14 @@ enum HermesArtifactExtractor {
         }
     }
 
-    private static func enumerate(_ text: String, pattern: String, group: Int, _ push: (String) -> Void) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+    private static func matches(_ text: String, pattern: String, group: Int) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let ns = text as NSString
         let range = NSRange(location: 0, length: ns.length)
-        regex.enumerateMatches(in: text, range: range) { match, _, _ in
-            guard let match else { return }
+        return regex.matches(in: text, range: range).compactMap { match in
             let capture = group == 0 ? match.range : match.range(at: group)
-            guard capture.location != NSNotFound else { return }
-            push(ns.substring(with: capture))
+            guard capture.location != NSNotFound else { return nil }
+            return ns.substring(with: capture)
         }
     }
 

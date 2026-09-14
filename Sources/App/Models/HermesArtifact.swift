@@ -35,8 +35,8 @@ final class HermesArtifact: Model, TenantModel, @unchecked Sendable {
     }
 
     func dto() throws -> HermesArtifactDTO {
-        HermesArtifactDTO(
-            id: try requireID(),
+        try HermesArtifactDTO(
+            id: requireID(),
             kind: HermesArtifactKind(rawValue: kind) ?? .link,
             value: value,
             href: href,

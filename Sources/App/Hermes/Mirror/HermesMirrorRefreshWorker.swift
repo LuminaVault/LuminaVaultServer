@@ -89,7 +89,9 @@ actor HermesMirrorRefreshWorker: Service, HermesMirrorNudging {
             }
             let deadline = ContinuousClock.now + tickInterval
             while ContinuousClock.now < deadline, !Task.isCancelled {
-                if !pending.isEmpty { break }
+                if !pending.isEmpty {
+                    break
+                }
                 try? await Task.sleep(for: nudgeSlice)
             }
         }

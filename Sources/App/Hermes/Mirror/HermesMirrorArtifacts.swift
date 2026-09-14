@@ -77,8 +77,8 @@ extension HermesMirrorService {
         let rows = try await q.all()
         let page = Array(rows.prefix(bounded))
         let next = rows.count > bounded ? HermesDates.iso(page.last?.occurredAt ?? Date()) : nil
-        return HermesArtifactListResponse(
-            artifacts: try page.map { try $0.dto() },
+        return try HermesArtifactListResponse(
+            artifacts: page.map { try $0.dto() },
             nextCursor: next
         )
     }
@@ -97,7 +97,9 @@ extension HermesMirrorService {
         let existing = try await HermesArtifact.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$contentHash == record.contentHash)
             .first()
-        if existing != nil { return false }
+        if existing != nil {
+            return false
+        }
         try await HermesArtifact(tenantID: tenantID, record: record).save(on: fluent.db())
         return true
     }
@@ -105,14 +107,14 @@ extension HermesMirrorService {
     private func pruneArtifacts(tenantID: UUID) async throws {
         guard let sql = fluent.db() as? any SQLDatabase else { return }
         try await sql.raw("""
-            DELETE FROM hermes_artifacts
+        DELETE FROM hermes_artifacts
+        WHERE tenant_id = \(bind: tenantID)
+          AND id NOT IN (
+            SELECT id FROM hermes_artifacts
             WHERE tenant_id = \(bind: tenantID)
-              AND id NOT IN (
-                SELECT id FROM hermes_artifacts
-                WHERE tenant_id = \(bind: tenantID)
-                ORDER BY occurred_at DESC
-                LIMIT \(bind: HermesArtifact.retainLimit)
-              )
-            """).run()
+            ORDER BY occurred_at DESC
+            LIMIT \(bind: HermesArtifact.retainLimit)
+          )
+        """).run()
     }
 }
