@@ -13,8 +13,10 @@ import LuminaVaultShared
 /// mirror worth anything work with a gateway alone.
 ///
 /// Where the dashboard *is* usable it is preferred for reads it serves better
-/// (skill descriptions and enabled flags), and it remains the only way to
-/// write: cron mutations and filesystem access have no gateway equivalent.
+/// (skill descriptions and enabled flags). Job mutations go through the
+/// gateway `/api/jobs` when no dashboard is linked — `api_server` has create,
+/// pause, resume, run and delete. Filesystem access still has no gateway
+/// equivalent.
 struct RemoteHermesTransport: HermesMirrorTransport {
     let kind: HermesMirrorTransportKind = .remote
     let gatewayBaseURL: URL?
@@ -93,27 +95,80 @@ struct RemoteHermesTransport: HermesMirrorTransport {
     }
 
     func createJob(_ spec: HermesMirrorJobSpec) async throws -> HermesMirrorJob {
-        try await requireDashboard().createJob(spec)
+        try await withJobWriteFallback("createJob") { dashboard in
+            try await dashboard.createJob(spec)
+        } gateway: { gateway in
+            try await gateway.createJob(spec)
+        }
     }
 
     func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
-        try await requireDashboard().updateJob(id: id, updates: updates)
+        try await withJobWriteFallback("updateJob") { dashboard in
+            try await dashboard.updateJob(id: id, updates: updates)
+        } gateway: { gateway in
+            try await gateway.updateJob(id: id, updates: updates)
+        }
     }
 
     func pauseJob(id: String) async throws -> HermesMirrorJob {
-        try await requireDashboard().pauseJob(id: id)
+        try await withJobWriteFallback("pauseJob") { dashboard in
+            try await dashboard.pauseJob(id: id)
+        } gateway: { gateway in
+            try await gateway.pauseJob(id: id)
+        }
     }
 
     func resumeJob(id: String) async throws -> HermesMirrorJob {
-        try await requireDashboard().resumeJob(id: id)
+        try await withJobWriteFallback("resumeJob") { dashboard in
+            try await dashboard.resumeJob(id: id)
+        } gateway: { gateway in
+            try await gateway.resumeJob(id: id)
+        }
     }
 
     func triggerJob(id: String) async throws -> HermesMirrorJob {
-        try await requireDashboard().triggerJob(id: id)
+        try await withJobWriteFallback("triggerJob") { dashboard in
+            try await dashboard.triggerJob(id: id)
+        } gateway: { gateway in
+            try await gateway.triggerJob(id: id)
+        }
     }
 
     func deleteJob(id: String) async throws {
-        try await requireDashboard().deleteJob(id: id)
+        do {
+            if let dashboard {
+                try await dashboard.deleteJob(id: id)
+                return
+            }
+            try await requireGateway().deleteJob(id: id)
+        } catch let error as HermesMirrorTransportError {
+            guard let gateway else { throw error }
+            logger.debug("dashboard deleteJob unavailable; falling back to gateway", metadata: ["error": "\(error)"])
+            try await gateway.deleteJob(id: id)
+        }
+    }
+
+    /// Dashboard first when linked; gateway `/api/jobs` otherwise. A dashboard
+    /// that is linked but refuses the write still falls through to the gateway
+    /// so a BYO box with a public dashboard (OAuth-only) is not stuck.
+    private func withJobWriteFallback(
+        _ op: String,
+        dashboard performDashboard: (HermesDashboardClient) async throws -> HermesMirrorJob,
+        gateway performGateway: (HermesGatewayReadClient) async throws -> HermesMirrorJob
+    ) async throws -> HermesMirrorJob {
+        do {
+            if let dashboard {
+                return try await performDashboard(dashboard)
+            }
+            return try await performGateway(requireGateway())
+        } catch let error as HermesMirrorTransportError {
+            guard let gateway else { throw error }
+            logger.debug(
+                "dashboard \(op) unavailable; falling back to gateway",
+                metadata: ["error": "\(error)"]
+            )
+            return try await performGateway(gateway)
+        }
     }
 
     func jobRuns(jobID: String, limit: Int) async throws -> [HermesMirrorJobRun] {

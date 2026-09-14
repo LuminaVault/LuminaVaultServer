@@ -59,6 +59,9 @@ struct HermesConfigController {
     /// successful `PUT` and `POST /test` so panes reflect the new endpoint
     /// without waiting for the cache TTL.
     let capabilities: HermesRemoteCapabilitiesService?
+    /// Connect-time skills/jobs sync. Optional: tests and a missing worker
+    /// still save the config; the 15-minute tick picks the tenant up later.
+    var nudge: (any HermesMirrorNudging)?
     let logger: Logger
 
     init(
@@ -67,6 +70,7 @@ struct HermesConfigController {
         ssrfGuard: SSRFGuard,
         probeSession: URLSession = .shared,
         capabilities: HermesRemoteCapabilitiesService? = nil,
+        nudge: (any HermesMirrorNudging)? = nil,
         logger: Logger
     ) {
         self.fluent = fluent
@@ -74,6 +78,7 @@ struct HermesConfigController {
         self.ssrfGuard = ssrfGuard
         self.probeSession = probeSession
         self.capabilities = capabilities
+        self.nudge = nudge
         self.logger = logger
     }
 
@@ -151,6 +156,10 @@ struct HermesConfigController {
         row.verifiedAt = nil
         try await row.save(on: db)
         _ = await capabilities?.capabilities(tenantID: tenantID, force: true)
+        // Do not await the upstream list — a down VPS must not stall Save.
+        if let nudge {
+            await nudge.enqueue(tenantID: tenantID)
+        }
 
         return GetResponse(
             baseUrl: row.baseURL,

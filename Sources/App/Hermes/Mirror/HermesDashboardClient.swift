@@ -312,6 +312,16 @@ struct HermesDashboardClient: Sendable {
         return rows.compactMap(parseJob)
     }
 
+    /// Gateway create/pause/resume/run wrap the job in `{"job": {...}}`;
+    /// dashboard mutations return the job document at the top level.
+    static func parseJobDocument(_ json: Any?) -> HermesMirrorJob? {
+        guard let object = json as? [String: Any] else { return nil }
+        if let wrapped = object["job"] as? [String: Any] {
+            return parseJob(wrapped)
+        }
+        return parseJob(object)
+    }
+
     static func parseJob(_ row: [String: Any]) -> HermesMirrorJob? {
         guard let id = row["id"] as? String, !id.isEmpty else { return nil }
         let schedule: String? = if let display = row["schedule_display"] as? String {

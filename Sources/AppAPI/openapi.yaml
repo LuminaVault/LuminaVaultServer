@@ -1555,6 +1555,49 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
 
+  /v1/hermes/artifacts:
+    get:
+      tags: [Settings]
+      operationId: hermesArtifactsList
+      summary: Images, files and links harvested from the tenant's Hermes sessions.
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [image, file, link] }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: before
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesArtifactListResponse' }
+
+  /v1/hermes/artifacts/{id}:
+    get:
+      tags: [Settings]
+      operationId: hermesArtifactsGet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: One artifact.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesArtifactDTO' }
+        '404':
+          description: '`hermes_artifact_not_found`.'
+
   # ── Hermes Mirror — the tenant's Hermes (skills, cron jobs, KB vault, sessions) mirrored into LuminaVault ──
   /v1/hermes/mirror/status:
     get:
@@ -9136,7 +9179,7 @@ components:
 
     HermesMirrorSyncScope:
       type: string
-      enum: [skills, jobs, vault]
+      enum: [skills, jobs, vault, artifacts]
 
     HermesMirrorSyncRequest:
       type: object
@@ -9498,6 +9541,34 @@ components:
           type: string
           format: date-time
           description: When the collector last pulled runs for this job.
+
+    HermesArtifactKind:
+      type: string
+      enum: [image, file, link]
+
+    HermesArtifactDTO:
+      type: object
+      required: [id, kind, value, href, label, sessionID, sessionTitle, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/HermesArtifactKind' }
+        value: { type: string }
+        href: { type: string }
+        label: { type: string }
+        sessionID: { type: string }
+        sessionTitle: { type: string }
+        occurredAt: { type: string, format: date-time }
+
+    HermesArtifactListResponse:
+      type: object
+      required: [artifacts]
+      properties:
+        artifacts:
+          type: array
+          items: { $ref: '#/components/schemas/HermesArtifactDTO' }
+        nextCursor:
+          type: string
+          description: ISO-8601 `occurredAt` of the last row; pass as `before` for the next page.
 
     HermesMirrorWebhookDTO:
       type: object

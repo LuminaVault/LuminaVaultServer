@@ -4,6 +4,7 @@ import Foundation
 import Logging
 import LuminaVaultShared
 import NIOCore
+import NIOHTTP1
 import NIOPosix
 import Yams
 
@@ -607,7 +608,7 @@ struct HermesGatewayReadClient: Sendable {
     }
 
     func listSessions(offset: Int, limit: Int) async throws -> HermesMirrorSessionPage {
-        let response = try await get("api/sessions", query: [("limit", String(limit)), ("offset", String(offset)), ("order", "recent"), ("min_messages", "1")], cap: HermesDashboardClient.listBodyCap)
+        let response = try await send(.GET, "api/sessions", query: [("limit", String(limit)), ("offset", String(offset)), ("order", "recent"), ("min_messages", "1")], json: nil, cap: HermesDashboardClient.listBodyCap)
         guard response.isSuccess else {
             throw HermesMirrorTransportError.http(status: response.status, path: "/api/sessions")
         }
@@ -620,16 +621,51 @@ struct HermesGatewayReadClient: Sendable {
     /// a loopback bind — a normal public bind offers cookie/PKCE only — so for
     /// most BYO users this is the only readable source of their jobs.
     func listJobs() async throws -> [HermesMirrorJob] {
-        let response = try await get("api/jobs", query: [], cap: HermesDashboardClient.listBodyCap)
+        let response = try await send(.GET, "api/jobs", query: [], json: nil, cap: HermesDashboardClient.listBodyCap)
         guard response.isSuccess else {
             throw HermesMirrorTransportError.http(status: response.status, path: "/api/jobs")
         }
         return HermesDashboardClient.parseJobs(response.data)
     }
 
+    func createJob(_ spec: HermesMirrorJobSpec) async throws -> HermesMirrorJob {
+        let response = try await send(.POST, "api/jobs", query: [], json: spec.body, cap: HermesDashboardClient.fileBodyCap)
+        return try jobDocument(response, path: "/api/jobs")
+    }
+
+    func updateJob(id: String, updates: HermesMirrorJobUpdate) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.PATCH, "api/jobs/\(jobID)", query: [], json: updates.updates, cap: HermesDashboardClient.fileBodyCap)
+        return try jobDocument(response, path: "/api/jobs/{id}", id: jobID)
+    }
+
+    func pauseJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "pause")
+    }
+
+    func resumeJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "resume")
+    }
+
+    /// Gateway trigger is `POST /api/jobs/{id}/run` (dashboard uses `/trigger`).
+    func triggerJob(id: String) async throws -> HermesMirrorJob {
+        try await jobAction(id: id, action: "run")
+    }
+
+    func deleteJob(id: String) async throws {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.DELETE, "api/jobs/\(jobID)", query: [], json: nil, cap: HermesDashboardClient.fileBodyCap)
+        if response.status == 404 {
+            throw HermesMirrorTransportError.notFound("job:\(jobID)")
+        }
+        guard response.isSuccess else {
+            throw HermesMirrorTransportError.http(status: response.status, path: "/api/jobs/{id}")
+        }
+    }
+
     func sessionMessages(id: String) async throws -> [HermesMirrorSessionMessage] {
         let encodedID = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
-        let response = try await get("api/sessions/\(encodedID)/messages", query: [("limit", "500")], cap: HermesDashboardClient.listBodyCap)
+        let response = try await send(.GET, "api/sessions/\(encodedID)/messages", query: [("limit", "500")], json: nil, cap: HermesDashboardClient.listBodyCap)
         if response.status == 404 {
             throw HermesMirrorTransportError.notFound("session:\(id)")
         }
@@ -639,26 +675,60 @@ struct HermesGatewayReadClient: Sendable {
         return HermesDashboardClient.parseMessages(response.json())
     }
 
-    private func get(_ path: String, query: [(String, String)], cap: Int) async throws -> HermesHTTPResponse {
+    private func jobAction(id: String, action: String) async throws -> HermesMirrorJob {
+        let jobID = try HermesJobID.validate(id)
+        let response = try await send(.POST, "api/jobs/\(jobID)/\(action)", query: [], json: nil, cap: HermesDashboardClient.fileBodyCap)
+        return try jobDocument(response, path: "/api/jobs/{id}/\(action)", id: jobID)
+    }
+
+    private func jobDocument(_ response: HermesHTTPResponse, path: String, id: String? = nil) throws -> HermesMirrorJob {
+        if response.status == 404, let id {
+            throw HermesMirrorTransportError.notFound("job:\(id)")
+        }
+        if response.status == 400 {
+            throw HermesMirrorTransportError.invalidResponse("\(path):rejected")
+        }
+        guard response.isSuccess else {
+            throw HermesMirrorTransportError.http(status: response.status, path: path)
+        }
+        guard let job = HermesDashboardClient.parseJobDocument(response.json()) else {
+            throw HermesMirrorTransportError.invalidResponse(path)
+        }
+        return job
+    }
+
+    private func send(
+        _ method: HTTPMethod,
+        _ path: String,
+        query: [(String, String)],
+        json: [String: JSONValue]?,
+        cap: Int
+    ) async throws -> HermesHTTPResponse {
         guard var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             throw HermesMirrorTransportError.invalidResponse("url")
         }
-        components.queryItems = query.map { URLQueryItem(name: $0.0, value: $0.1) }
+        if !query.isEmpty {
+            components.queryItems = query.map { URLQueryItem(name: $0.0, value: $0.1) }
+        }
         guard let url = components.url?.absoluteString else {
             throw HermesMirrorTransportError.invalidResponse("url")
         }
         var request = HTTPClientRequest(url: url)
-        request.method = .GET
+        request.method = method
         request.headers.add(name: "Accept", value: "application/json")
         if let authHeader, !authHeader.isEmpty {
             request.headers.add(name: "Authorization", value: authHeader)
+        }
+        if let json {
+            request.headers.add(name: "Content-Type", value: "application/json")
+            request.body = try .bytes(ByteBuffer(data: JSONEncoder().encode(json)))
         }
         do {
             return try await http.execute(request, timeout: HermesDashboardClient.timeout, maxBodyBytes: cap)
         } catch let error as HermesMirrorTransportError {
             throw error
         } catch {
-            logger.debug("hermes gateway sessions request failed", metadata: ["path": "\(path)", "error": "\(Logger.redact(String(describing: error)))"])
+            logger.debug("hermes gateway request failed", metadata: ["path": "\(path)", "error": "\(Logger.redact(String(describing: error)))"])
             throw HermesMirrorTransportError.dashboardUnreachable(path)
         }
     }

@@ -189,6 +189,14 @@ actor HermesMirrorService {
                 errors.append("vault: \(Self.describe(error))")
             }
         }
+        if scopes.contains(.artifacts) {
+            do {
+                _ = try await collectArtifacts(tenantID: tenantID)
+                succeeded += 1
+            } catch {
+                errors.append("artifacts: \(Self.describe(error))")
+            }
+        }
 
         let status: HermesMirrorSyncStatus = errors.isEmpty ? .ok : (succeeded > 0 ? .partial : .failed)
         try await record(state: state, status: status, error: errors.isEmpty ? nil : errors.joined(separator: "; "))

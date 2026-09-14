@@ -91,6 +91,26 @@ struct HermesMirrorRefreshWorkerTests {
     }
 
     @Test
+    func `enqueue records a tenant once for the connect-time drain`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.worker.enqueue") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            let transports = PerTenantTransports()
+            let service = Self.makeService(fluent: fluent, transports: transports)
+            let worker = HermesMirrorRefreshWorker(
+                fluent: fluent,
+                service: service,
+                logger: Self.logger,
+                maxJitter: .zero
+            )
+            let tenant = UUID()
+            await worker.enqueue(tenantID: tenant)
+            await worker.enqueue(tenantID: tenant)
+            #expect(await worker.pendingTenantIDs() == [tenant])
+        }
+    }
+
+    @Test
     func `tick syncs only tenants with a dashboard, pages by id, and isolates failures`() async throws {
         try await withTestFluent(label: "lv.test.mirror.worker") { fluent in
             await registerMigrations(on: fluent)

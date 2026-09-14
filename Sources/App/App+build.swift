@@ -758,6 +758,7 @@ func buildRouter(
     // /v1/me/hermes/cron.
     var cronBridgeService: CronBridgeService?
     var hermesMirrorService: HermesMirrorService?
+    var hermesMirrorNudge: (any HermesMirrorNudging)?
     // Cron bridge deps captured from the secret branch; the service is assembled
     // after `routedTransport` exists (NL→spec classifier needs it).
     var cronDocker: (any DockerExec)?
@@ -2581,11 +2582,13 @@ func buildRouter(
             ))
             hermesMirrorService = mirror.service
             if fluentEnabled, lvEnvironment != "test" {
-                managedServices.append(HermesMirrorRefreshWorker(
+                let worker = HermesMirrorRefreshWorker(
                     fluent: services.fluent,
                     service: mirror.service,
                     logger: Logger(label: "lv.hermes-mirror.worker")
-                ))
+                )
+                hermesMirrorNudge = worker
+                managedServices.append(worker)
             }
             var mirrorGroup = router.group("/v1/hermes/mirror")
                 .add(middleware: jwtAuthenticator)
@@ -2595,6 +2598,13 @@ func buildRouter(
             }
             mirror.controller.addRoutes(to: mirrorGroup)
             mirror.webhooks.addRoutes(to: mirrorGroup)
+            var artifactsGroup = router.group("/v1/hermes")
+                .add(middleware: jwtAuthenticator)
+                .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+            if let byoHermesMiddleware {
+                artifactsGroup = artifactsGroup.add(middleware: byoHermesMiddleware)
+            }
+            mirror.controller.addArtifactRoutes(to: artifactsGroup)
             // The push route is unauthenticated by construction — the sender
             // is the tenant's own Hermes, which holds no LuminaVault session.
             mirror.webhooks.addPublicRoutes(to: router)
@@ -3040,7 +3050,8 @@ func buildRouter(
     // hosted gateway is tier-agnostic, same reasoning as /v1/auth/me/privacy
     // and /v1/health read in HER-202. Mounted only when the controller
     // could be constructed (LV_SECRET_MASTER_KEY set).
-    if let byoHermesController {
+    if var byoHermesController {
+        byoHermesController.nudge = hermesMirrorNudge
         let settingsHermesGroup = router.group("/v1/settings/hermes")
             .add(middleware: jwtAuthenticator)
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))

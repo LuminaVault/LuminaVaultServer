@@ -32,6 +32,32 @@ struct HermesMirrorController {
         router.post("vault/import-sessions", use: importSessions)
     }
 
+    func addArtifactRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get("artifacts", use: listArtifacts)
+        router.get("artifacts/:id", use: getArtifact)
+    }
+
+    @Sendable
+    func listArtifacts(_ req: Request, ctx: AppRequestContext) async throws -> HermesArtifactListResponse {
+        let tenantID = try ctx.requireTenantID()
+        let kind = req.uri.queryParameters["kind"].map(String.init)
+        let query = req.uri.queryParameters["q"].map(String.init)
+        let before = req.uri.queryParameters["before"].flatMap { HermesDates.parseISO(String($0)) }
+        let limit = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 50
+        return try await Self.mapErrors {
+            try await service.artifacts(tenantID: tenantID, kind: kind, query: query, before: before, limit: limit)
+        }
+    }
+
+    @Sendable
+    func getArtifact(_: Request, ctx: AppRequestContext) async throws -> HermesArtifactDTO {
+        let tenantID = try ctx.requireTenantID()
+        guard let raw = ctx.parameters.get("id"), let id = UUID(uuidString: String(raw)) else {
+            throw HTTPError(.badRequest, message: "hermes_artifact_id_required")
+        }
+        return try await Self.mapErrors { try await service.artifact(tenantID: tenantID, id: id) }
+    }
+
     @Sendable
     func status(_: Request, ctx: AppRequestContext) async throws -> HermesMirrorStatusDTO {
         let tenantID = try ctx.requireTenantID()
@@ -198,6 +224,8 @@ extension HermesMirroredSkillDTO: ResponseEncodable {}
 extension HermesMirroredJobsResponse: ResponseEncodable {}
 extension HermesMirroredJobDTO: ResponseEncodable {}
 extension HermesJobRunsResponse: ResponseEncodable {}
+extension HermesArtifactDTO: ResponseEncodable {}
+extension HermesArtifactListResponse: ResponseEncodable {}
 extension HermesCompileJobInstallResultDTO: ResponseEncodable {}
 extension HermesVaultImportResultDTO: ResponseEncodable {}
 extension HermesVaultCreateResultDTO: ResponseEncodable {}

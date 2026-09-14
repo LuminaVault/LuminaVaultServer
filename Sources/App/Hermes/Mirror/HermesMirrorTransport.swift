@@ -2,8 +2,8 @@ import Foundation
 import LuminaVaultShared
 
 /// Hermes Mirror — one seam over the two Hermes surfaces (gateway `api_server`
-/// for reads, dashboard `web_server` for writes/cron/fs/sessions) so
-/// `HermesMirrorService` is transport-agnostic. `RemoteHermesTransport`
+/// for skills/jobs/sessions, dashboard `web_server` for filesystem and richer
+/// cron) so `HermesMirrorService` is transport-agnostic. `RemoteHermesTransport`
 /// serves BYO tenants over HTTP; `FilesystemHermesTransport` serves managed
 /// tenants from the shared PVC. Tests use `FakeHermesMirrorTransport`.
 protocol HermesMirrorTransport: Sendable {

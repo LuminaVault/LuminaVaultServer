@@ -77,18 +77,86 @@ struct GatewayOnlyMirrorTests {
         #expect(page.sessions.map(\.id) == ["s1"])
     }
 
-    /// Writes have no gateway equivalent — cron mutations and filesystem
-    /// access exist only on the dashboard. They must fail with the error that
-    /// names the real constraint, not look like a transport bug.
+    /// Filesystem access still lives on the dashboard. Job mutations do not —
+    /// `api_server` serves `/api/jobs` create/pause/resume/run/delete with the
+    /// gateway key the app already stores.
     @Test
-    func `dashboard-only operations fail with the auth-mode error`() async throws {
+    func `filesystem writes fail with the auth-mode error when there is no dashboard`() async throws {
         let transport = Self.transport(http: StubHermesHTTP())
         await #expect(throws: HermesMirrorTransportError.dashboardAuthModeUnsupported) {
             try await transport.mkdir(path: "/home/hermes/kb")
         }
         await #expect(throws: HermesMirrorTransportError.dashboardAuthModeUnsupported) {
-            try await transport.deleteJob(id: "digest")
+            try await transport.writeText(path: "/home/hermes/kb/note.md", content: "x")
         }
+    }
+
+    @Test
+    func `pause goes to the gateway api jobs route`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("POST", "/api/jobs/digest/pause", json: #"""
+        {"job":{"id":"digest","name":"Daily Digest","schedule":"0 9 * * *","prompt":"summarise","enabled":false}}
+        """#)
+        let job = try await Self.transport(http: http).pauseJob(id: "digest")
+        #expect(job.id == "digest")
+        #expect(job.paused)
+        #expect(http.requests.contains { $0.method == "POST" && $0.url.contains("/api/jobs/digest/pause") })
+    }
+
+    @Test
+    func `trigger maps to the gateway run action`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("POST", "/api/jobs/digest/run", json: #"""
+        {"job":{"id":"digest","name":"Daily Digest","schedule":"0 9 * * *","prompt":"summarise","enabled":true}}
+        """#)
+        let job = try await Self.transport(http: http).triggerJob(id: "digest")
+        #expect(job.id == "digest")
+        #expect(http.requests.contains { $0.method == "POST" && $0.url.contains("/api/jobs/digest/run") })
+    }
+
+    @Test
+    func `create posts the job body to the gateway`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("POST", "/api/jobs", json: #"""
+        {"job":{"id":"digest","name":"Daily Digest","schedule":"0 9 * * *","prompt":"summarise","enabled":true}}
+        """#)
+        let spec = HermesMirrorJobSpec(
+            name: "Daily Digest",
+            schedule: "0 9 * * *",
+            prompt: "summarise",
+            deliver: "local",
+            skills: []
+        )
+        let job = try await Self.transport(http: http).createJob(spec)
+        #expect(job.id == "digest")
+        let create = http.requests.first { recorded in
+            recorded.method == "POST" && URLComponents(string: recorded.url)?.path == "/api/jobs"
+        }
+        #expect(create?.body?.contains("Daily Digest") == true)
+    }
+
+    @Test
+    func `update patches flattened fields, not a dashboard updates wrapper`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("PATCH", "/api/jobs/digest", json: #"""
+        {"job":{"id":"digest","name":"Evening Digest","schedule":"0 18 * * *","prompt":"summarise","enabled":true}}
+        """#)
+        let job = try await Self.transport(http: http).updateJob(
+            id: "digest",
+            updates: HermesMirrorJobUpdate(name: "Evening Digest", schedule: "0 18 * * *")
+        )
+        #expect(job.name == "Evening Digest")
+        let patch = http.requests.first { $0.method == "PATCH" }
+        #expect(patch?.body?.contains("\"updates\"") != true)
+        #expect(patch?.body?.contains("Evening Digest") == true)
+    }
+
+    @Test
+    func `delete hits the gateway and succeeds without a dashboard`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("DELETE", "/api/jobs/digest", json: #"{"ok":true}"#)
+        try await Self.transport(http: http).deleteJob(id: "digest")
+        #expect(http.requests.contains { $0.method == "DELETE" && $0.url.contains("/api/jobs/digest") })
     }
 
     /// Reachability should reflect the gateway we do have rather than

@@ -5,16 +5,26 @@ import Logging
 import LuminaVaultShared
 import ServiceLifecycle
 
+/// Wake the refresh worker for one tenant (gateway just saved). Implementations
+/// must not block the caller on the upstream sync — enqueue and return.
+protocol HermesMirrorNudging: Sendable {
+    func enqueue(tenantID: UUID) async
+}
+
 /// Hermes Mirror — keeps every linked Hermes fresh in the background.
 ///
 /// Every `tickInterval` (15 min) it walks `user_hermes_config` rows that have
-/// a dashboard URL, keyset-paginated by id in pages of `pageSize` (no
-/// `User.query().all()`), and for each tenant runs a skills + jobs sync and
-/// continues any capped vault import left behind by a request. Tenants are
-/// processed with bounded concurrency, a per-tenant time budget, and full
-/// failure isolation — one broken Hermes never stalls the others. A small
-/// start jitter keeps replicas from ticking in lockstep.
-actor HermesMirrorRefreshWorker: Service {
+/// a dashboard URL **or** a gateway base URL, keyset-paginated by id in pages
+/// of `pageSize` (no `User.query().all()`), and for each tenant runs a skills
+/// + jobs sync and continues any capped vault import left behind by a request.
+/// Tenants are processed with bounded concurrency, a per-tenant time budget,
+/// and full failure isolation — one broken Hermes never stalls the others. A
+/// small start jitter keeps replicas from ticking in lockstep.
+///
+/// `enqueue` is the connect-time path: saving a BYO gateway must not wait 15
+/// minutes (or a 15 s dial) on the HTTP response. The run loop wakes within
+/// `nudgeSlice` and refreshes that tenant first.
+actor HermesMirrorRefreshWorker: Service, HermesMirrorNudging {
     private let fluent: Fluent
     private let service: HermesMirrorService
     private let logger: Logger
@@ -23,6 +33,8 @@ actor HermesMirrorRefreshWorker: Service {
     private let maxConcurrent: Int
     private let perTenantBudget: Duration
     private let maxJitter: Duration
+    private let nudgeSlice: Duration
+    private var pending: [UUID] = []
 
     init(
         fluent: Fluent,
@@ -32,7 +44,8 @@ actor HermesMirrorRefreshWorker: Service {
         pageSize: Int = 100,
         maxConcurrent: Int = 4,
         perTenantBudget: Duration = .seconds(60),
-        maxJitter: Duration = .seconds(30)
+        maxJitter: Duration = .seconds(30),
+        nudgeSlice: Duration = .seconds(5)
     ) {
         self.fluent = fluent
         self.service = service
@@ -42,12 +55,28 @@ actor HermesMirrorRefreshWorker: Service {
         self.maxConcurrent = max(1, maxConcurrent)
         self.perTenantBudget = perTenantBudget
         self.maxJitter = maxJitter
+        self.nudgeSlice = nudgeSlice
+    }
+
+    func enqueue(tenantID: UUID) async {
+        if !pending.contains(tenantID) {
+            pending.append(tenantID)
+        }
+    }
+
+    /// Visible to tests: tenants waiting for a connect-time refresh.
+    func pendingTenantIDs() -> [UUID] {
+        pending
     }
 
     func run() async throws {
         logger.info("hermes.mirror.worker started", metadata: ["tick": "\(tickInterval)"])
         try? await Task.sleep(for: Self.jitter(upTo: maxJitter))
         while !Task.isCancelled {
+            let nudged = takePending()
+            for tenantID in nudged {
+                _ = await Self.refresh(tenantID: tenantID, service: service, budget: perTenantBudget, logger: logger)
+            }
             do {
                 let summary = try await tick()
                 if summary.processed > 0 {
@@ -58,8 +87,18 @@ actor HermesMirrorRefreshWorker: Service {
             } catch {
                 logger.warning("hermes.mirror.worker tick error: \(HermesMirrorService.describe(error))")
             }
-            try? await Task.sleep(for: tickInterval)
+            let deadline = ContinuousClock.now + tickInterval
+            while ContinuousClock.now < deadline, !Task.isCancelled {
+                if !pending.isEmpty { break }
+                try? await Task.sleep(for: nudgeSlice)
+            }
         }
+    }
+
+    private func takePending() -> [UUID] {
+        let ids = pending
+        pending.removeAll()
+        return ids
     }
 
     struct TickSummary: Sendable, Equatable {
@@ -170,6 +209,13 @@ actor HermesMirrorRefreshWorker: Service {
                             "tenant": .string(tenantID.uuidString),
                             "jobs": "\(collected.jobs)", "runs": "\(collected.inserted)",
                             "files": "\(collected.filesWritten)", "failed": "\(collected.failed)",
+                        ])
+                    }
+                    let artifacts = try await service.collectArtifacts(tenantID: tenantID)
+                    if artifacts > 0 {
+                        logger.info("hermes.mirror.worker artifacts", metadata: [
+                            "tenant": .string(tenantID.uuidString),
+                            "inserted": "\(artifacts)",
                         ])
                     }
                     if try await service.hasPendingVaultImport(tenantID: tenantID) {
