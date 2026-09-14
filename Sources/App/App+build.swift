@@ -517,6 +517,21 @@ func buildRouter(
     if let rateLimitStorageService = rateLimitStorageSelection.service {
         managedServices.append(rateLimitStorageService)
     }
+
+    // HER-330 — semantic-search hit-count bumps. The queue existed but was
+    // never constructed, so every search took the unstructured fallback
+    // instead. Built once and shared, and registered as a service so the
+    // pending UPDATEs drain on shutdown rather than racing it.
+    let memoryHitCountUpdates = MemoryHitCountUpdateQueue(fluent: services.fluent)
+    if fluentEnabled {
+        managedServices.append(memoryHitCountUpdates)
+    }
+    /// Every repository that runs semantic search shares the one queue.
+    func makeMemoryRepository() -> MemoryRepository {
+        var repository = MemoryRepository(fluent: services.fluent)
+        repository.hitCountUpdates = memoryHitCountUpdates
+        return repository
+    }
     AuthController(
         service: authService,
         oauthProviders: oauthProviders,
@@ -1715,7 +1730,7 @@ func buildRouter(
     )
     let visionEmbedController = VisionEmbedController(
         service: visionEmbedService,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         logger: visionEmbedLogger
     )
     let visionEmbedGroup = router.group("/v1/vision")
@@ -1734,7 +1749,7 @@ func buildRouter(
     managedServices.append(meTodayCache)
     let meTodayService = MeTodayService(
         fluent: services.fluent,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         achievements: achievementsService,
         spaces: SpacesService(fluent: services.fluent, vaultPaths: vaultPaths, logger: Logger(label: "lv.spaces.metoday")),
         catalog: .current,
@@ -1869,14 +1884,14 @@ func buildRouter(
         links: vaultLinkRepository
     )
     let hybridMemorySearch = HybridMemorySearch(
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         chunks: chunkRepository,
         logger: Logger(label: "lv.memory.search")
     )
 
     let memoryService = HermesMemoryService(
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         eventBus: eventBus,
@@ -1888,7 +1903,7 @@ func buildRouter(
     let memoryController = MemoryController(
         vaultAccess: vaultAccessService,
         service: memoryService,
-        repository: MemoryRepository(fluent: services.fluent),
+        repository: makeMemoryRepository(),
         embeddings: embeddingService,
         achievements: achievementsWorker,
         graphService: MemoryGraphService(fluent: services.fluent),
@@ -1957,7 +1972,7 @@ func buildRouter(
         jinaEnricher: jinaEnricher,
         captureHooks: captureHookDispatcher,
         embeddings: embeddingService,
-        memories: MemoryRepository(fluent: services.fluent)
+        memories: makeMemoryRepository()
     )
     let linkCaptureService = LinkCaptureService(
         vaultPaths: vaultPaths,
@@ -2008,7 +2023,7 @@ func buildRouter(
     let queryController = QueryController(
         service: memoryService,
         achievements: achievementsWorker,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         streamService: queryStreamService,
         followUpGenerator: followUpGenerator,
@@ -2048,7 +2063,7 @@ func buildRouter(
     // scope because managed turns hit the gateway.
     let conversationController = ConversationController(
         fluent: services.fluent,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         streamService: conversationStreamService,
         followUpGenerator: followUpGenerator,
@@ -2100,7 +2115,7 @@ func buildRouter(
     // Memo generator (read-only agent loop → markdown synthesis → vault save).
     let memoGenerator = MemoGeneratorService(
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         vaultPaths: vaultPaths,
         fluent: services.fluent,
@@ -2153,7 +2168,7 @@ func buildRouter(
         eventBus: eventBus,
         achievements: achievementsWorker,
         logger: Logger(label: "lv.vault"),
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         vaultAccess: vaultAccessService
     )
@@ -2266,7 +2281,7 @@ func buildRouter(
     let memoryCompileService = MemoryCompileService(
         vaultPaths: vaultPaths,
         transport: kbCompileTransportOverride ?? routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.memory-compile"),
@@ -2408,7 +2423,7 @@ func buildRouter(
             ),
             model: services.hermesDefaultModel
         ),
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         push: pushService,
         logger: Logger(label: "lv.ingestion"),
@@ -2458,7 +2473,7 @@ func buildRouter(
             fluent: services.fluent,
             vaultPaths: vaultPaths,
             spaces: spacesService,
-            memories: MemoryRepository(fluent: services.fluent),
+            memories: makeMemoryRepository(),
             embeddings: embeddingService,
             logger: Logger(label: "lv.import.vault"),
             chunkIndexer: chunkIndexer
@@ -2556,7 +2571,7 @@ func buildRouter(
                     fluent: services.fluent,
                     vaultPaths: vaultPaths,
                     spaces: spacesService,
-                    memories: MemoryRepository(fluent: services.fluent),
+                    memories: makeMemoryRepository(),
                     embeddings: embeddingService,
                     logger: Logger(label: "lv.hermes-mirror.ingest"),
                     chunkIndexer: chunkIndexer
@@ -2745,7 +2760,7 @@ func buildRouter(
     let todosController = TodosController(
         fluent: services.fluent,
         vaultPaths: vaultPaths,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         logger: Logger(label: "lv.todos")
     )
@@ -2758,7 +2773,7 @@ func buildRouter(
     if reader.string(forKey: "synthesis.workerEnabled", default: "false").lowercased() == "true" {
         let synthesisWorker = SynthesisWorker(
             fluent: services.fluent,
-            memories: MemoryRepository(fluent: services.fluent),
+            memories: makeMemoryRepository(),
             transport: routedTransport,
             defaultModel: services.hermesDefaultModel,
             logger: Logger(label: "lv.synthesis")
@@ -2935,7 +2950,7 @@ func buildRouter(
         transport: routedTransport,
         fluent: services.fluent,
         embeddings: embeddingService,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         defaultModel: services.hermesDefaultModel,
         logger: Logger(label: "lv.health-correlate")
     )
@@ -3164,7 +3179,7 @@ func buildRouter(
         transport: routedTransport,
         store: parallelStore,
         fluent: services.fluent,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         enabled: cerberusParallelEnabled,
         llmPreferences: userLLMPreferenceRepo
@@ -3250,7 +3265,7 @@ func buildRouter(
     let skillRunner = SkillRunner(
         catalog: skillCatalog,
         transport: routedTransport,
-        memories: MemoryRepository(fluent: services.fluent),
+        memories: makeMemoryRepository(),
         embeddings: embeddingService,
         apns: pushService,
         defaultModel: services.hermesDefaultModel,

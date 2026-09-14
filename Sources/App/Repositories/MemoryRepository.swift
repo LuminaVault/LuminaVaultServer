@@ -190,10 +190,12 @@ struct MemoryRepository {
     }
 
     /// Tenant-direct semantic search.
-    /// HER-147 — fires a fire-and-forget bump to `query_hit_count` +
-    /// `last_accessed_at` for the returned IDs. Search latency is the
-    /// hot path; the bump is wrapped in `Task.detached` so a slow
-    /// counter UPDATE never blocks the user-visible response.
+    /// HER-147 — bumps `query_hit_count` + `last_accessed_at` for the
+    /// returned IDs. Search latency is the hot path, so the bump goes
+    /// through `MemoryHitCountUpdateQueue`, which coalesces it and drains
+    /// on shutdown. HER-330 removed the `Task.detached` this used to use:
+    /// it kept a `Fluent` alive past the request and crashed the process
+    /// when the database went away underneath it.
     func semanticSearch(
         tenantID: UUID,
         queryEmbedding: [Float],
@@ -241,10 +243,13 @@ struct MemoryRepository {
                 // its own lifecycle, so search never blocks on the UPDATE.
                 await hitCountUpdates.enqueue(ids: hitIDs)
             } else {
-                let fluent = fluent
-                Task.detached { [hitIDs] in
-                    try? await MemoryRepository.bumpQueryHits(fluent: fluent, ids: hitIDs)
-                }
+                // HER-330: this used to be `Task.detached`, which outlived the
+                // request holding a `Fluent`. After `app.test` tore the
+                // database down the bump landed anyway, `fluent.db()` tripped
+                // an assertion, and the crash killed the test binary. Awaiting
+                // costs one small UPDATE on callers that have no queue wired;
+                // a detached task that can abort the process does not.
+                try? await MemoryRepository.bumpQueryHits(fluent: fluent, ids: hitIDs)
             }
         }
 
