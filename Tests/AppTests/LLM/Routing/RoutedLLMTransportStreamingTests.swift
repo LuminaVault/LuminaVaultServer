@@ -268,4 +268,93 @@ struct RoutedLLMTransportStreamingTests {
             }
         }
     }
+
+    @Test
+    func `BYOK stream pins the preference model when Cerberus advertised Hermes`() async throws {
+        try await Self.withBYOKHarness { user, preferences in
+            let adapter = StreamingStubAdapter()
+            let tenantID = try user.requireID()
+            let advertised = RouterModelRouteDTO(provider: .openRouter, model: "hermes-3")
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [adapter], logger: Logger(label: "test.routed-streaming")),
+                router: FixedDecisionRouter(decision: RouteDecision(
+                    primary: ModelRoute(provider: .hermesGateway, modelID: "hermes-3"),
+                    fallbacks: [],
+                    cerberus: CerberusDecisionMetadata(
+                        executionID: UUID(),
+                        tenantID: tenantID,
+                        vaultID: tenantID,
+                        actorUserID: tenantID,
+                        profileID: UUID(),
+                        profileName: "BYO Hermes",
+                        ruleID: nil,
+                        taskType: .general,
+                        surface: .chat,
+                        spaceID: nil,
+                        conversationID: nil,
+                        strategy: .sequential,
+                        parallelStrategy: nil,
+                        participants: nil,
+                        routes: [advertised],
+                        synthesisRoute: nil,
+                        minimumSuccessfulResults: 1,
+                        retryPolicy: .fast,
+                        predictedCostUsdMicros: 0,
+                        budgetReservationUsdMicros: 0,
+                        budgetDenied: false,
+                        mode: .byok,
+                        routingPolicy: .locked,
+                        deferredToHermes: true
+                    ),
+                    credentialMode: .byok
+                )),
+                currentUser: { user },
+                logger: Logger(label: "test.routed-streaming")
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: FailingManagedFallback(),
+                transport: transport,
+                preferences: preferences,
+                logger: Logger(label: "test.routed-streaming")
+            )
+            let events = RoutingCapture()
+            let chunks = try await LLMRoutingContext.withValues({
+                $0.cerberusSink = { events.append($0) }
+                $0.currentUser = user
+            }) {
+                try await Self.collect(service.chatStream(
+                    sessionKey: tenantID.uuidString,
+                    sessionID: "conversation-1",
+                    request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+                ))
+            }
+
+            #expect(!chunks.isEmpty)
+            #expect(chunks.contains { !$0.delta.isEmpty })
+            let routing = try #require(events.routing.first)
+            #expect(routing.activeRoutes == [RouterModelRouteDTO(provider: .openai, model: "gpt-stream")])
+            #expect(routing.profileName == "BYO Hermes")
+            let captured = try #require(await adapter.calls.first)
+            let payload = try #require(try JSONSerialization.jsonObject(with: captured) as? [String: Any])
+            #expect(payload["model"] as? String == "gpt-stream")
+        }
+    }
+}
+
+private final class RoutingCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [QueryStreamEvent] = []
+
+    var routing: [RouterRoutingEventDTO] {
+        lock.withLock {
+            events.compactMap { event in
+                guard case let .routing(routing) = event else { return nil }
+                return routing
+            }
+        }
+    }
+
+    func append(_ event: QueryStreamEvent) {
+        lock.withLock { events.append(event) }
+    }
 }

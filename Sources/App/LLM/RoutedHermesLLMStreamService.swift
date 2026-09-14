@@ -81,20 +81,39 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                         continuation.yield(chunk)
                     }
                     continuation.finish()
-                } else if let model = await byokModel(sessionKey: sessionKey) {
+                } else if let selection = await byokSelection(sessionKey: sessionKey) {
                     byokCounter.increment()
-                    logger.info("chat stream routed to BYOK provider", metadata: ["model": .string(model)])
-                    let payload = try Self.makeOpenAIPayload(model: model, request: request)
-                    // P2 — true per-token streaming. RoutedLLMTransport walks
-                    // the user's fallback chain and only fails over before
-                    // the first token; adapters without native streaming
-                    // fall back to a single terminal chunk (old behaviour).
-                    for try await chunk in transport.chatStream(
-                        payload: payload,
-                        sessionKey: sessionKey,
-                        sessionID: sessionID
-                    ) {
-                        continuation.yield(chunk)
+                    logger.info("chat stream routed to BYOK provider", metadata: [
+                        "model": .string(selection.model),
+                        "provider": .string(selection.provider.rawValue),
+                    ])
+                    let payload = try Self.makeOpenAIPayload(model: selection.model, request: request)
+                    // Pin the BYOK primary so Cerberus cannot advertise a
+                    // Hermes/OpenRouter route while the transport spends the
+                    // tenant's own key. RoutedLLMTransport walks the fallback
+                    // chain and only fails over before the first token.
+                    let runStream = {
+                        transport.chatStream(
+                            payload: payload,
+                            sessionKey: sessionKey,
+                            sessionID: sessionID
+                        )
+                    }
+                    if let provider = selection.provider.toShared() {
+                        try await LLMRoutingContext.withValues({
+                            $0.forcedRoute = RouterModelRouteDTO(
+                                provider: provider,
+                                model: selection.model
+                            )
+                        }) {
+                            for try await chunk in runStream() {
+                                continuation.yield(chunk)
+                            }
+                        }
+                    } else {
+                        for try await chunk in runStream() {
+                            continuation.yield(chunk)
+                        }
                     }
                     continuation.finish()
                 } else {
@@ -251,30 +270,37 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
 
     // MARK: - Resolution
 
-    /// Returns the tenant's BYOK primary model id when they are in BYOK mode,
-    /// else nil (→ caller delegates to the managed gateway). The actual key +
-    /// provider routing is resolved downstream by `RoutedLLMTransport` /
-    /// `UserPreferenceModelRouter` via `LLMRoutingContext.currentUser`.
-    private func byokModel(sessionKey: String) async -> String? {
+    private struct BYOKSelection {
+        let provider: ProviderKind
+        let model: String
+    }
+
+    /// Returns the tenant's BYOK primary when they are in BYOK mode,
+    /// else nil (→ caller delegates to the managed gateway). The actual key
+    /// is resolved downstream by `RoutedLLMTransport` via
+    /// `LLMRoutingContext.currentUser`.
+    private func byokSelection(sessionKey: String) async -> BYOKSelection? {
         guard
             let tenantID = UUID(uuidString: sessionKey),
             let pref = try? await preferences.get(tenantID: tenantID),
             pref.mode == .byok
         else { return nil }
-        guard pref.primaryModel.isEmpty else { return pref.primaryModel }
-        // A BYOK tenant with no model selected falls through to the managed
-        // gateway — which means the turn runs on the PLATFORM's system key
-        // while the user believes they are on their own. That is silent
-        // mis-billing, and it was previously invisible.
-        //
-        // Kept as a fallback rather than a hard failure so nobody's chat breaks
-        // mid-session, but it is now loud. Whether this should fail closed (and
-        // force the user to pick a model) is a product call, not a code one.
-        logger.warning("byok tenant has no primary model — falling back to the MANAGED gateway key", metadata: [
-            "tenant": .string(sessionKey),
-            "billing": .string("managed_key_used_for_byok_tenant"),
-        ])
-        return nil
+        guard !pref.primaryModel.isEmpty else {
+            // A BYOK tenant with no model selected falls through to the managed
+            // gateway — which means the turn runs on the PLATFORM's system key
+            // while the user believes they are on their own. That is silent
+            // mis-billing, and it was previously invisible.
+            //
+            // Kept as a fallback rather than a hard failure so nobody's chat breaks
+            // mid-session, but it is now loud. Whether this should fail closed (and
+            // force the user to pick a model) is a product call, not a code one.
+            logger.warning("byok tenant has no primary model — falling back to the MANAGED gateway key", metadata: [
+                "tenant": .string(sessionKey),
+                "billing": .string("managed_key_used_for_byok_tenant"),
+            ])
+            return nil
+        }
+        return BYOKSelection(provider: pref.primaryProvider, model: pref.primaryModel)
     }
 
     /// Encode an OpenAI-style chat payload from a `ChatRequest`, overriding the

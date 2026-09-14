@@ -1,6 +1,7 @@
 @testable import App
 import Foundation
 import Logging
+import LuminaVaultShared
 import Testing
 
 /// HER-165/HER-161 — failover behaviour of `RoutedLLMTransport`.
@@ -234,5 +235,135 @@ struct RoutedLLMTransportTests {
         let captured = await primary.calls.first
         let dict = try #require(captured.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
         #expect(dict["model"] as? String == "hermes-3-large")
+    }
+
+    @Test
+    func `wireRoutes prefers the dispatched BYOK candidate over a Hermes advertisement`() {
+        let advertised = [RouterModelRouteDTO(provider: .openRouter, model: "hermes-3")]
+        let actual = RoutedLLMTransport.wireRoutes(
+            [ModelRoute(provider: .xai, modelID: "grok-4.3")],
+            advertised: advertised
+        )
+        #expect(actual == [RouterModelRouteDTO(provider: .xai, model: "grok-4.3")])
+    }
+
+    @Test
+    func `wireRoutes keeps the Hermes advertisement when the candidate has no wire provider`() {
+        let advertised = [RouterModelRouteDTO(provider: .openRouter, model: "hermes-3")]
+        let actual = RoutedLLMTransport.wireRoutes(
+            [ModelRoute(provider: .hermesGateway, modelID: "hermes-3")],
+            advertised: advertised
+        )
+        #expect(actual == advertised)
+    }
+
+    @Test
+    func `forced BYOK route keeps Cerberus metadata but replaces the primary`() {
+        let advertised = RouterModelRouteDTO(provider: .openRouter, model: "hermes-3")
+        let decision = RouteDecision(
+            primary: ModelRoute(provider: .hermesGateway, modelID: "hermes-3"),
+            fallbacks: [],
+            cerberus: Self.byoHermesMetadata(routes: [advertised]),
+            credentialMode: .byok
+        )
+        let forced = RouterModelRouteDTO(provider: .xai, model: "grok-4.3")
+        let out = LLMRoutingContext.withValues({ $0.forcedRoute = forced }) {
+            RoutedLLMTransport.applyingForcedRoute(decision)
+        }
+        #expect(out.primary.provider == .xai)
+        #expect(out.primary.modelID == "grok-4.3")
+        #expect(out.fallbacks.isEmpty)
+        #expect(out.cerberus?.profileName == "BYO Hermes")
+        #expect(out.credentialMode == .byok)
+    }
+
+    @Test
+    func `streaming routing SSE reports the forced BYOK model not the Hermes advertisement`() async throws {
+        let adapter = StubAdapter(
+            kind: .xai,
+            outcomes: [.success(Data(#"{"choices":[{"message":{"role":"assistant","content":"ok"}}]}"#.utf8))]
+        )
+        let advertised = RouterModelRouteDTO(provider: .openRouter, model: "hermes-3")
+        let transport = RoutedLLMTransport(
+            registry: ProviderRegistry(adapters: [adapter], logger: Logger(label: "test")),
+            router: FixedRouter(decision: RouteDecision(
+                primary: ModelRoute(provider: .hermesGateway, modelID: "hermes-3"),
+                fallbacks: [],
+                cerberus: Self.byoHermesMetadata(routes: [advertised]),
+                credentialMode: .byok
+            )),
+            logger: Logger(label: "test")
+        )
+        let events = RoutingEventBox()
+        let forced = RouterModelRouteDTO(provider: .xai, model: "grok-4.3")
+        var chunks: [ChatStreamChunk] = []
+        try await LLMRoutingContext.withValues({
+            $0.forcedRoute = forced
+            $0.cerberusSink = { events.append($0) }
+        }) {
+            for try await chunk in transport.chatStream(
+                payload: Self.payload(model: "grok-4.3"),
+                sessionKey: "alice",
+                sessionID: nil
+            ) {
+                chunks.append(chunk)
+            }
+        }
+
+        #expect(!chunks.isEmpty)
+        let routing = try #require(events.routing.first)
+        #expect(routing.activeRoutes == [RouterModelRouteDTO(provider: .xai, model: "grok-4.3")])
+        #expect(routing.profileName == "BYO Hermes")
+        let captured = try #require(await adapter.calls.first)
+        let dict = try #require(try JSONSerialization.jsonObject(with: captured) as? [String: Any])
+        #expect(dict["model"] as? String == "grok-4.3")
+    }
+
+    private static func byoHermesMetadata(routes: [RouterModelRouteDTO]) -> CerberusDecisionMetadata {
+        let tenantID = UUID()
+        return CerberusDecisionMetadata(
+            executionID: UUID(),
+            tenantID: tenantID,
+            vaultID: tenantID,
+            actorUserID: tenantID,
+            profileID: UUID(),
+            profileName: "BYO Hermes",
+            ruleID: nil,
+            taskType: .general,
+            surface: .chat,
+            spaceID: nil,
+            conversationID: nil,
+            strategy: .sequential,
+            parallelStrategy: nil,
+            participants: nil,
+            routes: routes,
+            synthesisRoute: nil,
+            minimumSuccessfulResults: 1,
+            retryPolicy: .fast,
+            predictedCostUsdMicros: 0,
+            budgetReservationUsdMicros: 0,
+            budgetDenied: false,
+            mode: .byok,
+            routingPolicy: .locked,
+            deferredToHermes: true
+        )
+    }
+}
+
+private final class RoutingEventBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [QueryStreamEvent] = []
+
+    var routing: [RouterRoutingEventDTO] {
+        lock.withLock {
+            events.compactMap { event in
+                guard case let .routing(routing) = event else { return nil }
+                return routing
+            }
+        }
+    }
+
+    func append(_ event: QueryStreamEvent) {
+        lock.withLock { events.append(event) }
     }
 }

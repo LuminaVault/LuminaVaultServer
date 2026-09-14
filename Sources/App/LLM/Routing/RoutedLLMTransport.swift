@@ -80,24 +80,9 @@ struct RoutedLLMTransport: HermesChatTransport {
     }
 
     func chatCompletionsWithMetadata(payload: Data, sessionKey: String, sessionID: String?) async throws -> HermesChatTransportMetadata {
-        let requestedModel = Self.extractModel(from: payload)
         let user = await currentUser()
         let prompt = Self.extractLatestUserPrompt(from: payload)
-        var decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
-            await router.pick(forModel: requestedModel, capability: capability, user: user)
-        }
-        if let forced = LLMRoutingContext.forcedRoute,
-           let provider = ProviderKind(shared: forced.provider)
-        {
-            decision = RouteDecision(
-                primary: ModelRoute(provider: provider, modelID: forced.model),
-                fallbacks: [],
-                // Preserve who pays. Dropping this would reset the request to
-                // "no declared intent" — i.e. managed — and let an "Ask another
-                // model" turn from a BYOK user spend the platform key.
-                credentialMode: decision.credentialMode ?? decision.cerberus?.mode
-            )
-        }
+        let decision = await pickDecision(payload: payload, user: user)
         if let cerberus = decision.cerberus {
             if cerberus.byokKeysRequired {
                 throw BYOKKeysRequiredError()
@@ -106,7 +91,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 throw FreeLaneExhaustedError(retryAfterSeconds: cerberus.freeLaneRetryAfterSeconds)
             }
             guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
-            publishRouting(cerberus, phase: .selected, routes: cerberus.routes)
+            publishSelectedRoute(decision)
         }
         let started = DispatchTime.now().uptimeNanoseconds
         var fallbackCount = 0
@@ -388,22 +373,9 @@ struct RoutedLLMTransport: HermesChatTransport {
     func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
-            let requestedModel = Self.extractModel(from: payload)
             let user = await currentUser()
             let prompt = Self.extractLatestUserPrompt(from: payload)
-            var decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
-                await router.pick(forModel: requestedModel, capability: capability, user: user)
-            }
-            if let forced = LLMRoutingContext.forcedRoute,
-               let provider = ProviderKind(shared: forced.provider)
-            {
-                decision = RouteDecision(
-                    primary: ModelRoute(provider: provider, modelID: forced.model),
-                    fallbacks: [],
-                    // Preserve who pays — see the buffered path.
-                    credentialMode: decision.credentialMode ?? decision.cerberus?.mode
-                )
-            }
+            let decision = await pickDecision(payload: payload, user: user)
             if let cerberus = decision.cerberus {
                 if cerberus.byokKeysRequired {
                     continuation.finish(throwing: BYOKKeysRequiredError())
@@ -419,7 +391,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                     continuation.finish(throwing: UsageCapExceededError(retryAfter: 3600))
                     return
                 }
-                publishRouting(cerberus, phase: .selected, routes: cerberus.routes)
+                publishSelectedRoute(decision)
             }
             let started = DispatchTime.now().uptimeNanoseconds
             var outputCharacters = 0
@@ -668,6 +640,57 @@ struct RoutedLLMTransport: HermesChatTransport {
     }
 
     // MARK: - Helpers
+
+    /// Pick, then overlay `forcedRoute` if the caller pinned an exact model
+    /// (BYOK primary, or “Ask another model”). Cerberus metadata is kept so
+    /// budget / telemetry still attach; the published SSE routes come from
+    /// the candidate that will actually be dispatched.
+    private func pickDecision(payload: Data, user: User?) async -> RouteDecision {
+        let requestedModel = Self.extractModel(from: payload)
+        let prompt = Self.extractLatestUserPrompt(from: payload)
+        let picked = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
+            await router.pick(forModel: requestedModel, capability: capability, user: user)
+        }
+        return Self.applyingForcedRoute(picked)
+    }
+
+    static func applyingForcedRoute(_ decision: RouteDecision) -> RouteDecision {
+        guard let forced = LLMRoutingContext.forcedRoute,
+              let provider = ProviderKind(shared: forced.provider)
+        else { return decision }
+        return RouteDecision(
+            primary: ModelRoute(provider: provider, modelID: forced.model),
+            fallbacks: [],
+            cerberus: decision.cerberus,
+            // Preserve who pays. Dropping this would reset the request to
+            // "no declared intent" — i.e. managed — and let an "Ask another
+            // model" turn from a BYOK user spend the platform key.
+            credentialMode: decision.credentialMode ?? decision.cerberus?.mode
+        )
+    }
+
+    /// Prefer the concrete candidate list over Cerberus's advertised routes.
+    /// `hermesGateway` has no `ProviderID`, so a pure-Hermes decision still
+    /// falls back to the advertisement rather than publishing an empty list.
+    static func wireRoutes(
+        _ candidates: [ModelRoute],
+        advertised: [RouterModelRouteDTO]
+    ) -> [RouterModelRouteDTO] {
+        let actual = candidates.compactMap { route -> RouterModelRouteDTO? in
+            guard let provider = route.provider.toShared() else { return nil }
+            return RouterModelRouteDTO(provider: provider, model: route.modelID)
+        }
+        return actual.isEmpty ? advertised : actual
+    }
+
+    private func publishSelectedRoute(_ decision: RouteDecision) {
+        guard let cerberus = decision.cerberus else { return }
+        publishRouting(
+            cerberus,
+            phase: .selected,
+            routes: Self.wireRoutes(decision.candidates, advertised: cerberus.routes)
+        )
+    }
 
     /// Cheap best-effort pull of the `model` field from the chat-completions
     /// JSON payload. Used as a hint for the router; nil if unparseable.
