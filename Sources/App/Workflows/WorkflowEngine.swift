@@ -343,17 +343,18 @@ actor WorkflowEngine: Service {
                         workflowID: workflowID,
                         conversationID: run.conversationID
                     ) }) {
-                        try await LLMRoutingContext.withValues({ $0.credentialMode = mode }) {
-                            try await LLMRoutingContext.withValues({ $0.forcedRoute = forcedRoute }) {
-                                try await LLMRoutingContext.withValues({ $0.routeOutcomeSink = { route in
-                                    routeCapture.record(route)
-                                } }) {
-                                    try await transport.chatCompletions(
-                                        payload: payload,
-                                        sessionKey: run.tenantID.uuidString,
-                                        sessionID: run.conversationID?.uuidString
-                                    )
-                                }
+                        try await LLMRoutingContext.withValues {
+                            $0.credentialMode = mode
+                            $0.forcedRoute = forcedRoute
+                        } operation: {
+                            try await LLMRoutingContext.withValues({ $0.routeOutcomeSink = { route in
+                                routeCapture.record(route)
+                            } }) {
+                                try await transport.chatCompletions(
+                                    payload: payload,
+                                    sessionKey: run.tenantID.uuidString,
+                                    sessionID: run.conversationID?.uuidString
+                                )
                             }
                         }
                     }

@@ -487,14 +487,15 @@ actor SkillRunner {
                 stream: false
             )
             let payload = try JSONEncoder().encode(body)
-            let metadata = try await LLMRoutingContext.withValues({ $0.currentUser = routingUser }) {
-                try await LLMRoutingContext.withValues({ $0.cerberusScope = routingScope }) {
-                    try await transport.chatCompletionsWithMetadata(
-                        payload: payload,
-                        sessionKey: tenantID.uuidString,
-                        sessionID: nil
-                    )
-                }
+            let metadata = try await LLMRoutingContext.withValues {
+                $0.currentUser = routingUser
+                $0.cerberusScope = routingScope
+            } operation: {
+                try await transport.chatCompletionsWithMetadata(
+                    payload: payload,
+                    sessionKey: tenantID.uuidString,
+                    sessionID: nil
+                )
             }
             let response = try JSONDecoder().decode(ChatResponseBody.self, from: metadata.data)
             modelUsed = response.model

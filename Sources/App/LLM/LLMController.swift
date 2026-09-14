@@ -123,14 +123,15 @@ struct LLMController {
                 try await LLMRoutingContext.withValues({ $0.cerberusPrompt =
                         finalBody.messages.last { $0.role == "user" }?.content ?? ""
                 }) {
-                    try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
-                        try await LLMRoutingContext.withValues({ $0.currentResolution = hermesResolution }) {
-                            try await service.chat(
-                                sessionKey: userID.uuidString,
-                                sessionID: finalBody.sessionID,
-                                request: finalBody
-                            )
-                        }
+                    try await LLMRoutingContext.withValues {
+                        $0.currentUser = user
+                        $0.currentResolution = hermesResolution
+                    } operation: {
+                        try await service.chat(
+                            sessionKey: userID.uuidString,
+                            sessionID: finalBody.sessionID,
+                            request: finalBody
+                        )
                     }
                 }
             }

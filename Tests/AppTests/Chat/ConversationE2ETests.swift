@@ -8,11 +8,9 @@ import Testing
 
 /// HER-37 — end-to-end tests for the multi-turn chat surface.
 /// Drives `app.test(.router)` so a real JWT walks through the full
-/// middleware chain. The streaming endpoint's LLM hop is NOT exercised
-/// here (would require a stub HermesLLMStreamService injection point);
-/// these tests cover CRUD + validation + auth + the wire shape of the
-/// stream response on error paths. Requires `docker compose up -d
-/// postgres`.
+/// middleware chain. CRUD, validation, auth, and — since HER-330 — the
+/// streaming path actually running, via `dbTestReaderWithStubChat`.
+/// Requires `docker compose up -d postgres`.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct ConversationE2ETests {
     // MARK: - Helpers
@@ -226,6 +224,45 @@ struct ConversationE2ETests {
                 headers: Self.auth(token),
                 body: ByteBuffer(string: #"{"content":"   "}"#)
             ) { resp in #expect(resp.status == .badRequest) }
+        }
+    }
+
+    /// HER-330 — drives a stream that actually reaches the routing block.
+    ///
+    /// The two tests below stop at 400/404, which return before
+    /// `streamReply` ever starts its `Task` — so nothing exercised the part
+    /// that mattered. Binding ten `@TaskLocal`s there segfaulted the whole
+    /// process on every real chat message, in production, for as long as
+    /// anyone had been sending them, and CI stayed green throughout.
+    ///
+    /// This asserts little about the reply, deliberately: the stub provider
+    /// has no native streaming, so the body may carry an error event rather
+    /// than tokens. What it proves is that the routing block runs and the
+    /// process survives it. A segfault here takes the test binary with it,
+    /// which is exactly the signal that was missing.
+    @Test
+    func `POST messages-stream runs the routing block without crashing`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderWithStubChat())
+        try await app.test(.router) { client in
+            let token = try await Self.registerUser(client: client)
+            let convo: ConversationDTO = try await client.execute(
+                uri: "/v1/conversations",
+                method: .post,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: #"{"title":"stream"}"#)
+            ) { try Self.decodeConversation($0.body) }
+
+            try await client.execute(
+                uri: "/v1/conversations/\(convo.id)/messages/stream",
+                method: .post,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: #"{"content":"hello"}"#)
+            ) { resp in
+                // `streamReply` answers with the SSE response before the
+                // upstream hop, so the status is 200 whatever the provider
+                // does next.
+                #expect(resp.status == .ok)
+            }
         }
     }
 

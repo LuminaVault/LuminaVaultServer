@@ -88,21 +88,21 @@ struct ParallelController {
                     }
                 }
                 do {
-                    try await LLMRoutingContext.withValues({ $0.cerberusSink = sink }) {
-                        try await LLMRoutingContext.withValues({ $0.parallelRequest = effective }) {
-                            try await LLMRoutingContext.withValues({ $0.parallelStrategy = effective.strategy }) {
-                                try await LLMRoutingContext.withValues({ $0.cerberusScope =
-                                        CerberusRequestScope(surface: .query, spaceID: effective.spaceID)
-                                }) {
-                                    try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
-                                        for try await chunk in transport.chatStream(
-                                            payload: payload,
-                                            sessionKey: tenantID.uuidString,
-                                            sessionID: nil
-                                        ) where !chunk.delta.isEmpty {
-                                            continuation.yield(.token(chunk.delta))
-                                        }
-                                    }
+                    try await LLMRoutingContext.withValues {
+                        $0.cerberusSink = sink
+                        $0.parallelRequest = effective
+                        $0.parallelStrategy = effective.strategy
+                    } operation: {
+                        try await LLMRoutingContext.withValues({ $0.cerberusScope =
+                                CerberusRequestScope(surface: .query, spaceID: effective.spaceID)
+                        }) {
+                            try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                                for try await chunk in transport.chatStream(
+                                    payload: payload,
+                                    sessionKey: tenantID.uuidString,
+                                    sessionID: nil
+                                ) where !chunk.delta.isEmpty {
+                                    continuation.yield(.token(chunk.delta))
                                 }
                             }
                         }
