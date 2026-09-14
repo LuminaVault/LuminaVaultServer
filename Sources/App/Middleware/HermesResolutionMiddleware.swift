@@ -69,7 +69,7 @@ struct HermesResolutionMiddleware: RouterMiddleware {
 
         var ctx = context
         ctx.hermesResolution = resolution
-        return try await LLMRoutingContext.$currentResolution.withValue(resolution) {
+        return try await LLMRoutingContext.withValues({ $0.currentResolution = resolution }) {
             try await next(request, ctx)
         }
     }

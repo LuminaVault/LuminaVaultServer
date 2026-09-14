@@ -49,7 +49,11 @@ struct ProviderFailoverNotice {
 /// non-streaming endpoint, the test endpoint) can leave the sink nil
 /// and the transport quietly skips publication.
 enum FailoverNoticeContext {
-    @TaskLocal static var sink: (@Sendable (ProviderFailoverNotice) -> Void)?
+    /// Backed by `LLMRoutingContext.values` — see `CerberusStreamContext.sink`.
+    /// Bind it with `LLMRoutingContext.withValues { $0.failoverSink = ... }`.
+    static var sink: (@Sendable (ProviderFailoverNotice) -> Void)? {
+        LLMRoutingContext.values.failoverSink
+    }
 }
 
 extension ProviderKind {

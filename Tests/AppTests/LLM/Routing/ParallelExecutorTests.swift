@@ -17,7 +17,7 @@ struct ParallelExecutorTests {
             logger: Logger(label: "test")
         )
         let events = EventBox()
-        let completion = try await CerberusStreamContext.$sink.withValue({ events.append($0) }) {
+        let completion = try await LLMRoutingContext.withValues({ $0.cerberusSink = { events.append($0) } }) {
             try await ParallelExecutor(registry: registry, logger: Logger(label: "test"), store: nil).execute(
                 payload: Self.payload,
                 sessionKey: UUID().uuidString,

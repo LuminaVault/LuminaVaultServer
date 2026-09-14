@@ -271,7 +271,7 @@ struct MemoryController {
         }
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
         let tenantID = access.vaultID
-        let answer = try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
+        let answer = try await LLMRoutingContext.withValues({ $0.billingTenantID = access.billingSponsorUserID }) {
             try await service.search(
                 tenantID: tenantID,
                 sessionKey: tenantID.uuidString,

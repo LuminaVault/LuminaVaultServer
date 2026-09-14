@@ -73,7 +73,7 @@ struct RoutedLLMTransportFallbackTests {
             Task { await collector.record(notice) }
         }
 
-        let result = try await FailoverNoticeContext.$sink.withValue(sink) {
+        let result = try await LLMRoutingContext.withValues({ $0.failoverSink = sink }) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
                 sessionKey: "alice",
@@ -114,7 +114,7 @@ struct RoutedLLMTransportFallbackTests {
         let sink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
             Task { await collector.record(notice) }
         }
-        _ = try await FailoverNoticeContext.$sink.withValue(sink) {
+        _ = try await LLMRoutingContext.withValues({ $0.failoverSink = sink }) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"claude-sonnet-4.6\",\"messages\":[]}".utf8),
                 sessionKey: "alice",
@@ -156,7 +156,7 @@ struct RoutedLLMTransportFallbackTests {
         let sink: @Sendable (ProviderFailoverNotice) -> Void = { notice in
             Task { await collector.record(notice) }
         }
-        _ = try await FailoverNoticeContext.$sink.withValue(sink) {
+        _ = try await LLMRoutingContext.withValues({ $0.failoverSink = sink }) {
             try await transport.chatCompletions(
                 payload: Data("{\"model\":\"grok-4\",\"messages\":[]}".utf8),
                 sessionKey: "alice",

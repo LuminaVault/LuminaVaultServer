@@ -160,7 +160,7 @@ struct HermesGatewayAdapterTests {
             authHeader: "Bearer user-token",
             isUserOverride: true
         )
-        try await LLMRoutingContext.$currentResolution.withValue(override) {
+        try await LLMRoutingContext.withValues({ $0.currentResolution = override }) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "fred", sessionID: nil)
         }
 
@@ -186,7 +186,7 @@ struct HermesGatewayAdapterTests {
             isUserOverride: true
         )
 
-        try await LLMRoutingContext.$currentResolution.withValue(override) {
+        try await LLMRoutingContext.withValues({ $0.currentResolution = override }) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "bob", sessionID: nil)
         }
 
@@ -218,7 +218,7 @@ struct HermesGatewayAdapterTests {
             isUserOverride: false
         )
 
-        try await LLMRoutingContext.$currentResolution.withValue(nonOverride) {
+        try await LLMRoutingContext.withValues({ $0.currentResolution = nonOverride }) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "carol", sessionID: nil)
         }
 
@@ -246,7 +246,7 @@ struct HermesGatewayAdapterTests {
             isUserOverride: true
         )
 
-        try await LLMRoutingContext.$currentResolution.withValue(override) {
+        try await LLMRoutingContext.withValues({ $0.currentResolution = override }) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "dave", sessionID: nil)
         }
 
@@ -273,7 +273,7 @@ struct HermesGatewayAdapterTests {
             isUserOverride: true
         )
 
-        try await LLMRoutingContext.$currentResolution.withValue(override) {
+        try await LLMRoutingContext.withValues({ $0.currentResolution = override }) {
             _ = try await adapter.chatCompletions(payload: Self.payload, sessionKey: "eve", sessionID: nil)
         }
 

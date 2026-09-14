@@ -153,7 +153,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     private func managedAutoRequest(_ request: ChatRequest) async throws -> ManagedAutoRoute? {
         guard let router else { return nil }
         let prompt = request.messages.last { $0.role == "user" }?.content ?? ""
-        let decision = await LLMRoutingContext.$cerberusPrompt.withValue(prompt) {
+        let decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
             await router.pick(forModel: nil, capability: .high, user: LLMRoutingContext.currentUser)
         }
         guard let cerberus = decision.cerberus,

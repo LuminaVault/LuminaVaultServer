@@ -80,15 +80,16 @@ struct QueryController {
         let actorID = try user.requireID()
         let access = try await vaultAccess.resolve(request: req, context: ctx, requiring: .ai)
         let tenantID = access.vaultID
-        let answer = try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
-            try await LLMRoutingContext.$billingTenantID.withValue(access.billingSponsorUserID) {
-                try await service.search(
-                    tenantID: tenantID,
-                    sessionKey: tenantID.uuidString,
-                    query: body.query,
-                    limit: body.limit ?? 5
-                )
-            }
+        let answer = try await LLMRoutingContext.withValues {
+            $0.analyticsVaultID = tenantID
+            $0.billingTenantID = access.billingSponsorUserID
+        } operation: {
+            try await service.search(
+                tenantID: tenantID,
+                sessionKey: tenantID.uuidString,
+                query: body.query,
+                limit: body.limit ?? 5
+            )
         }
         if let achievements {
             achievements.enqueue(tenantID: actorID, event: .queryRan)
@@ -227,34 +228,31 @@ struct QueryController {
                     let streamStart = DispatchTime.now().uptimeNanoseconds
                     var firstTokenMs: Int64?
                     var tokenCount = 0
-                    try await LLMRoutingContext.$analyticsVaultID.withValue(tenantID) {
-                        try await LLMRoutingContext.$billingTenantID.withValue(billingSponsorID) {
-                            try await LLMRoutingContext.$routeOutcomeSink.withValue(routeSink) {
-                                try await FailoverNoticeContext.$sink.withValue(fallbackSink) {
-                                    try await LLMRoutingContext.$currentUser.withValue(user) {
-                                        try await LLMRoutingContext.$currentResolution.withValue(hermesResolution) {
-                                            let chunks = streamService.chatStream(
-                                                sessionKey: sessionKey,
-                                                sessionID: sessionID,
-                                                request: chatRequest
-                                            )
-                                            for try await chunk in chunks {
-                                                if Task.isCancelled {
-                                                    break
-                                                }
-                                                if !chunk.delta.isEmpty {
-                                                    if firstTokenMs == nil {
-                                                        firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
-                                                        logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
-                                                    }
-                                                    tokenCount += 1
-                                                    assistantBuffer.append(chunk.delta)
-                                                    continuation.yield(.token(chunk.delta))
-                                                }
-                                            }
-                                        }
-                                    }
+                    try await LLMRoutingContext.withValues {
+                        $0.analyticsVaultID = tenantID
+                        $0.billingTenantID = billingSponsorID
+                        $0.routeOutcomeSink = routeSink
+                        $0.failoverSink = fallbackSink
+                        $0.currentUser = user
+                        $0.currentResolution = hermesResolution
+                    } operation: {
+                        let chunks = streamService.chatStream(
+                            sessionKey: sessionKey,
+                            sessionID: sessionID,
+                            request: chatRequest
+                        )
+                        for try await chunk in chunks {
+                            if Task.isCancelled {
+                                break
+                            }
+                            if !chunk.delta.isEmpty {
+                                if firstTokenMs == nil {
+                                    firstTokenMs = Int64((DispatchTime.now().uptimeNanoseconds - streamStart) / 1_000_000)
+                                    logger.info("query first token", metadata: ["ttft_ms": .stringConvertible(firstTokenMs ?? 0)])
                                 }
+                                tokenCount += 1
+                                assistantBuffer.append(chunk.delta)
+                                continuation.yield(.token(chunk.delta))
                             }
                         }
                     }
