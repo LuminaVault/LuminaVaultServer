@@ -36,11 +36,11 @@ actor MemoryHitCountUpdateQueue: Service {
     }
 
     func drain() async {
+        // `process()` clears `worker` when the queue empties, so awaiting the
+        // current one and re-checking terminates. An identity comparison here
+        // would not compile — `Task` is a struct, not a class.
         while let worker {
             await worker.value
-            if self.worker === worker {
-                self.worker = nil
-            }
         }
     }
 
