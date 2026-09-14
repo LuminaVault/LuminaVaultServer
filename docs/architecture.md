@@ -304,6 +304,7 @@ idempotent (`CREATE TABLE IF NOT EXISTS`, etc).
 | Rate-limit policy doesn't fit                        | `Sources/App/Middleware/RateLimitMiddleware.swift` — every new route picks one from the `static let` constants. |
 | A whole settings pane is empty, or every call from it 404s | `LV_SECRET_MASTER_KEY` is unset. It gates the entire connect-your-own-thing surface (`App+build.swift:764-1067`) — the controllers are never built and the routes are absent, not disabled. |
 | "How does a user connect X?"                         | [`docs/integrations/README.md`](integrations/README.md) — indexes every user-connectable integration with its web and iOS click-path. |
+| "How does a user *do* X?"                            | [`docs/guides/README.md`](guides/README.md) — task-based walkthroughs for capture, chat, search, organising and automation, web and iOS side by side. |
 
 ---
 
