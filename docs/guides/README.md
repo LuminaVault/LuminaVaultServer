@@ -58,6 +58,19 @@ two differ, both are given; where something only exists on one, it says so.
 
 ---
 
+## Not covered here
+
+These pages stop at the core workflows and the connectors. Settings that are not
+integrations, the auth flows, onboarding itself, and the deeper Studio /
+Analytics / Dashboard panels are deliberately not written up.
+
+The better answer for those is a guided tour inside the app rather than more
+prose in a repo the user cannot see — see
+[future-interactive-onboarding.md](future-interactive-onboarding.md), which
+records the idea, the inventory it would need to cover, and what makes it hard.
+
+---
+
 ## Things worth knowing before you start
 
 **Your phone and the browser see the same vault.** Capture on one, it shows up
