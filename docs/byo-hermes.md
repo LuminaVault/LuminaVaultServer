@@ -17,9 +17,20 @@ iPhone ──https──> LuminaVault server ──(your URL)──> your Hermes
 ```
 
 The **LuminaVault server** (not your phone) connects to your Hermes on every
-call that needs it — chat, compile, memory, health correlation. Configure it
-once in the app: **Settings → Connections → Hermes Server → Connect my own
-Hermes**, enter the URL + auth, then **Save & verify**.
+call that needs it — chat, compile, memory, health correlation.
+
+Where you configure it differs by client, and so does the button:
+
+- **iOS** — Settings → Manage Connections → Hermes Server → **Connect my own
+  Hermes →**, enter the URL + auth, then **Save & verify** (one action: it saves
+  and then probes).
+- **Web** — Settings → Hermes server → **Connect my own Hermes**, enter the URL
+  + auth, then **Save**, then **Test again**. Two separate actions; there is no
+  "Save & verify" button in the browser.
+
+Step-by-step click-paths for both, and the dashboard and mirror halves that this
+page does not cover, are in
+[`integrations/hermes.md`](integrations/hermes.md).
 
 What's stored: your base URL, and your auth header **encrypted at rest**
 (AES-GCM via `SecretBox`, per-tenant key). The plaintext token is never returned
@@ -350,7 +361,7 @@ The header is forwarded to your Hermes verbatim. Use HTTPS so it isn't exposed.
 
 ---
 
-## Troubleshooting (Save & verify failures)
+## Troubleshooting (verification failures)
 
 After saving, the app probes `<your-url>/v1/models` (falling back to `/health`).
 The error banner maps to:
