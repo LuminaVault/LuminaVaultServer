@@ -40,6 +40,10 @@ covers setting it.
 | [linked-accounts.md](linked-accounts.md) | xAI (Grok), Nous Portal, Google Calendar |
 | [apple-data.md](apple-data.md) | Health, Calendar, Reminders, Photos, Location, Files |
 
+Task-based how-to guides — capture, chat, search, organise, automate — live
+next door in [`../guides/`](../guides/README.md). These pages are the reference;
+those are the walkthroughs.
+
 Existing deep-dives that these pages link to rather than repeat:
 
 - [`../byo-hermes.md`](../byo-hermes.md) — how to run and expose a Hermes that
