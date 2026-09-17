@@ -97,6 +97,13 @@ enum ModelDisclosurePolicy {
             ))
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
+        // The server is the only producer of this stream, so it never emits
+        // `.unrecognized` — the case exists for clients decoding a newer
+        // server. Listed explicitly rather than via `default` so that adding
+        // a real event type still fails to compile here and forces a
+        // deliberate decision about whether it leaks model identity.
+        case .unrecognized:
+            return event
         }
     }
 
