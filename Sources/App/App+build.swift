@@ -218,7 +218,12 @@ func buildApplication(
         pluginRunnerURL: reader.string(forKey: "plugin.runnerUrl", default: "http://plugin-runner:8090"),
         pluginRunnerToken: reader.string(forKey: "plugin.runnerToken", isSecret: true, default: ""),
         pluginArtifactRoot: reader.string(forKey: "plugin.artifactRoot", default: "/app/data/plugin-artifacts"),
-        pluginArtifactSigningKey: reader.string(forKey: "plugin.artifactSigningKey", isSecret: true, default: "")
+        pluginArtifactSigningKey: reader.string(forKey: "plugin.artifactSigningKey", isSecret: true, default: ""),
+        // Named for the wire format's provider, matching Norviq's variables so
+        // one grep finds every app pointed at the same service.
+        feedsBaseURL: reader.string(forKey: "feeds.baseUrl", default: ""),
+        newsTickerFeeds: reader.string(forKey: "feeds.defaultFeeds", default: "")
+            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     )
 
     var appServices: [any Service] = fluentEnabled ? [fluent] : []
@@ -2518,6 +2523,7 @@ func buildRouter(
                     http: URLSessionConnectorHTTPClient(),
                     logger: Logger(label: "lv.plugins.rss")
                 ),
+                NewsTickerConnector(logger: Logger(label: "lv.plugins.news-ticker")),
             ]),
             skillCatalog: skillCatalog,
             hermesSkills: HermesSkillsClient(logger: Logger(label: "lv.plugins.hermes-skills")),
@@ -2531,6 +2537,22 @@ func buildRouter(
             .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
         let pluginsGroup = byoHermesMiddleware.map { pluginsBase.add(middleware: $0) } ?? pluginsBase
         PluginController(service: pluginService).addRoutes(to: pluginsGroup)
+
+        // The news-ticker plugin's own surface. Same auth and rate policy as
+        // the plugin routes; the plugin lifecycle (install, enable, disable)
+        // stays on /v1/plugins.
+        let newsTicker = NewsTickerService(
+            baseURL: services.feedsBaseURL,
+            curatedFeeds: services.newsTickerFeeds,
+            http: URLSessionConnectorHTTPClient(),
+            installs: pluginService,
+            logger: Logger(label: "lv.news-ticker")
+        )
+        NewsTickerController(service: newsTicker).addRoutes(
+            to: router.group("/v1/news")
+                .add(middleware: jwtAuthenticator)
+                .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+        )
         let pluginRunner: any PluginRunnerClienting = if let url = URL(string: services.pluginRunnerURL) {
             PluginRunnerClient(baseURL: url, token: services.pluginRunnerToken, logger: Logger(label: "lv.plugin-runner"))
         } else {
