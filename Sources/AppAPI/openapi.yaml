@@ -3223,7 +3223,20 @@ paths:
     patch:
       tags: [Onboarding]
       operationId: onboardingPatch
-      summary: Latch one or more onboarding flags (one-way only).
+      summary: Latch onboarding flags (one-way) or set the guided-start dismissal (two-way).
+      description: |
+        The seven completion flags are one-way latches: only `true` is
+        accepted and `false` is rejected with 400.
+
+        `guidedStartDismissed` is the one exception — it is two-way.
+        `true` stamps `guidedStartDismissedAt`, `false` clears it back to
+        null so Settings > "Show me around" can bring the card back.
+
+        Note that clients must never PATCH `firstCaptureCompleted`,
+        `firstKBCompileCompleted` or `firstQueryCompleted` for the guided
+        start card: the server latches those itself as a side effect of
+        the real work (upload/link capture, memory compile, chat reply).
+        See `LuminaVaultShared/docs/guided-start.md`.
       requestBody:
         required: true
         content:
@@ -10622,12 +10635,21 @@ components:
           type: boolean
           description: HER-300 — true once user completes "Choose Your Brain".
         brainConfiguredCompletedAt: { type: string, format: date-time }
+        guidedStartDismissedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the user dismissed the guided-start card, null when it is
+            not dismissed. Two-way, unlike the latches above.
 
     OnboardingPatchRequest:
       type: object
       description: |
-        All fields optional. Only `true` is accepted — `false` rejected
-        with 400 because the flags are one-way latches.
+        All fields optional. Only `true` is accepted for the seven
+        completion flags — `false` is rejected with 400 because they are
+        one-way latches. `guidedStartDismissed` is the sole exception and
+        accepts both values.
       properties:
         signupCompleted: { type: boolean }
         emailVerifiedCompleted: { type: boolean }
@@ -10636,6 +10658,11 @@ components:
         firstKBCompileCompleted: { type: boolean }
         firstQueryCompleted: { type: boolean }
         brainConfiguredCompleted: { type: boolean }
+        guidedStartDismissed:
+          type: boolean
+          description: |
+            The only two-way field on this endpoint. `true` stamps
+            `guidedStartDismissedAt`, `false` clears it back to null.
 
     # ── Devices ──
 
