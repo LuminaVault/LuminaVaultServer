@@ -18,12 +18,12 @@ struct PluginMarketplaceTests {
 
     @Test
     func `featured and premium filters select the right entries`() {
-        #expect(PluginCatalog.catalog(featured: true).map(\.slug) == ["readwise"])
+        #expect(PluginCatalog.catalog(featured: true).map(\.slug) == ["news-ticker", "readwise"])
         #expect(PluginCatalog.catalog(premium: true).map(\.slug) == ["byok-embeddings"])
         // Category + curation compose.
         #expect(PluginCatalog.catalog(category: .connector, featured: true).map(\.slug) == ["readwise"])
         #expect(PluginCatalog.catalog(category: .memory, premium: false).isEmpty)
         // Unfiltered still returns all static entries.
-        #expect(PluginCatalog.catalog().map(\.slug) == ["byok-embeddings", "raindrop", "reading-time", "readwise", "rss"])
+        #expect(PluginCatalog.catalog().map(\.slug) == ["byok-embeddings", "news-ticker", "raindrop", "reading-time", "readwise", "rss"])
     }
 }
