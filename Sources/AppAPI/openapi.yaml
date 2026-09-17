@@ -4977,6 +4977,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
 
+  /v1/news/ticker:
+    get:
+      tags: [Plugins]
+      operationId: newsTicker
+      summary: Breaking-news headlines for the installed news-ticker plugin.
+      description: >-
+        Curated general-news feeds plus the tenant's own (the plugin's
+        `feed_urls` config), read through the cluster's shared feed
+        aggregator. Headline, source, time and link only — never a body.
+        404 `plugin_not_installed` when the tenant has not installed the
+        plugin; 409 `plugin_disabled` when it is installed but off; 503
+        `news_ticker_not_configured` when the server has no aggregator.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Headlines.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewsTickerResponse' }
+        '404': { description: Plugin not installed. }
+        '409': { description: Plugin disabled. }
+        '502': { description: Feed aggregator unavailable. }
+        '503': { description: News ticker not configured on this server. }
   /v1/plugins/catalog:
     get:
       tags: [Plugins]
@@ -12257,6 +12284,27 @@ components:
           nullable: true
           additionalProperties: { type: string }
         status: { type: string, enum: [enabled, disabled], nullable: true }
+    NewsTickerItemDTO:
+      type: object
+      required: [id, title, source, publishedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        url: { type: string, nullable: true }
+        source: { type: string }
+        sourceUrl: { type: string, nullable: true }
+        publishedAt: { type: string, format: date-time }
+    NewsTickerResponse:
+      type: object
+      required: [items, stale, generatedAt]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NewsTickerItemDTO' }
+        stale:
+          type: boolean
+          description: At least one feed is serving cached headlines after a failed fetch.
+        generatedAt: { type: string, format: date-time }
     PluginSyncResponse:
       type: object
       required: [installId, sessionId, status, total, staged, skipped]

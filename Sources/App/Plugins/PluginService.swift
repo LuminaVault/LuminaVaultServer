@@ -364,6 +364,15 @@ struct PluginService {
         return (try? JSONDecoder().decode([String: String].self, from: Data(plaintext.utf8))) ?? [:]
     }
 
+    /// Whether a plugin is installed and enabled for a tenant, with its
+    /// decrypted config. Read-only; used by first-party plugins that serve
+    /// their own surface (the news ticker) rather than syncing links.
+    func installState(tenantID: UUID, slug: String) async throws -> NewsTickerInstallState? {
+        guard let row = try await loadInstall(tenantID: tenantID, slug: slug) else { return nil }
+        let config = (try? openConfig(row, tenantID: tenantID)) ?? [:]
+        return NewsTickerInstallState(enabled: row.status == PluginInstallState.enabled, config: config)
+    }
+
     private func loadInstall(tenantID: UUID, slug: String) async throws -> PluginInstall? {
         try await PluginInstall.query(on: fluent.db())
             .filter(\.$tenantID == tenantID)

@@ -82,6 +82,37 @@ enum PluginCatalog {
             ),
             binding: "rss"
         ),
+        "news-ticker": Entry(
+            dto: PluginCatalogEntryDTO(
+                slug: "news-ticker",
+                name: "Breaking news",
+                summary: "A strip of breaking headlines on Home, from publishers' own feeds.",
+                description: """
+                Shows headline, source, time and a link for the world's top \
+                stories on your Home screen, read through the cluster's shared \
+                feed aggregator — no API key, no vendor. Add your own site or \
+                feed addresses to follow them too. Links open the publisher; \
+                nothing is stored beyond the headline.
+                """,
+                category: .ui,
+                capabilityKind: .connector,
+                iconSlug: "news-ticker",
+                version: "1.0.0",
+                publisher: "LuminaVault",
+                verified: true,
+                configFields: [
+                    PluginConfigField(
+                        key: "feed_urls",
+                        label: "Your feeds",
+                        placeholder: "https://example.com, https://blog.example/feed.xml",
+                        kind: .text,
+                        isRequired: false
+                    ),
+                ]
+            ),
+            binding: "news-ticker",
+            featured: true
+        ),
         "raindrop": Entry(
             dto: PluginCatalogEntryDTO(
                 slug: "raindrop",

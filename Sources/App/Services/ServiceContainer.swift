@@ -203,4 +203,9 @@ struct ServiceContainer {
     let pluginRunnerToken: String
     let pluginArtifactRoot: String
     let pluginArtifactSigningKey: String
+    /// Breaking-news ticker: the cluster's shared feed aggregator and the
+    /// curated general-news feeds. Empty base URL disables the plugin's
+    /// surface (503 news_ticker_not_configured).
+    let feedsBaseURL: String
+    let newsTickerFeeds: [String]
 }
