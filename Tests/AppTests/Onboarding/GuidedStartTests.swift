@@ -4,6 +4,7 @@ import HTTPTypes
 import Hummingbird
 import HummingbirdTesting
 import Logging
+import SQLKit
 import LuminaVaultShared
 import Testing
 
@@ -244,6 +245,30 @@ struct GuidedStartTests {
         }
     }
 
+    @Test
+    func `an upload before any onboarding GET still latches, creating the row`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            // Deliberately no `GET /v1/onboarding` first: a capture can be
+            // the very first thing a fresh account does, and the latch has
+            // to create the row itself rather than quietly no-op.
+            let token = try await Self.register(client: client)
+            try await client.execute(
+                uri: "/v1/vault/files?path=notes/before-any-get.md",
+                method: .post,
+                headers: [.authorization: "Bearer \(token)", .contentType: "text/markdown"],
+                body: ByteBuffer(string: "# straight in")
+            ) { resp in #expect(resp.status == .ok || resp.status == .created) }
+
+            let state = try await Self.onboarding(client: client, token: token)
+            #expect(state.firstCaptureCompleted == true)
+            #expect(state.firstCaptureCompletedAt != nil)
+            // The row the latch inserted looks like the one `loadOrCreate`
+            // would have made.
+            #expect(state.signupCompleted == true)
+        }
+    }
+
     // MARK: - Step 2: an empty compile is not a compile
 
     @Test
@@ -269,6 +294,55 @@ struct GuidedStartTests {
             let state = try await Self.onboarding(client: client, token: token)
             #expect(state.firstKBCompileCompleted == false)
             #expect(state.firstKBCompileCompletedAt == nil)
+        }
+    }
+
+    /// A row stranded by the pre-M130 bug — legacy `kb` latch true, the
+    /// `memory` pair the DTO actually reads false — must read as completed
+    /// again, and must keep the date the user really compiled on.
+    ///
+    /// `M130_BackfillFirstMemoryCompileFromLegacy` repairs these at deploy
+    /// time; this covers the same repair in `OnboardingLatches`, which is
+    /// what catches a row stranded by an older node mid-rollout.
+    @Test
+    func `a stranded legacy compile row self-heals and keeps its original date`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let (token, tenantID) = try await Self.registerFull(client: client)
+            _ = try await Self.onboarding(client: client, token: token)
+
+            let historical = Date().addingTimeInterval(-90 * 24 * 60 * 60)
+            try await withTestFluent(label: "test.guided.strand") { fluent in
+                let sql = try #require(fluent.db() as? any SQLDatabase)
+                try await sql.raw("""
+                UPDATE onboarding_state
+                   SET first_kb_compile_completed = TRUE,
+                       first_kb_compile_completed_at = \(bind: historical),
+                       first_memory_compile_completed = FALSE,
+                       first_memory_compile_completed_at = NULL
+                 WHERE tenant_id = \(bind: tenantID)
+                """).run()
+            }
+
+            // The DTO reads the memory column, so a stranded row looks like
+            // "never compiled" — this is the bug, reproduced.
+            let stranded = try await Self.onboarding(client: client, token: token)
+            #expect(stranded.firstKBCompileCompleted == false)
+
+            try await withTestFluent(label: "test.guided.strand") { fluent in
+                let latches = OnboardingLatches(
+                    fluent: fluent,
+                    logger: Logger(label: "test.guided.strand")
+                )
+                await latches.latch(.firstMemoryCompile, tenantID: tenantID)
+            }
+
+            let healed = try await Self.onboarding(client: client, token: token)
+            #expect(healed.firstKBCompileCompleted == true)
+            // The real compile date survives; `NOW()` is only the last
+            // resort in the COALESCE chain.
+            let healedAt = try #require(healed.firstKBCompileCompletedAt)
+            #expect(abs(healedAt.timeIntervalSince(historical)) < 1)
         }
     }
 
