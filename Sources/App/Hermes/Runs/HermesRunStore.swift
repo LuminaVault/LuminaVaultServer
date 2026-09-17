@@ -31,8 +31,17 @@ struct HermesRunStore: Sendable {
         try await HermesRun.find(runID, on: fluent.db())
     }
 
-    func list(tenantID: UUID, limit: Int) async throws -> [HermesRun] {
-        try await HermesRun.query(on: fluent.db(), tenantID: tenantID)
+    /// Most recent runs for a tenant, optionally narrowed to one conversation.
+    ///
+    /// The conversation filter is how a chat client recovers after losing the
+    /// stream that carried a run's id: it asks which runs belong to this
+    /// conversation rather than scanning the tenant's whole history.
+    func list(tenantID: UUID, limit: Int, conversationID: UUID? = nil) async throws -> [HermesRun] {
+        let query = HermesRun.query(on: fluent.db(), tenantID: tenantID)
+        if let conversationID {
+            query.filter(\.$conversationID == conversationID)
+        }
+        return try await query
             .sort(\.$startedAt, .descending)
             .limit(limit)
             .all()

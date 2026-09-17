@@ -1603,6 +1603,18 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: sessionID
+          in: query
+          required: false
+          description: |
+            Narrow to one Hermes session, so a chat surface can show just the
+            artifacts produced by the run behind the conversation on screen.
+            Artifacts are keyed by session rather than conversation, so the
+            join is conversation → run `sessionID` → artifacts; read the run's
+            `sessionID` from `GET /v1/hermes/runs?conversationID=`. An empty
+            value means no filter, which is what a client sends for a
+            conversation that has not started a run yet.
+          schema: { type: string }
       responses:
         '200':
           description: Newest first.
@@ -2146,6 +2158,18 @@ paths:
           in: query
           required: false
           schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: conversationID
+          in: query
+          required: false
+          description: |
+            Narrow to the runs started by one conversation. This is how a chat
+            client recovers after losing the stream that carried a run's id —
+            it asks which runs belong to the conversation instead of scanning
+            the tenant's whole history. Runs started from the Agent Runs screen
+            have no conversation and never match. An unparseable value is
+            treated as absent rather than rejected, so a malformed link
+            degrades to the full list instead of a 400.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Persisted runs.
