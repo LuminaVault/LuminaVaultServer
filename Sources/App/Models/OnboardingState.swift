@@ -44,6 +44,12 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
     @Field(key: "brain_configured_completed") var brainConfiguredCompleted: Bool
     @OptionalField(key: "brain_configured_completed_at") var brainConfiguredCompletedAt: Date?
 
+    /// The guided-start card's dismissal. The only **two-way** field on this
+    /// row: `PATCH /v1/onboarding {guidedStartDismissed:true}` stamps it and
+    /// `false` clears it back to `nil`. Everything above is a one-way latch.
+    /// See `LuminaVaultShared/docs/guided-start.md`.
+    @OptionalField(key: "guided_start_dismissed_at") var guidedStartDismissedAt: Date?
+
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
@@ -60,5 +66,6 @@ final class OnboardingState: Model, TenantModel, @unchecked Sendable {
         firstMemoryCompileCompleted = false
         firstQueryCompleted = false
         brainConfiguredCompleted = false
+        guidedStartDismissedAt = nil
     }
 }
