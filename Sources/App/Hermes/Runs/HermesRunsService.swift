@@ -226,8 +226,10 @@ actor HermesRunsService: Service {
 
     // MARK: - Queries
 
-    func list(tenantID: UUID, limit: Int) async throws -> [HermesRunDTO] {
-        try await store.list(tenantID: tenantID, limit: max(1, min(limit, 50))).map { try $0.toDTO() }
+    func list(tenantID: UUID, limit: Int, conversationID: UUID? = nil) async throws -> [HermesRunDTO] {
+        try await store
+            .list(tenantID: tenantID, limit: max(1, min(limit, 50)), conversationID: conversationID)
+            .map { try $0.toDTO() }
     }
 
     func get(tenantID: UUID, runID: UUID) async throws -> HermesRunDTO {

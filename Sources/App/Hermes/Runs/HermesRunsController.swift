@@ -86,8 +86,15 @@ struct HermesRunsController {
     func list(_ req: Request, ctx: AppRequestContext) async throws -> HermesRunListResponse {
         let tenantID = try ctx.requireTenantID()
         let limit = req.uri.queryParameters["limit"].flatMap { Int($0) } ?? 20
+        // A chat client that lost the stream carrying a run's id recovers by
+        // asking which runs belong to the conversation. An unparseable value
+        // is treated as absent rather than as an error, so a malformed link
+        // degrades to the full list instead of a 400.
+        let conversationID = req.uri.queryParameters["conversationID"].flatMap { UUID(uuidString: String($0)) }
         return try await withMappedErrors {
-            try await HermesRunListResponse(runs: service.list(tenantID: tenantID, limit: limit))
+            try await HermesRunListResponse(
+                runs: service.list(tenantID: tenantID, limit: limit, conversationID: conversationID)
+            )
         }
     }
 
