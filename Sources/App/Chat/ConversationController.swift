@@ -422,6 +422,11 @@ struct ConversationController {
         )
         conversation.updatedAt = Date()
         try await conversation.save(on: fluent.db())
+        // Guided-start step 3, hybrid / on-device route. Same invariant as
+        // the streaming path: the latch follows the durable assistant turn.
+        // Hybrid execution defaults on, so without this a user could hold a
+        // whole conversation here and watch step 3 spin until it times out.
+        await onboardingLatches?.latch(.firstQuery, tenantID: actorID)
         return try ConversationCommitResponse(message: assistant.toDTO())
     }
 
