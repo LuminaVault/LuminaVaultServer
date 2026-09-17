@@ -10,6 +10,9 @@ struct LLMController {
     let notificationService: APNSNotificationService
     let achievements: AchievementsWorker?
     let usageMeter: UsageMeterService?
+    /// Guided-start step 3 on the non-conversation chat path. Optional the
+    /// same way `achievements` is.
+    let onboardingLatches: OnboardingLatches?
     /// HER-240 / spec ticket #4 — optional pre-enricher that rewrites
     /// user-role messages with `<context>` blocks for any URLs found.
     /// Nil disables silently; per-request `X-Skip-URL-Enrichment: true`
@@ -22,6 +25,7 @@ struct LLMController {
         notificationService: APNSNotificationService,
         achievements: AchievementsWorker? = nil,
         usageMeter: UsageMeterService? = nil,
+        onboardingLatches: OnboardingLatches? = nil,
         urlPreEnricher: ChatURLPreEnricher? = nil
     ) {
         self.service = service
@@ -29,6 +33,7 @@ struct LLMController {
         self.notificationService = notificationService
         self.achievements = achievements
         self.usageMeter = usageMeter
+        self.onboardingLatches = onboardingLatches
         self.urlPreEnricher = urlPreEnricher
     }
 
@@ -152,6 +157,11 @@ struct LLMController {
             if let achievements {
                 achievements.enqueue(tenantID: userID, event: .chatCompleted)
             }
+            // Guided-start step 3, non-conversation path. `service.chat`
+            // above is the completion point: it either returned a reply or
+            // threw, and a throw never reaches here. See
+            // `docs/guided-start.md`.
+            await onboardingLatches?.latch(.firstQuery, tenantID: userID)
             if finalIsDegraded {
                 var headers = HTTPFields()
                 if let headerName = HTTPField.Name("X-LuminaVault-Degraded") {

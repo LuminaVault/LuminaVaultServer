@@ -49,6 +49,9 @@ struct ConversationController {
     let retrievalTelemetry: RetrievalTelemetryWorker?
     /// Optional so focused controller tests do not need the scheduler stack.
     let selfImprovement: SelfImprovementService?
+    /// Guided-start step 3. Optional the same way `achievements` is
+    /// elsewhere; nil disables latching silently.
+    let onboardingLatches: OnboardingLatches?
     /// Resolves the tenant's brain mode so the SSE surface can scrub model
     /// identity for managed tenants (`ModelDisclosurePolicy`). Optional so
     /// existing constructions/tests keep working; nil = treat as managed.
@@ -70,6 +73,7 @@ struct ConversationController {
         vaultAccess: VaultAccessService,
         retrievalTelemetry: RetrievalTelemetryWorker? = nil,
         selfImprovement: SelfImprovementService? = nil,
+        onboardingLatches: OnboardingLatches? = nil,
         llmPreferences: UserLLMPreferenceRepository? = nil
     ) {
         self.fluent = fluent
@@ -87,6 +91,7 @@ struct ConversationController {
         self.vaultAccess = vaultAccess
         self.retrievalTelemetry = retrievalTelemetry
         self.selfImprovement = selfImprovement
+        self.onboardingLatches = onboardingLatches
         self.llmPreferences = llmPreferences
     }
 
@@ -655,6 +660,7 @@ struct ConversationController {
         let fluent = fluent
         let logger = log
         let followUpGenerator = followUpGenerator
+        let onboardingLatches = onboardingLatches
         let sourceIDs = hits.map(\.id)
         let hitDTOs = hits.map {
             QueryHitDTO(id: $0.id, content: $0.content, distance: $0.distance, createdAt: $0.createdAt)
@@ -836,6 +842,13 @@ struct ConversationController {
                         tenantID: actorID,
                         toolCallCount: toolCallIDs.count
                     )
+                    // Guided-start step 3 — "ask about it" is complete once
+                    // the assistant turn is durable, not when the client
+                    // renders it. Inside this `do` on purpose: a failed
+                    // persist is not a completed query. The upstream-error
+                    // and empty-completion paths above return before this
+                    // point, so neither latches. See `docs/guided-start.md`.
+                    await onboardingLatches?.latch(.firstQuery, tenantID: actorID)
                 } catch {
                     logger.error("assistant turn persist failed: \(error)")
                 }
