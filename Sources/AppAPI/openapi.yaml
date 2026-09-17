@@ -118,6 +118,36 @@ paths:
             text/plain:
               schema: { type: string }
 
+  /internal/metrics:
+    get:
+      tags: [Root]
+      operationId: getInternalMetrics
+      summary: Operator-only user count for the portfolio board (facorreia.com/apps).
+      description: >-
+        Guarded by the METRICS_SECRET shared secret presented as a Bearer token.
+        Returns 404 when the secret is not configured, 401 when it does not match.
+      security: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema: { type: string }
+          description: "`Bearer <METRICS_SECRET>`"
+      responses:
+        '200':
+          description: Total registered users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users: { type: integer }
+        '401':
+          description: Secret missing or wrong.
+        '404':
+          description: Endpoint disabled (no secret configured).
+
   # ──────────────────────────────── Auth ────────────────────────────────
 
   /v1/auth/register:

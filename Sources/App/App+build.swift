@@ -339,6 +339,12 @@ func buildRouter(
         ))
     }
     router.get("/health") { _, _ -> String in "ok" }
+    // Operator-only user count for facorreia.com/apps. METRICS_SECRET guards
+    // it; empty disables it. Root-mounted like /health, outside /v1.
+    InternalMetricsController(
+        fluent: services.fluent,
+        expectedSecret: reader.string(forKey: "metrics.secret", isSecret: true, default: "")
+    ).addRoutes(to: router)
     // Apple App Site Association — backs Sign in with Apple associated domain
     // and WebAuthn/passkey credentials for the iOS app (`TEAMID.bundleID`).
     // Public + unauthenticated; served at the WebAuthn relying-party domain
