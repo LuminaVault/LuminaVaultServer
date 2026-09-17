@@ -402,3 +402,12 @@ struct PluginService {
         )
     }
 }
+
+/// The news-ticker plugin reads install state through this seam. Declared
+/// here, not next to NewsTickerService: the protocol refines Sendable, and a
+/// Sendable conformance has to live in the type's own file.
+extension PluginService: NewsTickerInstalls {
+    func newsTickerInstall(tenantID: UUID) async throws -> NewsTickerInstallState? {
+        try await installState(tenantID: tenantID, slug: "news-ticker")
+    }
+}

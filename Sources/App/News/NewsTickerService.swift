@@ -244,9 +244,3 @@ actor NewsTickerCache {
         entries[key] = NewsTickerCacheEntry(response: response, expires: now.addingTimeInterval(ttl))
     }
 }
-
-extension PluginService: NewsTickerInstalls {
-    func newsTickerInstall(tenantID: UUID) async throws -> NewsTickerInstallState? {
-        try await installState(tenantID: tenantID, slug: "news-ticker")
-    }
-}
