@@ -1585,6 +1585,110 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
 
+  /v1/hermes/workspace/status:
+    get:
+      tags: [Hermes Workspace]
+      operationId: hermesWorkspaceStatus
+      summary: The agent's checkout — branch, branches, worktrees and changed files.
+      description: |
+        A read-only view of the repository the tenant's Hermes is working in.
+        Proxies the Hermes dashboard rather than reimplementing git, so what a
+        client sees is what the agent sees.
+
+        **Read-only, deliberately.** The same upstream API can stage, commit,
+        push and open pull requests. None of that is reachable here: those need
+        an auth scope, an audit trail and a confirmation model before a browser
+        session can reach them.
+
+        `501 hermes_workspace_unsupported` when the tenant has no remote Hermes
+        — a filesystem-mirrored tenant has no checkout to inspect.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Absolute path of the repository on the agent's machine.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Repository state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesWorkspaceStatusDTO' }
+        '400': { description: 'Missing or malformed path (`hermes_mirror_invalid_path`).' }
+        '501': { description: 'This tenant has no remote Hermes (`hermes_workspace_unsupported`).' }
+
+  /v1/hermes/workspace/files:
+    get:
+      tags: [Hermes Workspace]
+      operationId: hermesWorkspaceFiles
+      summary: One directory of the agent's filesystem.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: |
+            Absolute directory path. Required rather than defaulting to the
+            agent's working directory: a typo that silently lists somewhere
+            else reads as data loss to whoever is looking at the tree.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Directory entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesWorkspaceListingDTO' }
+        '400': { description: 'Missing or malformed path.' }
+        '404': { description: 'No such directory.' }
+        '501': { description: 'This tenant has no remote Hermes.' }
+
+  /v1/hermes/workspace/file:
+    get:
+      tags: [Hermes Workspace]
+      operationId: hermesWorkspaceFile
+      summary: One file's text from the agent's filesystem.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File contents.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesWorkspaceFileDTO' }
+        '400': { description: 'Missing or malformed path.' }
+        '404': { description: 'No such file.' }
+        '501': { description: 'This tenant has no remote Hermes.' }
+
+  /v1/hermes/workspace/diff:
+    get:
+      tags: [Hermes Workspace]
+      operationId: hermesWorkspaceDiff
+      summary: The unified diff for one changed file.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Absolute path of the repository.
+          schema: { type: string }
+        - name: file
+          in: query
+          required: true
+          description: |
+            Repository-relative path of the file. Traversal segments are
+            rejected: a file parameter that walked upward would let a caller
+            read anything the agent can reach by asking for a diff of it.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Unified diff, as text.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HermesWorkspaceDiffDTO' }
+        '400': { description: 'Missing or malformed path.' }
+        '501': { description: 'This tenant has no remote Hermes.' }
+
   /v1/hermes/artifacts:
     get:
       tags: [Settings]
@@ -11652,6 +11756,102 @@ components:
           enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, parallel, link_saved, hermes_run]
         payload:
           description: Case-specific payload; absent for `done`.
+
+    HermesWorkspaceRepoDTO:
+      type: object
+      required: [root, isDetached]
+      properties:
+        root: { type: string }
+        branch:
+          type: string
+          nullable: true
+          description: Absent on a detached HEAD or mid-rebase. Clients should say so rather than showing a blank branch.
+        isDetached: { type: boolean }
+
+    HermesWorkspaceBranchDTO:
+      type: object
+      required: [name, isCurrent]
+      properties:
+        name: { type: string }
+        isCurrent: { type: boolean }
+
+    HermesWorkspaceWorktreeDTO:
+      type: object
+      required: [path, isPrimary]
+      properties:
+        path: { type: string }
+        branch: { type: string, nullable: true }
+        isPrimary: { type: boolean }
+
+    HermesWorkspaceChangeDTO:
+      type: object
+      required: [path, added, removed, status]
+      properties:
+        path: { type: string }
+        added: { type: integer }
+        removed: { type: integer }
+        status:
+          type: string
+          description: |
+            Upstream's own word — `modified`, `added`, `deleted`, `renamed`,
+            `untracked`. A free string rather than an enum so a state this
+            build has never heard of shows as itself instead of collapsing
+            into "modified".
+
+    HermesWorkspaceDiffDTO:
+      type: object
+      required: [path, diff, truncated]
+      properties:
+        path: { type: string }
+        diff:
+          type: string
+          description: |
+            A unified diff, as text. Not parsed into hunks on the server:
+            clients render the patch, and parsing here would mean inventing a
+            hunk model every consumer then has to agree with.
+        truncated:
+          type: boolean
+          description: The diff was cut short by a size cap. Clients must say so rather than presenting it as the whole change.
+
+    HermesWorkspaceFileEntryDTO:
+      type: object
+      required: [name, path, isDirectory]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        isDirectory: { type: boolean }
+
+    HermesWorkspaceListingDTO:
+      type: object
+      required: [path, entries]
+      properties:
+        path: { type: string }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/HermesWorkspaceFileEntryDTO' }
+
+    HermesWorkspaceFileDTO:
+      type: object
+      required: [path, content, truncated]
+      properties:
+        path: { type: string }
+        content: { type: string }
+        truncated: { type: boolean }
+
+    HermesWorkspaceStatusDTO:
+      type: object
+      required: [repo, branches, worktrees, changes]
+      properties:
+        repo: { $ref: '#/components/schemas/HermesWorkspaceRepoDTO' }
+        branches:
+          type: array
+          items: { $ref: '#/components/schemas/HermesWorkspaceBranchDTO' }
+        worktrees:
+          type: array
+          items: { $ref: '#/components/schemas/HermesWorkspaceWorktreeDTO' }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/HermesWorkspaceChangeDTO' }
 
     ChatHermesRunRefDTO:
       type: object
