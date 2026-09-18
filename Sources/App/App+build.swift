@@ -2073,6 +2073,32 @@ func buildRouter(
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
     // retrieval pipeline as /v1/query/stream. BYO Hermes middleware is in
     // scope because managed turns hit the gateway.
+    // Built here rather than beside its routes further down, because the
+    // chat surface escalates a turn to an agent run and therefore needs the
+    // same service. One instance: two would mean two watcher budgets and two
+    // sets of re-attached watchers after a restart.
+    let hermesRunsService: HermesRunsService? = hermesEndpointResolver.map { resolver in
+        let runsLogger = Logger(label: "lv.hermes.runs")
+        let runsHTTP = AsyncHTTPClientHermesRunsHTTP()
+        let hermesAPIKey = services.hermesAPIKey
+        return HermesRunsService(
+            fluent: services.fluent,
+            eventBus: eventBus,
+            notifier: APNSHermesRunPushNotifier(push: pushService, logger: runsLogger),
+            resolve: { tenantID in try await resolver.resolve(tenantID: tenantID) },
+            makeClient: { resolution, sessionKey in
+                HermesRunsClient.make(
+                    resolution: resolution,
+                    managedAPIKey: hermesAPIKey,
+                    sessionKey: sessionKey,
+                    http: runsHTTP,
+                    logger: runsLogger
+                )
+            },
+            logger: runsLogger
+        )
+    }
+
     let conversationController = ConversationController(
         fluent: services.fluent,
         memories: makeMemoryRepository(),
@@ -2091,7 +2117,8 @@ func buildRouter(
         vaultAccess: VaultAccessService(fluent: services.fluent),
         retrievalTelemetry: retrievalTelemetryWorker,
         selfImprovement: selfImprovementService,
-        llmPreferences: userLLMPreferenceRepo
+        llmPreferences: userLLMPreferenceRepo,
+        hermesRuns: hermesRunsService
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -3099,26 +3126,7 @@ func buildRouter(
     // follow it live, approve or deny its tool calls from a push, stop it.
     // Requires the endpoint resolver (the gateway base URL + BYO auth header
     // come from it), so it mounts on the same SecretBox gate as BYO Hermes.
-    if let hermesEndpointResolver {
-        let runsLogger = Logger(label: "lv.hermes.runs")
-        let runsHTTP = AsyncHTTPClientHermesRunsHTTP()
-        let hermesAPIKey = services.hermesAPIKey
-        let hermesRunsService = HermesRunsService(
-            fluent: services.fluent,
-            eventBus: eventBus,
-            notifier: APNSHermesRunPushNotifier(push: pushService, logger: runsLogger),
-            resolve: { tenantID in try await hermesEndpointResolver.resolve(tenantID: tenantID) },
-            makeClient: { resolution, sessionKey in
-                HermesRunsClient.make(
-                    resolution: resolution,
-                    managedAPIKey: hermesAPIKey,
-                    sessionKey: sessionKey,
-                    http: runsHTTP,
-                    logger: runsLogger
-                )
-            },
-            logger: runsLogger
-        )
+    if let hermesRunsService {
         // `run()` re-attaches watchers for runs that were still active when
         // the process last stopped, and cancels them on graceful shutdown.
         if fluentEnabled, lvEnvironment != "test" {
@@ -3136,7 +3144,7 @@ func buildRouter(
         HermesRunsController(
             service: hermesRunsService,
             eventBus: eventBus,
-            logger: runsLogger
+            logger: Logger(label: "lv.hermes.runs")
         ).addRoutes(to: runsGroup)
     }
 

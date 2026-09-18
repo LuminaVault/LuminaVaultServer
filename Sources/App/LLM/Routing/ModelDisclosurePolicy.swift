@@ -97,6 +97,11 @@ enum ModelDisclosurePolicy {
             ))
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
+        // The run pointer carries a run id, a Hermes session id, a cursor and
+        // a timestamp — no provider, no model, no route. Nothing to scrub.
+        // The run's own event feed is scrubbed where it is served, not here.
+        case .hermesRun:
+            return event
         // The server is the only producer of this stream, so it never emits
         // `.unrecognized` — the case exists for clients decoding a newer
         // server. Listed explicitly rather than via `default` so that adding
