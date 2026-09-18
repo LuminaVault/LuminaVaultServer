@@ -56,6 +56,10 @@ struct ConversationController {
     /// identity for managed tenants (`ModelDisclosurePolicy`). Optional so
     /// existing constructions/tests keep working; nil = treat as managed.
     let llmPreferences: UserLLMPreferenceRepository?
+    /// Starts a Hermes agent run when a turn escalates. Optional so focused
+    /// controller tests and the local-only stack keep working; nil means the
+    /// chat surface never escalates and every turn takes the classic path.
+    let hermesRuns: HermesRunsService?
 
     init(
         fluent: Fluent,
@@ -74,7 +78,8 @@ struct ConversationController {
         retrievalTelemetry: RetrievalTelemetryWorker? = nil,
         selfImprovement: SelfImprovementService? = nil,
         onboardingLatches: OnboardingLatches? = nil,
-        llmPreferences: UserLLMPreferenceRepository? = nil
+        llmPreferences: UserLLMPreferenceRepository? = nil,
+        hermesRuns: HermesRunsService? = nil
     ) {
         self.fluent = fluent
         self.memories = memories
@@ -93,6 +98,7 @@ struct ConversationController {
         self.selfImprovement = selfImprovement
         self.onboardingLatches = onboardingLatches
         self.llmPreferences = llmPreferences
+        self.hermesRuns = hermesRuns
     }
 
     func addRoutes(
@@ -540,6 +546,40 @@ struct ConversationController {
     /// persisted on `.done`; errors abort persistence and surface as
     /// `.error` events.
     @Sendable
+    /// Starts the run and builds the pointer, or returns nil so the caller
+    /// can fall back. Never throws: every failure here is recoverable by
+    /// answering the turn the ordinary way.
+    private static func startAgentRun(
+        service: HermesRunsService,
+        tenantID: UUID,
+        conversationID: UUID,
+        prompt: String,
+        sessionKey: String,
+        logger: Logger
+    ) async -> ChatHermesRunRefDTO? {
+        do {
+            let run = try await service.start(
+                tenantID: tenantID,
+                request: HermesRunStartRequest(prompt: prompt, conversationID: conversationID),
+                sessionKey: sessionKey
+            )
+            logger.info("chat escalated to hermes run", metadata: [
+                "run_id": .string(run.id.uuidString)
+            ])
+            return ChatHermesRunRefDTO(
+                runID: run.id,
+                sessionID: run.sessionID,
+                afterSeq: 0,
+                startedAt: run.startedAt
+            )
+        } catch {
+            logger.warning("chat escalation failed, using classic stream", metadata: [
+                "error": .string(String(describing: error))
+            ])
+            return nil
+        }
+    }
+
     func streamReply(_ req: Request, ctx: AppRequestContext) async throws -> SSEStreamResponse {
         let user = try ctx.requireIdentity()
         let conversationID = try Self.parseID(ctx)
@@ -580,6 +620,45 @@ struct ConversationController {
             content: content
         )
         try await userMessage.save(on: fluent.db())
+
+        // ── Escalation ──────────────────────────────────────────────────
+        // Decided here, before any grounding work: an escalated turn does
+        // its own retrieval inside Hermes, so embedding and searching first
+        // would be paid for and thrown away.
+        //
+        // The capability gate is not optional. Clients older than
+        // LuminaVaultShared 5.16.0 abort the entire stream on an event type
+        // they do not know, and the server cannot tell them apart on the
+        // wire — so a client must say it can skip unknown frames before it
+        // is sent one. Everyone else keeps the classic stream, which is a
+        // degradation rather than an error.
+        if let hermesRuns, req.clientCapabilities.supports(.chatHermesRun) {
+            let decision = HermesEscalationPolicy.decide(
+                content: content,
+                mode: HermesEscalationPolicy.Mode(rawValue: body.agentMode?.rawValue ?? "auto") ?? .auto,
+                hermesAvailable: true
+            )
+            if decision == .hermesRun {
+                if let ref = await Self.startAgentRun(
+                    service: hermesRuns,
+                    tenantID: actorID,
+                    conversationID: conversationID,
+                    prompt: content,
+                    sessionKey: memoryTenantID.uuidString,
+                    logger: log
+                ) {
+                    return SSEStreamResponse(events: AsyncThrowingStream { continuation in
+                        continuation.yield(.hermesRun(ref))
+                        continuation.yield(.done)
+                        continuation.finish()
+                    })
+                }
+                // Starting the run failed — the watcher budget is full, or
+                // this Hermes has no runs API. Fall through to the classic
+                // path rather than failing the turn: the user asked a
+                // question, not for a particular execution strategy.
+            }
+        }
 
         // Load full transcript history so the LLM sees prior turns.
         let history = try await loggedStage("chat.history", logger: log) {

@@ -97,6 +97,11 @@ enum ModelDisclosurePolicy {
             ))
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
+        // The run pointer carries a run id, a Hermes session id, a cursor and
+        // a timestamp — no provider, no model, no route. Nothing to scrub.
+        // The run's own event feed is scrubbed where it is served, not here.
+        case .hermesRun:
+            return event
         // An event type this build does not know (LuminaVaultShared 5.16.0).
         // Its payload did not survive decoding, so there is nothing here to
         // scrub — but under a hidden-disclosure policy an unknown frame is
