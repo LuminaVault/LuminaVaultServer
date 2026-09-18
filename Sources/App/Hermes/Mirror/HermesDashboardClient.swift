@@ -481,6 +481,113 @@ struct HermesDashboardClient: Sendable {
         }
     }
 
+    // MARK: - Workspace (read-only git)
+
+    /// Upstream returns a bare object per endpoint and has changed field names
+    /// between versions, so every accessor below tolerates absence rather than
+    /// throwing. A missing branch is a detached HEAD, not a broken response.
+
+    func gitStatus(path: String) async throws -> HermesWorkspace.Repo {
+        let validated = try HermesMirrorPath.validate(path)
+        let object = try await getObject("/api/git/status", query: [("path", validated)])
+        let branch = (object["branch"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return HermesWorkspace.Repo(
+            root: (object["root"] as? String) ?? validated,
+            branch: branch,
+            isDetached: (object["detached"] as? Bool) ?? (branch == nil)
+        )
+    }
+
+    func gitBranches(path: String) async throws -> [HermesWorkspace.Branch] {
+        let validated = try HermesMirrorPath.validate(path)
+        let object = try await getObject("/api/git/branches", query: [("path", validated)])
+        let current = object["current"] as? String
+        let rows = (object["branches"] as? [Any]) ?? []
+        return rows.compactMap { row in
+            // Upstream sends either a bare string or an object depending on
+            // version; accept both rather than silently returning nothing.
+            if let name = row as? String {
+                return HermesWorkspace.Branch(name: name, isCurrent: name == current)
+            }
+            guard let dict = row as? [String: Any], let name = dict["name"] as? String else { return nil }
+            return HermesWorkspace.Branch(
+                name: name,
+                isCurrent: (dict["current"] as? Bool) ?? (name == current)
+            )
+        }
+    }
+
+    func gitWorktrees(path: String) async throws -> [HermesWorkspace.Worktree] {
+        let validated = try HermesMirrorPath.validate(path)
+        let object = try await getObject("/api/git/worktrees", query: [("path", validated)])
+        let rows = (object["worktrees"] as? [[String: Any]]) ?? []
+        return rows.compactMap { row in
+            guard let worktreePath = (row["path"] as? String) ?? (row["worktree"] as? String) else { return nil }
+            return HermesWorkspace.Worktree(
+                path: worktreePath,
+                branch: (row["branch"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                isPrimary: (row["primary"] as? Bool) ?? (worktreePath == validated)
+            )
+        }
+    }
+
+    func gitChangedFiles(path: String) async throws -> [HermesWorkspace.ChangedFile] {
+        let validated = try HermesMirrorPath.validate(path)
+        let object = try await getObject("/api/git/review/list", query: [("path", validated)])
+        let rows = (object["files"] as? [[String: Any]]) ?? []
+        return rows.compactMap { row in
+            guard let filePath = row["path"] as? String else { return nil }
+            return HermesWorkspace.ChangedFile(
+                path: filePath,
+                added: (row["added"] as? Int) ?? 0,
+                removed: (row["removed"] as? Int) ?? 0,
+                status: (row["status"] as? String) ?? "modified"
+            )
+        }
+    }
+
+    func gitFileDiff(repoPath: String, file: String) async throws -> HermesWorkspace.FileDiff {
+        let validatedRepo = try HermesMirrorPath.validate(repoPath)
+        let validatedFile = try HermesMirrorPath.validateRelative(file)
+        let response = try await get(
+            "/api/git/file-diff",
+            query: [("path", validatedRepo), ("file", validatedFile)],
+            cap: Self.fileBodyCap
+        )
+        try Self.requireSuccess(response, path: "/api/git/file-diff")
+        // The endpoint answers with either a JSON envelope or the raw patch,
+        // depending on version. Prefer the envelope; fall back to the body.
+        let text: String
+        if let object = response.jsonObject() {
+            if let error = object["error"] as? String {
+                throw HermesMirrorTransportError.invalidResponse("/api/git/file-diff:\(error)")
+            }
+            text = (object["diff"] as? String) ?? (object["patch"] as? String) ?? ""
+        } else {
+            text = String(decoding: response.data, as: UTF8.self)
+        }
+        // A body that exactly fills the cap was almost certainly cut short.
+        // Saying so beats rendering a truncated patch as a complete one.
+        return HermesWorkspace.FileDiff(
+            path: validatedFile,
+            diff: text,
+            truncated: response.body.readableBytes >= Self.fileBodyCap
+        )
+    }
+
+    /// Shared shape for the git endpoints: GET, require 2xx, require an object.
+    private func getObject(_ path: String, query: [(String, String)]) async throws -> [String: Any] {
+        let response = try await get(path, query: query, cap: Self.listBodyCap)
+        try Self.requireSuccess(response, path: path)
+        guard let object = response.jsonObject() else {
+            throw HermesMirrorTransportError.invalidResponse(path)
+        }
+        if let error = object["error"] as? String {
+            throw HermesMirrorTransportError.invalidResponse("\(path):\(error)")
+        }
+        return object
+    }
+
     // MARK: - Request plumbing
 
     private func get(_ path: String, query: [(String, String)] = [], cap: Int) async throws -> HermesHTTPResponse {

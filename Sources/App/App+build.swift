@@ -2674,6 +2674,16 @@ func buildRouter(
                 artifactsGroup = artifactsGroup.add(middleware: byoHermesMiddleware)
             }
             mirror.controller.addArtifactRoutes(to: artifactsGroup)
+            // Read-only views of the agent's checkout. Its own group so the
+            // write-enabled surface, when it exists, can be gated separately
+            // rather than inheriting whatever this one happens to carry.
+            var workspaceGroup = router.group("/v1/hermes/workspace")
+                .add(middleware: jwtAuthenticator)
+                .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+            if let byoHermesMiddleware {
+                workspaceGroup = workspaceGroup.add(middleware: byoHermesMiddleware)
+            }
+            mirror.controller.addWorkspaceRoutes(to: workspaceGroup)
             // The push route is unauthenticated by construction — the sender
             // is the tenant's own Hermes, which holds no LuminaVault session.
             mirror.webhooks.addPublicRoutes(to: router)

@@ -32,6 +32,69 @@ struct HermesMirrorController {
         router.post("vault/import-sessions", use: importSessions)
     }
 
+    /// `/v1/hermes/workspace/*` — read-only views of the agent's checkout.
+    ///
+    /// Mounted separately from the mirror routes so the write-enabled surface,
+    /// when it eventually exists, can sit behind its own middleware rather
+    /// than inheriting whatever this group happens to have.
+    func addWorkspaceRoutes(to router: RouterGroup<AppRequestContext>) {
+        router.get("status", use: workspaceStatus)
+        router.get("files", use: workspaceListing)
+        router.get("file", use: workspaceFile)
+        router.get("diff", use: workspaceDiff)
+    }
+
+    @Sendable
+    func workspaceStatus(_ req: Request, ctx: AppRequestContext) async throws -> HermesWorkspaceStatusDTO {
+        let tenantID = try ctx.requireTenantID()
+        let path = try Self.requiredPath(req, name: "path")
+        return try await Self.mapErrors {
+            try await service.workspaceStatus(tenantID: tenantID, path: path)
+        }
+    }
+
+    @Sendable
+    func workspaceListing(_ req: Request, ctx: AppRequestContext) async throws -> HermesWorkspaceListingDTO {
+        let tenantID = try ctx.requireTenantID()
+        let path = try Self.requiredPath(req, name: "path")
+        return try await Self.mapErrors {
+            try await service.workspaceListing(tenantID: tenantID, path: path)
+        }
+    }
+
+    @Sendable
+    func workspaceFile(_ req: Request, ctx: AppRequestContext) async throws -> HermesWorkspaceFileDTO {
+        let tenantID = try ctx.requireTenantID()
+        let path = try Self.requiredPath(req, name: "path")
+        return try await Self.mapErrors {
+            try await service.workspaceFile(tenantID: tenantID, path: path)
+        }
+    }
+
+    @Sendable
+    func workspaceDiff(_ req: Request, ctx: AppRequestContext) async throws -> HermesWorkspaceDiffDTO {
+        let tenantID = try ctx.requireTenantID()
+        let repoPath = try Self.requiredPath(req, name: "path")
+        let file = try Self.requiredPath(req, name: "file")
+        return try await Self.mapErrors {
+            try await service.workspaceDiff(tenantID: tenantID, repoPath: repoPath, file: file)
+        }
+    }
+
+    /// A missing path is a 400 rather than a default. Defaulting to the
+    /// agent's working directory would make a typo silently list somewhere
+    /// else, which reads as data loss to whoever is looking at the tree.
+    private static func requiredPath(_ req: Request, name: String) throws -> String {
+        guard let raw = req.uri.queryParameters[Substring(name)] else {
+            throw HTTPError(.badRequest, message: "\(name) required")
+        }
+        let value = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            throw HTTPError(.badRequest, message: "\(name) required")
+        }
+        return value
+    }
+
     func addArtifactRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("artifacts", use: listArtifacts)
         router.get("artifacts/:id", use: getArtifact)
@@ -236,6 +299,10 @@ extension HermesMirroredJobDTO: ResponseEncodable {}
 extension HermesJobRunsResponse: ResponseEncodable {}
 extension HermesArtifactDTO: ResponseEncodable {}
 extension HermesArtifactListResponse: ResponseEncodable {}
+extension HermesWorkspaceStatusDTO: ResponseEncodable {}
+extension HermesWorkspaceListingDTO: ResponseEncodable {}
+extension HermesWorkspaceFileDTO: ResponseEncodable {}
+extension HermesWorkspaceDiffDTO: ResponseEncodable {}
 extension HermesCompileJobInstallResultDTO: ResponseEncodable {}
 extension HermesVaultImportResultDTO: ResponseEncodable {}
 extension HermesVaultCreateResultDTO: ResponseEncodable {}

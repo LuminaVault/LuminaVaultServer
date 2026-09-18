@@ -434,6 +434,26 @@ enum HermesMirrorPath {
         return normalized
     }
 
+    /// Validates a repository-relative path, for parameters that name a file
+    /// *inside* a repo rather than an absolute location.
+    ///
+    /// The absolute validator above cannot be reused: it demands a leading
+    /// slash, which would make every relative path invalid. Both reject `.`
+    /// and `..` segments, which is the point — a file parameter that walks out
+    /// of the repo would let a caller read any file the agent can reach by
+    /// asking for a diff of it.
+    static func validateRelative(_ raw: String) throws -> String {
+        let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty, !path.hasPrefix("/"), !path.contains("\0") else {
+            throw HermesMirrorTransportError.invalidPath(raw)
+        }
+        let segments = path.split(separator: "/", omittingEmptySubsequences: false)
+        for segment in segments where segment == "." || segment == ".." || segment.isEmpty {
+            throw HermesMirrorTransportError.invalidPath(raw)
+        }
+        return path
+    }
+
     static func join(_ base: String, _ component: String) -> String {
         base.hasSuffix("/") ? base + component : base + "/" + component
     }
