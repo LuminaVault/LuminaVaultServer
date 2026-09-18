@@ -57,7 +57,18 @@ enum ModelDisclosurePolicy {
                 taskType: routing.taskType,
                 strategy: routing.strategy,
                 activeRoutes: [],
-                displayLabel: genericLabel(task: routing.taskType)
+                displayLabel: genericLabel(task: routing.taskType),
+                // promptTokens survives: how much the user said reveals
+                // nothing about which model heard it, and the gauge is
+                // useless without it.
+                promptTokens: routing.promptTokens,
+                // The window size does not survive. 200k against 1M
+                // identifies the model as surely as naming it, which is the
+                // whole point of hidden disclosure. The client falls back to
+                // its own catalogue lookup, which for a managed tenant finds
+                // nothing — so managed tenants get a receipt, not a gauge.
+                contextWindowTokens: nil,
+                droppedHistoryTurns: routing.droppedHistoryTurns
             ))
         case let .usage(usage):
             return .usage(RouterUsageDTO(
@@ -68,7 +79,10 @@ enum ModelDisclosurePolicy {
                 tokensOut: usage.tokensOut,
                 estimatedCostUsdMicros: usage.estimatedCostUsdMicros,
                 latencyMs: usage.latencyMs,
-                usageEstimated: usage.usageEstimated
+                usageEstimated: usage.usageEstimated,
+                // Same fingerprint argument as on the routing event.
+                contextWindowTokens: nil,
+                toolCallCount: usage.toolCallCount
             ))
         case let .fallback(notice):
             return .fallback(ProviderFallbackNoticeDTO(
