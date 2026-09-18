@@ -583,10 +583,17 @@ struct ConversationController {
         let billingSponsorID = memoryAccess.billingSponsorUserID
         let conversation = try await fetch(tenantID: actorID, id: conversationID)
         let body = try await req.decode(as: MessageStreamRequest.self, context: ctx)
-        let content = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else {
+        let typedContent = body.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typedContent.isEmpty || !(body.attachments ?? []).isEmpty else {
             throw HTTPError(.badRequest, message: "content required")
         }
+        // Attachments are folded in here rather than by each client, so the
+        // same attached file reaches the model in one shape whichever app
+        // sent it. See ChatAttachmentPrompt.
+        let content = ChatAttachmentPrompt.compose(
+            content: typedContent,
+            attachments: body.attachments
+        )
         if body.multiModel?.enabled == true {
             let tier = EntitlementChecker.effectiveTier(tier: user.tierEnum, override: user.tierOverrideEnum)
             guard parallelEnabled, tier == .ultimate else {
