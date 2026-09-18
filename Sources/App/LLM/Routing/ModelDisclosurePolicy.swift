@@ -97,6 +97,14 @@ enum ModelDisclosurePolicy {
             ))
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
+        // An event type this build does not know (LuminaVaultShared 5.16.0).
+        // Its payload did not survive decoding, so there is nothing here to
+        // scrub — but under a hidden-disclosure policy an unknown frame is
+        // exactly the thing that might name a provider, so drop it. The
+        // contract on the case is "skip, never error", and dropping is how
+        // this function skips.
+        case .unrecognized:
+            return nil
         }
     }
 
