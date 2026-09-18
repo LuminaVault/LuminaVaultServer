@@ -4,8 +4,8 @@ import HTTPTypes
 import Hummingbird
 import HummingbirdTesting
 import Logging
-import SQLKit
 import LuminaVaultShared
+import SQLKit
 import Testing
 
 /// Guided-start ("Get started with Hermie") server contract — see
@@ -236,7 +236,9 @@ struct GuidedStartTests {
                     headers: [.authorization: "Bearer \(token)", .contentType: "text/markdown"],
                     body: ByteBuffer(string: "# \(name)")
                 ) { resp in #expect(resp.status == .ok || resp.status == .created) }
-                if name == "one.md" { try await Task.sleep(nanoseconds: 1_100_000_000) }
+                if name == "one.md" {
+                    try await Task.sleep(nanoseconds: 1_100_000_000)
+                }
             }
             let state = try await Self.onboarding(client: client, token: token)
             #expect(state.firstCaptureCompleted == true)
