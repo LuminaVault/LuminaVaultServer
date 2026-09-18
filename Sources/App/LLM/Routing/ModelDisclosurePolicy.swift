@@ -95,11 +95,7 @@ enum ModelDisclosurePolicy {
                 errorCode: progress.errorCode,
                 status: progress.status
             ))
-        // `.unrecognized` is a decode-side escape hatch added in Shared
-        // 5.16 — the server never constructs one, and it carries no
-        // provider/model identity (the payload is dropped on decode), so
-        // it needs no scrubbing.
-        case .source, .token, .summary, .followUps, .done, .error, .linkSaved, .unrecognized:
+        case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
             return event
         }
     }
