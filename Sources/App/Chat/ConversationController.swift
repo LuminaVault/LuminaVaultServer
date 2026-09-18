@@ -535,10 +535,10 @@ struct ConversationController {
     /// populates), and a terminal `.done`. The assistant turn is
     /// persisted on `.done`; errors abort persistence and surface as
     /// `.error` events.
-    @Sendable
     /// Starts the run and builds the pointer, or returns nil so the caller
     /// can fall back. Never throws: every failure here is recoverable by
     /// answering the turn the ordinary way.
+    @Sendable
     private static func startAgentRun(
         service: HermesRunsService,
         tenantID: UUID,
@@ -554,7 +554,7 @@ struct ConversationController {
                 sessionKey: sessionKey
             )
             logger.info("chat escalated to hermes run", metadata: [
-                "run_id": .string(run.id.uuidString)
+                "run_id": .string(run.id.uuidString),
             ])
             return ChatHermesRunRefDTO(
                 runID: run.id,
@@ -564,7 +564,7 @@ struct ConversationController {
             )
         } catch {
             logger.warning("chat escalation failed, using classic stream", metadata: [
-                "error": .string(String(describing: error))
+                "error": .string(String(describing: error)),
             ])
             return nil
         }

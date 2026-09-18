@@ -13,7 +13,7 @@ struct RoutingContextMeterTests {
     func estimateGrows() {
         let small = Estimator.estimateTokens(of: [ChatMessage(role: "user", content: "hi")])
         let large = Estimator.estimateTokens(of: [
-            ChatMessage(role: "user", content: String(repeating: "word ", count: 1_000))
+            ChatMessage(role: "user", content: String(repeating: "word ", count: 1000)),
         ])
         #expect(small > 0)
         #expect(large > small * 10)

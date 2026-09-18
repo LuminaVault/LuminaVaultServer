@@ -54,12 +54,12 @@ struct HermesRunConversationPersistenceTests {
                 makeClient: { _, sessionKey in gateway.client(sessionKey: sessionKey) },
                 logger: logger
             )
-            let harness = Harness(
+            let harness = try Harness(
                 fluent: fluent,
                 gateway: gateway,
                 service: service,
                 tenantID: tenantID,
-                conversationID: try conversation.requireID()
+                conversationID: conversation.requireID()
             )
             do {
                 try await body(harness)
@@ -87,7 +87,9 @@ struct HermesRunConversationPersistenceTests {
     ) async throws -> ConversationMessage? {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while ContinuousClock.now < deadline {
-            if let first = try await assistantMessages(harness).first { return first }
+            if let first = try await assistantMessages(harness).first {
+                return first
+            }
             try await Task.sleep(for: .milliseconds(20))
         }
         return nil
