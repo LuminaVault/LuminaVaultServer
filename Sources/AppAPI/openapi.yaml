@@ -1600,8 +1600,10 @@ paths:
         an auth scope, an audit trail and a confirmation model before a browser
         session can reach them.
 
-        `501 hermes_workspace_unsupported` when the tenant has no remote Hermes
-        — a filesystem-mirrored tenant has no checkout to inspect.
+        `501 hermes_mirror_unsupported` when the tenant has no remote Hermes — a
+        filesystem-mirrored tenant has no checkout to inspect. Verified
+        against staging rather than assumed: the code comes from the shared
+        mirror error mapper, not from a workspace-specific one.
       parameters:
         - name: path
           in: query
@@ -1615,7 +1617,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HermesWorkspaceStatusDTO' }
         '400': { description: 'Missing or malformed path (`hermes_mirror_invalid_path`).' }
-        '501': { description: 'This tenant has no remote Hermes (`hermes_workspace_unsupported`).' }
+        '501': { description: 'This tenant has no remote Hermes (`hermes_mirror_unsupported`).' }
 
   /v1/hermes/workspace/files:
     get:
