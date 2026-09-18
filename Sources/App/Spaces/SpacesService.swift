@@ -23,6 +23,52 @@ enum SpaceSlugPolicy {
         else { throw SpacesError.invalidSlug }
         return s
     }
+
+    /// A slug from a free-text name, guaranteed to satisfy ``validate(_:)``.
+    ///
+    /// `slug` is optional in the contract — `SpaceCreateRequest` requires
+    /// `name` and nothing else — so the server owes a derivation to any
+    /// client that sends only a name. This lives beside the pattern it has
+    /// to satisfy, rather than beside one of its callers, because a
+    /// derivation kept somewhere else drifts away from the rule it is
+    /// derived for. `SpaceSlugDerivationTests` asserts every output of this
+    /// validates, which is the property that makes it safe to call blind.
+    static func derive(from name: String) -> String {
+        var out = ""
+        var lastDash = false
+        for ch in name.lowercased() {
+            // ASCII only, deliberately. `isLetter` is true for every script
+            // Unicode calls a letter, so a Japanese or Greek name would sail
+            // through the loop and then be rejected by `validate`, which only
+            // accepts a-z0-9. Anything outside that range becomes a separator
+            // and the fallback below catches a name that leaves nothing.
+            if ch.isASCII, ch.isLetter || ch.isNumber {
+                out.append(ch)
+                lastDash = false
+            } else if !lastDash, !out.isEmpty {
+                out.append("-")
+                lastDash = true
+            }
+        }
+        // Trim before truncating and again after: truncation can land on a
+        // dash, and a trailing dash is legal but ugly as a folder name.
+        out = String(out.trimmingCharacters(in: CharacterSet(charactersIn: "-")).prefix(31))
+        out = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        // Names that carry no letters or digits at all — punctuation, emoji,
+        // scripts this transliterates nothing of — leave nothing to slug.
+        if out.count < 2 { out = "space" }
+        // `validate` rejects reserved words by name rather than by shape, so
+        // a derivation has to step off them rather than hand one back.
+        if reserved.contains(out) { out += "-space" }
+        return out
+    }
+
+    /// The create path's rule in one place: an explicit slug wins, an absent
+    /// or blank one is derived from the name.
+    static func resolve(slug: String?, name: String) -> String {
+        let explicit = (slug ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return explicit.isEmpty ? derive(from: name) : explicit
+    }
 }
 
 /// CRUD for user-defined organizing folders. DB row is the source of truth;
