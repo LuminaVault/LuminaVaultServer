@@ -57,7 +57,18 @@ enum ModelDisclosurePolicy {
                 taskType: routing.taskType,
                 strategy: routing.strategy,
                 activeRoutes: [],
-                displayLabel: genericLabel(task: routing.taskType)
+                displayLabel: genericLabel(task: routing.taskType),
+                // promptTokens survives: how much the user said reveals
+                // nothing about which model heard it, and the gauge is
+                // useless without it.
+                promptTokens: routing.promptTokens,
+                // The window size does not survive. 200k against 1M
+                // identifies the model as surely as naming it, which is the
+                // whole point of hidden disclosure. The client falls back to
+                // its own catalogue lookup, which for a managed tenant finds
+                // nothing — so managed tenants get a receipt, not a gauge.
+                contextWindowTokens: nil,
+                droppedHistoryTurns: routing.droppedHistoryTurns
             ))
         case let .usage(usage):
             return .usage(RouterUsageDTO(
@@ -68,7 +79,10 @@ enum ModelDisclosurePolicy {
                 tokensOut: usage.tokensOut,
                 estimatedCostUsdMicros: usage.estimatedCostUsdMicros,
                 latencyMs: usage.latencyMs,
-                usageEstimated: usage.usageEstimated
+                usageEstimated: usage.usageEstimated,
+                // Same fingerprint argument as on the routing event.
+                contextWindowTokens: nil,
+                toolCallCount: usage.toolCallCount
             ))
         case let .fallback(notice):
             return .fallback(ProviderFallbackNoticeDTO(
@@ -96,6 +110,11 @@ enum ModelDisclosurePolicy {
                 status: progress.status
             ))
         case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
+            return event
+        // The run pointer carries a run id, a Hermes session id, a cursor and
+        // a timestamp — no provider, no model, no route. Nothing to scrub.
+        // The run's own event feed is scrubbed where it is served, not here.
+        case .hermesRun:
             return event
         // An event type this build does not know (LuminaVaultShared 5.16.0).
         // Its payload did not survive decoding, so there is nothing here to

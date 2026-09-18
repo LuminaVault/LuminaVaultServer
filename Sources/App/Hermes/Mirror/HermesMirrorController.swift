@@ -44,8 +44,18 @@ struct HermesMirrorController {
         let query = req.uri.queryParameters["q"].map(String.init)
         let before = req.uri.queryParameters["before"].flatMap { HermesDates.parseISO(String($0)) }
         let limit = req.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 50
+        // Lets a chat surface show only the artifacts produced by the run
+        // backing this conversation, rather than the tenant's whole gallery.
+        let sessionID = req.uri.queryParameters["sessionID"].map(String.init)
         return try await Self.mapErrors {
-            try await service.artifacts(tenantID: tenantID, kind: kind, query: query, before: before, limit: limit)
+            try await service.artifacts(
+                tenantID: tenantID,
+                kind: kind,
+                query: query,
+                before: before,
+                limit: limit,
+                sessionID: sessionID
+            )
         }
     }
 

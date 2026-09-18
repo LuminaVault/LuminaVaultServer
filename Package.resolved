@@ -1,5 +1,5 @@
 {
-  "originHash" : "64de06a223082ba6de16cca9127ec9c2423af05d58575f3d9363f3df8d41a983",
+  "originHash" : "3982c12d9fad702f829ff6e4e68e73a28f502297d75039ac4c16d75efccfa589",
   "pins" : [
     {
       "identity" : "apnswift",
@@ -141,8 +141,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/LuminaVault/LuminaVaultShared.git",
       "state" : {
-        "revision" : "32d893898dceda3c9b4276e380a5a982458791e1",
-        "version" : "5.17.0"
+        "revision" : "4c03f1fc5d23cfe28b480731bdcbf4ec0a7207b3",
+        "version" : "5.18.0"
       }
     },
     {

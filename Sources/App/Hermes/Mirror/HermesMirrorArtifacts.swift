@@ -41,12 +41,18 @@ extension HermesMirrorService {
         return inserted
     }
 
+    /// - Parameter sessionID: narrows to one Hermes session. Artifacts are
+    ///   keyed by session, not by conversation, so a chat surface reaches
+    ///   them through the conversation's run: conversation → run.sessionID →
+    ///   artifacts. A query parameter keeps that join at the call site
+    ///   instead of denormalising a conversation id onto every row.
     func artifacts(
         tenantID: UUID,
         kind: String?,
         query: String?,
         before: Date?,
-        limit: Int
+        limit: Int,
+        sessionID: String? = nil
     ) async throws -> HermesArtifactListResponse {
         let bounded = max(1, min(limit, 100))
         var q = HermesArtifact.query(on: fluent.db(), tenantID: tenantID)
@@ -55,6 +61,9 @@ extension HermesMirrorService {
             .limit(bounded + 1)
         if let kind, let parsed = HermesArtifactKind(rawValue: kind) {
             q = q.filter(\.$kind == parsed.rawValue)
+        }
+        if let sessionID, !sessionID.isEmpty {
+            q = q.filter(\.$sessionID == sessionID)
         }
         if let before {
             q = q.filter(\.$occurredAt < before)

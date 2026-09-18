@@ -1,3 +1,4 @@
+import FluentKit
 import Foundation
 import Logging
 import LuminaVaultShared
@@ -227,8 +228,86 @@ actor HermesRunWatcher {
             await notifier.approvalRequested(tenantID: tenantID, run: dto)
         }
         if next.isTerminal, !previous.isTerminal {
+            await commitConversationTurn(run: result.run, at: at)
             await notifier.runFinished(tenantID: tenantID, run: dto)
         }
+    }
+
+    /// Writes the run's answer into the conversation as a real assistant turn.
+    ///
+    /// Until this exists, an escalated turn leaves only the system marker
+    /// linking to the run — so the answer is on screen while the stream is
+    /// live and gone the moment the thread is reopened, or opened on another
+    /// device. The transcript has to be able to stand on its own.
+    ///
+    /// Idempotent on `hermes_run_id`, because this is not a
+    /// once-per-run-ever code path: a watcher re-attaches to a non-terminal
+    /// run after a restart and replays from its cursor, so a run that
+    /// finished while the process was down reaches this line again. Writing
+    /// twice would show the user the same answer twice.
+    ///
+    /// Never throws. A failure here must not stop the run from being marked
+    /// finished or the push from going out — the answer is still readable on
+    /// the run's own feed, which is a much smaller loss than a run stuck
+    /// looking unfinished forever.
+    /// Internal rather than private so the persistence tests can drive the
+    /// idempotent path directly — replaying a terminal edge is exactly what a
+    /// re-attached watcher does, and it is the case worth pinning.
+    func commitConversationTurn(run: HermesRun, at _: Date) async {
+        guard let conversationID = run.conversationID else { return }
+        // A cancelled run has nothing to say. A failed one is reported
+        // through the run's own status rather than as an assistant turn
+        // claiming to be an answer.
+        guard run.runStatus == .completed else { return }
+        let summary = (run.summary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return }
+
+        do {
+            let db = store.fluent.db()
+            let existing = try await ConversationMessage.query(on: db)
+                .filter(\.$hermesRunID == runID)
+                .first()
+            guard existing == nil else { return }
+
+            let toolNames = try await store.events(runID: runID, afterSeq: 0, limit: 1000)
+                .compactMap { HermesRunWatcher.toolName(inEventNamed: $0.event, payload: $0.payload) }
+
+            let message = ConversationMessage(
+                conversationID: conversationID,
+                role: .assistant,
+                content: summary
+            )
+            message.toolCallCount = toolNames.count
+            message.hermesRunID = runID
+            try await message.save(on: db)
+
+            logger.info("hermes run answer committed to conversation", metadata: [
+                "run": .string(runID.uuidString),
+                "conversation": .string(conversationID.uuidString),
+                "tools": .stringConvertible(toolNames.count),
+            ])
+        } catch {
+            logger.error("hermes run conversation commit failed", metadata: [
+                "run": .string(runID.uuidString),
+                "error": .string(Logger.redact(String(describing: error))),
+            ])
+        }
+    }
+
+    /// The tool a `tool.started` event names, or nil for anything else.
+    /// Counted rather than the completions, so a tool that never returned
+    /// still shows as attempted.
+    /// Payload is a dictionary rather than `AnyJSONValue` for the reason
+    /// documented on `HermesRunEventRow.payload`: a bare `AnyJSONValue`
+    /// Fluent field reads a `jsonb` column back as its text form.
+    static func toolName(inEventNamed name: String, payload: [String: AnyJSONValue]) -> String? {
+        guard name == "tool.started" else { return nil }
+        for key in ["tool", "tool_name"] {
+            if case let .string(value)? = payload[key], !value.isEmpty {
+                return value
+            }
+        }
+        return "tool"
     }
 
     /// State machine. A run waiting on approval only leaves that state on

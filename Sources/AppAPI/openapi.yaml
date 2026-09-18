@@ -1603,6 +1603,18 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: sessionID
+          in: query
+          required: false
+          description: |
+            Narrow to one Hermes session, so a chat surface can show just the
+            artifacts produced by the run behind the conversation on screen.
+            Artifacts are keyed by session rather than conversation, so the
+            join is conversation → run `sessionID` → artifacts; read the run's
+            `sessionID` from `GET /v1/hermes/runs?conversationID=`. An empty
+            value means no filter, which is what a client sends for a
+            conversation that has not started a run yet.
+          schema: { type: string }
       responses:
         '200':
           description: Newest first.
@@ -2146,6 +2158,18 @@ paths:
           in: query
           required: false
           schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+        - name: conversationID
+          in: query
+          required: false
+          description: |
+            Narrow to the runs started by one conversation. This is how a chat
+            client recovers after losing the stream that carried a run's id —
+            it asks which runs belong to the conversation instead of scanning
+            the tenant's whole history. Runs started from the Agent Runs screen
+            have no conversation and never match. An unparseable value is
+            treated as absent rather than rejected, so a malformed link
+            degrades to the full list instead of a 400.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Persisted runs.
@@ -10488,6 +10512,33 @@ components:
             Generic routing label for managed tenants (e.g. "Auto · coding").
             When present and activeRoutes is empty, clients must render this
             instead of any provider/model identity.
+        promptTokens:
+          type: integer
+          nullable: true
+          description: |
+            Size of the assembled prompt. This is what makes a live context
+            gauge possible: `routing` is the only event that fires BEFORE
+            tokens stream, so it is the only source of a live numerator —
+            `usage` arrives once the answer is already finished.
+
+            Absent means the server could not count it. Clients must then
+            show the receipt and no gauge, never a percentage inferred from
+            the previous turn.
+        contextWindowTokens:
+          type: integer
+          nullable: true
+          description: |
+            The routed model's context window. Clients can look this up from
+            their model catalogue; this covers a model the catalogue has not
+            caught up with. Stripped for managed tenants, because a window
+            size is a model fingerprint.
+        droppedHistoryTurns:
+          type: integer
+          nullable: true
+          description: |
+            Earlier turns dropped to fit the window. Makes silent history
+            trimming visible instead of leaving the user wondering why the
+            assistant forgot something.
 
     RouterUsageDTO:
       type: object
@@ -10501,6 +10552,18 @@ components:
         estimatedCostUsdMicros: { type: integer, format: int64 }
         latencyMs: { type: integer }
         usageEstimated: { type: boolean }
+        contextWindowTokens:
+          type: integer
+          nullable: true
+          description: >-
+            Same denominator the live gauge used, so the end-of-turn receipt
+            agrees with it. Stripped for managed tenants.
+        toolCallCount:
+          type: integer
+          nullable: true
+          description: >-
+            Tools this turn actually ran, so the receipt shows a real count
+            rather than one recovered from persisted messages after a reload.
 
     ConnectionKind:
       type: string
@@ -11571,12 +11634,75 @@ components:
         - `usage` — `RouterUsageDTO` (prompt-free terminal usage)
         - `parallel` — `ParallelStreamEventDTO` (multi-model candidate progress)
         - `link_saved` — `LinkSavedDTO` (HER-274 auto-saved chat link)
+        - `hermes_run` — `ChatHermesRunRefDTO` (this turn escalated to an agent run)
+
+        **`done` does not always mean the turn finished.** When `hermes_run`
+        is emitted, the stream sends it and then `done` and closes; the
+        answer and the tool trail arrive on the run's own event feed at
+        `GET /v1/hermes/runs/{runID}/events`. A client that finalizes its
+        assistant bubble on `done` will commit it empty.
+
+        `hermes_run` is only sent to clients that declared `chat.hermes_run`
+        in `X-LV-Client-Caps`. Clients predating that capability abort the
+        whole stream on an event type they do not know, so everyone else
+        keeps the classic token stream.
       properties:
         type:
           type: string
-          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, parallel, link_saved]
+          enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, parallel, link_saved, hermes_run]
         payload:
           description: Case-specific payload; absent for `done`.
+
+    ChatHermesRunRefDTO:
+      type: object
+      required: [runID, afterSeq, startedAt]
+      description: |
+        Payload of the `hermes_run` event. Points the client at the agent run
+        answering this turn.
+
+        A pointer rather than the events themselves because the run feed is
+        the only one with a durable cursor: its events are persisted with a
+        monotonic `seq`, replayed from `?after=`, and keepalived, and it
+        carries approvals and stop. The chat stream has neither cursor nor
+        keepalive, so carrying run events on it would put an unreplayable
+        copy of a durable log on a connection that cannot resume.
+      properties:
+        runID: { type: string, format: uuid }
+        sessionID:
+          type: string
+          nullable: true
+          description: |
+            The Hermes session backing the run. Artifacts are keyed by
+            session, so this is how a chat surface scopes its artifact strip
+            to this turn (`GET /v1/hermes/artifacts?sessionID=`).
+        afterSeq:
+          type: integer
+          description: Where to start reading the run's event feed. Normally 0.
+        startedAt: { type: string, format: date-time }
+
+    ChatAgentModeDTO:
+      type: string
+      enum: [off, auto, force]
+      description: |
+        Whether a turn may escalate to a Hermes agent run. Absent means
+        `auto`. The server owns the decision; this is the user's standing
+        preference, not an instruction to start a run.
+
+    ChatAttachmentDTO:
+      type: object
+      required: [kind, name]
+      description: |
+        Something attached to a turn. Flattened into the prompt server-side
+        so web and iOS cannot drift into two prompt shapes for one
+        attachment. Text and vault references only — there is no chat
+        blob-upload endpoint, and images reach a conversation through the
+        capture and ingestion path as `vault_file`.
+      properties:
+        kind: { type: string, enum: [text, vault_file, link] }
+        name: { type: string, description: What to call it in the prompt and on the chip. }
+        text: { type: string, nullable: true }
+        vaultPath: { type: string, nullable: true }
+        url: { type: string, nullable: true }
 
     LinkSavedDTO:
       type: object
@@ -11738,6 +11864,10 @@ components:
       properties:
         content: { type: string }
         multiModel: { $ref: '#/components/schemas/ChatMultiModelOptionsDTO' }
+        agentMode: { $ref: '#/components/schemas/ChatAgentModeDTO' }
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/ChatAttachmentDTO' }
 
     HybridExecutionProfile:
       type: string

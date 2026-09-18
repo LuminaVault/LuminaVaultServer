@@ -203,7 +203,13 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             profileName: cerberus.profileName,
             taskType: cerberus.taskType,
             strategy: cerberus.strategy,
-            activeRoutes: cerberus.routes
+            activeRoutes: cerberus.routes,
+            // Routing fires before the first token, so this is the only place
+            // a live context gauge can get its numerator. Both numbers are
+            // estimates; nil means "could not tell", and the client then
+            // shows a receipt with no gauge rather than a confident guess.
+            promptTokens: PromptSizeEstimator.estimateTokens(of: request.messages),
+            contextWindowTokens: PromptSizeEstimator.contextWindow(forModel: decision.primary.modelID)
         )))
         LLMRoutingContext.routeOutcomeSink?(ModelProvenanceDTO(
             provider: ProviderID.openRouter.rawValue,
