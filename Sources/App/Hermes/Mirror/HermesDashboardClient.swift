@@ -483,9 +483,9 @@ struct HermesDashboardClient: Sendable {
 
     // MARK: - Workspace (read-only git)
 
-    /// Upstream returns a bare object per endpoint and has changed field names
-    /// between versions, so every accessor below tolerates absence rather than
-    /// throwing. A missing branch is a detached HEAD, not a broken response.
+    // Upstream returns a bare object per endpoint and has changed field names
+    // between versions, so every accessor below tolerates absence rather than
+    // throwing. A missing branch is a detached HEAD, not a broken response.
 
     func gitStatus(path: String) async throws -> HermesWorkspace.Repo {
         let validated = try HermesMirrorPath.validate(path)
