@@ -63,6 +63,8 @@ struct VaultController {
     let initService: VaultInitService?
     let eventBus: EventBus?
     let achievements: AchievementsWorker?
+    /// Guided-start step 1. Optional the same way `achievements` is.
+    let onboardingLatches: OnboardingLatches?
     let logger: Logger
     let maxFileSize: Int
     /// HER-Notes — when present, a `?note=true` upload owns its recall memory
@@ -89,6 +91,7 @@ struct VaultController {
         initService: VaultInitService? = nil,
         eventBus: EventBus? = nil,
         achievements: AchievementsWorker? = nil,
+        onboardingLatches: OnboardingLatches? = nil,
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
         memories: MemoryRepository? = nil,
@@ -100,6 +103,7 @@ struct VaultController {
         self.initService = initService
         self.eventBus = eventBus
         self.achievements = achievements
+        self.onboardingLatches = onboardingLatches
         self.logger = logger
         self.maxFileSize = maxFileSize
         self.memories = memories
@@ -242,6 +246,10 @@ struct VaultController {
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .vaultUploaded)
         }
+
+        // Guided-start step 1 — the server, not the client, decides that a
+        // memory was saved. See `docs/guided-start.md`.
+        await onboardingLatches?.latch(.firstCapture, tenantID: tenantID)
 
         // HER-171: notify the skills runtime so capture-driven skills
         // (e.g. capture-enrich) can fire on new vault writes. Fire-and-

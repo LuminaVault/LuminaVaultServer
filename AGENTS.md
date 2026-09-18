@@ -25,6 +25,22 @@ These rules apply to every agent (Claude, Codex, etc.) working in this repo. The
 - When adding a new DTO: add it to `LuminaVaultShared` first, bump the shared package, then consume in server + client.
 - If you find duplicate DTO definitions, treat it as a bug: consolidate into `LuminaVaultShared` and delete the duplicates.
 
+## 4. Guided onboarding — the server owns the three latches
+
+- The cross-platform contract is `LuminaVaultShared/docs/guided-start.md` (the
+  sibling repo). Read it before touching anything under `Sources/App/Onboarding`
+  or any of the three latches. iOS, web and a future Android client all read
+  that one document, so a change here that is not in it is a change three
+  clients will disagree about.
+- `firstCaptureCompleted`, `firstKBCompileCompleted` and `firstQueryCompleted`
+  are latched **server-side only**. A client must never set them. That is what
+  lets two devices show the same progress without talking to each other, and it
+  is why the clients poll.
+- `guidedStartDismissedAt` is the one two-way field on the onboarding row. The
+  seven completion flags stay one-way and reject `false`.
+- Latches go through `OnboardingLatches`, which is deliberately non-throwing: a
+  latch failing must never fail the user action that triggered it.
+
 ## How To Apply
 
 - Before opening a PR that touches API shape: confirm `openapi.yaml` updated, `make bruno-regen` run, DTO present in `LuminaVaultShared`.

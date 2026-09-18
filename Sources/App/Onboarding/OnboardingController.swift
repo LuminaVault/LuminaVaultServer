@@ -27,7 +27,8 @@ extension OnboardingStateDTO {
             firstQueryCompleted: row.firstQueryCompleted,
             firstQueryCompletedAt: row.firstQueryCompletedAt,
             brainConfiguredCompleted: row.brainConfiguredCompleted,
-            brainConfiguredCompletedAt: row.brainConfiguredCompletedAt
+            brainConfiguredCompletedAt: row.brainConfiguredCompletedAt,
+            guidedStartDismissedAt: row.guidedStartDismissedAt
         )
     }
 }
@@ -61,6 +62,8 @@ struct OnboardingController {
         try rejectFalse(body.firstKBCompileCompleted, field: "firstKBCompileCompleted")
         try rejectFalse(body.firstQueryCompleted, field: "firstQueryCompleted")
         try rejectFalse(body.brainConfiguredCompleted, field: "brainConfiguredCompleted")
+        // `guidedStartDismissed` is deliberately NOT run through
+        // `rejectFalse`: it is the one two-way field on this endpoint.
 
         let now = Date()
         let db = fluent.db()
@@ -97,6 +100,21 @@ struct OnboardingController {
         if body.brainConfiguredCompleted == true, !row.brainConfiguredCompleted {
             row.brainConfiguredCompleted = true
             row.brainConfiguredCompletedAt = now
+        }
+
+        // Guided-start dismissal — the only two-way field. `true` stamps the
+        // timestamp (idempotently: an already-dismissed card keeps its
+        // original stamp), `false` clears it so Settings › "Show me around"
+        // can bring the card back. See `docs/guided-start.md`.
+        switch body.guidedStartDismissed {
+        case .some(true):
+            if row.guidedStartDismissedAt == nil {
+                row.guidedStartDismissedAt = now
+            }
+        case .some(false):
+            row.guidedStartDismissedAt = nil
+        case .none:
+            break
         }
 
         try await row.save(on: db)

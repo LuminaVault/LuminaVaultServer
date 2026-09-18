@@ -9,6 +9,9 @@ struct MemoryCompileController {
     let service: MemoryCompileService
     let fluent: Fluent
     let achievements: AchievementsWorker?
+    /// Guided-start step 2. Optional the same way `achievements` is, so
+    /// unit tests that only exercise the compile loop can leave it nil.
+    let onboardingLatches: OnboardingLatches?
     let progress: any MemoryCompileProgressPublisher
     let usageMetrics: UsageMetricsService?
     let logger: Logger
@@ -83,7 +86,10 @@ struct MemoryCompileController {
                     + elapsed.components.attoseconds / 1_000_000_000_000_000
             )
 
-            try await markFirstKBCompileCompleted(tenantID: tenantID)
+            // Deliberately AFTER the early `rows.isEmpty` return above: an
+            // empty compile learned nothing, so guided-start step 2 stays
+            // incomplete. See `docs/guided-start.md`.
+            await onboardingLatches?.latch(.firstMemoryCompile, tenantID: tenantID)
 
             if let achievements {
                 achievements.enqueue(tenantID: tenantID, event: .kbCompiled)
@@ -121,16 +127,6 @@ struct MemoryCompileController {
         return try await VaultFile.query(on: db, tenantID: tenantID)
             .filter(\.$processedAt == nil)
             .all()
-    }
-
-    private func markFirstKBCompileCompleted(tenantID: UUID) async throws {
-        let db = fluent.db()
-        guard let row = try await OnboardingState.query(on: db, tenantID: tenantID).first(),
-              !row.firstKBCompileCompleted
-        else { return }
-        row.firstKBCompileCompleted = true
-        row.firstKBCompileCompletedAt = Date()
-        try await row.save(on: db)
     }
 }
 

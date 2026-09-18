@@ -457,6 +457,15 @@ func buildRouter(
     if fluentEnabled {
         managedServices.append(achievementsWorker)
     }
+    // Guided-start latches: the server is the single authority on the three
+    // completion flags behind the Home get-started card (`docs/guided-start.md`).
+    // Injected into the real work — upload, link capture, memory compile,
+    // chat — the same optional way `achievementsWorker` is. Nil without a
+    // database, exactly like every other Fluent-backed dependency here.
+    let onboardingLatches: OnboardingLatches? = fluentEnabled
+        ? OnboardingLatches(fluent: services.fluent, logger: Logger(label: "lv.onboarding.latches"))
+        : nil
+
     // Retrieval-quality telemetry (additive). Registered AFTER `fluent` (via
     // `achievementsWorker` ordering) so it drains before DB teardown. Wired
     // into the chat/query/agentic grounding paths below; nil when disabled.
@@ -1526,6 +1535,7 @@ func buildRouter(
         notificationService: pushService,
         achievements: achievementsWorker,
         usageMeter: usageMeterService,
+        onboardingLatches: onboardingLatches,
         urlPreEnricher: chatURLPreEnricher
     )
     // HER-172 ContextRouter — feature-gated by `users.context_routing`.
@@ -1991,6 +2001,7 @@ func buildRouter(
         fluent: services.fluent,
         eventBus: eventBus,
         achievements: achievementsWorker,
+        onboardingLatches: onboardingLatches,
         enrichmentService: capturingEnrichmentService,
         logger: Logger(label: "lv.capture")
     )
@@ -2091,6 +2102,7 @@ func buildRouter(
         vaultAccess: VaultAccessService(fluent: services.fluent),
         retrievalTelemetry: retrievalTelemetryWorker,
         selfImprovement: selfImprovementService,
+        onboardingLatches: onboardingLatches,
         llmPreferences: userLLMPreferenceRepo
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
@@ -2179,6 +2191,7 @@ func buildRouter(
         initService: vaultInitService,
         eventBus: eventBus,
         achievements: achievementsWorker,
+        onboardingLatches: onboardingLatches,
         logger: Logger(label: "lv.vault"),
         memories: makeMemoryRepository(),
         embeddings: embeddingService,
@@ -2303,6 +2316,7 @@ func buildRouter(
         service: memoryCompileService,
         fluent: services.fluent,
         achievements: achievementsWorker,
+        onboardingLatches: onboardingLatches,
         progress: memoryCompileProgressPublisher,
         usageMetrics: UsageMetricsService(fluent: services.fluent),
         logger: Logger(label: "lv.memory-compile.controller")

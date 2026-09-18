@@ -19,6 +19,8 @@ struct LinkCaptureService {
     let fluent: Fluent
     let eventBus: EventBus?
     let achievements: AchievementsWorker?
+    /// Guided-start step 1. Optional the same way `achievements` is.
+    let onboardingLatches: OnboardingLatches?
     let enrichmentService: URLEnrichmentService
     let logger: Logger
 
@@ -128,6 +130,9 @@ struct LinkCaptureService {
         if let achievements {
             achievements.enqueue(tenantID: tenantID, event: .vaultUploaded)
         }
+
+        // Guided-start step 1 — a captured link is a saved memory too.
+        await onboardingLatches?.latch(.firstCapture, tenantID: tenantID)
 
         if let eventBus {
             let event = SkillEvent(
