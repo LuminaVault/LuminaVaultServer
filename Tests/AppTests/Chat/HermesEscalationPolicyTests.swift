@@ -1,6 +1,6 @@
+@testable import App
 import Foundation
 import Testing
-@testable import App
 
 @Suite("Hermes escalation policy")
 struct HermesEscalationPolicyTests {

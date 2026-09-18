@@ -74,7 +74,7 @@ enum HermesEscalationPolicy {
 
         // Strip a leading politeness so "please commit this" reads the same
         // as "commit this".
-        let politePrefixes: Set<String> = ["please", "could", "can", "would", "you", "hey", "ok", "okay"]
+        let politePrefixes: Set = ["please", "could", "can", "would", "you", "hey", "ok", "okay"]
         while let first = words.first, politePrefixes.contains(first) {
             words.removeFirst()
         }
@@ -84,7 +84,9 @@ enum HermesEscalationPolicy {
         // A question is a question even when it starts with an action verb:
         // "run" in "run me through the auth flow" is not a request to run
         // anything. Cheap guard, catches the common phrasing.
-        if words.count > 1, words[1] == "me" { return false }
+        if words.count > 1, words[1] == "me" {
+            return false
+        }
 
         return actionVerbs.contains(verb)
     }

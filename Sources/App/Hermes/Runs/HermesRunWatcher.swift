@@ -253,7 +253,7 @@ actor HermesRunWatcher {
     /// Internal rather than private so the persistence tests can drive the
     /// idempotent path directly — replaying a terminal edge is exactly what a
     /// re-attached watcher does, and it is the case worth pinning.
-    func commitConversationTurn(run: HermesRun, at: Date) async {
+    func commitConversationTurn(run: HermesRun, at _: Date) async {
         guard let conversationID = run.conversationID else { return }
         // A cancelled run has nothing to say. A failed one is reported
         // through the run's own status rather than as an assistant turn
@@ -269,7 +269,7 @@ actor HermesRunWatcher {
                 .first()
             guard existing == nil else { return }
 
-            let toolNames = try await store.events(runID: runID, afterSeq: 0, limit: 1_000)
+            let toolNames = try await store.events(runID: runID, afterSeq: 0, limit: 1000)
                 .compactMap { HermesRunWatcher.toolName(inEventNamed: $0.event, payload: $0.payload) }
 
             let message = ConversationMessage(
@@ -303,7 +303,9 @@ actor HermesRunWatcher {
     static func toolName(inEventNamed name: String, payload: [String: AnyJSONValue]) -> String? {
         guard name == "tool.started" else { return nil }
         for key in ["tool", "tool_name"] {
-            if case let .string(value)? = payload[key], !value.isEmpty { return value }
+            if case let .string(value)? = payload[key], !value.isEmpty {
+                return value
+            }
         }
         return "tool"
     }

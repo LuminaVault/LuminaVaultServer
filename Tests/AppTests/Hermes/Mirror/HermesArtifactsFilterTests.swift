@@ -2,8 +2,8 @@
 import FluentKit
 import Foundation
 import HummingbirdFluent
-import LuminaVaultShared
 import Logging
+import LuminaVaultShared
 import Testing
 
 /// `GET /v1/hermes/artifacts?sessionID=` — how a chat surface shows only the
@@ -19,7 +19,10 @@ struct HermesArtifactsFilterTests {
     private static let logger = Logger(label: "test.hermes-artifacts-filter")
 
     private actor NoTransports: HermesMirrorTransportProviding {
-        nonisolated func kind(tenantID _: UUID) async -> HermesMirrorTransportKind { .remote }
+        nonisolated func kind(tenantID _: UUID) async -> HermesMirrorTransportKind {
+            .remote
+        }
+
         func transport(tenantID _: UUID) async throws -> any HermesMirrorTransport {
             // Listing reads Postgres only; reaching the network here means
             // the read path regressed into a remote call.

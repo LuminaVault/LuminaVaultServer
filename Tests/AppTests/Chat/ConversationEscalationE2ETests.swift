@@ -28,7 +28,9 @@ struct ConversationEscalationE2ETests {
 
     private static func auth(_ token: String, caps: String? = nil) -> HTTPFields {
         var fields: HTTPFields = [.authorization: "Bearer \(token)", .contentType: "application/json"]
-        if let caps { fields[.init("x-lv-client-caps")!] = caps }
+        if let caps {
+            fields[.init("x-lv-client-caps")!] = caps
+        }
         return fields
     }
 

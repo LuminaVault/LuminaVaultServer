@@ -37,13 +37,13 @@ struct ChatAttachmentPromptTests {
     @Test("Each kind gets its own label")
     func labels() {
         let text = Prompt.compose(content: "x", attachments: [
-            ChatAttachmentDTO(kind: .text, name: "a", text: "1")
+            ChatAttachmentDTO(kind: .text, name: "a", text: "1"),
         ])
         let file = Prompt.compose(content: "x", attachments: [
-            ChatAttachmentDTO(kind: .vaultFile, name: "b", text: "2")
+            ChatAttachmentDTO(kind: .vaultFile, name: "b", text: "2"),
         ])
         let link = Prompt.compose(content: "x", attachments: [
-            ChatAttachmentDTO(kind: .link, name: "c", url: "https://example.com")
+            ChatAttachmentDTO(kind: .link, name: "c", url: "https://example.com"),
         ])
         #expect(text.contains("[Attached: a]"))
         #expect(file.contains("[Attached file: b]"))
@@ -62,13 +62,13 @@ struct ChatAttachmentPromptTests {
     }
 
     @Test("Multiple attachments are separated and ordered as given")
-    func multipleAttachments() {
+    func multipleAttachments() throws {
         let composed = Prompt.compose(content: "compare", attachments: [
             ChatAttachmentDTO(kind: .text, name: "first", text: "one"),
-            ChatAttachmentDTO(kind: .text, name: "second", text: "two")
+            ChatAttachmentDTO(kind: .text, name: "second", text: "two"),
         ])
-        let firstIndex = try! #require(composed.range(of: "first")).lowerBound
-        let secondIndex = try! #require(composed.range(of: "second")).lowerBound
+        let firstIndex = try #require(composed.range(of: "first")).lowerBound
+        let secondIndex = try #require(composed.range(of: "second")).lowerBound
         #expect(firstIndex < secondIndex)
         #expect(composed.hasSuffix("compare"))
     }
@@ -77,7 +77,7 @@ struct ChatAttachmentPromptTests {
     /// attached to. Visible truncation beats silently blowing the window.
     @Test("An oversized attachment is truncated, not dropped")
     func perAttachmentCap() {
-        let huge = String(repeating: "x", count: Prompt.maxCharactersPerAttachment + 5_000)
+        let huge = String(repeating: "x", count: Prompt.maxCharactersPerAttachment + 5000)
         let composed = Prompt.compose(
             content: "summarise",
             attachments: [ChatAttachmentDTO(kind: .text, name: "big", text: huge)]
@@ -94,7 +94,7 @@ struct ChatAttachmentPromptTests {
         let composed = Prompt.compose(content: "go", attachments: many)
         // Blocks add framing, so allow headroom over the raw budget while
         // still proving ten full-size files did not all get through.
-        #expect(composed.count < Prompt.maxTotalCharacters + 2_000)
+        #expect(composed.count < Prompt.maxTotalCharacters + 2000)
     }
 
     /// A reference the caller never resolved carries nothing. An empty block
@@ -104,7 +104,7 @@ struct ChatAttachmentPromptTests {
         let composed = Prompt.compose(content: "hello", attachments: [
             ChatAttachmentDTO(kind: .text, name: "empty", text: ""),
             ChatAttachmentDTO(kind: .text, name: "blank", text: "   "),
-            ChatAttachmentDTO(kind: .link, name: "nolink")
+            ChatAttachmentDTO(kind: .link, name: "nolink"),
         ])
         #expect(composed == "hello")
     }
@@ -112,7 +112,7 @@ struct ChatAttachmentPromptTests {
     @Test("A vault reference falls back to its path when the text is absent")
     func vaultPathFallback() {
         let composed = Prompt.compose(content: "x", attachments: [
-            ChatAttachmentDTO(kind: .vaultFile, name: "plan", vaultPath: "notes/plan.md")
+            ChatAttachmentDTO(kind: .vaultFile, name: "plan", vaultPath: "notes/plan.md"),
         ])
         #expect(composed.contains("notes/plan.md"))
     }

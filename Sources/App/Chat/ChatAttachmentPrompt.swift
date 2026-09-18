@@ -17,10 +17,10 @@ enum ChatAttachmentPrompt {
     /// to, and silently blowing the context window is worse than visibly
     /// truncating. Generous enough that ordinary notes and source files pass
     /// through whole.
-    static let maxCharactersPerAttachment = 20_000
+    static let maxCharactersPerAttachment = 20000
 
     /// Total cap across all attachments on one turn, for the same reason.
-    static let maxTotalCharacters = 60_000
+    static let maxTotalCharacters = 60000
 
     static let truncationNotice = "\n… (truncated)"
 
