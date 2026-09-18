@@ -134,4 +134,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M128_SeedNewsTickerPlugin())
     await fluent.migrations.add(M129_AddOnboardingGuidedStartDismissed())
     await fluent.migrations.add(M130_BackfillFirstMemoryCompileFromLegacy())
+    await fluent.migrations.add(M131_AddConversationMessageHermesRun())
 }

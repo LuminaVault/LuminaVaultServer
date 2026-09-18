@@ -18,6 +18,10 @@ final class ConversationMessage: Model, @unchecked Sendable {
     @OptionalField(key: "parallel_execution_id") var parallelExecutionID: UUID?
     @OptionalField(key: "local_execution_id") var localExecutionID: UUID?
     @Field(key: "tool_call_count") var toolCallCount: Int
+    /// The Hermes agent run that produced this turn, when one did (M131).
+    /// Nil for every ordinary turn. Doubles as the idempotency key for the
+    /// watcher's write — see the migration.
+    @OptionalField(key: "hermes_run_id") var hermesRunID: UUID?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
     init() {
