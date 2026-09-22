@@ -18,11 +18,18 @@ struct AgentConnectionDTO: Codable, Sendable, ResponseEncodable {
     let tokenPrefix: String
     let createdAt: Date
     let lastUsedAt: Date?
+    let allowPersonalData: Bool
 }
 
 struct AgentConnectionIssueRequest: Codable, Sendable {
     let name: String
     let clientKind: AgentClientKind
+    /// Absent from older clients; they get the safe default, off.
+    let allowPersonalData: Bool?
+}
+
+struct AgentConnectionUpdateRequest: Codable, Sendable {
+    let allowPersonalData: Bool
 }
 
 struct AgentConnectionSetupDTO: Codable, Sendable, Equatable, ResponseEncodable {
