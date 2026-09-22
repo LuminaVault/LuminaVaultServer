@@ -34,7 +34,11 @@ struct ConversationTests {
         let messages = ConversationController.buildPrompt(history: history, hits: hits)
         #expect(messages.count == 4)
         #expect(messages[0].role == "system")
-        #expect(messages[0].content.contains("[1] skipped run Tuesday"))
+        // Each retrieved memory is cited by number and tagged with where it
+        // came from (2b8dacb), so the assistant can weigh a user's own note
+        // above an earlier model draft. A hit with no recorded provenance is
+        // labelled `legacy` — that is `MemoryProvenance.legacy`, not a typo.
+        #expect(messages[0].content.contains("[1] [legacy] skipped run Tuesday"))
         #expect(messages[1].role == "user")
         #expect(messages[1].content == "ran 5k Monday")
         #expect(messages[2].role == "assistant")
