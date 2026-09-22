@@ -3543,6 +3543,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UpstreamError'
+        '503':
+          description: |
+            The free fallback lane was the only route open to this caller and
+            none of its providers is configured (`free_lane_unavailable`). This
+            is not exhaustion: no allowance was spent and nothing resets, so
+            there is no `Retry-After` and no `retryAfterSeconds`. `cta` holds
+            only the actions that would work for this caller: `upgrade` for
+            free and lapsed accounts, `switch_to_managed` for paying accounts
+            in BYOK mode, and `add_key` always. On the streaming endpoints the
+            same condition arrives as an SSE `error` event carrying `message`
+            only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredAPIErrorEnvelope'
+              examples:
+                freeLaneUnavailable:
+                  value:
+                    error:
+                      code: free_lane_unavailable
+                      message: Free messages are unavailable right now. Add your own API key in Settings to keep going.
+                      cta: [upgrade, add_key]
         '504':
           description: LLM upstream timed out. Safe to retry once after retry_after_ms.
           content:
@@ -7489,11 +7511,14 @@ components:
           description: |
             Optional recovery actions for clients. `upgrade` accompanies
             `free_lane_exhausted` and `usage_cap_exceeded`; `add_key` /
-            `switch_to_managed` accompany `byok_keys_required`.
+            `switch_to_managed` accompany `byok_keys_required`. On
+            `free_lane_unavailable` the set depends on the caller's tier and
+            mode, so render whatever is present.
         retryAfterSeconds:
           type: integer
           description: |
-            Present on `free_lane_exhausted` and `usage_cap_exceeded`. Seconds
+            Present on `free_lane_exhausted` and `usage_cap_exceeded`, never on
+            `free_lane_unavailable`. Seconds
             until the daily allowance resets (UTC midnight). Mirrors the
             `Retry-After` header.
 

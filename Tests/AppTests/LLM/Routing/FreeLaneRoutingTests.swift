@@ -316,13 +316,51 @@ struct FreeLaneRoutingTests {
         }
     }
 
-    /// Both legs unfunded is exhaustion, not a silent fall-through to the
-    /// gateway — that fall-through is the bug this whole change removes.
+    /// Both legs unfunded is not a silent fall-through to the gateway — that
+    /// fall-through is the bug the lane exists to remove. Nor is it
+    /// exhaustion, which is what it used to report: the user was told they had
+    /// "used today's free messages" when no free provider was configured at
+    /// all and they had used none. It is unavailability, it charges nothing,
+    /// and it offers the ways out that are real for this user.
     @Test
-    func `no funded leg is exhaustion rather than a gateway fallback`() async throws {
+    func `no funded leg is unavailability rather than a gateway fallback`() async throws {
         try await withTestFluent(label: "lv.test.freelane.route.nolegs") { fluent in
             let user = Self.makeUser(tier: "lapsed")
             try await Self.prepare(fluent, user: user)
+
+            let runtime = Self.runtime(fluent: fluent, perUser: 5)
+            let router = Self.router(
+                fluent: fluent,
+                freeLane: runtime,
+                openRouterEnabled: false,
+                nvidiaEnabled: false
+            )
+            let decision = await router.pick(forModel: nil, capability: .medium, user: user)
+
+            #expect(decision.cerberus?.freeLaneUnavailable == true)
+            #expect(decision.cerberus?.freeLaneExhausted == false)
+            #expect(decision.fallbacks.isEmpty)
+            #expect(try await runtime.gate.remainingToday(tenantID: user.requireID()) == 5, "no grant may be charged")
+            // A lapsed user can pay or bring a key; both are real ways out.
+            #expect(decision.cerberus?.freeLaneActions == ["upgrade", "add_key"])
+        }
+    }
+
+    /// An entitled user who picked BYOK and stored no key reaches the lane by
+    /// rule 2b. Telling them to upgrade would be wrong — they already pay — but
+    /// managed inference is available to them, so that is the offer.
+    @Test
+    func `an unavailable lane offers a paying byok user managed, not an upgrade`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.route.nolegs.pro") { fluent in
+            let user = Self.makeUser(tier: "pro")
+            try await Self.prepare(fluent, user: user)
+            let preference = UserLLMPreference()
+            preference.tenantID = try user.requireID()
+            preference.mode = "byok"
+            preference.primaryProvider = "anthropic"
+            preference.primaryModel = "claude-opus-4-7"
+            preference.fallbackChain = .init(steps: [])
+            try await preference.save(on: fluent.db())
 
             let router = Self.router(
                 fluent: fluent,
@@ -332,8 +370,8 @@ struct FreeLaneRoutingTests {
             )
             let decision = await router.pick(forModel: nil, capability: .medium, user: user)
 
-            #expect(decision.cerberus?.freeLaneExhausted == true)
-            #expect(decision.fallbacks.isEmpty)
+            #expect(decision.cerberus?.freeLaneUnavailable == true)
+            #expect(decision.cerberus?.freeLaneActions == ["add_key", "switch_to_managed"])
         }
     }
 

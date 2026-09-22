@@ -345,7 +345,7 @@ struct ConversationE2ETests {
                 #expect(resp.status == .ok)
                 let errors = Self.sseErrorMessages(in: String(buffer: resp.body))
                 let message = try #require(errors.first, "the stream carried no error event")
-                #expect(message == FreeLaneExhaustedError(retryAfterSeconds: 0).userMessage)
+                #expect(message == FreeLaneUnavailableError(actions: []).userMessage)
             }
         }
     }

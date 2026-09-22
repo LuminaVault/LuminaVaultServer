@@ -114,3 +114,35 @@ enum FreeLanePolicy {
         evaluate(input) == nil
     }
 }
+
+extension FreeLanePolicy {
+    /// The recovery actions to offer when the lane cannot serve a turn.
+    ///
+    /// Offer only the ways out that are real for this caller. An upgrade is
+    /// offered to unpaid tiers alone: a trial or paying account already has
+    /// paid inference, and offering it again reads as a bug. Managed is offered
+    /// to an entitled account that picked BYOK and stored no key — rule 2b's
+    /// case — because managed is available to them, unless the lane was
+    /// entered precisely because managed is down. Adding a key always helps.
+    ///
+    /// The tokens are the `cta` values both clients already render.
+    static func recoveryActions(
+        effectiveTier: UserTier,
+        requestedMode: LLMBrainMode,
+        trigger: FreeLaneTrigger
+    ) -> [String] {
+        let unpaid = effectiveTier == .free || effectiveTier == .lapsed
+        let managedWouldWork = !unpaid
+            && requestedMode == .byok
+            && trigger != .platformUnavailable
+        var actions: [String] = []
+        if unpaid {
+            actions.append("upgrade")
+        }
+        actions.append("add_key")
+        if managedWouldWork {
+            actions.append("switch_to_managed")
+        }
+        return actions
+    }
+}

@@ -56,6 +56,13 @@ struct CerberusDecisionMetadata: Hashable {
     /// pinned model, never replaced by the managed gateway. Before this flag a
     /// lane decision could only be recognised by a prefix on `reason`.
     let isFreeLane: Bool
+    /// The lane was the only legal route but has no leg that can serve it:
+    /// no platform key for any leg loaded. Not exhaustion — nothing was spent
+    /// and nothing resets at midnight. The transport answers 503.
+    let freeLaneUnavailable: Bool
+    /// The `cta` tokens that are real for this caller if the lane cannot serve
+    /// them. See `FreeLanePolicy.recoveryActions`.
+    let freeLaneActions: [String]
     /// Free lane selected but its daily allowance is spent — transport 429s.
     let freeLaneExhausted: Bool
     /// Seconds until the free-lane buckets roll (UTC midnight).
@@ -90,6 +97,8 @@ struct CerberusDecisionMetadata: Hashable {
         byokKeysRequired: Bool = false,
         deferredToHermes: Bool = false,
         isFreeLane: Bool = false,
+        freeLaneUnavailable: Bool = false,
+        freeLaneActions: [String] = [],
         freeLaneExhausted: Bool = false,
         freeLaneRetryAfterSeconds: Int = 0
     ) {
@@ -121,6 +130,8 @@ struct CerberusDecisionMetadata: Hashable {
         self.byokKeysRequired = byokKeysRequired
         self.deferredToHermes = deferredToHermes
         self.isFreeLane = isFreeLane
+        self.freeLaneUnavailable = freeLaneUnavailable
+        self.freeLaneActions = freeLaneActions
         self.freeLaneExhausted = freeLaneExhausted
         self.freeLaneRetryAfterSeconds = freeLaneRetryAfterSeconds
     }
@@ -137,6 +148,9 @@ extension CerberusDecisionMetadata {
     func preflightError() -> Error? {
         if byokKeysRequired {
             return BYOKKeysRequiredError()
+        }
+        if freeLaneUnavailable {
+            return FreeLaneUnavailableError(actions: freeLaneActions)
         }
         if freeLaneExhausted {
             return FreeLaneExhaustedError(retryAfterSeconds: freeLaneRetryAfterSeconds)
@@ -404,7 +418,12 @@ struct CerberusModelRouter: ModelRouter {
                     scope: scope,
                     complexity: complexity,
                     verdict: laneVerdict,
-                    runtime: freeLane
+                    runtime: freeLane,
+                    actions: FreeLanePolicy.recoveryActions(
+                        effectiveTier: effectiveTier,
+                        requestedMode: profile.mode,
+                        trigger: laneVerdict.trigger
+                    )
                 )
             }
 
@@ -670,7 +689,8 @@ struct CerberusModelRouter: ModelRouter {
         scope: CerberusRequestScope,
         complexity: RouterComplexity,
         verdict: FreeLaneVerdict,
-        runtime: FreeLaneRuntime
+        runtime: FreeLaneRuntime,
+        actions: [String]
     ) async -> RouteDecision {
         // Only offer legs whose platform key actually loaded.
         var legs: [FreeLaneCatalog.Leg] = []
@@ -681,13 +701,10 @@ struct CerberusModelRouter: ModelRouter {
             }
         }
 
-        let outcome: FreeLaneGate.Outcome = legs.isEmpty
-            ? .exhausted(retryAfter: CostLedgerService.secondsUntilUTCMidnight())
-            : await runtime.gate.claim(tenantID: tenantID, legs: legs)
-
         func metadata(
             routes: [RouterModelRouteDTO],
             exhausted: Bool,
+            unavailable: Bool = false,
             retryAfter: Int,
             reason: String
         ) -> CerberusDecisionMetadata {
@@ -718,10 +735,23 @@ struct CerberusModelRouter: ModelRouter {
                 complexity: complexity,
                 reason: reason,
                 isFreeLane: true,
+                freeLaneUnavailable: unavailable,
+                freeLaneActions: actions,
                 freeLaneExhausted: exhausted,
                 freeLaneRetryAfterSeconds: retryAfter
             )
         }
+
+        // No leg can serve anyone. That is a configuration fact, known before
+        // any claim, so nothing is charged. It used to be reported as
+        // exhaustion, telling people they had used free messages they never had.
+        guard !legs.isEmpty else {
+            logger.warning("cerberus.route.free_lane trigger=\(verdict.trigger.rawValue) leg=none outcome=unavailable tenant=\(tenantID)")
+            let meta = metadata(routes: [], exhausted: false, unavailable: true, retryAfter: 0, reason: "Free lane unavailable")
+            return RouteDecision(primary: table.primary, fallbacks: [], cerberus: meta, credentialMode: meta.mode)
+        }
+
+        let outcome = await runtime.gate.claim(tenantID: tenantID, legs: legs)
 
         switch outcome {
         case let .exhausted(retryAfter):
@@ -749,8 +779,9 @@ struct CerberusModelRouter: ModelRouter {
             guard let primary = mapped.first else {
                 let meta = metadata(
                     routes: [],
-                    exhausted: true,
-                    retryAfter: Int(CostLedgerService.secondsUntilUTCMidnight()),
+                    exhausted: false,
+                    unavailable: true,
+                    retryAfter: 0,
                     reason: "Free lane has no routable leg"
                 )
                 return RouteDecision(primary: table.primary, fallbacks: [], cerberus: meta, credentialMode: meta.mode)
