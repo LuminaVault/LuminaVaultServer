@@ -1,7 +1,10 @@
 @testable import App
 import FluentKit
 import Foundation
+import HTTPTypes
+import Hummingbird
 import HummingbirdFluent
+import HummingbirdTesting
 import Logging
 import LuminaVaultShared
 import Testing
@@ -105,6 +108,51 @@ struct UsageMeterBudgetTests {
             guard case .deny = await meter.checkSkillBudget(tenantID: tenant, skillName: "digest") else {
                 Issue.record("600k tokens against a 500k per-skill cap was not denied")
                 return
+            }
+        }
+    }
+
+    /// Enforcing the cap is only half of it; the user has to be told.
+    ///
+    /// `UsageCapExceededError` was a bare `Error`, not an `HTTPResponseError`,
+    /// and nothing mapped it, so a handler that threw it answered 500. That
+    /// never surfaced while the cap never fired. Now that it does, a trial
+    /// account over its daily allowance must get a 429 it can act on, with the
+    /// same `{error:{code,message,cta}}` envelope as the free lane's.
+    @Test
+    func `chat over the trial cap answers 429 with a usable message, not 500`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderWithStubChat(freeLaneEnabled: false))
+        try await app.test(.router) { client in
+            let suffix = UUID().uuidString.prefix(8).lowercased()
+            let auth = try await client.execute(
+                uri: "/v1/auth/register",
+                method: .post,
+                headers: [.contentType: "application/json"],
+                body: ByteBuffer(string: """
+                {"email":"cap-\(suffix)@test.luminavault","username":"cap-\(suffix)","password":"CorrectHorseBatteryStaple1!"}
+                """)
+            ) { try testJSONDecoder().decode(AuthResponse.self, from: Data(buffer: $0.body)) }
+
+            try await withTestFluent(label: "lv.test.usage-meter.http") { fluent in
+                let meter = Self.service(on: fluent)
+                await meter.record(tenantID: auth.userId, model: "a", tokensIn: 700_000, tokensOut: 400_000)
+            }
+
+            try await client.execute(
+                uri: "/v1/llm/chat",
+                method: .post,
+                headers: [.authorization: "Bearer \(auth.accessToken)", .contentType: "application/json"],
+                body: ByteBuffer(string: #"{"messages":[{"role":"user","content":"hello"}]}"#)
+            ) { response in
+                #expect(response.status == .tooManyRequests)
+                #expect(response.headers[.retryAfter] != nil)
+                let json = try #require(
+                    try JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any]
+                )
+                let error = try #require(json["error"] as? [String: Any])
+                #expect(error["code"] as? String == "usage_cap_exceeded")
+                #expect((error["message"] as? String)?.isEmpty == false)
+                #expect((error["cta"] as? [String])?.contains("upgrade") == true)
             }
         }
     }
