@@ -3031,6 +3031,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '400':
+          description: |
+            Validation failed. `router_placeholder_route` means a BYOK save
+            carried the `openRouter/auto` placeholder that this API shows in
+            place of a managed profile's routes, and the tenant has no saved
+            BYOK model to put in its place. When one is saved, the placeholder
+            is replaced by that primary and its fallbacks instead.
 
   /v1/router/{id}:
     parameters:
@@ -3053,6 +3060,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '400':
+          description: |
+            Validation failed. `router_placeholder_route` means a BYOK save
+            carried the `openRouter/auto` placeholder that this API shows in
+            place of a managed profile's routes, and the tenant has no saved
+            BYOK model to put in its place. When one is saved, the placeholder
+            is replaced by that primary and its fallbacks instead.
         '409': { description: Revision conflict or attempt to delete the default profile. }
     delete:
       tags: [LLM]
