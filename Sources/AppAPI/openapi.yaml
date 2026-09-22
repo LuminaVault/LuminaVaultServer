@@ -2318,6 +2318,16 @@ paths:
         `seq > after` are replayed first, so a client reconnecting with the
         `lastSeq` it already holds loses nothing and sees nothing twice. The
         stream closes once the run is terminal and fully drained.
+
+        Terminal output. On a Hermes with LuminaVaultHermesAgent#14, the
+        `terminal` tool's events carry extra payload fields, relayed verbatim:
+        `tool.started` has `command` and `background`; `tool.completed` has
+        `output` (the last 16k characters), `exit_code` and
+        `output_truncated`. A background process the run started streams
+        `terminal.output` events with `process_id` and `chunk`, coalesced by
+        Hermes, and one final `truncated: true` once the run's 256k-character
+        budget is spent. All of it is redacted upstream. An older Hermes sends
+        none of these, so a client renders the tool row alone.
       parameters:
         - name: after
           in: query
