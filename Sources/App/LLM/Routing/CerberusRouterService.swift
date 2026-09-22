@@ -51,6 +51,11 @@ struct CerberusDecisionMetadata: Hashable {
     let byokKeysRequired: Bool
     /// BYO Hermes owns routing; Auto was deferred.
     let deferredToHermes: Bool
+    /// The decision routes onto the free lane. A lane grant is paid for by
+    /// nobody, so it must be dispatched exactly as decided: never swapped for a
+    /// pinned model, never replaced by the managed gateway. Before this flag a
+    /// lane decision could only be recognised by a prefix on `reason`.
+    let isFreeLane: Bool
     /// Free lane selected but its daily allowance is spent — transport 429s.
     let freeLaneExhausted: Bool
     /// Seconds until the free-lane buckets roll (UTC midnight).
@@ -84,6 +89,7 @@ struct CerberusDecisionMetadata: Hashable {
         reason: String = "",
         byokKeysRequired: Bool = false,
         deferredToHermes: Bool = false,
+        isFreeLane: Bool = false,
         freeLaneExhausted: Bool = false,
         freeLaneRetryAfterSeconds: Int = 0
     ) {
@@ -114,8 +120,31 @@ struct CerberusDecisionMetadata: Hashable {
         self.reason = reason
         self.byokKeysRequired = byokKeysRequired
         self.deferredToHermes = deferredToHermes
+        self.isFreeLane = isFreeLane
         self.freeLaneExhausted = freeLaneExhausted
         self.freeLaneRetryAfterSeconds = freeLaneRetryAfterSeconds
+    }
+}
+
+extension CerberusDecisionMetadata {
+    /// The error a decision must fail with before anything is dispatched, or
+    /// nil when it may proceed.
+    ///
+    /// The same four checks used to be written out separately at each place a
+    /// decision was executed — non-streaming, streaming, and not at all on the
+    /// managed stream branch, which is how free-lane decisions reached the paid
+    /// gateway there. One definition keeps the sites from drifting apart.
+    func preflightError() -> Error? {
+        if byokKeysRequired {
+            return BYOKKeysRequiredError()
+        }
+        if freeLaneExhausted {
+            return FreeLaneExhaustedError(retryAfterSeconds: freeLaneRetryAfterSeconds)
+        }
+        if budgetDenied {
+            return UsageCapExceededError(retryAfter: 3600)
+        }
+        return nil
     }
 }
 
@@ -688,6 +717,7 @@ struct CerberusModelRouter: ModelRouter {
                 routingPolicy: .locked,
                 complexity: complexity,
                 reason: reason,
+                isFreeLane: true,
                 freeLaneExhausted: exhausted,
                 freeLaneRetryAfterSeconds: retryAfter
             )

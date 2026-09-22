@@ -84,13 +84,9 @@ struct RoutedLLMTransport: HermesChatTransport {
         let prompt = Self.extractLatestUserPrompt(from: payload)
         let decision = await pickDecision(payload: payload, user: user)
         if let cerberus = decision.cerberus {
-            if cerberus.byokKeysRequired {
-                throw BYOKKeysRequiredError()
+            if let preflight = cerberus.preflightError() {
+                throw preflight
             }
-            if cerberus.freeLaneExhausted {
-                throw FreeLaneExhaustedError(retryAfterSeconds: cerberus.freeLaneRetryAfterSeconds)
-            }
-            guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
             publishSelectedRoute(decision)
         }
         let started = DispatchTime.now().uptimeNanoseconds
@@ -371,24 +367,42 @@ struct RoutedLLMTransport: HermesChatTransport {
     /// Usage metering is skipped — streamed responses don't reliably carry
     /// usage blocks across providers.
     func chatStream(payload: Data, sessionKey: String, sessionID: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        routedStream(payload: payload, sessionKey: sessionKey, sessionID: sessionID, decided: nil)
+    }
+
+    /// Stream a decision the caller has already made.
+    ///
+    /// Picking a route is not free of side effects: a free-lane pick claims one
+    /// of the tenant's daily grants. A caller that had to pick first — to learn
+    /// whether the lane applies at all — must hand that decision over rather
+    /// than let this transport pick again and charge a second grant.
+    func chatStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?,
+        decision: RouteDecision
+    ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+        routedStream(payload: payload, sessionKey: sessionKey, sessionID: sessionID, decided: decision)
+    }
+
+    private func routedStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?,
+        decided: RouteDecision?
+    ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
         let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
         let work = Task {
             let user = await currentUser()
             let prompt = Self.extractLatestUserPrompt(from: payload)
-            let decision = await pickDecision(payload: payload, user: user)
+            let decision: RouteDecision = if let decided {
+                Self.applyingForcedRoute(decided)
+            } else {
+                await pickDecision(payload: payload, user: user)
+            }
             if let cerberus = decision.cerberus {
-                if cerberus.byokKeysRequired {
-                    continuation.finish(throwing: BYOKKeysRequiredError())
-                    return
-                }
-                if cerberus.freeLaneExhausted {
-                    continuation.finish(throwing: FreeLaneExhaustedError(
-                        retryAfterSeconds: cerberus.freeLaneRetryAfterSeconds
-                    ))
-                    return
-                }
-                guard !cerberus.budgetDenied else {
-                    continuation.finish(throwing: UsageCapExceededError(retryAfter: 3600))
+                if let preflight = cerberus.preflightError() {
+                    continuation.finish(throwing: preflight)
                     return
                 }
                 publishSelectedRoute(decision)
@@ -655,6 +669,14 @@ struct RoutedLLMTransport: HermesChatTransport {
     }
 
     static func applyingForcedRoute(_ decision: RouteDecision) -> RouteDecision {
+        // A free-lane decision is dispatched exactly as decided. The overlay
+        // keeps the decision's credential mode, and the lane's is `.managed`,
+        // so swapping in a forced route here — a BYOK tenant's pinned model,
+        // an "ask a stronger model" override — would spend the platform key on
+        // whatever that route names.
+        if decision.cerberus?.isFreeLane == true {
+            return decision
+        }
         guard let forced = LLMRoutingContext.forcedRoute,
               let provider = ProviderKind(shared: forced.provider)
         else { return decision }
@@ -870,3 +892,19 @@ struct RoutedLLMTransport: HermesChatTransport {
         reasonCode == "upstream_timeout" ? UpstreamErrorResponse.timeoutRetryHintMs : nil
     }
 }
+
+/// A transport that can execute a route decision made by its caller.
+///
+/// `RoutedHermesLLMStreamService` needs this for the free lane: it has to pick
+/// to find out whether the lane applies, and picking claims a grant, so it must
+/// pass that same decision down rather than let the transport pick again.
+protocol DecidedStreamTransport: Sendable {
+    func chatStream(
+        payload: Data,
+        sessionKey: String,
+        sessionID: String?,
+        decision: RouteDecision
+    ) -> AsyncThrowingStream<ChatStreamChunk, Error>
+}
+
+extension RoutedLLMTransport: DecidedStreamTransport {}

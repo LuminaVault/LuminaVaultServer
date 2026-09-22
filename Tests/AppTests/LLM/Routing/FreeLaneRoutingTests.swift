@@ -104,6 +104,63 @@ struct FreeLaneRoutingTests {
         try await user.save(on: fluent.db())
     }
 
+    // MARK: - Streaming: one message, one grant
+
+    /// The property that matters most, end to end through the real router and
+    /// the real gate: each streamed message costs exactly one lane grant, and
+    /// the lane — not the paid gateway — serves it.
+    ///
+    /// With an allowance of one, turn 1 must stream and turn 2 must be refused.
+    /// Both ways of getting this wrong fail here. The old bypass served turn 1
+    /// on the managed gateway (the failing fallback below throws). A double
+    /// claim — the stream service picking, then the transport picking again —
+    /// would spend the only grant on the first pick and refuse turn 1 itself.
+    @Test
+    func `each streamed message claims exactly one free-lane grant`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.stream.oneclaim") { fluent in
+            let user = Self.makeUser(tier: "lapsed")
+            try await Self.prepare(fluent, user: user)
+            let logger = Logger(label: "test.freelane.stream")
+
+            let router = Self.router(fluent: fluent, freeLane: Self.runtime(fluent: fluent, perUser: 1))
+            let lane = RoutedLLMTransportStreamingTests.LaneStubAdapter(kind: .openRouter)
+            let reserve = RoutedLLMTransportStreamingTests.LaneStubAdapter(kind: .nvidia)
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [lane, reserve], logger: logger),
+                router: router,
+                currentUser: { user },
+                logger: logger
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: RoutedLLMTransportStreamingTests.FailingManagedFallback(),
+                transport: transport,
+                preferences: UserLLMPreferenceRepository(fluent: fluent, logger: logger),
+                logger: logger,
+                router: router
+            )
+            let tenant = try user.requireID().uuidString
+            let request = ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+
+            func turn() async throws -> String {
+                try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                    var text = ""
+                    for try await chunk in service.chatStream(sessionKey: tenant, sessionID: "c1", request: request) {
+                        text += chunk.delta
+                    }
+                    return text
+                }
+            }
+
+            #expect(try await turn() == "free reply")
+            #expect(await lane.calls.count == 1)
+
+            await #expect(throws: FreeLaneExhaustedError.self) {
+                _ = try await turn()
+            }
+            #expect(await lane.calls.count == 1, "the refused turn must not have been dispatched")
+        }
+    }
+
     // MARK: - The forced lane
 
     @Test
