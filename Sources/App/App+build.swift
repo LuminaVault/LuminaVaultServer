@@ -1367,6 +1367,16 @@ func buildRouter(
             default: FreeLaneCatalog.defaultNvidiaModel
         )
     ) : nil
+    // Boot is synchronous and the registry is an actor, so read the same
+    // configs it was seeded from rather than asking it.
+    let loadedProviders = Set(ProviderRegistry.loadConfigs(from: reader).filter(\.isEnabled).map(\.kind))
+    if let warning = FreeLaneRuntime.startupWarning(
+        enabled: freeLaneEnabled,
+        openRouterEnabled: loadedProviders.contains(.openRouter),
+        nvidiaEnabled: loadedProviders.contains(.nvidia)
+    ) {
+        routingLogger.warning("\(warning)")
+    }
     let cerberusRouter: any ModelRouter = CerberusModelRouter(
         profiles: routerProfileRepo,
         fallback: legacyModelRouter,
