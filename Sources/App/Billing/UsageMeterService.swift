@@ -161,6 +161,10 @@ actor UsageMeterService {
             return .allow
         }
 
+        // `SUM` over BIGINT columns returns Postgres `numeric`, which does not
+        // decode into `Int64`. Without the `::BIGINT` cast every check threw,
+        // fell into the fail-open `catch` below, and the cap was never enforced.
+        // `UsageMeterBudgetTests` exercises this against a real database.
         struct UsageRow: Decodable {
             let total: Int64
 
@@ -171,7 +175,7 @@ actor UsageMeterService {
 
         do {
             let row = try await sql.raw("""
-            SELECT COALESCE(SUM(mtok_in + mtok_out), 0) AS total
+            SELECT COALESCE(SUM(mtok_in + mtok_out), 0)::BIGINT AS total
             FROM usage_meter
             WHERE tenant_id = \(bind: tenantID)
               AND day = CURRENT_DATE
@@ -228,7 +232,7 @@ actor UsageMeterService {
         let prefix = "skill:\(skillName)/"
         do {
             let row = try await sql.raw("""
-            SELECT COALESCE(SUM(mtok_in + mtok_out), 0) AS total
+            SELECT COALESCE(SUM(mtok_in + mtok_out), 0)::BIGINT AS total
             FROM usage_meter
             WHERE tenant_id = \(bind: tenantID)
               AND day = CURRENT_DATE
