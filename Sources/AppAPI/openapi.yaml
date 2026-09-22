@@ -3415,6 +3415,23 @@ paths:
       responses:
         '200': { description: Result accepted. }
 
+  /v1/devices/commands/pending:
+    get:
+      tags: [Devices]
+      operationId: deviceCommandsPending
+      summary: Phone writes queued while the app was closed, oldest first.
+      description: |
+        A `reminder_create` or `calendar_create` that could not reach the
+        phone live is queued for 24 hours and announced with a push. The app
+        reads this on open, runs each command once, and posts each result to
+        `/v1/devices/command/{id}/result`, which removes it from this list.
+      responses:
+        '200':
+          description: Pending commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendingDeviceCommandsResponse' }
+
   /v1/devices/{token}:
     delete:
       tags: [Devices]
@@ -8210,6 +8227,24 @@ components:
         ok: { type: boolean }
         payload: { type: object, additionalProperties: { type: string } }
         error: { type: string }
+
+    DeviceCommand:
+      type: object
+      required: [id, kind, payload]
+      description: A server→device command (Apple Integration P0b).
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [ping, reminder_create, calendar_create, device_fetch, photo_analyze] }
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        payload: { type: object, additionalProperties: { type: string } }
+
+    PendingDeviceCommandsResponse:
+      type: object
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCommand' }
 
     JobProposalDTO:
       type: object

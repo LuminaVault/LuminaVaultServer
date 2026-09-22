@@ -136,4 +136,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M130_BackfillFirstMemoryCompileFromLegacy())
     await fluent.migrations.add(M131_AddConversationMessageHermesRun())
     await fluent.migrations.add(M132_AddAgentConnectionPersonalData())
+    await fluent.migrations.add(M134_CreateDeviceCommandQueue())
 }

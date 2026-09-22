@@ -18,6 +18,9 @@ import SQLKit
 /// personal data never belongs to a shared vault.
 struct PersonalDataTools: Sendable {
     let fluent: Fluent
+    /// Where a phone write goes when the app is not connected. `nil` keeps
+    /// the old behaviour: the write fails.
+    var deviceQueue: DeviceCommandQueue?
 
     /// Daily aggregates of synced HealthKit samples, optionally one metric.
     func healthQuery(tenantID: UUID, metric: String?, days: Int?) async -> String {
@@ -191,11 +194,9 @@ struct PersonalDataTools: Sendable {
         let (allowed, writes) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: domain, sql: sql)
         guard allowed else { return Self.errorJSON("\(domain.rawValue) access not allowed by the user") }
         guard writes else { return Self.errorJSON("\(domain.rawValue) changes not allowed by the user") }
+        let command = DeviceCommand(kind: kind, domain: domain, payload: payload)
         do {
-            let result = try await DeviceCommandBroker.shared.request(
-                tenantID: tenantID,
-                command: DeviceCommand(kind: kind, domain: domain, payload: payload)
-            )
+            let result = try await DeviceCommandBroker.shared.request(tenantID: tenantID, command: command)
             guard result.ok else { return Self.errorJSON(result.error ?? "device reported failure") }
             var out = ["status": "ok"]
             for (k, v) in result.payload ?? [:] {
@@ -203,6 +204,19 @@ struct PersonalDataTools: Sendable {
             }
             return Self.encodeJSON(out)
         } catch {
+            // The app is closed or offline. Queue the write and tell the user,
+            // rather than failing something they asked for.
+            if let deviceQueue, DeviceCommandQueue.queueable.contains(kind) {
+                do {
+                    try await deviceQueue.enqueue(tenantID: tenantID, command: command)
+                    return Self.encodeJSON([
+                        "status": "queued",
+                        "message": "The iPhone app is not open. LuminaVault sent a notification; this happens when the app opens (within 24 hours).",
+                    ])
+                } catch {
+                    return Self.errorJSON("device did not respond, and the write could not be queued")
+                }
+            }
             return Self.errorJSON("device did not respond (offline or timed out)")
         }
     }

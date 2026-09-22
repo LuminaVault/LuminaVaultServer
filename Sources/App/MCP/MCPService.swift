@@ -24,6 +24,8 @@ struct MCPService: Sendable {
     let search: HybridMemorySearch
     let embeddings: any EmbeddingService
     let backfill: ChunkBackfillService
+    /// Phone writes the app is closed for are queued here, not failed.
+    var deviceQueue: DeviceCommandQueue?
     let logger: Logger
 
     /// Run one tool. Throws only for protocol-level problems; a tool that
@@ -46,7 +48,7 @@ struct MCPService: Sendable {
     /// Run one personal-data tool. `userID` is the caller's own account —
     /// the controller never passes a shared vault here.
     func callPersonal(name: String, arguments: [String: JSONValue], userID: UUID) async throws -> JSONValue {
-        let tools = PersonalDataTools(fluent: fluent)
+        let tools = PersonalDataTools(fluent: fluent, deviceQueue: deviceQueue)
         let raw: String = switch name {
         case "health_query":
             await tools.healthQuery(

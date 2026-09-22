@@ -638,7 +638,10 @@ actor SkillRunner {
 
     /// Health / Calendar / Reminders tools, shared with the MCP server.
     private var personalData: PersonalDataTools {
-        PersonalDataTools(fluent: fluent)
+        PersonalDataTools(
+            fluent: fluent,
+            deviceQueue: DeviceCommandQueue(fluent: fluent, apns: apns, logger: logger)
+        )
     }
 
     private func deviceRead(tenantID: UUID, domain: AppleDataDomain, payload: [String: String]) async -> String {
