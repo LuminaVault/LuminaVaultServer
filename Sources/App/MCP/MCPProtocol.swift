@@ -15,7 +15,7 @@ enum MCPProtocol {
     /// Version of this MCP surface, not of the server as a whole. Bump when
     /// the tool set or a schema changes, so a client can tell what it is
     /// talking to.
-    static let serverVersion = "0.1.0"
+    static let serverVersion = "0.2.0"
 
     /// What an agent is told this server is for.
     static let instructions = """
@@ -32,6 +32,12 @@ enum MCPProtocol {
     `path` and line range that `search` returns — do not paraphrase a source
     without saying where it came from, and never invent a path or line number
     that a tool did not give you.
+
+    `health_query`, `calendar_query`, `reminders_list`, `calendar_create` and
+    `reminder_create` reach the user's own Apple Health, Calendar (Apple and
+    Google) and Reminders. They work only when the user allowed that domain,
+    and only for agent keys the user granted personal data. The two create
+    tools change the user's phone: confirm with the user first.
     """
 }
 
@@ -127,6 +133,10 @@ struct MCPTool: Sendable {
     /// Surfaced as an MCP tool annotation. `false` is a promise: this tool
     /// cannot change anything the user would notice.
     let writes: Bool
+    /// Reads or changes the user's own Health / Calendar / Reminders rather
+    /// than a vault. Always runs as the caller, never as a shared vault, and
+    /// an agent key only reaches it when the user allowed personal data.
+    var personal = false
 }
 
 enum MCPToolCatalog {
@@ -279,6 +289,94 @@ enum MCPToolCatalog {
             ),
             writes: true
         ),
+
+        // MARK: Personal data — the user's own, never a shared vault's.
+
+        MCPTool(
+            name: "health_query",
+            title: "Health trends",
+            description: """
+            Daily totals and averages of the user's synced Apple Health data \
+            (steps, heart rate, HRV, sleep, active energy, …). Pass `metric` for \
+            one HealthKit type, or omit it for all. Fails when the user has not \
+            allowed Health access.
+            """,
+            inputSchema: object(
+                properties: [
+                    "metric": schema("string", "HealthKit type identifier, e.g. HKQuantityTypeIdentifierStepCount."),
+                    "days": intSchema("Days back to cover (1-365).", minimum: 1, maximum: 365, default: 30),
+                ],
+                required: []
+            ),
+            writes: false,
+            personal: true
+        ),
+        MCPTool(
+            name: "calendar_query",
+            title: "Upcoming events",
+            description: """
+            Upcoming events from the user's Apple and Google calendars, soonest \
+            first. Fails when the user has not allowed Calendar access.
+            """,
+            inputSchema: object(
+                properties: [
+                    "days": intSchema("Days ahead to cover (1-90).", minimum: 1, maximum: 90, default: 7),
+                ],
+                required: []
+            ),
+            writes: false,
+            personal: true
+        ),
+        MCPTool(
+            name: "reminders_list",
+            title: "Open reminders",
+            description: """
+            The user's open Apple Reminders, overdue and upcoming, soonest due \
+            first (at most 100). Fails when the user has not allowed Reminders access.
+            """,
+            inputSchema: object(properties: [:], required: []),
+            writes: false,
+            personal: true
+        ),
+        MCPTool(
+            name: "calendar_create",
+            title: "Create an event",
+            description: """
+            Create an event in the user's Apple Calendar, on their iPhone. Needs \
+            the app reachable and the user's permission to make changes. Confirm \
+            with the user before calling.
+            """,
+            inputSchema: object(
+                properties: [
+                    "title": schema("string", "Event title."),
+                    "start": schema("string", "Start, ISO 8601 with offset."),
+                    "end": schema("string", "End, ISO 8601 with offset. Defaults to one hour after start."),
+                    "location": schema("string", "Optional location."),
+                ],
+                required: ["title", "start"]
+            ),
+            writes: true,
+            personal: true
+        ),
+        MCPTool(
+            name: "reminder_create",
+            title: "Create a reminder",
+            description: """
+            Create a reminder in the user's Apple Reminders, on their iPhone. \
+            Needs the app reachable and the user's permission to make changes. \
+            Confirm with the user before calling.
+            """,
+            inputSchema: object(
+                properties: [
+                    "title": schema("string", "Reminder title."),
+                    "notes": schema("string", "Optional notes."),
+                    "due": schema("string", "Optional due date, ISO 8601 with offset."),
+                ],
+                required: ["title"]
+            ),
+            writes: true,
+            personal: true
+        ),
     ]
 
     static func tool(named name: String) -> MCPTool? {
@@ -298,7 +396,8 @@ enum MCPToolCatalog {
                     // Nothing here deletes or overwrites user content, including
                     // `index`, which only rebuilds derived rows.
                     "destructiveHint": .bool(false),
-                    "idempotentHint": .bool(true),
+                    // Calling a create tool twice makes two events.
+                    "idempotentHint": .bool(!(tool.personal && tool.writes)),
                 ]),
             ])
         })

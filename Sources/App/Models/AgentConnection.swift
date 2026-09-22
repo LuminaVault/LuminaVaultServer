@@ -16,6 +16,10 @@ final class AgentConnection: Model, TenantModel, @unchecked Sendable {
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @OptionalField(key: "last_used_at") var lastUsedAt: Date?
     @OptionalField(key: "revoked_at") var revokedAt: Date?
+    /// Whether this key may reach the user's Health, Calendar and Reminders
+    /// over MCP. Off by default: a key made to search notes must not
+    /// quietly gain health data.
+    @Field(key: "allow_personal_data") var allowPersonalData: Bool
 
     var clientKind: AgentClientKind {
         get { AgentClientKind(rawValue: clientKindRaw) ?? .other }
@@ -32,7 +36,8 @@ final class AgentConnection: Model, TenantModel, @unchecked Sendable {
             clientKind: clientKind,
             tokenPrefix: tokenPrefix,
             createdAt: createdAt ?? Date(),
-            lastUsedAt: lastUsedAt
+            lastUsedAt: lastUsedAt,
+            allowPersonalData: allowPersonalData
         )
     }
 }
