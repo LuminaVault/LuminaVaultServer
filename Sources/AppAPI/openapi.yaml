@@ -3627,6 +3627,23 @@ paths:
       responses:
         '200': { description: Result accepted. }
 
+  /v1/devices/commands/pending:
+    get:
+      tags: [Devices]
+      operationId: deviceCommandsPending
+      summary: Phone writes queued while the app was closed, oldest first.
+      description: |
+        A `reminder_create` or `calendar_create` that could not reach the
+        phone live is queued for 24 hours and announced with a push. The app
+        reads this on open, runs each command once, and posts each result to
+        `/v1/devices/command/{id}/result`, which removes it from this list.
+      responses:
+        '200':
+          description: Pending commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendingDeviceCommandsResponse' }
+
   /v1/devices/{token}:
     delete:
       tags: [Devices]
@@ -3722,10 +3739,11 @@ paths:
                       cta: [add_key, switch_to_managed]
         '429':
           description: |
-            Rate-limit exceeded, or the free fallback lane's daily allowance is
-            spent (`free_lane_exhausted`). The free lane is the forced route for
-            users who are neither paying nor using their own key; the allowance
-            resets at UTC midnight. Honour `Retry-After`.
+            Rate-limit exceeded; the free fallback lane's daily allowance is
+            spent (`free_lane_exhausted`); or a trial account's daily token
+            allowance is spent (`usage_cap_exceeded`). The free lane is the
+            forced route for users who are neither paying nor using their own
+            key. Both allowances reset at UTC midnight. Honour `Retry-After`.
           headers:
             Retry-After:
               schema: { type: integer }
@@ -3739,6 +3757,13 @@ paths:
                     error:
                       code: free_lane_exhausted
                       message: You've used today's free messages. Upgrade for the full brain, or add your own API key in Settings to keep going now.
+                      cta: [upgrade, add_key]
+                      retryAfterSeconds: 18000
+                usageCapExceeded:
+                  value:
+                    error:
+                      code: usage_cap_exceeded
+                      message: You've reached today's usage limit. Upgrade for more, or add your own API key in Settings to keep going now.
                       cta: [upgrade, add_key]
                       retryAfterSeconds: 18000
         '502':
@@ -7692,13 +7717,14 @@ components:
             enum: [add_key, switch_to_managed, upgrade]
           description: |
             Optional recovery actions for clients. `upgrade` accompanies
-            `free_lane_exhausted`; `add_key` / `switch_to_managed` accompany
-            `byok_keys_required`.
+            `free_lane_exhausted` and `usage_cap_exceeded`; `add_key` /
+            `switch_to_managed` accompany `byok_keys_required`.
         retryAfterSeconds:
           type: integer
           description: |
-            Present on `free_lane_exhausted`. Seconds until the free-lane daily
-            allowance resets (UTC midnight). Mirrors the `Retry-After` header.
+            Present on `free_lane_exhausted` and `usage_cap_exceeded`. Seconds
+            until the daily allowance resets (UTC midnight). Mirrors the
+            `Retry-After` header.
 
     StructuredAPIErrorEnvelope:
       type: object
@@ -8422,6 +8448,24 @@ components:
         ok: { type: boolean }
         payload: { type: object, additionalProperties: { type: string } }
         error: { type: string }
+
+    DeviceCommand:
+      type: object
+      required: [id, kind, payload]
+      description: A server→device command (Apple Integration P0b).
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [ping, reminder_create, calendar_create, device_fetch, photo_analyze] }
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        payload: { type: object, additionalProperties: { type: string } }
+
+    PendingDeviceCommandsResponse:
+      type: object
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCommand' }
 
     JobProposalDTO:
       type: object

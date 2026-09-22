@@ -56,7 +56,31 @@ struct BYOKConsistencyTests {
                 headers: [.authorization: "Bearer \(token)"]
             ) { try Self.decodeProfiles($0.body) }
             let active = try #require(profiles.profiles.first { $0.id == profiles.defaultProfileID })
-            let body = Self.writeRequest(from: active, mode: .byok)
+            // This test is about tier: a trial account is allowed onto BYOK.
+            // Two things it used to carry along by copying the fetched profile
+            // wholesale are kept out, because each is its own rule and neither
+            // is what this case is about:
+            //
+            //  - the `autoSmart` policy. BYOK + Auto needs the tenant's own
+            //    OpenRouter credential (cc87d10, AUTO_REQUIRES_OPENROUTER), and
+            //    a fresh signup has none.
+            //  - the default route. `/v1/router` scrubs a managed profile's
+            //    routes to the `openRouter/auto` placeholder, so the fetched
+            //    profile does not carry the real route to send back.
+            let body = RouterProfileWriteRequest(
+                name: active.name,
+                mode: .byok,
+                objective: active.objective,
+                budget: active.budget,
+                allowedProviders: active.allowedProviders,
+                blockedProviders: active.blockedProviders,
+                defaultAction: RouterActionDTO(routes: [
+                    RouterModelRouteDTO(provider: .openRouter, model: ManagedLLMDefaults.model),
+                ]),
+                rules: active.rules,
+                routingPolicy: .balanced,
+                expectedRevision: active.revision
+            )
             let encoded = try testJSONEncoder().encode(body)
             try await client.execute(
                 uri: "/v1/router/\(active.id.uuidString)",

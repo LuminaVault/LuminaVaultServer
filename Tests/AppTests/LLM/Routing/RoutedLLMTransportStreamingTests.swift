@@ -9,7 +9,14 @@ import Testing
 
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct RoutedLLMTransportStreamingTests {
-    actor StreamingStubAdapter: StreamingProviderAdapter {
+    /// Streams the way every production chat adapter does now: by
+    /// implementing `ProviderAdapter.chatStream` itself. It used to implement
+    /// `StreamingProviderAdapter.chatCompletionsStream`, the hook native
+    /// streaming ran through in July; that path was folded into each adapter's
+    /// `chatStream`, and nothing calls `chatCompletionsStream` any more. A stub
+    /// still speaking the old hook inherited `ProviderAdapter`'s buffering
+    /// default, which is why this test saw one "fallback full reply" chunk.
+    actor StreamingStubAdapter: ProviderAdapter {
         nonisolated let kind: ProviderKind = .openai
         private(set) var calls: [Data] = []
 
@@ -18,17 +25,24 @@ struct RoutedLLMTransportStreamingTests {
             return Self.openAIResponse("fallback full reply")
         }
 
-        func chatCompletionsStream(
+        nonisolated func chatStream(
             payload: Data,
             sessionKey _: String,
             sessionID _: String?
         ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
-            calls.append(payload)
-            return AsyncThrowingStream { continuation in
-                continuation.yield(ChatStreamChunk(delta: "Hel"))
-                continuation.yield(ChatStreamChunk(delta: "lo", finishReason: "stop"))
-                continuation.finish()
+            AsyncThrowingStream { continuation in
+                let task = Task {
+                    await self.record(payload)
+                    continuation.yield(ChatStreamChunk(delta: "Hel"))
+                    continuation.yield(ChatStreamChunk(delta: "lo", finishReason: "stop"))
+                    continuation.finish()
+                }
+                continuation.onTermination = { _ in task.cancel() }
             }
+        }
+
+        private func record(_ payload: Data) {
+            calls.append(payload)
         }
 
         private static func openAIResponse(_ content: String) -> Data {
@@ -218,7 +232,11 @@ struct RoutedLLMTransportStreamingTests {
             let captured = try #require(await adapter.calls.first)
             let payload = try #require(try JSONSerialization.jsonObject(with: captured) as? [String: Any])
             #expect(payload["model"] as? String == "gpt-stream")
-            #expect(payload["stream"] as? Bool == true)
+            // `stream: true` is not the transport's to set any more: each
+            // adapter adds it to its own upstream request inside `chatStream`
+            // (`ProviderStreamKit.withStreamFlag`, pinned in
+            // `ProviderStreamKitStreamFlagTests`). The proof that the native
+            // stream was used here is the two chunks above, not a flag.
         }
     }
 

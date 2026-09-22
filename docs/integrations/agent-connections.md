@@ -59,6 +59,53 @@ it, revoke the connection and create another.
 
 ---
 
+## Health, Calendar & Reminders
+
+A key can also reach your synced Apple Health, Apple and Google calendars and
+Apple Reminders. It is **off for every key** until you turn it on:
+
+- **Web:** Settings → Agent connections → the **Health, Calendar & Reminders**
+  switch, either when creating the key or on its row under **Active keys**.
+- **API:** `PATCH /v1/me/agent-connections/{id}` with `{"allowPersonalData": true}`,
+  or `allowPersonalData` on the create request.
+
+It adds five MCP tools:
+
+| Tool | Does |
+|---|---|
+| `health_query` | Daily totals/averages of synced HealthKit data, one metric or all |
+| `calendar_query` | Upcoming events, Apple + Google, up to 90 days ahead |
+| `reminders_list` | Open reminders, soonest due first |
+| `calendar_create` | Adds an event on your iPhone |
+| `reminder_create` | Adds a reminder on your iPhone |
+
+Two gates apply, in order. The key needs the switch above. Then each kind of
+data needs your consent under **Apple data**, the same consent the in-app agent
+uses; the create tools also need **allow changes** for that kind. A refused call
+comes back as a tool error that says which one to turn on.
+
+These tools always act on **your own** data. They ignore `X-Vault-ID`, so a key
+used on a shared vault never reaches another member's health or calendar.
+
+The create tools talk to the phone live: the LuminaVault app must be connected,
+or the call fails with *device did not respond*.
+
+### Hermes
+
+Hermes takes the key through the config LuminaVault generates for the
+**Hermes** client:
+
+```bash
+hermes mcp add luminavault --url https://<your-server>/v1/mcp --auth header
+# Authorization: Bearer lv_…
+```
+
+Restart the gateway for that profile afterwards. On a machine with several
+profiles, run it once per profile (`HERMES_HOME=~/.hermes/profiles/<name>`),
+with a separate key for each, so you can revoke one without the others.
+
+---
+
 ## Verifying
 
 Point the client at LuminaVault using the copied config, then ask it something

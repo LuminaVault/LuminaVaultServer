@@ -17,6 +17,7 @@ import Logging
 struct MCPController {
     let service: MCPService
     let vaultAccess: VaultAccessService
+    let agents: AgentConnectionService
     let logger: Logger
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
@@ -123,6 +124,10 @@ struct MCPController {
             throw MCPError.invalidParams("unknown argument '\(unknown)' for tool '\(name)'")
         }
 
+        if tool.personal {
+            return try await callPersonalTool(tool, arguments: arguments, request: request, ctx: ctx)
+        }
+
         // Tenancy: resolved per call from the JWT, with write intent for the
         // one tool that writes derived state.
         let access = try await vaultAccess.resolve(
@@ -133,6 +138,40 @@ struct MCPController {
         let tenantID = access.vaultID
 
         let result = try await service.call(name: name, arguments: arguments, tenantID: tenantID)
+        return Self.toolContent(result)
+    }
+
+    /// Health / Calendar / Reminders. Deliberately ignores `X-Vault-ID`: this
+    /// data is the caller's own, so a key for a shared vault must not reach a
+    /// co-member's health. An agent key also needs the user's explicit
+    /// personal-data grant; a first-party session JWT is the user themselves.
+    private func callPersonalTool(
+        _ tool: MCPTool,
+        arguments: [String: JSONValue],
+        request: Request,
+        ctx: AppRequestContext
+    ) async throws -> JSONValue {
+        let userID = try ctx.requireTenantID()
+        if let token = Self.agentToken(request), try await !(agents.allowsPersonalData(token: token)) {
+            return Self.toolContent(.object([
+                "isError": .bool(true),
+                "message": .string("""
+                this agent key is not allowed personal data — the user can turn on \
+                "Health, Calendar & Reminders" for it in LuminaVault Settings → Agent connections
+                """),
+            ]))
+        }
+        let result = try await service.callPersonal(name: tool.name, arguments: arguments, userID: userID)
+        return Self.toolContent(result)
+    }
+
+    private static func agentToken(_ request: Request) -> String? {
+        guard let header = request.headers[.authorization], header.hasPrefix("Bearer ") else { return nil }
+        let token = String(header.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespaces)
+        return token.hasPrefix(AgentConnectionService.tokenPrefix) ? token : nil
+    }
+
+    private static func toolContent(_ result: JSONValue) -> JSONValue {
         let isError = result.objectValue?["isError"]?.boolValue ?? false
 
         // MCP wants both a structured payload and a text rendering; clients
