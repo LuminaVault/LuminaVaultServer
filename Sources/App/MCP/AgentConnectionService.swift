@@ -22,7 +22,12 @@ struct AgentConnectionService: Sendable {
     let fluent: Fluent
     let logger: Logger
 
-    func issue(tenantID: UUID, name: String, kind: AgentClientKind) async throws -> (AgentConnectionDTO, String) {
+    func issue(
+        tenantID: UUID,
+        name: String,
+        kind: AgentClientKind,
+        allowPersonalData: Bool = false
+    ) async throws -> (AgentConnectionDTO, String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw HTTPError(.badRequest, message: "name_required")
@@ -38,6 +43,7 @@ struct AgentConnectionService: Sendable {
         row.clientKind = kind
         row.tokenHash = Self.hash(token)
         row.tokenPrefix = String(token.prefix(Self.displayPrefixLen))
+        row.allowPersonalData = allowPersonalData
         try await row.save(on: fluent.db())
         return try (row.asDTO(), token)
     }
@@ -60,6 +66,30 @@ struct AgentConnectionService: Sendable {
         }
         row.revokedAt = Date()
         try await row.save(on: fluent.db())
+    }
+
+    func setAllowPersonalData(id: UUID, tenantID: UUID, allow: Bool) async throws -> AgentConnectionDTO {
+        guard let row = try await AgentConnection.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$id == id)
+            .filter(\.$revokedAt == nil)
+            .first()
+        else {
+            throw HTTPError(.notFound, message: "not_found")
+        }
+        row.allowPersonalData = allow
+        try await row.save(on: fluent.db())
+        return try row.asDTO()
+    }
+
+    /// Whether a presented, live key may use the personal-data tools.
+    /// Unknown and revoked keys answer `false`.
+    func allowsPersonalData(token: String) async throws -> Bool {
+        guard token.hasPrefix(Self.tokenPrefix) else { return false }
+        return try await AgentConnection.query(on: fluent.db())
+            .filter(\.$tokenHash == Self.hash(token))
+            .filter(\.$revokedAt == nil)
+            .first()?
+            .allowPersonalData ?? false
     }
 
     /// Resolves a presented bearer to the user it acts as. Unknown and

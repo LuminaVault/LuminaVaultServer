@@ -595,58 +595,14 @@ actor SkillRunner {
                 return Self.toolErrorJSON("vault_read failed: \(error)")
             }
         case AvailableTool.healthQuery.rawValue:
-            struct HealthQueryArgs: Decodable { let metric: String?; let days: Int? }
-            struct AggRow: Decodable { let event_type: String; let unit: String?; let day: Date; let total: Double?; let avg: Double? }
-            do {
-                guard let sql = fluent.db() as? any SQLDatabase else {
-                    return Self.toolErrorJSON("sql unavailable")
-                }
-                // Consent gate — the user must have allowed the Health domain.
-                let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .health, sql: sql)
-                guard allowed else {
-                    return Self.toolErrorJSON("health access not allowed by the user")
-                }
-                let args = (try? decoder.decode(HealthQueryArgs.self, from: argsData)) ?? HealthQueryArgs(metric: nil, days: nil)
-                let days = max(1, min(args.days ?? 30, 365))
-                let rows: [AggRow] = if let metric = args.metric, !metric.isEmpty {
-                    try await sql.raw("""
-                    SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
-                           SUM(value_numeric) AS total, AVG(value_numeric) AS avg
-                    FROM health_events
-                    WHERE tenant_id = \(bind: tenantID) AND event_type = \(bind: metric)
-                      AND recorded_at >= NOW() - (\(bind: days) * INTERVAL '1 day')
-                    GROUP BY event_type, unit, day ORDER BY day
-                    """).all(decoding: AggRow.self)
-                } else {
-                    try await sql.raw("""
-                    SELECT event_type, unit, date_trunc('day', recorded_at) AS day,
-                           SUM(value_numeric) AS total, AVG(value_numeric) AS avg
-                    FROM health_events
-                    WHERE tenant_id = \(bind: tenantID)
-                      AND recorded_at >= NOW() - (\(bind: days) * INTERVAL '1 day')
-                    GROUP BY event_type, unit, day ORDER BY day
-                    """).all(decoding: AggRow.self)
-                }
-                let points = rows.map { r in
-                    [
-                        "metric": r.event_type,
-                        "unit": r.unit ?? "",
-                        "day": Self.fileDateStamp(r.day),
-                        "total": String(format: "%.2f", r.total ?? 0),
-                        "avg": String(format: "%.2f", r.avg ?? 0),
-                    ]
-                }
-                return Self.encodeJSON(["status": "ok", "days": String(days), "points": points])
-            } catch {
-                return Self.toolErrorJSON("health_query failed: \(error)")
-            }
+            struct Args: Decodable { let metric: String?; let days: Int? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(metric: nil, days: nil)
+            return await personalData.healthQuery(tenantID: tenantID, metric: args.metric, days: args.days)
         case AvailableTool.reminderCreate.rawValue:
             struct Args: Decodable { let title: String; let notes: String?; let due: String? }
             do {
                 let args = try decoder.decode(Args.self, from: argsData)
-                return await deviceWrite(tenantID: tenantID, domain: .reminders, kind: .reminderCreate, payload: [
-                    "title": args.title, "notes": args.notes ?? "", "due": args.due ?? "",
-                ])
+                return await personalData.reminderCreate(tenantID: tenantID, title: args.title, notes: args.notes, due: args.due)
             } catch {
                 return Self.toolErrorJSON("reminder_create failed: \(error)")
             }
@@ -654,65 +610,18 @@ actor SkillRunner {
             struct Args: Decodable { let title: String; let start: String; let end: String?; let location: String? }
             do {
                 let args = try decoder.decode(Args.self, from: argsData)
-                return await deviceWrite(tenantID: tenantID, domain: .calendar, kind: .calendarCreate, payload: [
-                    "title": args.title, "start": args.start, "end": args.end ?? "", "location": args.location ?? "",
-                ])
+                return await personalData.calendarCreate(
+                    tenantID: tenantID, title: args.title, start: args.start, end: args.end, location: args.location
+                )
             } catch {
                 return Self.toolErrorJSON("calendar_create failed: \(error)")
             }
         case AvailableTool.calendarQuery.rawValue:
             struct Args: Decodable { let days: Int? }
-            struct CalRow: Decodable {
-                let title: String
-                let starts_at: Date
-                let ends_at: Date
-                let location: String?
-            }
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(days: nil)
-            let days = max(1, min(args.days ?? 7, 90))
-            guard let sql = fluent.db() as? any SQLDatabase else {
-                return Self.toolErrorJSON("sql unavailable")
-            }
-            // Consent gate — the user must have allowed the Calendar domain.
-            let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .calendar, sql: sql)
-            guard allowed else {
-                return Self.toolErrorJSON("calendar access not allowed by the user")
-            }
-            // Read the synced cache (all sources — apple_eventkit + google) for the
-            // requested day window. Excludes tombstoned (cancelled) rows.
-            let iso = ISO8601DateFormatter()
-            iso.formatOptions = [.withInternetDateTime]
-            do {
-                let rows = try await sql.raw("""
-                SELECT title, starts_at, ends_at, location
-                FROM calendar_events
-                WHERE tenant_id = \(bind: tenantID)
-                  AND status <> 'cancelled'
-                  AND starts_at >= NOW()
-                  AND starts_at < NOW() + (\(bind: days) * INTERVAL '1 day')
-                ORDER BY starts_at ASC
-                """).all(decoding: CalRow.self)
-                if rows.isEmpty {
-                    // Cache miss — fall back to a live device round-trip so the user
-                    // still gets an answer before the first sync (or when offline
-                    // sync hasn't run). Device-RPC is the fallback, not the path.
-                    return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
-                }
-                let events = rows.map { r in
-                    [
-                        "title": r.title,
-                        "start": iso.string(from: r.starts_at),
-                        "end": iso.string(from: r.ends_at),
-                        "location": r.location ?? "",
-                    ]
-                }
-                return Self.encodeJSON(["status": "ok", "items": events])
-            } catch {
-                // On a DB error, fall back to device-RPC rather than failing the tool.
-                return await deviceRead(tenantID: tenantID, domain: .calendar, payload: ["days": String(days)])
-            }
+            return await personalData.calendarQuery(tenantID: tenantID, days: args.days)
         case AvailableTool.remindersList.rawValue:
-            return await remindersList(tenantID: tenantID)
+            return await personalData.remindersList(tenantID: tenantID)
         case AvailableTool.photosSearch.rawValue:
             struct Args: Decodable { let limit: Int?; let query: String? }
             let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil, query: nil)
@@ -727,100 +636,13 @@ actor SkillRunner {
         }
     }
 
-    /// Apple Integration P2 — gate consent + writes, then round-trip a write
-    /// command to the device via the broker and shape the result as tool JSON.
-    private func deviceWrite(tenantID: UUID, domain: AppleDataDomain, kind: DeviceCommandKind, payload: [String: String]) async -> String {
-        guard let sql = fluent.db() as? any SQLDatabase else {
-            return Self.toolErrorJSON("sql unavailable")
-        }
-        let (allowed, writes) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: domain, sql: sql)
-        guard allowed else { return Self.toolErrorJSON("\(domain.rawValue) access not allowed by the user") }
-        guard writes else { return Self.toolErrorJSON("\(domain.rawValue) changes not allowed by the user") }
-        do {
-            let result = try await DeviceCommandBroker.shared.request(
-                tenantID: tenantID,
-                command: DeviceCommand(kind: kind, domain: domain, payload: payload)
-            )
-            guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
-            var out = ["status": "ok"]
-            for (k, v) in result.payload ?? [:] {
-                out[k] = v
-            }
-            return Self.encodeJSON(out)
-        } catch {
-            return Self.toolErrorJSON("device did not respond (offline or timed out)")
-        }
+    /// Health / Calendar / Reminders tools, shared with the MCP server.
+    private var personalData: PersonalDataTools {
+        PersonalDataTools(fluent: fluent)
     }
 
-    /// Apple Reminders selective-sync read path. Serves the persisted
-    /// `apple_reminders` cache (open/overdue items, soonest due first) the iOS
-    /// client pushes via `POST /v1/reminders/sync`, so Hermes answers without a
-    /// live device round-trip. Falls back to a fresh device_fetch when the
-    /// cache is empty (device never synced, or just-installed client).
-    /// Consent-gated on `.reminders`, same as the device-RPC path.
-    private func remindersList(tenantID: UUID) async -> String {
-        guard let sql = fluent.db() as? any SQLDatabase else {
-            return Self.toolErrorJSON("sql unavailable")
-        }
-        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: .reminders, sql: sql)
-        guard allowed else { return Self.toolErrorJSON("reminders access not allowed by the user") }
-
-        struct Row: Decodable { let title: String; let due_at: Date?; let notes: String? }
-        let rows: [Row]
-        do {
-            // Open (incomplete) reminders, overdue + upcoming, soonest due
-            // first; NULLs (no due date) sort last. Capped to keep the tool
-            // payload bounded.
-            rows = try await sql.raw("""
-            SELECT title, due_at, notes
-            FROM apple_reminders
-            WHERE tenant_id = \(bind: tenantID) AND completed = false
-            ORDER BY due_at ASC NULLS LAST
-            LIMIT 100
-            """).all(decoding: Row.self)
-        } catch {
-            return Self.toolErrorJSON("reminders_list failed: \(error)")
-        }
-
-        // Cache miss → fall back to a live device fetch.
-        guard !rows.isEmpty else {
-            return await deviceRead(tenantID: tenantID, domain: .reminders, payload: [:])
-        }
-
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime]
-        let items = rows.map { row -> [String: String] in
-            var item: [String: String] = ["title": row.title]
-            if let due = row.due_at {
-                item["due"] = iso.string(from: due)
-            }
-            if let notes = row.notes, !notes.isEmpty {
-                item["notes"] = notes
-            }
-            return item
-        }
-        let itemsJSON = Self.encodeJSON(items)
-        return Self.encodeJSON(["status": "ok", "items": itemsJSON])
-    }
-
-    /// Apple Integration P2b — gate consent, then round-trip a fresh read
-    /// (device_fetch) to the device; returns the device's `items` JSON.
     private func deviceRead(tenantID: UUID, domain: AppleDataDomain, payload: [String: String]) async -> String {
-        guard let sql = fluent.db() as? any SQLDatabase else {
-            return Self.toolErrorJSON("sql unavailable")
-        }
-        let (allowed, _) = await AppleConsentController.isAllowed(tenantID: tenantID, domain: domain, sql: sql)
-        guard allowed else { return Self.toolErrorJSON("\(domain.rawValue) access not allowed by the user") }
-        do {
-            let result = try await DeviceCommandBroker.shared.request(
-                tenantID: tenantID,
-                command: DeviceCommand(kind: .deviceFetch, domain: domain, payload: payload)
-            )
-            guard result.ok else { return Self.toolErrorJSON(result.error ?? "device reported failure") }
-            return Self.encodeJSON(["status": "ok", "items": result.payload?["items"] ?? "[]"])
-        } catch {
-            return Self.toolErrorJSON("device did not respond (offline or timed out)")
-        }
+        await personalData.deviceRead(tenantID: tenantID, domain: domain, payload: payload)
     }
 
     /// Apple Photos derived-text recall. When a `query` is given and the tenant

@@ -2296,6 +2296,7 @@ func buildRouter(
             logger: mcpLogger
         ),
         vaultAccess: vaultAccessService,
+        agents: agentConnectionService,
         logger: mcpLogger
     ).addRoutes(to: mcpGroup)
 
