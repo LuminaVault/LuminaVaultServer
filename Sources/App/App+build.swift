@@ -2941,6 +2941,21 @@ func buildRouter(
     let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
     sessionsController.addRoutes(to: sessionsGroup)
 
+    // Agents page — the user's agents (LuminaVault's own + their BYO Hermes),
+    // sessions across every profile, and each session's log. Read-only.
+    let agentsGroup = router.group("/v1/agents")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    AgentsController(
+        service: AgentsService(
+            fluent: services.fluent,
+            resolver: hermesEndpointResolver,
+            http: AsyncHTTPClientHermesHTTP(),
+            logger: Logger(label: "lv.agents")
+        ),
+        logger: Logger(label: "lv.agents")
+    ).addRoutes(to: agentsGroup)
+
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the
     // `EntitlementMiddleware` only gates ingest. A `lapsed`/`archived`
