@@ -880,12 +880,12 @@ struct ConversationController {
                     logger.error("conversation stream upstream failed", metadata: [
                         "error": .string(Logger.redact(String(describing: error))),
                     ])
-                    // Surface a provider-specific, actionable message when the
-                    // routed transport classified the failure (e.g. credit
-                    // exhausted, invalid key, rate limited) instead of a
-                    // generic "upstream failure" the user can't act on.
-                    let message = (error as? UpstreamErrorResponse)?.userMessage ?? "upstream failure"
-                    continuation.yield(.error(message))
+                    // Surface the failure's own explanation — a classified
+                    // provider error, a spent free-lane or usage allowance, a
+                    // missing key — instead of a generic "upstream failure"
+                    // the user can't act on. Only errors with no user-facing
+                    // message stay generic. See `StreamErrorMessage`.
+                    continuation.yield(.error(StreamErrorMessage.forClient(error)))
                     continuation.finish()
                     return
                 }
