@@ -53,7 +53,7 @@ struct CalendarController {
             connected: s.connected,
             needsReauth: s.needsReauth,
             accountEmail: s.accountEmail,
-            lastSyncedAt: s.lastSyncedAt,
+            lastSyncedAt: s.lastSyncedAt
         )
     }
 
@@ -113,7 +113,7 @@ struct CalendarController {
                 endsAt: body.endsAt,
                 location: body.location,
                 notes: body.notes,
-                attendees: body.attendees ?? [],
+                attendees: body.attendees ?? []
             )
             PostHogAnalytics.capture("calendar_event_created", properties: ["has_attendees": !(body.attendees ?? []).isEmpty])
             return Self.toDTO(saved)
@@ -151,7 +151,7 @@ struct CalendarController {
             allDay: e.allDay,
             status: e.status,
             organizer: e.organizer,
-            htmlLink: e.htmlLink,
+            htmlLink: e.htmlLink
         )
     }
 
