@@ -4,10 +4,11 @@ import Logging
 import NIOCore
 import NIOHTTP1
 
-/// Read-only calls the Agents page makes to one Hermes gateway `api_server`.
+/// Calls the Agents page and agent rooms make to one Hermes gateway `api_server`.
 ///
 /// The base URL comes from `HermesEndpointResolver`, which has already run it
-/// through the SSRF guard. Everything here is a GET with the gateway key.
+/// through the SSRF guard. Reads are GETs; `chat` is the one call that
+/// makes the agent act, for agent rooms.
 struct AgentGatewayClient: Sendable {
     let baseURL: URL
     let authHeader: String?
@@ -28,6 +29,14 @@ struct AgentGatewayClient: Sendable {
         let hostname: String?
         let version: String?
         let profiles: [String]
+        /// The profile this gateway itself runs as — the one that answers
+        /// session chat.
+        var activeProfile: String?
+    }
+
+    struct ChatReply: Equatable {
+        let text: String
+        let totalTokens: Int?
     }
 
     struct SessionPage: Equatable {
@@ -37,6 +46,7 @@ struct AgentGatewayClient: Sendable {
     }
 
     static let timeout: TimeAmount = .seconds(8)
+    static let chatTimeout: TimeAmount = .seconds(180)
     static let bodyCap = 4 * 1024 * 1024
 
     /// `GET /api/instance`. `.notSupported` on an older Hermes.
@@ -46,7 +56,34 @@ struct AgentGatewayClient: Sendable {
             hostname: object["hostname"] as? String,
             version: object["version"] as? String,
             profiles: (object["profiles"] as? [String]) ?? [],
+            activeProfile: object["profile"] as? String
         )
+    }
+
+    /// One agent turn in a named session, creating the session first if it
+    /// does not exist. Runs as the gateway's own profile. A turn can use
+    /// tools, so the timeout is long.
+    func chat(sessionID: String, title: String, systemMessage: String, message: String) async throws -> ChatReply {
+        let id = try Self.pathSegment(sessionID)
+        let created = try await send(
+            .POST, "api/sessions", json: ["id": sessionID, "title": title], timeout: Self.timeout
+        )
+        // 409: the session is already there from an earlier turn.
+        guard created.isSuccess || created.status == 409 else { throw Failure.http(created.status) }
+
+        let response = try await send(
+            .POST, "api/sessions/\(id)/chat",
+            json: ["message": message, "system_message": systemMessage],
+            timeout: Self.chatTimeout
+        )
+        guard response.isSuccess else { throw Failure.http(response.status) }
+        guard let object = response.jsonObject(),
+              let text = (object["message"] as? [String: Any])?["content"] as? String
+        else { throw Failure.invalidResponse }
+        let usage = object["usage"] as? [String: Any]
+        let total = (usage?["total_tokens"] as? Int)
+            ?? ((usage?["input_tokens"] as? Int).flatMap { input in (usage?["output_tokens"] as? Int).map { input + $0 } })
+        return ChatReply(text: text, totalTokens: total)
     }
 
     /// Connected platforms from `GET /health/detailed`. Empty when the
@@ -116,7 +153,7 @@ struct AgentGatewayClient: Sendable {
                 lastActiveAt: lastActive,
                 messageCount: row["message_count"] as? Int,
                 isActive: isActive,
-                costUSD: (row["actual_cost_usd"] as? Double) ?? (row["estimated_cost_usd"] as? Double),
+                costUSD: (row["actual_cost_usd"] as? Double) ?? (row["estimated_cost_usd"] as? Double)
             )
         }
     }
@@ -137,7 +174,7 @@ struct AgentGatewayClient: Sendable {
             content: row["content"] as? String,
             toolName: row["tool_name"] as? String,
             toolCalls: toolCalls,
-            createdAt: date(row["timestamp"]),
+            createdAt: date(row["timestamp"])
         )
     }
 
@@ -165,10 +202,33 @@ struct AgentGatewayClient: Sendable {
 
     // MARK: - Transport
 
+    private func send(
+        _ method: HTTPMethod,
+        _ path: String,
+        json: [String: String],
+        timeout: TimeAmount
+    ) async throws -> HermesHTTPResponse {
+        let base = baseURL.absoluteString.hasSuffix("/") ? baseURL.absoluteString : baseURL.absoluteString + "/"
+        var request = HTTPClientRequest(url: base + path)
+        request.method = method
+        request.headers.add(name: "Accept", value: "application/json")
+        request.headers.add(name: "Content-Type", value: "application/json")
+        if let authHeader, !authHeader.isEmpty {
+            request.headers.add(name: "Authorization", value: authHeader)
+        }
+        request.body = try .bytes(ByteBuffer(data: JSONEncoder().encode(json)))
+        do {
+            return try await http.execute(request, timeout: timeout, maxBodyBytes: Self.bodyCap)
+        } catch {
+            logger.debug("agents gateway request failed", metadata: ["path": "\(path)", "error": "\(Logger.redact(String(describing: error)))"])
+            throw Failure.unreachable
+        }
+    }
+
     private func getObject(
         _ path: String,
         query: [(String, String)] = [],
-        notFoundIsUnsupported: Bool,
+        notFoundIsUnsupported: Bool
     ) async throws -> [String: Any] {
         var components = URLComponents()
         components.queryItems = query.isEmpty ? nil : query.map { URLQueryItem(name: $0.0, value: $0.1) }
