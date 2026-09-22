@@ -78,6 +78,8 @@ tags:
   - name: Admin
   - name: Dashboard
     description: OS Shell home/dashboard surface (HER-244).
+  - name: Agents
+    description: The Agents page — where the user's agents run, their sessions and logs.
   - name: Analytics
     description: Vault-scoped usage intelligence, memory health, and recommendations.
   - name: Kanban
@@ -1142,6 +1144,216 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionListResponse' }
+
+  /v1/agents/instances:
+    get:
+      tags: [Agents]
+      operationId: agentsInstances
+      summary: Where the caller's agents run — LuminaVault's own agent and their BYO Hermes.
+      description: |
+        `central` is always present. `byo` appears when the caller has linked
+        their own Hermes gateway; its `status` is `outdated` for a Hermes too
+        old to list profiles and `unreachable` when it does not answer.
+      responses:
+        '200':
+          description: Agent instances.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentInstancesResponse' }
+
+  /v1/agents/sessions:
+    get:
+      tags: [Agents]
+      operationId: agentsSessions
+      summary: Sessions across every agent and profile, newest activity first.
+      description: |
+        `central` sessions are the caller's own conversations. `byo` sessions
+        come from the caller's Hermes gateway, every profile on that machine.
+        An instance that cannot be read is listed in `errors`; the rest of
+        the list still returns.
+      parameters:
+        - in: query
+          name: instance
+          required: false
+          schema: { type: string, enum: [central, byo] }
+        - in: query
+          name: profile
+          required: false
+          description: Hermes profile name. Never matches `central`.
+          schema: { type: string }
+        - in: query
+          name: source
+          required: false
+          description: Where the conversation happened — `app`, `telegram`, `discord`, `cron`, …
+          schema: { type: string }
+        - in: query
+          name: live
+          required: false
+          description: Only sessions open with activity in the last five minutes.
+          schema: { type: boolean, default: false }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentSessionsResponse' }
+        '400':
+          description: Unknown `instance`.
+
+  /v1/agents/instances/{instance}/sessions/{session}/messages:
+    get:
+      tags: [Agents]
+      operationId: agentsSessionMessages
+      summary: One session's log — messages, tool calls and tool results.
+      parameters:
+        - in: path
+          name: instance
+          required: true
+          schema: { type: string, enum: [central, byo] }
+        - in: path
+          name: session
+          required: true
+          schema: { type: string }
+        - in: query
+          name: profile
+          required: false
+          description: Hermes profile holding the session. Omit for `central` and for older Hermes.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The session's messages, oldest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentSessionMessagesResponse' }
+        '400':
+          description: A session id or profile that cannot be a path segment.
+        '404':
+          description: No such instance or session for the caller.
+        '502':
+          description: The caller's Hermes could not be read.
+
+  /v1/agents/room-candidates:
+    get:
+      tags: [Agents]
+      operationId: agentsRoomCandidates
+      summary: Agents the caller can seat in a room — each LuminaVault persona, and their own Hermes when linked.
+      responses:
+        '200':
+          description: Candidates.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentRoomCandidatesResponse' }
+
+  /v1/agents/rooms:
+    get:
+      tags: [Agents]
+      operationId: agentsRoomsList
+      summary: The caller's agent rooms, most recently active first.
+      responses:
+        '200':
+          description: Rooms.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentRoomsResponse' }
+    post:
+      tags: [Agents]
+      operationId: agentsRoomsCreate
+      summary: Create a room with 1–8 of the caller's agents.
+      description: |
+        Members must come from `/v1/agents/room-candidates`. Handles are
+        unique in the room and match `^[a-z0-9][a-z0-9_-]{0,30}$`. The
+        caller's own Hermes can hold one seat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentRoomCreateRequest' }
+      responses:
+        '200':
+          description: The new room.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentRoomDetailResponse' }
+        '400':
+          description: Invalid title, member count, member, or handle.
+
+  /v1/agents/rooms/{room}:
+    get:
+      tags: [Agents]
+      operationId: agentsRoomsGet
+      summary: A room and its latest 200 messages, oldest first.
+      parameters:
+        - { in: path, name: room, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The room.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentRoomDetailResponse' }
+        '404':
+          description: No such room for the caller.
+    delete:
+      tags: [Agents]
+      operationId: agentsRoomsDelete
+      summary: Delete a room and its messages.
+      parameters:
+        - { in: path, name: room, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: No such room for the caller.
+
+  /v1/agents/rooms/{room}/messages:
+    post:
+      tags: [Agents]
+      operationId: agentsRoomsPost
+      summary: Post as the user and stream the agent turns it starts.
+      description: |
+        Server-sent events, `event: agent.room`, each an `AgentRoomStreamEvent`:
+        the user's message, then `thinking` and `message` per agent turn, then
+        `done` with why the chain ended. Whoever the message names as
+        `@handle` answers; an unaddressed message goes to members set to
+        `every_human_message`. An agent reply that names another member hands
+        the turn over. At most 6 agent replies per post, never the same agent
+        twice in a row, and never past the room's token budget. Closing the
+        stream ends the chain before the next agent turn.
+      parameters:
+        - { in: path, name: room, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentRoomPostRequest' }
+      responses:
+        '200':
+          description: The chain, as it happens.
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/AgentRoomStreamEvent' }
+        '400':
+          description: Empty or over-long message.
+        '404':
+          description: No such room for the caller.
+        '409':
+          description: A chain is already running in this room.
+
+  /v1/agents/rooms/{room}/stop:
+    post:
+      tags: [Agents]
+      operationId: agentsRoomsStop
+      summary: Stop the running chain after the agent turn in flight.
+      parameters:
+        - { in: path, name: room, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '202':
+          description: Stop recorded.
+        '404':
+          description: No such room for the caller.
 
   /v1/dashboard/stats:
     get:
@@ -3414,6 +3626,23 @@ paths:
             schema: { $ref: '#/components/schemas/DeviceCommandResult' }
       responses:
         '200': { description: Result accepted. }
+
+  /v1/devices/commands/pending:
+    get:
+      tags: [Devices]
+      operationId: deviceCommandsPending
+      summary: Phone writes queued while the app was closed, oldest first.
+      description: |
+        A `reminder_create` or `calendar_create` that could not reach the
+        phone live is queued for 24 hours and announced with a push. The app
+        reads this on open, runs each command once, and posts each result to
+        `/v1/devices/command/{id}/result`, which removes it from this list.
+      responses:
+        '200':
+          description: Pending commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendingDeviceCommandsResponse' }
 
   /v1/devices/{token}:
     delete:
@@ -8232,6 +8461,24 @@ components:
         payload: { type: object, additionalProperties: { type: string } }
         error: { type: string }
 
+    DeviceCommand:
+      type: object
+      required: [id, kind, payload]
+      description: A server→device command (Apple Integration P0b).
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [ping, reminder_create, calendar_create, device_fetch, photo_analyze] }
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        payload: { type: object, additionalProperties: { type: string } }
+
+    PendingDeviceCommandsResponse:
+      type: object
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCommand' }
+
     JobProposalDTO:
       type: object
       required: [isJob]
@@ -8599,6 +8846,204 @@ components:
         workspaceID: { type: string, format: uuid }
         pinned: { type: boolean }
         archived: { type: boolean }
+
+    AgentInstanceDTO:
+      type: object
+      required: [id, kind, name, status, profiles, platforms]
+      properties:
+        id: { type: string, description: 'Stable id used in `/v1/agents/instances/{id}` paths.' }
+        kind: { type: string, enum: [central, byo] }
+        name: { type: string }
+        status: { type: string, enum: [ok, outdated, unreachable] }
+        hostname: { type: string }
+        version: { type: string }
+        profiles:
+          type: array
+          items: { type: string }
+        platforms:
+          type: array
+          description: Connected chat platforms (telegram, discord, …), when reported.
+          items: { type: string }
+
+    AgentInstancesResponse:
+      type: object
+      required: [instances]
+      properties:
+        instances:
+          type: array
+          items: { $ref: '#/components/schemas/AgentInstanceDTO' }
+
+    AgentSessionDTO:
+      type: object
+      required: [instanceID, id, source, isActive]
+      properties:
+        instanceID: { type: string }
+        profile: { type: string, description: Hermes profile; absent for central and older Hermes. }
+        id: { type: string }
+        title: { type: string }
+        source: { type: string }
+        startedAt: { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time }
+        messageCount: { type: integer }
+        isActive: { type: boolean }
+        costUSD: { type: number }
+
+    AgentInstanceErrorDTO:
+      type: object
+      required: [instanceID, message]
+      properties:
+        instanceID: { type: string }
+        message: { type: string }
+
+    AgentSessionsResponse:
+      type: object
+      required: [sessions, errors]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: '#/components/schemas/AgentSessionDTO' }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/AgentInstanceErrorDTO' }
+
+    AgentMessageDTO:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string }
+        content: { type: string }
+        toolName: { type: string }
+        toolCalls: { type: string, description: The tool-call list an assistant message made, as JSON text. }
+        createdAt: { type: string, format: date-time }
+
+    AgentSessionMessagesResponse:
+      type: object
+      required: [instanceID, sessionID, messages]
+      properties:
+        instanceID: { type: string }
+        profile: { type: string }
+        sessionID: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/AgentMessageDTO' }
+
+    AgentRoomRespondMode:
+      type: string
+      enum: [mention, every_human_message]
+      description: '`mention` answers only when its @handle is written; `every_human_message` also answers every message the user posts.'
+
+    AgentRoomAuthorKind:
+      type: string
+      enum: [human, agent, system]
+
+    AgentRoomMemberDTO:
+      type: object
+      required: [id, instanceID, handle, displayName, respondMode]
+      properties:
+        id: { type: string, format: uuid }
+        instanceID: { type: string, enum: [central, byo] }
+        profile: { type: string, description: LuminaVault persona slug for central; absent for byo. }
+        handle: { type: string }
+        displayName: { type: string }
+        respondMode: { $ref: '#/components/schemas/AgentRoomRespondMode' }
+
+    AgentRoomMessageDTO:
+      type: object
+      required: [id, authorKind, body]
+      properties:
+        id: { type: string, format: uuid }
+        authorKind: { $ref: '#/components/schemas/AgentRoomAuthorKind' }
+        memberID: { type: string, format: uuid }
+        body: { type: string }
+        tokens: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    AgentRoomDTO:
+      type: object
+      required: [id, title, tokenBudget, spentTokens, members]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        tokenBudget: { type: integer }
+        spentTokens: { type: integer }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/AgentRoomMemberDTO' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AgentRoomsResponse:
+      type: object
+      required: [rooms]
+      properties:
+        rooms:
+          type: array
+          items: { $ref: '#/components/schemas/AgentRoomDTO' }
+
+    AgentRoomDetailResponse:
+      type: object
+      required: [room, messages]
+      properties:
+        room: { $ref: '#/components/schemas/AgentRoomDTO' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/AgentRoomMessageDTO' }
+
+    AgentRoomCandidateDTO:
+      type: object
+      required: [instanceID, displayName, suggestedHandle]
+      properties:
+        instanceID: { type: string, enum: [central, byo] }
+        profile: { type: string }
+        displayName: { type: string }
+        suggestedHandle: { type: string }
+
+    AgentRoomCandidatesResponse:
+      type: object
+      required: [candidates]
+      properties:
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/AgentRoomCandidateDTO' }
+
+    AgentRoomMemberRequest:
+      type: object
+      required: [instanceID]
+      properties:
+        instanceID: { type: string, enum: [central, byo] }
+        profile: { type: string }
+        handle: { type: string, description: Defaults to the candidate's suggested handle. }
+        displayName: { type: string }
+        respondMode: { $ref: '#/components/schemas/AgentRoomRespondMode' }
+
+    AgentRoomCreateRequest:
+      type: object
+      required: [title, members]
+      properties:
+        title: { type: string, maxLength: 120 }
+        members:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: { $ref: '#/components/schemas/AgentRoomMemberRequest' }
+
+    AgentRoomPostRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, maxLength: 8000 }
+
+    AgentRoomStreamEvent:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [message, thinking, done] }
+        message: { $ref: '#/components/schemas/AgentRoomMessageDTO' }
+        memberID: { type: string, format: uuid, description: The agent asked, on thinking; the agent that spoke, on message. }
+        reason:
+          type: string
+          enum: [idle, turn_cap, budget, stopped]
+          description: Why the chain ended, on done.
 
     SessionListResponse:
       type: object

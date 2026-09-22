@@ -202,6 +202,67 @@ struct AgentConnectionsControllerTests {
     }
 
     @Test
+    func `personal tools need the key's grant and then the user's consent`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let jwt = try await Self.register(client: client)
+            let issued: AgentConnectionIssuedResponse = try await client.execute(
+                uri: "/v1/me/agent-connections",
+                method: .post,
+                headers: [
+                    .authorization: "Bearer \(jwt)",
+                    .contentType: "application/json",
+                ],
+                body: ByteBuffer(string: #"{"name":"hermes","clientKind":"hermes"}"#)
+            ) { response in
+                try testJSONDecoder().decode(
+                    AgentConnectionIssuedResponse.self,
+                    from: Data(response.body.readableBytesView)
+                )
+            }
+            #expect(issued.connection.allowPersonalData == false)
+
+            let healthCall = ByteBuffer(string: """
+            {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"health_query","arguments":{"days":7}}}
+            """)
+            let agentHeaders: HTTPFields = [
+                .authorization: "Bearer \(issued.token)",
+                .contentType: "application/json",
+            ]
+
+            // No grant: refused before any health row is read.
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: healthCall) { response in
+                #expect(response.status == .ok)
+                let body = String(buffer: response.body)
+                #expect(body.contains("\"isError\":true"))
+                #expect(body.contains("not allowed personal data"))
+            }
+
+            let updated: AgentConnectionDTO = try await client.execute(
+                uri: "/v1/me/agent-connections/\(issued.connection.id.uuidString)",
+                method: .patch,
+                headers: [
+                    .authorization: "Bearer \(jwt)",
+                    .contentType: "application/json",
+                ],
+                body: ByteBuffer(string: #"{"allowPersonalData":true}"#)
+            ) { response in
+                try testJSONDecoder().decode(AgentConnectionDTO.self, from: Data(response.body.readableBytesView))
+            }
+            #expect(updated.allowPersonalData == true)
+
+            // Granted key, but the user never allowed Health: the consent
+            // gate answers, which proves the key gate let it through.
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: healthCall) { response in
+                #expect(response.status == .ok)
+                let body = String(buffer: response.body)
+                #expect(body.contains("\"isError\":true"))
+                #expect(body.contains("health access not allowed by the user"))
+            }
+        }
+    }
+
+    @Test
     func `blank name is rejected`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
