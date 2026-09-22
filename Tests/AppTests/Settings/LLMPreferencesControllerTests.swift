@@ -109,7 +109,15 @@ struct LLMPreferencesControllerTests {
             #expect(active.mode == .managed)
             #expect(active.allowedProviders == [.openRouter])
             #expect(active.blockedProviders.isEmpty)
-            #expect(active.defaultAction.routes.map(\.id) == ["openRouter:\(ManagedLLMDefaults.model)"])
+            // `/v1/router` is a response boundary, so for a managed tenant it
+            // reports the scrubbed placeholder rather than the deployment's
+            // real route (ModelDisclosurePolicy.scrub). That the profile the
+            // router actually *executes* keeps the real route is a separate
+            // guarantee, pinned by `repositoryDTOKeepsRealRoutesForExecution`
+            // in ModelDisclosurePolicyTests — the scrub once leaked into the
+            // execution path, and that test is what stops it happening again.
+            #expect(active.defaultAction.routes.map(\.id) == ["openRouter:\(ModelDisclosurePolicy.genericModelID)"])
+            #expect(!active.defaultAction.routes.map(\.model).contains(ManagedLLMDefaults.model))
         }
     }
 
