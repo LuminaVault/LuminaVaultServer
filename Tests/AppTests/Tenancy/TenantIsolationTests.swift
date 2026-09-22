@@ -101,8 +101,11 @@ struct TenantIsolationTests {
         try await Self.withFluent { fluent in
             let db = fluent.db()
             let t1 = UUID(); let t2 = UUID()
-            try await Self.makeUser(t1, Self.slug("mu1")).save(on: db)
-            try await Self.makeUser(t2, Self.slug("mu2")).save(on: db)
+            // Memories reference a vault now, not just a user, so a bare user
+            // row is not enough to own one: the insert fails the foreign key.
+            // `saveTenant` provisions the personal vault the way signup does.
+            _ = try await saveTenant(Self.makeUser(t1, Self.slug("mu1")), on: db)
+            _ = try await saveTenant(Self.makeUser(t2, Self.slug("mu2")), on: db)
 
             try await Memory(tenantID: t1, content: "alice secret").save(on: db)
             try await Memory(tenantID: t2, content: "bob secret").save(on: db)
