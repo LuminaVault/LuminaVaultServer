@@ -65,7 +65,7 @@ struct DeviceCommandQueue: Sendable {
                 subtitle: nil,
                 body: Self.announcement(for: command),
                 category: .deviceCommand,
-                payload: ["deviceCommandID": command.id.uuidString],
+                payload: ["deviceCommandID": command.id.uuidString]
             )
         } catch {
             // The command stays queued; the app picks it up whenever it opens.

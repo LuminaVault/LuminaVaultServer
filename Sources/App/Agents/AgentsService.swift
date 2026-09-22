@@ -60,7 +60,7 @@ struct AgentsService: Sendable {
         hostname: nil,
         version: nil,
         profiles: [],
-        platforms: ["app", "web"],
+        platforms: ["app", "web"]
     )
 
     private func byoInstance(userID: UUID) async -> AgentInstanceDTO? {
@@ -70,18 +70,18 @@ struct AgentsService: Sendable {
             let info = try await client.instance()
             return await AgentInstanceDTO(
                 id: Self.byoID, kind: .byo, name: info.hostname ?? "Your Hermes", status: .ok,
-                hostname: info.hostname, version: info.version, profiles: info.profiles, platforms: platforms,
+                hostname: info.hostname, version: info.version, profiles: info.profiles, platforms: platforms
             )
         } catch AgentGatewayClient.Failure.notSupported {
             return await AgentInstanceDTO(
                 id: Self.byoID, kind: .byo, name: "Your Hermes", status: .outdated,
-                hostname: nil, version: nil, profiles: [], platforms: platforms,
+                hostname: nil, version: nil, profiles: [], platforms: platforms
             )
         } catch {
             _ = await platforms
             return AgentInstanceDTO(
                 id: Self.byoID, kind: .byo, name: "Your Hermes", status: .unreachable,
-                hostname: nil, version: nil, profiles: [], platforms: [],
+                hostname: nil, version: nil, profiles: [], platforms: []
             )
         }
     }
@@ -151,7 +151,7 @@ struct AgentsService: Sendable {
                 lastActiveAt: last,
                 messageCount: row.message_count,
                 isActive: last.map { now.timeIntervalSince($0) < Self.activeWindow } ?? false,
-                costUSD: nil,
+                costUSD: nil
             )
         }
     }
@@ -159,7 +159,7 @@ struct AgentsService: Sendable {
     private func byoSessions(userID: UUID, filter: Filter) async throws -> [AgentSessionDTO] {
         guard let client = await gatewayClient(userID: userID) else { return [] }
         let page = try await client.sessions(
-            instanceID: Self.byoID, profile: filter.profile, source: filter.source, limit: filter.limit,
+            instanceID: Self.byoID, profile: filter.profile, source: filter.source, limit: filter.limit
         )
         // An old Hermes cannot filter by profile; showing its one profile's
         // rows under a profile filter would mislabel them.
@@ -180,7 +180,7 @@ struct AgentsService: Sendable {
             do {
                 let (resolved, messages) = try await client.messages(profile: profile, sessionID: sessionID)
                 return AgentSessionMessagesResponse(
-                    instanceID: instanceID, profile: profile, sessionID: resolved, messages: messages,
+                    instanceID: instanceID, profile: profile, sessionID: resolved, messages: messages
                 )
             } catch AgentGatewayClient.Failure.http(404) {
                 throw LookupError.sessionNotFound
@@ -212,7 +212,7 @@ struct AgentsService: Sendable {
             sessionID: sessionID,
             messages: rows.map {
                 AgentMessageDTO(role: $0.role, content: $0.content, toolName: nil, toolCalls: nil, createdAt: $0.createdAt)
-            },
+            }
         )
     }
 
@@ -220,13 +220,13 @@ struct AgentsService: Sendable {
 
     /// The user's own gateway, or `nil` when they have none (or it is
     /// unusable — a broken BYO config must not take the page down).
-    private func gatewayClient(userID: UUID) async -> AgentGatewayClient? {
+    func gatewayClient(userID: UUID) async -> AgentGatewayClient? {
         guard let resolver else { return nil }
         do {
             let resolution = try await resolver.resolve(tenantID: userID)
             guard resolution.isUserOverride else { return nil }
             return AgentGatewayClient(
-                baseURL: resolution.baseURL, authHeader: resolution.authHeader, http: http, logger: logger,
+                baseURL: resolution.baseURL, authHeader: resolution.authHeader, http: http, logger: logger
             )
         } catch {
             logger.warning("agents: byo gateway unusable", metadata: ["error": "\(error)"])
