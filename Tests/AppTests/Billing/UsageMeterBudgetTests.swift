@@ -53,7 +53,7 @@ struct UsageMeterBudgetTests {
             let tenant = try await Self.makeTenant(on: fluent)
             let meter = Self.service(on: fluent)
 
-            await meter.record(tenantID: tenant, model: "a", tokensIn: 1_000, tokensOut: 1_000)
+            await meter.record(tenantID: tenant, model: "a", tokensIn: 1000, tokensOut: 1000)
 
             #expect(await meter.checkBudget(tenantID: tenant, tier: .trial) == .allow)
         }

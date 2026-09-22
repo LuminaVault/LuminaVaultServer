@@ -57,7 +57,7 @@ struct KBCompileProgressServiceTests {
             // used to script a `memory_upsert` tool-call loop; the service
             // stopped using tools, so that script left `content` empty, zero
             // memories were extracted, and `.memorySaved` never fired.
-            let transport = ScriptedChatTransport(turns: [
+            let transport = try ScriptedChatTransport(turns: [
                 Self.extractionTurn(memories: ["User prefers chunky markdown sections."]),
             ])
 
@@ -264,8 +264,8 @@ struct KBCompileProgressServiceTests {
     /// one-shot extraction: an OpenAI-shaped completion whose `content` is a
     /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
     /// nested JSON is escaped correctly inside the content string.
-    private static func extractionTurn(memories: [String]) -> String {
-        let inner = try! JSONSerialization.data(withJSONObject: ["memories": memories])
+    private static func extractionTurn(memories: [String]) throws -> String {
+        let inner = try JSONSerialization.data(withJSONObject: ["memories": memories])
         let content = String(decoding: inner, as: UTF8.self)
         let outer: [String: Any] = [
             "id": "stub-extract",
@@ -275,7 +275,7 @@ struct KBCompileProgressServiceTests {
                 "finish_reason": "stop",
             ]],
         ]
-        let data = try! JSONSerialization.data(withJSONObject: outer)
+        let data = try JSONSerialization.data(withJSONObject: outer)
         return String(decoding: data, as: UTF8.self)
     }
 

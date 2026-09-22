@@ -56,10 +56,14 @@ enum SpaceSlugPolicy {
         out = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         // Names that carry no letters or digits at all — punctuation, emoji,
         // scripts this transliterates nothing of — leave nothing to slug.
-        if out.count < 2 { out = "space" }
+        if out.count < 2 {
+            out = "space"
+        }
         // `validate` rejects reserved words by name rather than by shape, so
         // a derivation has to step off them rather than hand one back.
-        if reserved.contains(out) { out += "-space" }
+        if reserved.contains(out) {
+            out += "-space"
+        }
         return out
     }
 

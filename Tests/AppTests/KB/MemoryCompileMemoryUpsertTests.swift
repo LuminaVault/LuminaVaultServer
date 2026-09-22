@@ -86,7 +86,7 @@ struct MemoryCompileMemoryUpsertTests {
     /// persisted and counted — only the protocol that carries them is.
     @Test
     func `extracted memories persist and roll up into the response`() async throws {
-        let stub = ScriptedChatTransport(turns: [
+        let stub = try ScriptedChatTransport(turns: [
             Self.extractionTurn(memories: [
                 "User prefers dark mode.",
                 "User journals every Sunday evening.",
@@ -153,8 +153,8 @@ struct MemoryCompileMemoryUpsertTests {
     /// one-shot extraction: an OpenAI-shaped completion whose `content` is a
     /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
     /// nested JSON is escaped correctly inside the content string.
-    private static func extractionTurn(memories: [String]) -> String {
-        let inner = try! JSONSerialization.data(withJSONObject: ["memories": memories])
+    private static func extractionTurn(memories: [String]) throws -> String {
+        let inner = try JSONSerialization.data(withJSONObject: ["memories": memories])
         let content = String(decoding: inner, as: UTF8.self)
         let outer: [String: Any] = [
             "id": "stub-extract",
@@ -164,7 +164,7 @@ struct MemoryCompileMemoryUpsertTests {
                 "finish_reason": "stop",
             ]],
         ]
-        let data = try! JSONSerialization.data(withJSONObject: outer)
+        let data = try JSONSerialization.data(withJSONObject: outer)
         return String(decoding: data, as: UTF8.self)
     }
 

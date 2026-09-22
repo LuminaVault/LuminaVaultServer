@@ -8,10 +8,9 @@ import Testing
 /// it once the transport-level assertion stopped applying. If it silently
 /// stopped setting the flag, BYOK replies would arrive as one buffered block
 /// with every other test still green.
-@Suite
 struct ProviderStreamKitStreamFlagTests {
     @Test
-    func `adds stream true and keeps every other field`() async throws {
+    func `adds stream true and keeps every other field`() throws {
         let original: [String: Any] = [
             "model": "gpt-stream",
             "temperature": 0.2,
@@ -28,7 +27,7 @@ struct ProviderStreamKitStreamFlagTests {
     }
 
     @Test
-    func `overrides an explicit stream false`() async throws {
+    func `overrides an explicit stream false`() throws {
         let data = try JSONSerialization.data(withJSONObject: ["model": "m", "stream": false])
         let dict = try #require(
             try JSONSerialization.jsonObject(with: ProviderStreamKit.withStreamFlag(data)) as? [String: Any]
@@ -37,7 +36,7 @@ struct ProviderStreamKitStreamFlagTests {
     }
 
     @Test
-    func `leaves a payload it cannot parse untouched`() async throws {
+    func `leaves a payload it cannot parse untouched`() {
         let garbage = Data("not json".utf8)
         #expect(ProviderStreamKit.withStreamFlag(garbage) == garbage)
     }

@@ -21,24 +21,23 @@ import Testing
 /// saying it matches this policy — but it lived on the import path, so the
 /// public endpoint never used it.
 /// Pure: no database, so it runs in the unit job too.
-@Suite
 struct SpaceSlugDerivationTests {
     @Test
-    func `derives a slug from an ordinary name`() async throws {
+    func `derives a slug from an ordinary name`() {
         #expect(SpaceSlugPolicy.derive(from: "Capture") == "capture")
         #expect(SpaceSlugPolicy.derive(from: "AliceOnly") == "aliceonly")
         #expect(SpaceSlugPolicy.derive(from: "Reading List") == "reading-list")
     }
 
     @Test
-    func `collapses runs of punctuation into single dashes and trims them`() async throws {
+    func `collapses runs of punctuation into single dashes and trims them`() {
         #expect(SpaceSlugPolicy.derive(from: "  Work / Notes  ") == "work-notes")
         #expect(SpaceSlugPolicy.derive(from: "!!!Ideas!!!") == "ideas")
         #expect(SpaceSlugPolicy.derive(from: "a—b") == "a-b")
     }
 
     @Test
-    func `every derived slug satisfies the policy it is derived for`() async throws {
+    func `every derived slug satisfies the policy it is derived for`() throws {
         // The derivation is only useful if its output always validates. A
         // name made entirely of symbols, or one long enough to truncate, is
         // where a hand-rolled slugifier usually stops satisfying its own rule.
@@ -47,7 +46,7 @@ struct SpaceSlugDerivationTests {
             "!!!Ideas!!!", "a—b", "日本語", "🎉🎉", "-leading-dash",
             String(repeating: "long", count: 40),
             String(repeating: "ab-", count: 20),
-            "x", "", "   ", "raw", "trash"
+            "x", "", "   ", "raw", "trash",
         ]
         for name in names {
             let derived = SpaceSlugPolicy.derive(from: name)
@@ -61,7 +60,7 @@ struct SpaceSlugDerivationTests {
     }
 
     @Test
-    func `an explicit slug still wins over the name`() async throws {
+    func `an explicit slug still wins over the name`() {
         #expect(SpaceSlugPolicy.resolve(slug: "chosen", name: "Ignored Name") == "chosen")
         #expect(SpaceSlugPolicy.resolve(slug: "  ", name: "Fallback Name") == "fallback-name")
         #expect(SpaceSlugPolicy.resolve(slug: nil, name: "Fallback Name") == "fallback-name")
@@ -70,7 +69,7 @@ struct SpaceSlugDerivationTests {
     /// Reserved slugs are the one case a derivation cannot simply hand back,
     /// because the policy rejects them by name rather than by shape.
     @Test
-    func `a name that derives onto a reserved slug is nudged off it`() async throws {
+    func `a name that derives onto a reserved slug is nudged off it`() throws {
         for reserved in ["raw", "compiled", "trash", "tmp"] {
             let derived = SpaceSlugPolicy.derive(from: reserved)
             #expect(derived != reserved)
