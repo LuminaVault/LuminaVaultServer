@@ -13,9 +13,10 @@
 # Rebuild via `docker compose build hermes` after editing
 # `Sources/App/Resources/HermesSkills/`.
 # Pinned to the successful LuminaVaultHermesAgent build for source commit
-# 24cac9200f35b261694f91dd873507c9eec9792a. Bump deliberately only after its
-# API tests and GHCR image workflow pass.
-FROM ghcr.io/luminavault/luminavault-hermes-agent@sha256:715a4f77305970cdf8f521eceff3de89761ab629c8f1949d0b13ef2b0fe01f39
+# cecb2c39af53565bc45fe18523ec76c9179e43da (terminal output on /v1/runs,
+# LuminaVaultHermesAgent#14). Bump deliberately only after its API tests and
+# GHCR image workflow pass.
+FROM ghcr.io/luminavault/luminavault-hermes-agent@sha256:bb97010d8166817afbffd278e8a8ac6ece923ea736ae17fbed7a36853f36d2b7
 
 # HER-XXX — bake Mnemosyne (Hermes Agent's native memory provider) into the
 # image so every tenant gets persistent agent memory out of the box. It is
