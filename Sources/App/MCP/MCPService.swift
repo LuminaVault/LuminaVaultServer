@@ -24,6 +24,8 @@ struct MCPService: Sendable {
     let search: HybridMemorySearch
     let embeddings: any EmbeddingService
     let backfill: ChunkBackfillService
+    /// Phone writes the app is closed for are queued here, not failed.
+    var deviceQueue: DeviceCommandQueue?
     let logger: Logger
 
     /// Run one tool. Throws only for protocol-level problems; a tool that
@@ -41,6 +43,59 @@ struct MCPService: Sendable {
         case "index": try await runIndex(arguments, tenantID: tenantID)
         default: throw MCPError.methodNotFound("unknown tool '\(name)'")
         }
+    }
+
+    /// Run one personal-data tool. `userID` is the caller's own account —
+    /// the controller never passes a shared vault here.
+    func callPersonal(name: String, arguments: [String: JSONValue], userID: UUID) async throws -> JSONValue {
+        let tools = PersonalDataTools(fluent: fluent, deviceQueue: deviceQueue)
+        let raw: String = switch name {
+        case "health_query":
+            await tools.healthQuery(
+                tenantID: userID,
+                metric: arguments["metric"]?.stringValue,
+                days: arguments["days"]?.intValue
+            )
+        case "calendar_query":
+            await tools.calendarQuery(tenantID: userID, days: arguments["days"]?.intValue)
+        case "reminders_list":
+            await tools.remindersList(tenantID: userID)
+        case "calendar_create":
+            try await tools.calendarCreate(
+                tenantID: userID,
+                title: requireString(arguments, "title"),
+                start: requireString(arguments, "start"),
+                end: arguments["end"]?.stringValue,
+                location: arguments["location"]?.stringValue
+            )
+        case "reminder_create":
+            try await tools.reminderCreate(
+                tenantID: userID,
+                title: requireString(arguments, "title"),
+                notes: arguments["notes"]?.stringValue,
+                due: arguments["due"]?.stringValue
+            )
+        default:
+            throw MCPError.methodNotFound("unknown tool '\(name)'")
+        }
+        logger.info("mcp.personal tool=\(name) user=\(userID)")
+        return Self.toolResult(fromPersonalJSON: raw)
+    }
+
+    /// Shapes `PersonalDataTools` JSON as an MCP result: a refused or failed
+    /// call becomes `isError` with the reason, so the agent can tell the user
+    /// what to allow instead of retrying.
+    static func toolResult(fromPersonalJSON raw: String) -> JSONValue {
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(raw.utf8)),
+              var object = value.objectValue
+        else {
+            return .object(["isError": .bool(true), "message": .string("tool returned no result")])
+        }
+        if object["status"]?.stringValue == "error" {
+            object["isError"] = .bool(true)
+            object["message"] = object["reason"] ?? .string("tool failed")
+        }
+        return .object(object)
     }
 
     // MARK: - Tools
@@ -224,6 +279,13 @@ struct MCPService: Sendable {
     }
 
     // MARK: - Helpers
+
+    private func requireString(_ arguments: [String: JSONValue], _ name: String) throws -> String {
+        guard let value = arguments[name]?.stringValue, !value.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw MCPError.invalidParams("\(name) is required and must be a non-empty string")
+        }
+        return value
+    }
 
     private func requirePath(_ arguments: [String: JSONValue]) throws -> String {
         guard let path = arguments["path"]?.stringValue, !path.trimmingCharacters(in: .whitespaces).isEmpty else {
