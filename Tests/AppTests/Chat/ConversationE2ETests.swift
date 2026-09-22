@@ -266,6 +266,64 @@ struct ConversationE2ETests {
         }
     }
 
+    /// A stream that fails for a reason the user can act on must say what it
+    /// is. The conversation stream answers 200 before the upstream hop, so a
+    /// failure arrives as an SSE `error` event rather than a status, and the
+    /// controller used to replace everything except a provider error with the
+    /// text "upstream failure". Here a BYOK user with no key is sent to the
+    /// free lane, which has no providers in tests, so the stream fails with a
+    /// routing error that carries its own user message — and the user saw
+    /// "upstream failure" instead of it.
+    @Test
+    func `a routing failure mid-stream reaches the user as its own message`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderWithStubChat())
+        try await app.test(.router) { client in
+            let token = try await Self.registerUser(client: client)
+            try await client.execute(
+                uri: "/v1/me/preferences/llm",
+                method: .put,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: """
+                {"mode":"byok","primaryProvider":"anthropic","primaryModel":"claude-opus-4-7","fallbackChain":[]}
+                """)
+            ) { #expect($0.status == .ok) }
+
+            let convo: ConversationDTO = try await client.execute(
+                uri: "/v1/conversations",
+                method: .post,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: #"{"title":"stream"}"#)
+            ) { try Self.decodeConversation($0.body) }
+
+            try await client.execute(
+                uri: "/v1/conversations/\(convo.id)/messages/stream",
+                method: .post,
+                headers: Self.auth(token),
+                body: ByteBuffer(string: #"{"content":"hello"}"#)
+            ) { resp in
+                #expect(resp.status == .ok)
+                let errors = Self.sseErrorMessages(in: String(buffer: resp.body))
+                let message = try #require(errors.first, "the stream carried no error event")
+                #expect(message != "upstream failure")
+                #expect(message.isEmpty == false)
+            }
+        }
+    }
+
+    /// The `error` payloads of an SSE body, in order.
+    private static func sseErrorMessages(in body: String) -> [String] {
+        body.components(separatedBy: "\n")
+            .filter { $0.hasPrefix("data:") }
+            .compactMap { line -> String? in
+                let json = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+                guard let data = json.data(using: .utf8),
+                      let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      event["type"] as? String == "error"
+                else { return nil }
+                return event["payload"] as? String
+            }
+    }
+
     @Test
     func `POST messages-stream on unknown id returns 404`() async throws {
         let app = try await buildApplication(reader: dbTestReader)

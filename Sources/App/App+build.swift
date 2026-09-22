@@ -429,6 +429,12 @@ func buildRouter(
         fluent: services.fluent,
         logger: Logger(label: "lv.apns")
     )
+    // Phone writes the app was closed for wait here until it opens.
+    let deviceCommandQueue = DeviceCommandQueue(
+        fluent: services.fluent,
+        apns: pushService,
+        logger: Logger(label: "lv.apple.device-queue")
+    )
     // HER-206 — EventBus constructed early so AchievementsService can
     // publish .achievementUnlocked into the same instance MeTodayCache
     // subscribes to. SkillRunner / capture publishers reuse this bus
@@ -2293,9 +2299,11 @@ func buildRouter(
                 indexer: chunkIndexer,
                 logger: Logger(label: "lv.mcp.index")
             ),
+            deviceQueue: deviceCommandQueue,
             logger: mcpLogger
         ),
         vaultAccess: vaultAccessService,
+        agents: agentConnectionService,
         logger: mcpLogger
     ).addRoutes(to: mcpGroup)
 
@@ -2933,6 +2941,21 @@ func buildRouter(
     let sessionsGroup = router.group("/v1/sessions").add(middleware: jwtAuthenticator)
     sessionsController.addRoutes(to: sessionsGroup)
 
+    // Agents page — the user's agents (LuminaVault's own + their BYO Hermes),
+    // sessions across every profile, and each session's log. Read-only.
+    let agentsGroup = router.group("/v1/agents")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
+    AgentsController(
+        service: AgentsService(
+            fluent: services.fluent,
+            resolver: hermesEndpointResolver,
+            http: AsyncHTTPClientHermesHTTP(),
+            logger: Logger(label: "lv.agents")
+        ),
+        logger: Logger(label: "lv.agents")
+    ).addRoutes(to: agentsGroup)
+
     // Health ingest (HealthKit / Google Fit / manual) — protected.
     // HER-202 — read of own data is mounted on a separate group so the
     // `EntitlementMiddleware` only gates ingest. A `lapsed`/`archived`
@@ -3116,6 +3139,7 @@ func buildRouter(
     // Apple Integration P0b — device-RPC result callback.
     DeviceCommandController(
         broker: .shared,
+        queue: deviceCommandQueue,
         logger: Logger(label: "lv.apple.device-rpc")
     ).addRoutes(to: deviceGroup)
 
