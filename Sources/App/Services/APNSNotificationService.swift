@@ -29,6 +29,8 @@ enum APNSPushCategory: String {
     case approval
     /// Phase 1 — a Hermes run finished (completed, failed or stopped).
     case runCompleted
+    /// A phone write (reminder, event) waiting for the app to open.
+    case deviceCommand
 }
 
 // MARK: - Push sender protocol (testable seam)
@@ -365,9 +367,10 @@ struct APNSNotificationService {
         on db: any Database
     ) async throws -> Bool {
         switch category {
-        case .achievement, .reminder, .cron, .ingestion, .workflow:
+        case .achievement, .reminder, .cron, .ingestion, .workflow, .deviceCommand:
             // High-signal, low-frequency surfaces — never gated by the
-            // category opt-out table in v1.
+            // category opt-out table in v1. A device command is something
+            // the user asked for; muting it would silently drop the write.
             return false
         case .chat, .nudge, .digest, .approval, .runCompleted:
             break
@@ -381,7 +384,7 @@ struct APNSNotificationService {
         case .digest: return !prefs.digestEnabled
         case .approval: return !prefs.approvalEnabled
         case .runCompleted: return !prefs.runCompletedEnabled
-        case .achievement, .reminder, .cron, .ingestion, .workflow: return false
+        case .achievement, .reminder, .cron, .ingestion, .workflow, .deviceCommand: return false
         }
     }
 

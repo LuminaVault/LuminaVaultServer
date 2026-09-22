@@ -59,7 +59,7 @@ struct SpacesController {
         let space = try await service.create(
             tenantID: access.vaultID,
             name: body.name,
-            slugRaw: body.slug ?? "",
+            slugRaw: SpaceSlugPolicy.resolve(slug: body.slug, name: body.name),
             description: body.description,
             color: body.color,
             icon: body.icon,

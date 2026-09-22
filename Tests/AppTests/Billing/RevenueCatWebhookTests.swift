@@ -283,10 +283,16 @@ struct RevenueCatWebhookTests {
             let auth = try await Self.register(client: client)
             try await Self.bindRevenueCatID(userID: auth.userId, rcUserID: auth.userId.uuidString)
 
+            // A real SKU, like every other case here. This test is about the
+            // bearer header being accepted in place of an HMAC signature; with
+            // no product at all the handler now fails loudly (see the unmapped
+            // product regression below), which answered 500 before auth was
+            // ever the thing being tested.
             let body = Self.payload(
                 eventID: "evt-bearer-\(UUID().uuidString)",
                 type: "RENEWAL",
                 appUserId: auth.userId.uuidString,
+                productId: "pro_monthly_14_99",
                 expirationAtMs: Int64(Date().addingTimeInterval(86400 * 30).timeIntervalSince1970 * 1000)
             )
 

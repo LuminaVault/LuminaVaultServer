@@ -11,19 +11,49 @@ import Testing
 struct MCPContractTests {
     private static let expectedTools = [
         "status", "search", "browse", "read", "recent", "links", "context", "index",
+        "health_query", "calendar_query", "reminders_list", "calendar_create", "reminder_create",
+    ]
+
+    private static let personalTools: Set = [
+        "health_query", "calendar_query", "reminders_list", "calendar_create", "reminder_create",
     ]
 
     @Test
-    func `the advertised tool set is exactly these eight`() {
+    func `the advertised tool set is exactly these thirteen`() {
         #expect(MCPToolCatalog.all.map(\.name).sorted() == Self.expectedTools.sorted())
     }
 
     @Test
-    func `only index may write`() {
-        // The read-only promise is the entire security argument for exposing
-        // this to an autonomous agent.
-        let writers = MCPToolCatalog.all.filter(\.writes).map(\.name)
-        #expect(writers == ["index"])
+    func `only index and the two create tools may write`() {
+        // The read-only promise is the security argument for exposing the
+        // vault to an autonomous agent. The create tools are the one
+        // exception, and they sit behind consent plus "allow changes".
+        let writers = MCPToolCatalog.all.filter(\.writes).map(\.name).sorted()
+        #expect(writers == ["calendar_create", "index", "reminder_create"])
+    }
+
+    @Test
+    func `exactly the Health, Calendar and Reminders tools are personal`() {
+        // `personal` is what makes a tool ignore X-Vault-ID and require the
+        // key's personal-data grant; a vault tool marked personal, or the
+        // reverse, is a data leak.
+        let personal = Set(MCPToolCatalog.all.filter(\.personal).map(\.name))
+        #expect(personal == Self.personalTools)
+    }
+
+    @Test
+    func `a refused personal call becomes an MCP tool error with the reason`() {
+        let refused = MCPService.toolResult(
+            fromPersonalJSON: #"{"status":"error","reason":"health access not allowed by the user"}"#
+        )
+        #expect(refused.objectValue?["isError"]?.boolValue == true)
+        #expect(refused.objectValue?["message"]?.stringValue == "health access not allowed by the user")
+
+        let ok = MCPService.toolResult(fromPersonalJSON: #"{"status":"ok","items":[]}"#)
+        #expect(ok.objectValue?["isError"] == nil)
+
+        let garbage = MCPService.toolResult(fromPersonalJSON: "not json")
+        #expect(garbage.objectValue?["isError"]?.boolValue == true)
     }
 
     @Test
@@ -65,7 +95,8 @@ struct MCPContractTests {
             let object = try #require(entry.objectValue)
             let name = try #require(object["name"]?.stringValue)
             let readOnly = object["annotations"]?.objectValue?["readOnlyHint"]?.boolValue
-            #expect(readOnly == (name != "index"), "\(name) readOnlyHint")
+            let writes = ["index", "calendar_create", "reminder_create"].contains(name)
+            #expect(readOnly == !writes, "\(name) readOnlyHint")
             // Nothing here deletes user content — not even `index`, which only
             // rebuilds derived rows.
             #expect(object["annotations"]?.objectValue?["destructiveHint"]?.boolValue == false, "\(name)")

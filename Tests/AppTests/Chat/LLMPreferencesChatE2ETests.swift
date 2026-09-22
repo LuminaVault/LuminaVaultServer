@@ -80,7 +80,14 @@ struct LLMPreferencesChatE2ETests {
 
     @Test
     func `signup, signin, set managed brain, then chat gets a reply`() async throws {
-        let app = try await buildApplication(reader: dbTestReaderWithStubChat(replyContent: Self.stubReply))
+        // Free lane off, for the same reason as the persistence test below: a
+        // fresh signup is free-tier, so with the lane on it is forced onto the
+        // free lane, which has no providers loaded in tests and so reports
+        // itself exhausted (429) before the gateway hop this test is about is
+        // ever reached. `FreeLaneGateTests` covers the lane itself.
+        let app = try await buildApplication(
+            reader: dbTestReaderWithStubChat(replyContent: Self.stubReply, freeLaneEnabled: false)
+        )
         try await app.test(.router) { client in
             let token = try await Self.signUpThenSignIn(client: client)
 
@@ -99,7 +106,10 @@ struct LLMPreferencesChatE2ETests {
                 let prefs = try Self.decodePrefs(resp.body)
                 #expect(prefs.mode == .managed)
                 #expect(prefs.primaryProvider == .openRouter)
-                #expect(prefs.primaryModel == ManagedLLMDefaults.model)
+                // Managed tenants are shown the generic brain name, never the
+                // deployment's model id (ModelDisclosurePolicy, 3bf2f2e).
+                #expect(prefs.primaryModel == ModelDisclosurePolicy.genericBrainName)
+                #expect(prefs.primaryModel != ManagedLLMDefaults.model)
                 #expect(prefs.fallbackChain.isEmpty)
             }
 
@@ -198,11 +208,23 @@ struct LLMPreferencesChatE2ETests {
     /// live free tier answers (both share the gateway hop the stub backs). The
     /// assertion that earns its keep: the `:free` suffix survives the
     /// preference round-trip intact and reaches the chat hop unmangled.
+    /// Renamed from "select nous stepfun free model, then chat gets a reply".
+    ///
+    /// Its stated purpose was proving a `:free` model slug chosen in managed
+    /// mode survives the round-trip. That behaviour no longer exists, by
+    /// design, twice over: managed routing ignores the chosen model entirely
+    /// (HER-300 — the server's default wins), and since 3bf2f2e the managed
+    /// response does not echo a model id back at all. So the slug is neither
+    /// used nor observable. What remains true, and is asserted here, is that
+    /// the request is accepted, nothing about the model leaks back, and chat
+    /// still replies.
     @Test
-    func `select nous stepfun free model, then chat gets a reply`() async throws {
+    func `a model chosen in managed mode is not disclosed back, and chat still replies`() async throws {
         let reply = "Reply from stepfun/step-3.7-flash:free via Nous."
         let model = "stepfun/step-3.7-flash:free"
-        let app = try await buildApplication(reader: dbTestReaderWithStubChat(replyContent: reply))
+        let app = try await buildApplication(
+            reader: dbTestReaderWithStubChat(replyContent: reply, freeLaneEnabled: false)
+        )
         try await app.test(.router) { client in
             let token = try await Self.signUpThenSignIn(client: client)
 
@@ -220,11 +242,11 @@ struct LLMPreferencesChatE2ETests {
                 let prefs = try Self.decodePrefs(resp.body)
                 #expect(prefs.mode == .managed)
                 #expect(prefs.primaryProvider == .openRouter)
-                // The `:free` suffix must survive intact — no slug mangling.
-                #expect(prefs.primaryModel == model)
+                #expect(prefs.primaryModel == ModelDisclosurePolicy.genericBrainName)
+                #expect(!String(buffer: resp.body).contains(model))
             }
 
-            // Round-trips on GET with the suffix preserved.
+            // GET does not disclose it either.
             try await client.execute(
                 uri: "/v1/me/preferences/llm",
                 method: .get,
@@ -232,7 +254,8 @@ struct LLMPreferencesChatE2ETests {
             ) { resp in
                 #expect(resp.status == .ok)
                 let prefs = try Self.decodePrefs(resp.body)
-                #expect(prefs.primaryModel == model)
+                #expect(prefs.primaryModel == ModelDisclosurePolicy.genericBrainName)
+                #expect(!String(buffer: resp.body).contains(model))
             }
 
             // Chat routes through the gateway and returns the assistant reply.

@@ -78,6 +78,8 @@ tags:
   - name: Admin
   - name: Dashboard
     description: OS Shell home/dashboard surface (HER-244).
+  - name: Agents
+    description: The Agents page — where the user's agents run, their sessions and logs.
   - name: Analytics
     description: Vault-scoped usage intelligence, memory health, and recommendations.
   - name: Kanban
@@ -1142,6 +1144,97 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SessionListResponse' }
+
+  /v1/agents/instances:
+    get:
+      tags: [Agents]
+      operationId: agentsInstances
+      summary: Where the caller's agents run — LuminaVault's own agent and their BYO Hermes.
+      description: |
+        `central` is always present. `byo` appears when the caller has linked
+        their own Hermes gateway; its `status` is `outdated` for a Hermes too
+        old to list profiles and `unreachable` when it does not answer.
+      responses:
+        '200':
+          description: Agent instances.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentInstancesResponse' }
+
+  /v1/agents/sessions:
+    get:
+      tags: [Agents]
+      operationId: agentsSessions
+      summary: Sessions across every agent and profile, newest activity first.
+      description: |
+        `central` sessions are the caller's own conversations. `byo` sessions
+        come from the caller's Hermes gateway, every profile on that machine.
+        An instance that cannot be read is listed in `errors`; the rest of
+        the list still returns.
+      parameters:
+        - in: query
+          name: instance
+          required: false
+          schema: { type: string, enum: [central, byo] }
+        - in: query
+          name: profile
+          required: false
+          description: Hermes profile name. Never matches `central`.
+          schema: { type: string }
+        - in: query
+          name: source
+          required: false
+          description: Where the conversation happened — `app`, `telegram`, `discord`, `cron`, …
+          schema: { type: string }
+        - in: query
+          name: live
+          required: false
+          description: Only sessions open with activity in the last five minutes.
+          schema: { type: boolean, default: false }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentSessionsResponse' }
+        '400':
+          description: Unknown `instance`.
+
+  /v1/agents/instances/{instance}/sessions/{session}/messages:
+    get:
+      tags: [Agents]
+      operationId: agentsSessionMessages
+      summary: One session's log — messages, tool calls and tool results.
+      parameters:
+        - in: path
+          name: instance
+          required: true
+          schema: { type: string, enum: [central, byo] }
+        - in: path
+          name: session
+          required: true
+          schema: { type: string }
+        - in: query
+          name: profile
+          required: false
+          description: Hermes profile holding the session. Omit for `central` and for older Hermes.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The session's messages, oldest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentSessionMessagesResponse' }
+        '400':
+          description: A session id or profile that cannot be a path segment.
+        '404':
+          description: No such instance or session for the caller.
+        '502':
+          description: The caller's Hermes could not be read.
 
   /v1/dashboard/stats:
     get:
@@ -3425,6 +3518,23 @@ paths:
       responses:
         '200': { description: Result accepted. }
 
+  /v1/devices/commands/pending:
+    get:
+      tags: [Devices]
+      operationId: deviceCommandsPending
+      summary: Phone writes queued while the app was closed, oldest first.
+      description: |
+        A `reminder_create` or `calendar_create` that could not reach the
+        phone live is queued for 24 hours and announced with a push. The app
+        reads this on open, runs each command once, and posts each result to
+        `/v1/devices/command/{id}/result`, which removes it from this list.
+      responses:
+        '200':
+          description: Pending commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PendingDeviceCommandsResponse' }
+
   /v1/devices/{token}:
     delete:
       tags: [Devices]
@@ -3520,10 +3630,11 @@ paths:
                       cta: [add_key, switch_to_managed]
         '429':
           description: |
-            Rate-limit exceeded, or the free fallback lane's daily allowance is
-            spent (`free_lane_exhausted`). The free lane is the forced route for
-            users who are neither paying nor using their own key; the allowance
-            resets at UTC midnight. Honour `Retry-After`.
+            Rate-limit exceeded; the free fallback lane's daily allowance is
+            spent (`free_lane_exhausted`); or a trial account's daily token
+            allowance is spent (`usage_cap_exceeded`). The free lane is the
+            forced route for users who are neither paying nor using their own
+            key. Both allowances reset at UTC midnight. Honour `Retry-After`.
           headers:
             Retry-After:
               schema: { type: integer }
@@ -3537,6 +3648,13 @@ paths:
                     error:
                       code: free_lane_exhausted
                       message: You've used today's free messages. Upgrade for the full brain, or add your own API key in Settings to keep going now.
+                      cta: [upgrade, add_key]
+                      retryAfterSeconds: 18000
+                usageCapExceeded:
+                  value:
+                    error:
+                      code: usage_cap_exceeded
+                      message: You've reached today's usage limit. Upgrade for more, or add your own API key in Settings to keep going now.
                       cta: [upgrade, add_key]
                       retryAfterSeconds: 18000
         '502':
@@ -7490,13 +7608,14 @@ components:
             enum: [add_key, switch_to_managed, upgrade]
           description: |
             Optional recovery actions for clients. `upgrade` accompanies
-            `free_lane_exhausted`; `add_key` / `switch_to_managed` accompany
-            `byok_keys_required`.
+            `free_lane_exhausted` and `usage_cap_exceeded`; `add_key` /
+            `switch_to_managed` accompany `byok_keys_required`.
         retryAfterSeconds:
           type: integer
           description: |
-            Present on `free_lane_exhausted`. Seconds until the free-lane daily
-            allowance resets (UTC midnight). Mirrors the `Retry-After` header.
+            Present on `free_lane_exhausted` and `usage_cap_exceeded`. Seconds
+            until the daily allowance resets (UTC midnight). Mirrors the
+            `Retry-After` header.
 
     StructuredAPIErrorEnvelope:
       type: object
@@ -8221,6 +8340,24 @@ components:
         payload: { type: object, additionalProperties: { type: string } }
         error: { type: string }
 
+    DeviceCommand:
+      type: object
+      required: [id, kind, payload]
+      description: A server→device command (Apple Integration P0b).
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [ping, reminder_create, calendar_create, device_fetch, photo_analyze] }
+        domain: { $ref: '#/components/schemas/AppleDataDomain' }
+        payload: { type: object, additionalProperties: { type: string } }
+
+    PendingDeviceCommandsResponse:
+      type: object
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCommand' }
+
     JobProposalDTO:
       type: object
       required: [isJob]
@@ -8588,6 +8725,86 @@ components:
         workspaceID: { type: string, format: uuid }
         pinned: { type: boolean }
         archived: { type: boolean }
+
+    AgentInstanceDTO:
+      type: object
+      required: [id, kind, name, status, profiles, platforms]
+      properties:
+        id: { type: string, description: 'Stable id used in `/v1/agents/instances/{id}` paths.' }
+        kind: { type: string, enum: [central, byo] }
+        name: { type: string }
+        status: { type: string, enum: [ok, outdated, unreachable] }
+        hostname: { type: string }
+        version: { type: string }
+        profiles:
+          type: array
+          items: { type: string }
+        platforms:
+          type: array
+          description: Connected chat platforms (telegram, discord, …), when reported.
+          items: { type: string }
+
+    AgentInstancesResponse:
+      type: object
+      required: [instances]
+      properties:
+        instances:
+          type: array
+          items: { $ref: '#/components/schemas/AgentInstanceDTO' }
+
+    AgentSessionDTO:
+      type: object
+      required: [instanceID, id, source, isActive]
+      properties:
+        instanceID: { type: string }
+        profile: { type: string, description: Hermes profile; absent for central and older Hermes. }
+        id: { type: string }
+        title: { type: string }
+        source: { type: string }
+        startedAt: { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time }
+        messageCount: { type: integer }
+        isActive: { type: boolean }
+        costUSD: { type: number }
+
+    AgentInstanceErrorDTO:
+      type: object
+      required: [instanceID, message]
+      properties:
+        instanceID: { type: string }
+        message: { type: string }
+
+    AgentSessionsResponse:
+      type: object
+      required: [sessions, errors]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: '#/components/schemas/AgentSessionDTO' }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/AgentInstanceErrorDTO' }
+
+    AgentMessageDTO:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string }
+        content: { type: string }
+        toolName: { type: string }
+        toolCalls: { type: string, description: The tool-call list an assistant message made, as JSON text. }
+        createdAt: { type: string, format: date-time }
+
+    AgentSessionMessagesResponse:
+      type: object
+      required: [instanceID, sessionID, messages]
+      properties:
+        instanceID: { type: string }
+        profile: { type: string }
+        sessionID: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/AgentMessageDTO' }
 
     SessionListResponse:
       type: object

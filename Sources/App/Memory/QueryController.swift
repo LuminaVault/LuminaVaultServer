@@ -275,7 +275,10 @@ struct QueryController {
                     logger.error("query stream upstream failed", metadata: [
                         "error": .string(Logger.redact(String(describing: error))),
                     ])
-                    continuation.yield(.error("upstream failure"))
+                    // Same rule as the conversation stream. Routing errors
+                    // cannot reach this path while it has no router, but it
+                    // will once the free lane gates it too.
+                    continuation.yield(.error(StreamErrorMessage.forClient(error)))
                     continuation.finish()
                     return
                 }

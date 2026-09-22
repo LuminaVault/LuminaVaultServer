@@ -128,9 +128,14 @@ struct VaultUploadSpaceTests {
             )
             #expect(status == .ok)
 
+            // HER-105: the client's path prefix is advisory. The server files
+            // an upload under its Space's slug and an unfiled one under
+            // `inbox`, keeping only the basename, so the on-disk vault mirrors
+            // Spaces rather than whatever the caller happened to send.
             let files = try await Self.listFiles(client: client, token: token)
-            let row = try #require(files.first { $0.path == "unfiled/note.md" })
+            let row = try #require(files.first { $0.path == "inbox/note.md" })
             #expect(row.spaceId == nil)
+            #expect(files.contains { $0.path == "unfiled/note.md" } == false)
         }
     }
 
@@ -167,8 +172,14 @@ struct VaultUploadSpaceTests {
         }
     }
 
+    /// Renamed from "re-upload with new space_id overwrites previous link".
+    /// It does not overwrite, and has not since HER-105 made the storage path
+    /// a function of the Space. The same basename sent to a second Space
+    /// lands beside the first as its own file — moving a note between Spaces
+    /// is a move, not an upload. The old name described the behaviour this
+    /// endpoint had before the path rule changed.
     @Test
-    func `re-upload with new space_id overwrites previous link`() async throws {
+    func `uploading the same name to a second space files it under that space`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -189,13 +200,19 @@ struct VaultUploadSpaceTests {
             )
 
             let files = try await Self.listFiles(client: client, token: token)
-            let row = try #require(files.first { $0.path == "shared/path.md" })
-            #expect(row.spaceId == spaceB.id)
+            let inA = try #require(files.first { $0.path == "\(spaceA.slug)/path.md" })
+            let inB = try #require(files.first { $0.path == "\(spaceB.slug)/path.md" })
+            #expect(inA.spaceId == spaceA.id)
+            #expect(inB.spaceId == spaceB.id)
+            #expect(files.contains { $0.path == "shared/path.md" } == false)
         }
     }
 
+    /// The filed copy keeps its Space. The unfiled re-upload does not reach
+    /// it, because without a `space_id` the server files by `inbox` rather
+    /// than by the caller's prefix — so this is two rows, not one updated one.
     @Test
-    func `re-upload omitting space_id preserves the existing link`() async throws {
+    func `re-upload omitting space_id leaves the filed copy alone`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -216,8 +233,10 @@ struct VaultUploadSpaceTests {
             )
 
             let files = try await Self.listFiles(client: client, token: token)
-            let row = try #require(files.first { $0.path == "keep/path.md" })
-            #expect(row.spaceId == space.id)
+            let filed = try #require(files.first { $0.path == "\(space.slug)/path.md" })
+            #expect(filed.spaceId == space.id)
+            let unfiled = try #require(files.first { $0.path == "inbox/path.md" })
+            #expect(unfiled.spaceId == nil)
         }
     }
 }
