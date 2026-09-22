@@ -128,8 +128,11 @@ struct LLMPreferencesController {
             for step in body.fallbackChain where step.model.isEmpty {
                 throw HTTPError(.badRequest, message: "fallback_model_required")
             }
+            for step in body.fallbackChain where Self.isMaskedModel(step.model, provider: step.provider) {
+                throw HTTPError(.badRequest, message: "fallback_model_placeholder")
+            }
             primaryProvider = body.primaryProvider
-            primaryModel = body.primaryModel
+            primaryModel = try await realPrimaryModel(body, tenantID: tenantID)
             fallbackChain = body.fallbackChain
             allowedProviders = body.allowedProviders
             blockedProviders = body.blockedProviders
@@ -176,6 +179,38 @@ struct LLMPreferencesController {
         // their BYOK selection took effect when it did not.
         guard let user = try? ctx.requireIdentity() else { return toWire(snapshot) ?? managedWire }
         return await effectiveWire(snapshot, user: user)
+    }
+
+    // MARK: - The managed label is not a model
+
+    /// True for what a managed read shows in place of a model: the brain
+    /// label, or the hidden route id on the managed provider. Neither is a
+    /// model any provider serves.
+    private static func isMaskedModel(_ model: String, provider: ProviderID) -> Bool {
+        model == ModelDisclosurePolicy.genericBrainName
+            || (provider == ManagedLLMDefaults.provider && model == ModelDisclosurePolicy.genericModelID)
+    }
+
+    /// The BYOK primary model to store.
+    ///
+    /// A client that kept the managed label as its model and then switched to
+    /// BYOK sends that label back. When the user already has a real BYOK model
+    /// on the same provider, that model is kept. Otherwise the save is refused:
+    /// the stored managed model is never used, because it would pin the
+    /// platform's model to the user's key and reveal which one it is.
+    private func realPrimaryModel(_ body: LLMPreferencesPutRequest, tenantID: UUID) async throws -> String {
+        guard Self.isMaskedModel(body.primaryModel, provider: body.primaryProvider) else {
+            return body.primaryModel
+        }
+        if let stored = try? await repository.get(tenantID: tenantID),
+           stored.mode == .byok,
+           stored.primaryProvider.toShared() == body.primaryProvider,
+           !stored.primaryModel.isEmpty,
+           !Self.isMaskedModel(stored.primaryModel, provider: body.primaryProvider)
+        {
+            return stored.primaryModel
+        }
+        throw HTTPError(.badRequest, message: "primary_model_placeholder")
     }
 
     // MARK: - Mapping helpers
