@@ -2812,6 +2812,7 @@ func buildRouter(
             syncService: calendarSyncService,
             sessionStore: CalendarOAuthSessionStore(),
             isConfigured: calendarConfigured,
+            webReturnOrigins: Set(services.corsAllowedOrigins),
             logger: calendarLogger
         )
         let calendarController = CalendarController(

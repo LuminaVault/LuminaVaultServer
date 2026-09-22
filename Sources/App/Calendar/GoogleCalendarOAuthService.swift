@@ -27,6 +27,8 @@ actor GoogleCalendarOAuthService {
         case notConfigured
         case sessionNotFound
         case exchangeFailed(String)
+        /// `returnTo` is not on an allowed web origin.
+        case invalidReturn
     }
 
     /// App deep-link scheme the server redirects to after the callback so
@@ -40,6 +42,8 @@ actor GoogleCalendarOAuthService {
     private let syncService: CalendarSyncService
     private let sessionStore: CalendarOAuthSessionStore
     private let isConfigured: Bool
+    /// Origins a web client may ask to be returned to (the CORS allow-list).
+    private let webReturnOrigins: Set<String>
     private let logger: Logger
     private let now: @Sendable () -> Date
 
@@ -50,8 +54,9 @@ actor GoogleCalendarOAuthService {
         syncService: CalendarSyncService,
         sessionStore: CalendarOAuthSessionStore,
         isConfigured: Bool,
+        webReturnOrigins: Set<String> = [],
         logger: Logger,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
     ) {
         self.fluent = fluent
         self.oauth = oauth
@@ -59,6 +64,7 @@ actor GoogleCalendarOAuthService {
         self.syncService = syncService
         self.sessionStore = sessionStore
         self.isConfigured = isConfigured
+        self.webReturnOrigins = webReturnOrigins
         self.logger = logger
         self.now = now
     }
@@ -71,14 +77,23 @@ actor GoogleCalendarOAuthService {
             connected: account?.status == "connected",
             needsReauth: account?.status == "needs_reauth",
             accountEmail: account?.accountEmail,
-            lastSyncedAt: account?.lastSyncedAt
+            lastSyncedAt: account?.lastSyncedAt,
         )
     }
 
-    func start(tenantID: UUID) async throws -> String {
+    /// `returnTo` is a web page to come back to after Google; it must be on
+    /// `webReturnOrigins`, so the callback can never redirect off-site.
+    func start(tenantID: UUID, returnTo: String? = nil) async throws -> String {
         guard isConfigured else { throw Error.notConfigured }
+        var webReturn: String?
+        if let returnTo {
+            guard let valid = Self.validatedReturn(returnTo, allowedOrigins: webReturnOrigins) else {
+                throw Error.invalidReturn
+            }
+            webReturn = valid
+        }
         let state = UUID().uuidString + "." + UUID().uuidString
-        await sessionStore.put(.init(state: state, tenantID: tenantID, startedAt: now()))
+        await sessionStore.put(.init(state: state, tenantID: tenantID, startedAt: now(), returnTo: webReturn))
         logger.info("calendar oauth start", metadata: ["tenantID": "\(tenantID)"])
         return oauth.authorizeURL(state: state)
     }
@@ -86,15 +101,18 @@ actor GoogleCalendarOAuthService {
     /// Handle Google's redirect. Returns the app deep-link the controller
     /// 302s to. `error` is Google's error param when the user declined.
     func handleCallback(state: String, code: String?, error: String?) async -> String {
+        // The session says where to send the browser, so read it first —
+        // even a decline has to land a web user back on the web page.
+        guard let session = await sessionStore.take(state: state) else {
+            return Self.redirect(base: Self.appCallbackBase, status: "error", reason: "session_not_found")
+        }
+        let base = session.returnTo ?? Self.appCallbackBase
         if let error {
             logger.info("calendar oauth declined", metadata: ["error": "\(error)"])
-            return Self.appCallbackBase + "?status=error&reason=" + Self.encode(error)
-        }
-        guard let session = await sessionStore.take(state: state) else {
-            return Self.appCallbackBase + "?status=error&reason=session_not_found"
+            return Self.redirect(base: base, status: "error", reason: error)
         }
         guard let code else {
-            return Self.appCallbackBase + "?status=error&reason=missing_code"
+            return Self.redirect(base: base, status: "error", reason: "missing_code")
         }
         do {
             let tokens = try await oauth.exchangeCode(code)
@@ -102,7 +120,7 @@ actor GoogleCalendarOAuthService {
             try await tokenStore.storeInitialTokens(
                 tenantID: session.tenantID,
                 tokens: tokens,
-                accountEmail: email
+                accountEmail: email,
             )
             // Best-effort initial sync; failure doesn't block the connect.
             do {
@@ -113,11 +131,34 @@ actor GoogleCalendarOAuthService {
                 ])
             }
             logger.info("calendar oauth connected", metadata: ["tenantID": "\(session.tenantID)"])
-            return Self.appCallbackBase + "?status=ok"
+            return Self.redirect(base: base, status: "ok", reason: nil)
         } catch {
             logger.error("calendar oauth exchange failed", metadata: ["error": "\(error)"])
-            return Self.appCallbackBase + "?status=error&reason=exchange_failed"
+            return Self.redirect(base: base, status: "error", reason: "exchange_failed")
         }
+    }
+
+    /// `base` plus `status` (and `reason`), keeping any query `base` has.
+    static func redirect(base: String, status: String, reason: String?) -> String {
+        var query = "status=" + encode(status)
+        if let reason {
+            query += "&reason=" + encode(reason)
+        }
+        return base + (base.contains("?") ? "&" : "?") + query
+    }
+
+    /// `raw` when it is an absolute URL on one of `allowedOrigins`
+    /// (`scheme://host[:port]`), without a fragment; otherwise `nil`.
+    static func validatedReturn(_ raw: String, allowedOrigins: Set<String>) -> String? {
+        guard raw.count <= 2048,
+              let components = URLComponents(string: raw),
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = components.host?.lowercased(), !host.isEmpty,
+              components.user == nil, components.password == nil, components.fragment == nil
+        else { return nil }
+        let origin = scheme + "://" + host + (components.port.map { ":\($0)" } ?? "")
+        let allowed = Set(allowedOrigins.map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) })
+        return allowed.contains(origin) ? raw : nil
     }
 
     /// Revoke + forget. Deletes tokens and purges this tenant's cached

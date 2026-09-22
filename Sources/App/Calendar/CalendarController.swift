@@ -53,19 +53,23 @@ struct CalendarController {
             connected: s.connected,
             needsReauth: s.needsReauth,
             accountEmail: s.accountEmail,
-            lastSyncedAt: s.lastSyncedAt
+            lastSyncedAt: s.lastSyncedAt,
         )
     }
 
     @Sendable
-    func connect(_: Request, ctx: AppRequestContext) async throws -> CalendarConnectStartResponse {
+    func connect(_ req: Request, ctx: AppRequestContext) async throws -> CalendarConnectStartResponse {
         let tenantID = try ctx.requireTenantID()
+        // `?returnTo=` — web clients: the page Google should land back on.
+        let returnTo = req.uri.queryParameters["returnTo"].map(String.init)
         do {
-            let url = try await oauthService.start(tenantID: tenantID)
+            let url = try await oauthService.start(tenantID: tenantID, returnTo: returnTo)
             PostHogAnalytics.capture("calendar_connected")
             return CalendarConnectStartResponse(authorizeURL: url)
         } catch GoogleCalendarOAuthService.Error.notConfigured {
             throw HTTPError(.serviceUnavailable, message: "Google Calendar is not configured on this server")
+        } catch GoogleCalendarOAuthService.Error.invalidReturn {
+            throw HTTPError(.badRequest, message: "invalid_return_to")
         }
     }
 
@@ -109,7 +113,7 @@ struct CalendarController {
                 endsAt: body.endsAt,
                 location: body.location,
                 notes: body.notes,
-                attendees: body.attendees ?? []
+                attendees: body.attendees ?? [],
             )
             PostHogAnalytics.capture("calendar_event_created", properties: ["has_attendees": !(body.attendees ?? []).isEmpty])
             return Self.toDTO(saved)
@@ -147,7 +151,7 @@ struct CalendarController {
             allDay: e.allDay,
             status: e.status,
             organizer: e.organizer,
-            htmlLink: e.htmlLink
+            htmlLink: e.htmlLink,
         )
     }
 
