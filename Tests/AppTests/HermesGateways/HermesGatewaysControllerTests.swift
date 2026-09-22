@@ -74,7 +74,16 @@ struct HermesGatewaysControllerTests {
                     #expect(item.hasConfig == false)
                     #expect(item.verifiedAt == nil)
                     #expect(item.lastFailureCode == nil)
-                    #expect(!item.requiredFields.isEmpty)
+                    // Credential gateways list the fields their form needs.
+                    // Pairing gateways (WhatsApp's QR flow and the like) have
+                    // no enterable credential by design: the contract says a
+                    // non-null `pairingKind` routes them to a pairing screen
+                    // instead. Each gateway must be exactly one of the two.
+                    if item.pairingKind == nil {
+                        #expect(!item.requiredFields.isEmpty, "\(item.id) is a credential gateway with no fields")
+                    } else {
+                        #expect(item.requiredFields.isEmpty, "\(item.id) pairs interactively but also asks for fields")
+                    }
                 }
             }
         }
@@ -86,7 +95,9 @@ struct HermesGatewaysControllerTests {
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
 
-            let putBody = ByteBuffer(string: #"{"config":{"bot_token":"TELEGRAM-SECRET-XYZ-123"}}"#)
+            // `allowed_users` has been required since #129: without an owner
+            // allowlist a tenant's bot would answer everyone.
+            let putBody = ByteBuffer(string: #"{"config":{"bot_token":"TELEGRAM-SECRET-XYZ-123","allowed_users":"123456789"}}"#)
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/telegram",
                 method: .put,
@@ -100,7 +111,17 @@ struct HermesGatewaysControllerTests {
                 #expect(entry.hasConfig == true)
                 let body = String(buffer: response.body)
                 #expect(!body.contains("TELEGRAM-SECRET-XYZ-123"))
-                #expect(!body.contains("bot_token"))
+                // The guarantee is about values, not names. The entry lists
+                // its `requiredFields` — `bot_token`, `allowed_users` — as
+                // public catalog metadata, the same descriptor every tenant
+                // gets from the list endpoint, so the *name* `bot_token` is
+                // legitimately in this body. What must never appear is a
+                // `config` object carrying the saved values back.
+                let json = try #require(
+                    try JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any]
+                )
+                #expect(json["config"] == nil)
+                #expect(entry.requiredFields.map(\.key).contains("bot_token"))
             }
 
             try await client.execute(
@@ -124,7 +145,11 @@ struct HermesGatewaysControllerTests {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
-            // Discord requires bot_token AND application_id — omit one.
+            // Discord's required fields are bot_token and, since #129,
+            // allowed_users. (application_id was dropped in #127, when the
+            // gateway config was checked against the real Hermes image and
+            // Discord turned out to need only its token env-var.) Omit the
+            // allowlist, the field most worth refusing to save without.
             let putBody = ByteBuffer(string: #"{"config":{"bot_token":"abc"}}"#)
             try await client.execute(
                 uri: "/v1/me/hermes-gateways/discord",
@@ -135,7 +160,7 @@ struct HermesGatewaysControllerTests {
                 #expect(response.status == .badRequest)
                 let body = String(buffer: response.body)
                 #expect(body.contains("missing_field"))
-                #expect(body.contains("application_id"))
+                #expect(body.contains("allowed_users"))
             }
         }
     }

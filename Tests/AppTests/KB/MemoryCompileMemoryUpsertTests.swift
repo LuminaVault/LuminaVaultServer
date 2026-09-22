@@ -9,12 +9,11 @@ import Testing
 
 /// HER-36 — proves the `memory_upsert` tool dispatch path actually
 /// persists rows to the `memories` table during memory-compile. The stub
-/// transport scripts two turns:
-///
-///   1. Assistant emits two `tool_calls` for `memory_upsert` with
-///      distinct content payloads.
-///   2. Tool results are appended; on the next chat call the assistant
-///      emits a plain content message and the loop exits.
+/// transport scripts one turn: the JSON object `{"memories": [...]}` that the
+/// compile service asks for. It used to script a `memory_upsert` tool-call
+/// loop, but the service stopped using tools — routed to Gemini the model
+/// answered in prose, never called the tool, and ingested nothing — and now
+/// makes one structured extraction call and persists each memory itself.
 ///
 /// Asserts:
 ///   * Response `memoriesIngested == 2`.
@@ -82,14 +81,16 @@ struct MemoryCompileMemoryUpsertTests {
         return try row.requireID()
     }
 
+    /// Renamed from "memory_upsert tool calls persist memories and roll up
+    /// into response". The guarantee is unchanged — extracted memories are
+    /// persisted and counted — only the protocol that carries them is.
     @Test
-    func `memory_upsert tool calls persist memories and roll up into response`() async throws {
-        let stub = ScriptedChatTransport(turns: [
-            Self.toolCallsTurn(calls: [
-                ("call_1", "memory_upsert", #"{"content":"User prefers dark mode."}"#),
-                ("call_2", "memory_upsert", #"{"content":"User journals every Sunday evening."}"#),
+    func `extracted memories persist and roll up into the response`() async throws {
+        let stub = try ScriptedChatTransport(turns: [
+            Self.extractionTurn(memories: [
+                "User prefers dark mode.",
+                "User journals every Sunday evening.",
             ]),
-            Self.contentTurn(text: "Stored 2 memories from this batch."),
         ])
 
         let app = try await buildApplication(
@@ -147,6 +148,25 @@ struct MemoryCompileMemoryUpsertTests {
     }
 
     // MARK: - Stub builders
+
+    /// The reply the compile service actually asks for since it became a
+    /// one-shot extraction: an OpenAI-shaped completion whose `content` is a
+    /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
+    /// nested JSON is escaped correctly inside the content string.
+    private static func extractionTurn(memories: [String]) throws -> String {
+        let inner = try JSONSerialization.data(withJSONObject: ["memories": memories])
+        let content = String(decoding: inner, as: UTF8.self)
+        let outer: [String: Any] = [
+            "id": "stub-extract",
+            "model": "stub-model",
+            "choices": [[
+                "message": ["role": "assistant", "content": content],
+                "finish_reason": "stop",
+            ]],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: outer)
+        return String(decoding: data, as: UTF8.self)
+    }
 
     private static func toolCallsTurn(calls: [(id: String, name: String, args: String)]) -> String {
         let toolCallsJSON = calls.map { call in

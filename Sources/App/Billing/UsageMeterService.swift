@@ -1,5 +1,7 @@
 import FluentKit
 import Foundation
+import HTTPTypes
+import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
@@ -21,8 +23,51 @@ enum BudgetDecision: Equatable {
 
 /// Typed error for 429 responses when the daily Mtok cap is exhausted.
 /// LLMController and SkillsController map this to HTTP 429 + Retry-After.
-struct UsageCapExceededError: Error, Equatable {
+/// The tenant's daily token allowance is spent.
+///
+/// This used to be a bare `Error`, and nothing mapped it to a response, so any
+/// handler that threw it answered 500 with a non-JSON body. That never showed
+/// while `checkBudget` could not actually deny anyone. Rendering it here, with
+/// the same `{error:{code,message,cta}}` envelope and `Retry-After` header as
+/// `FreeLaneExhaustedError`, means the caller gets a 429 the clients already
+/// know how to show.
+struct UsageCapExceededError: Error, Equatable, HTTPResponseError {
     let retryAfter: TimeInterval
+
+    let reasonCode = "usage_cap_exceeded"
+    let userMessage =
+        "You've reached today's usage limit. Upgrade for more, or add your own API key in Settings to keep going now."
+
+    var status: HTTPResponse.Status {
+        .tooManyRequests
+    }
+
+    var retryAfterSeconds: Int {
+        max(1, Int(retryAfter.rounded(.up)))
+    }
+
+    var bodyData: Data {
+        let envelope: [String: Any] = [
+            "error": [
+                "code": reasonCode,
+                "message": userMessage,
+                "cta": ["upgrade", "add_key"],
+                "retryAfterSeconds": retryAfterSeconds,
+            ],
+        ]
+        return (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()
+    }
+
+    func response(from _: Request, context _: some RequestContext) throws -> Response {
+        var headers = HTTPFields()
+        headers[.contentType] = "application/json"
+        headers[.retryAfter] = String(retryAfterSeconds)
+        return Response(
+            status: status,
+            headers: headers,
+            body: .init(byteBuffer: ByteBuffer(data: bodyData))
+        )
+    }
 }
 
 // MARK: - Service
@@ -161,6 +206,10 @@ actor UsageMeterService {
             return .allow
         }
 
+        // `SUM` over BIGINT columns returns Postgres `numeric`, which does not
+        // decode into `Int64`. Without the `::BIGINT` cast every check threw,
+        // fell into the fail-open `catch` below, and the cap was never enforced.
+        // `UsageMeterBudgetTests` exercises this against a real database.
         struct UsageRow: Decodable {
             let total: Int64
 
@@ -171,7 +220,7 @@ actor UsageMeterService {
 
         do {
             let row = try await sql.raw("""
-            SELECT COALESCE(SUM(mtok_in + mtok_out), 0) AS total
+            SELECT COALESCE(SUM(mtok_in + mtok_out), 0)::BIGINT AS total
             FROM usage_meter
             WHERE tenant_id = \(bind: tenantID)
               AND day = CURRENT_DATE
@@ -228,7 +277,7 @@ actor UsageMeterService {
         let prefix = "skill:\(skillName)/"
         do {
             let row = try await sql.raw("""
-            SELECT COALESCE(SUM(mtok_in + mtok_out), 0) AS total
+            SELECT COALESCE(SUM(mtok_in + mtok_out), 0)::BIGINT AS total
             FROM usage_meter
             WHERE tenant_id = \(bind: tenantID)
               AND day = CURRENT_DATE
