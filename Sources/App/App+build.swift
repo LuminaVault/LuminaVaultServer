@@ -2938,14 +2938,24 @@ func buildRouter(
     let agentsGroup = router.group("/v1/agents")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage))
-    AgentsController(
-        service: AgentsService(
-            fluent: services.fluent,
-            resolver: hermesEndpointResolver,
-            http: AsyncHTTPClientHermesHTTP(),
-            logger: Logger(label: "lv.agents")
-        ),
+    let agentsService = AgentsService(
+        fluent: services.fluent,
+        resolver: hermesEndpointResolver,
+        http: AsyncHTTPClientHermesHTTP(),
         logger: Logger(label: "lv.agents")
+    )
+    AgentsController(service: agentsService, logger: Logger(label: "lv.agents")).addRoutes(to: agentsGroup)
+    // Agent rooms — the user and several of their agents in one thread.
+    AgentRoomsController(
+        fluent: services.fluent,
+        agents: agentsService,
+        orchestrator: AgentRoomOrchestrator(
+            fluent: services.fluent,
+            speaker: LiveAgentRoomSpeaker(fluent: services.fluent, llm: llmService, agents: agentsService),
+            registry: AgentRoomRunRegistry(),
+            logger: Logger(label: "lv.agents.rooms")
+        ),
+        logger: Logger(label: "lv.agents.rooms")
     ).addRoutes(to: agentsGroup)
 
     // Health ingest (HealthKit / Google Fit / manual) — protected.

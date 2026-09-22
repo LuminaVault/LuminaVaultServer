@@ -220,7 +220,7 @@ struct AgentsService: Sendable {
 
     /// The user's own gateway, or `nil` when they have none (or it is
     /// unusable — a broken BYO config must not take the page down).
-    private func gatewayClient(userID: UUID) async -> AgentGatewayClient? {
+    func gatewayClient(userID: UUID) async -> AgentGatewayClient? {
         guard let resolver else { return nil }
         do {
             let resolution = try await resolver.resolve(tenantID: userID)
