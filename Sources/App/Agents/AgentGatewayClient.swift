@@ -56,7 +56,7 @@ struct AgentGatewayClient: Sendable {
             hostname: object["hostname"] as? String,
             version: object["version"] as? String,
             profiles: (object["profiles"] as? [String]) ?? [],
-            activeProfile: object["profile"] as? String,
+            activeProfile: object["profile"] as? String
         )
     }
 
@@ -66,7 +66,7 @@ struct AgentGatewayClient: Sendable {
     func chat(sessionID: String, title: String, systemMessage: String, message: String) async throws -> ChatReply {
         let id = try Self.pathSegment(sessionID)
         let created = try await send(
-            .POST, "api/sessions", json: ["id": sessionID, "title": title], timeout: Self.timeout,
+            .POST, "api/sessions", json: ["id": sessionID, "title": title], timeout: Self.timeout
         )
         // 409: the session is already there from an earlier turn.
         guard created.isSuccess || created.status == 409 else { throw Failure.http(created.status) }
@@ -74,7 +74,7 @@ struct AgentGatewayClient: Sendable {
         let response = try await send(
             .POST, "api/sessions/\(id)/chat",
             json: ["message": message, "system_message": systemMessage],
-            timeout: Self.chatTimeout,
+            timeout: Self.chatTimeout
         )
         guard response.isSuccess else { throw Failure.http(response.status) }
         guard let object = response.jsonObject(),
@@ -153,7 +153,7 @@ struct AgentGatewayClient: Sendable {
                 lastActiveAt: lastActive,
                 messageCount: row["message_count"] as? Int,
                 isActive: isActive,
-                costUSD: (row["actual_cost_usd"] as? Double) ?? (row["estimated_cost_usd"] as? Double),
+                costUSD: (row["actual_cost_usd"] as? Double) ?? (row["estimated_cost_usd"] as? Double)
             )
         }
     }
@@ -174,7 +174,7 @@ struct AgentGatewayClient: Sendable {
             content: row["content"] as? String,
             toolName: row["tool_name"] as? String,
             toolCalls: toolCalls,
-            createdAt: date(row["timestamp"]),
+            createdAt: date(row["timestamp"])
         )
     }
 
@@ -206,7 +206,7 @@ struct AgentGatewayClient: Sendable {
         _ method: HTTPMethod,
         _ path: String,
         json: [String: String],
-        timeout: TimeAmount,
+        timeout: TimeAmount
     ) async throws -> HermesHTTPResponse {
         let base = baseURL.absoluteString.hasSuffix("/") ? baseURL.absoluteString : baseURL.absoluteString + "/"
         var request = HTTPClientRequest(url: base + path)
@@ -228,7 +228,7 @@ struct AgentGatewayClient: Sendable {
     private func getObject(
         _ path: String,
         query: [(String, String)] = [],
-        notFoundIsUnsupported: Bool,
+        notFoundIsUnsupported: Bool
     ) async throws -> [String: Any] {
         var components = URLComponents()
         components.queryItems = query.isEmpty ? nil : query.map { URLQueryItem(name: $0.0, value: $0.1) }

@@ -37,7 +37,7 @@ struct AgentRoomsControllerTests {
             for (slug, label) in [("research", "Research"), ("ops", "Ops")] {
                 try await client.execute(
                     uri: "/v1/profiles", method: .post, headers: Self.auth(alice),
-                    body: ByteBuffer(string: #"{"slug":"\#(slug)","label":"\#(label)"}"#),
+                    body: ByteBuffer(string: #"{"slug":"\#(slug)","label":"\#(label)"}"#)
                 ) { #expect($0.status == .ok || $0.status == .created) }
             }
 
@@ -63,12 +63,12 @@ struct AgentRoomsControllerTests {
             // Bob cannot seat Alice's persona, open, post to, stop or delete her room.
             try await client.execute(
                 uri: "/v1/agents/rooms", method: .post, headers: Self.auth(bob),
-                body: ByteBuffer(string: #"{"title":"x","members":[{"instanceID":"central","profile":"research"}]}"#),
+                body: ByteBuffer(string: #"{"title":"x","members":[{"instanceID":"central","profile":"research"}]}"#)
             ) { #expect($0.status == .badRequest) }
             let path = "/v1/agents/rooms/\(room.id.uuidString)"
             try await client.execute(uri: path, method: .get, headers: Self.auth(bob)) { #expect($0.status == .notFound) }
             try await client.execute(
-                uri: path + "/messages", method: .post, headers: Self.auth(bob), body: ByteBuffer(string: #"{"body":"hi"}"#),
+                uri: path + "/messages", method: .post, headers: Self.auth(bob), body: ByteBuffer(string: #"{"body":"hi"}"#)
             ) { #expect($0.status == .notFound) }
             try await client.execute(uri: path + "/stop", method: .post, headers: Self.auth(bob)) { #expect($0.status == .notFound) }
             try await client.execute(uri: path, method: .delete, headers: Self.auth(bob)) { #expect($0.status == .notFound) }
@@ -80,7 +80,7 @@ struct AgentRoomsControllerTests {
             }
             try await client.execute(uri: path + "/stop", method: .post, headers: Self.auth(alice)) { #expect($0.status == .accepted) }
             try await client.execute(
-                uri: path + "/messages", method: .post, headers: Self.auth(alice), body: ByteBuffer(string: #"{"body":"   "}"#),
+                uri: path + "/messages", method: .post, headers: Self.auth(alice), body: ByteBuffer(string: #"{"body":"   "}"#)
             ) { #expect($0.status == .badRequest) }
             try await client.execute(uri: path, method: .delete, headers: Self.auth(alice)) { #expect($0.status == .noContent) }
             try await client.execute(uri: path, method: .get, headers: Self.auth(alice)) { #expect($0.status == .notFound) }
@@ -98,7 +98,7 @@ struct AgentRoomsControllerTests {
                 #"{"title":"Ghost","members":[{"instanceID":"byo"}]}"#,
             ] {
                 try await client.execute(
-                    uri: "/v1/agents/rooms", method: .post, headers: Self.auth(alice), body: ByteBuffer(string: body),
+                    uri: "/v1/agents/rooms", method: .post, headers: Self.auth(alice), body: ByteBuffer(string: body)
                 ) { #expect($0.status == .badRequest, "\(body)") }
             }
         }

@@ -92,7 +92,7 @@ protocol AgentRoomSpeaker: Sendable {
         room: AgentRoom,
         member: AgentRoomMember,
         systemMessage: String,
-        message: String,
+        message: String
     ) async throws -> (text: String, tokens: Int?)
 }
 
@@ -112,7 +112,7 @@ struct LiveAgentRoomSpeaker: AgentRoomSpeaker {
         room: AgentRoom,
         member: AgentRoomMember,
         systemMessage: String,
-        message: String,
+        message: String
     ) async throws -> (text: String, tokens: Int?) {
         let roomID = try room.requireID()
         let memberID = try member.requireID()
@@ -135,8 +135,8 @@ struct LiveAgentRoomSpeaker: AgentRoomSpeaker {
                         ChatMessage(role: "system", content: systemMessage),
                         ChatMessage(role: "user", content: message),
                     ],
-                    sessionID: sessionID,
-                ),
+                    sessionID: sessionID
+                )
             )
             return (response.message.content, response.raw.usage?.totalTokens)
         case AgentsService.byoID:
@@ -145,7 +145,7 @@ struct LiveAgentRoomSpeaker: AgentRoomSpeaker {
                 sessionID: sessionID,
                 title: "Room: \(room.title)",
                 systemMessage: systemMessage,
-                message: message,
+                message: message
             )
             return (reply.text, reply.totalTokens)
         default:
@@ -182,7 +182,7 @@ struct AgentRoomOrchestrator: Sendable {
         userID: UUID,
         room: AgentRoom,
         body: String,
-        emit: @Sendable (AgentRoomStreamEvent) async -> Void,
+        emit: @Sendable (AgentRoomStreamEvent) async -> Void
     ) async throws -> AgentRoomChainEnd {
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= Self.maxBodyLength else { throw RunError.emptyMessage }
@@ -202,7 +202,7 @@ struct AgentRoomOrchestrator: Sendable {
         userID: UUID,
         roomID: UUID,
         text: String,
-        emit: @Sendable (AgentRoomStreamEvent) async -> Void,
+        emit: @Sendable (AgentRoomStreamEvent) async -> Void
     ) async throws -> AgentRoomChainEnd {
         let chainStart = Date()
         let members = try await AgentRoomMember.query(on: fluent.db())
@@ -232,7 +232,7 @@ struct AgentRoomOrchestrator: Sendable {
                 return try await end(
                     .turnCap, roomID: roomID,
                     note: "Paused after \(AgentRoomTurnPolicy.maxAgentTurns) agent replies. Mention an agent to carry on.",
-                    emit: emit,
+                    emit: emit
                 )
             }
             if current.spentTokens >= current.tokenBudget {
@@ -252,7 +252,7 @@ struct AgentRoomOrchestrator: Sendable {
                     room: current,
                     member: member,
                     systemMessage: Self.preamble(room: current, speaker: member, members: members),
-                    message: message,
+                    message: message
                 )
                 let spent = tokens ?? max(1, (message.count + reply.count) / 4)
                 current.spentTokens += spent
@@ -268,7 +268,7 @@ struct AgentRoomOrchestrator: Sendable {
                 ])
                 let note = try await save(
                     roomID: roomID, kind: .system, memberID: memberID,
-                    body: "@\(member.handle) could not answer: \(Self.describe(error))", tokens: nil,
+                    body: "@\(member.handle) could not answer: \(Self.describe(error))", tokens: nil
                 )
                 await emit(.init(kind: .message, message: note, memberID: memberID, reason: nil))
             }
@@ -328,7 +328,7 @@ struct AgentRoomOrchestrator: Sendable {
         _ reason: AgentRoomChainEnd,
         roomID: UUID,
         note: String,
-        emit: @Sendable (AgentRoomStreamEvent) async -> Void,
+        emit: @Sendable (AgentRoomStreamEvent) async -> Void
     ) async throws -> AgentRoomChainEnd {
         let saved = try await save(roomID: roomID, kind: .system, memberID: nil, body: note, tokens: nil)
         await emit(.init(kind: .message, message: saved, memberID: nil, reason: nil))
@@ -365,7 +365,7 @@ actor AgentRoomRunRegistry {
 extension AgentRoomMessage {
     func asDTO() throws -> AgentRoomMessageDTO {
         try AgentRoomMessageDTO(
-            id: requireID(), authorKind: authorKind, memberID: memberID, body: body, tokens: tokens, createdAt: createdAt,
+            id: requireID(), authorKind: authorKind, memberID: memberID, body: body, tokens: tokens, createdAt: createdAt
         )
     }
 }
@@ -374,7 +374,7 @@ extension AgentRoomMember {
     func asDTO() throws -> AgentRoomMemberDTO {
         try AgentRoomMemberDTO(
             id: requireID(), instanceID: instanceID, profile: profile, handle: handle,
-            displayName: displayName, respondMode: respondMode,
+            displayName: displayName, respondMode: respondMode
         )
     }
 }

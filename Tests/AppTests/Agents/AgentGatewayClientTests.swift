@@ -10,7 +10,7 @@ struct AgentGatewayClientTests {
             baseURL: URL(string: "https://hermes.example.com")!,
             authHeader: "Bearer sk-test",
             http: http,
-            logger: Logger(label: "test.agents"),
+            logger: Logger(label: "test.agents")
         )
     }
 
@@ -64,7 +64,7 @@ struct AgentGatewayClientTests {
         let http = StubHermesHTTP()
         http.respond(
             "GET", "/api/profiles/sessions", status: 404,
-            json: #"{"error":{"message":"Profile 'x' does not exist.","code":"profile_not_found"}}"#,
+            json: #"{"error":{"message":"Profile 'x' does not exist.","code":"profile_not_found"}}"#
         )
 
         await #expect(throws: AgentGatewayClient.Failure.http(404)) {

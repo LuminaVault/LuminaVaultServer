@@ -49,7 +49,7 @@ struct AgentRoomsController {
                     instanceID: AgentsService.centralID,
                     profile: $0.slug,
                     displayName: $0.label,
-                    suggestedHandle: AgentRoomTurnPolicy.handle(from: $0.slug),
+                    suggestedHandle: AgentRoomTurnPolicy.handle(from: $0.slug)
                 )
             }
         if let client = await agents.gatewayClient(userID: userID),
@@ -60,7 +60,7 @@ struct AgentRoomsController {
                 instanceID: AgentsService.byoID,
                 profile: nil,
                 displayName: "Hermes · \(profile)" + (info.hostname.map { " on \($0)" } ?? ""),
-                suggestedHandle: AgentRoomTurnPolicy.handle(from: profile == "default" ? "hermes" : profile),
+                suggestedHandle: AgentRoomTurnPolicy.handle(from: profile == "default" ? "hermes" : profile)
             ))
         }
         return out
@@ -229,7 +229,7 @@ struct AgentRoomsController {
             spentTokens: room.spentTokens,
             members: members.map { try $0.asDTO() },
             createdAt: room.createdAt,
-            updatedAt: room.updatedAt,
+            updatedAt: room.updatedAt
         )
     }
 }

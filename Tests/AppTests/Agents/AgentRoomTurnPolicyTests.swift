@@ -41,7 +41,7 @@ struct AgentRoomTurnPolicyTests {
             reply: "@research here, over to @ops and @opsbot, @research again",
             speaker: Self.research,
             members: Self.members,
-            queue: &queue,
+            queue: &queue
         )
         #expect(queue == [Self.ops, Self.opsbot])
     }
@@ -76,7 +76,7 @@ struct AgentRoomTurnPolicyTests {
         #expect(throws: HTTPError.self) {
             try AgentRoomsController.resolveMembers(
                 [.init(instanceID: "central", profile: "someone-elses", handle: nil, displayName: nil, respondMode: nil)],
-                available: available,
+                available: available
             )
         }
         #expect(throws: HTTPError.self) {
@@ -94,7 +94,7 @@ struct AgentRoomTurnPolicyTests {
         #expect(throws: HTTPError.self) {
             try AgentRoomsController.resolveMembers(
                 [.init(instanceID: "central", profile: "default", handle: "Bad Handle", displayName: nil, respondMode: nil)],
-                available: available,
+                available: available
             )
         }
     }

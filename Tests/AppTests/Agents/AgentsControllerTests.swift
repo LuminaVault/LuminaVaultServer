@@ -19,7 +19,7 @@ struct AgentsControllerTests {
             uri: "/v1/auth/register",
             method: .post,
             headers: [.contentType: "application/json"],
-            body: body,
+            body: body
         ) { try testJSONDecoder().decode(AuthResponse.self, from: Data($0.body.readableBytesView)).accessToken }
     }
 
@@ -32,7 +32,7 @@ struct AgentsControllerTests {
             uri: "/v1/conversations",
             method: .post,
             headers: auth(token),
-            body: ByteBuffer(string: #"{"title":"\#(title)"}"#),
+            body: ByteBuffer(string: #"{"title":"\#(title)"}"#)
         ) { try testJSONDecoder().decode(ConversationDTO.self, from: Data($0.body.readableBytesView)).id }
     }
 
@@ -80,7 +80,7 @@ struct AgentsControllerTests {
 
             // No BYO gateway configured → the byo instance does not exist.
             try await client.execute(
-                uri: "/v1/agents/instances/byo/sessions/s1/messages", method: .get, headers: Self.auth(alice),
+                uri: "/v1/agents/instances/byo/sessions/s1/messages", method: .get, headers: Self.auth(alice)
             ) { response in
                 #expect(response.status == .notFound)
             }

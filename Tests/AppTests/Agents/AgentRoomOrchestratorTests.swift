@@ -59,7 +59,7 @@ struct AgentRoomOrchestratorTests {
     private static func makeRoom(
         on fluent: Fluent,
         budget: Int = 200_000,
-        members: [(String, AgentRoomRespondMode)],
+        members: [(String, AgentRoomRespondMode)]
     ) async throws -> AgentRoom {
         let room = AgentRoom()
         room.tenantID = UUID()
@@ -205,7 +205,7 @@ struct AgentRoomOrchestratorTests {
             let registry = AgentRoomRunRegistry()
             _ = try await registry.begin(room.requireID())
             let orchestrator = AgentRoomOrchestrator(
-                fluent: fluent, speaker: ScriptedSpeaker { _ in "hi" }, registry: registry, logger: Logger(label: "test"),
+                fluent: fluent, speaker: ScriptedSpeaker { _ in "hi" }, registry: registry, logger: Logger(label: "test")
             )
             await #expect(throws: AgentRoomOrchestrator.RunError.alreadyRunning) {
                 try await orchestrator.post(userID: room.tenantID, room: room, body: "@alpha") { _ in }
