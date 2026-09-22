@@ -53,15 +53,12 @@ struct KBCompileProgressServiceTests {
             try await row.save(on: db)
 
             let recorder = RecordingProgressPublisher()
+            // One turn: the structured extraction the service asks for. It
+            // used to script a `memory_upsert` tool-call loop; the service
+            // stopped using tools, so that script left `content` empty, zero
+            // memories were extracted, and `.memorySaved` never fired.
             let transport = ScriptedChatTransport(turns: [
-                // Turn 1: emit one `memory_upsert` tool call.
-                Self.toolCallTurn(
-                    id: "call_1",
-                    name: "memory_upsert",
-                    argsJSON: #"{"content":"User prefers chunky markdown sections."}"#
-                ),
-                // Turn 2: plain assistant content → loop exits.
-                Self.contentTurn(text: "Stored 1 memory from this batch."),
+                Self.extractionTurn(memories: ["User prefers chunky markdown sections."]),
             ])
 
             let service = MemoryCompileService(
@@ -261,6 +258,25 @@ struct KBCompileProgressServiceTests {
           }]
         }
         """
+    }
+
+    /// The reply the compile service actually asks for since it became a
+    /// one-shot extraction: an OpenAI-shaped completion whose `content` is a
+    /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
+    /// nested JSON is escaped correctly inside the content string.
+    private static func extractionTurn(memories: [String]) -> String {
+        let inner = try! JSONSerialization.data(withJSONObject: ["memories": memories])
+        let content = String(decoding: inner, as: UTF8.self)
+        let outer: [String: Any] = [
+            "id": "stub-extract",
+            "model": "stub-model",
+            "choices": [[
+                "message": ["role": "assistant", "content": content],
+                "finish_reason": "stop",
+            ]],
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: outer)
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func contentTurn(text: String) -> String {
