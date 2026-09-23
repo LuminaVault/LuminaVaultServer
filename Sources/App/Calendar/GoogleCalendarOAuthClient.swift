@@ -21,6 +21,39 @@ struct GoogleCalendarOAuthClient {
     /// Scope granted in Phase 1: read+write events + account identity.
     static let scope = "https://www.googleapis.com/auth/calendar.events openid email"
 
+    /// Muse Chat stage C — Gmail metadata read, requested incrementally on the
+    /// same client behind "Connect Gmail". A Google *restricted* scope: until
+    /// the OAuth app passes Google's restricted-scope verification only test
+    /// users listed on the consent screen can grant it.
+    static let gmailReadonlyScope = "https://www.googleapis.com/auth/gmail.readonly"
+    static let calendarEventsScope = "https://www.googleapis.com/auth/calendar.events"
+    /// What "Connect Gmail" asks for. `include_granted_scopes=true` folds in
+    /// whatever the account already granted (Calendar), so the returned
+    /// token — and the stored `scope` — covers both.
+    static let gmailConnectScope = "\(gmailReadonlyScope) openid email"
+
+    /// Whether a space-separated OAuth `scope` string includes `wanted`.
+    /// Also accepts the broader full-access scopes that imply it.
+    static func grants(_ scopeString: String?, _ wanted: String) -> Bool {
+        guard let scopeString else { return false }
+        let granted = Set(scopeString.split(separator: " ").map(String.init))
+        if granted.contains(wanted) { return true }
+        switch wanted {
+        case gmailReadonlyScope:
+            return granted.contains("https://mail.google.com/")
+                || granted.contains("https://www.googleapis.com/auth/gmail.modify")
+        case calendarEventsScope:
+            return granted.contains("https://www.googleapis.com/auth/calendar")
+        default:
+            return false
+        }
+    }
+
+    /// `scopeString` without `removed`, order kept.
+    static func removing(_ removed: String, from scopeString: String) -> String {
+        scopeString.split(separator: " ").map(String.init).filter { $0 != removed }.joined(separator: " ")
+    }
+
     struct TokenResponse {
         let accessToken: String
         let refreshToken: String?
@@ -60,13 +93,15 @@ struct GoogleCalendarOAuthClient {
     /// Build the Google consent URL. `state` correlates the server callback
     /// back to the in-flight session. `access_type=offline` +
     /// `prompt=consent` force a refresh token on every link.
-    func authorizeURL(state: String) -> String {
+    /// `scope` defaults to the Calendar scope; "Connect Gmail" passes
+    /// `gmailConnectScope`.
+    func authorizeURL(state: String, scope: String = Self.scope) -> String {
         var comps = URLComponents(string: Self.authorizeEndpoint)!
         comps.queryItems = [
             .init(name: "client_id", value: clientID),
             .init(name: "redirect_uri", value: redirectURI),
             .init(name: "response_type", value: "code"),
-            .init(name: "scope", value: Self.scope),
+            .init(name: "scope", value: scope),
             .init(name: "access_type", value: "offline"),
             .init(name: "prompt", value: "consent"),
             .init(name: "include_granted_scopes", value: "true"),

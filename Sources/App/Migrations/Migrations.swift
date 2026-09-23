@@ -138,4 +138,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M132_AddAgentConnectionPersonalData())
     await fluent.migrations.add(M133_CreateAgentRooms())
     await fluent.migrations.add(M134_CreateDeviceCommandQueue())
+    await fluent.migrations.add(M135_AddProactiveConversationMessages())
+    await fluent.migrations.add(M136_AddUserLastLocation())
 }

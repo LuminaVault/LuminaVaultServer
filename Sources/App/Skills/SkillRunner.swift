@@ -56,6 +56,13 @@ actor SkillRunner {
     private let capGuard: SkillRunCapGuard
     private let eventBus: EventBus
     private let usageMeter: UsageMeterService?
+    /// Muse Chat stage C — `chat_message` output. Nil in tests that do not
+    /// exercise it; a skill declaring the output then fails loudly.
+    private let proactiveChat: ProactiveChatDelivery?
+    /// `weather_forecast` tool (Open-Meteo, keyless).
+    private let weatherForecast: OpenMeteoClient
+    /// `mail_inbox_recent` tool. Nil where Google OAuth is not configured.
+    private let gmailInbox: GmailInboxService?
     private let logger: Logger
     private var eventSubscriptions: [Task<Void, Never>] = []
 
@@ -71,6 +78,9 @@ actor SkillRunner {
         capGuard: SkillRunCapGuard,
         eventBus: EventBus,
         usageMeter: UsageMeterService? = nil,
+        proactiveChat: ProactiveChatDelivery? = nil,
+        weatherForecast: OpenMeteoClient = OpenMeteoClient(),
+        gmailInbox: GmailInboxService? = nil,
         logger: Logger
     ) {
         self.catalog = catalog
@@ -84,6 +94,9 @@ actor SkillRunner {
         self.capGuard = capGuard
         self.eventBus = eventBus
         self.usageMeter = usageMeter
+        self.proactiveChat = proactiveChat
+        self.weatherForecast = weatherForecast
+        self.gmailInbox = gmailInbox
         self.logger = logger
     }
 
@@ -307,6 +320,14 @@ actor SkillRunner {
         /// device; only derived text (PDF/plain-text) is returned, never the
         /// file bytes. Requires Files access + a foregrounded app. Read-only.
         case filesPick = "files_pick"
+        /// Muse Chat stage C — 7-day daily forecast (rain + WMO code) for the
+        /// user's location: live device fix when the phone answers, else the
+        /// last kept fix, so a 07:00 cron works offline. Read-only.
+        case weatherForecast = "weather_forecast"
+        /// Muse Chat stage C — the last day's Gmail inbox as metadata
+        /// (from, subject, snippet); never bodies, never stored. Requires
+        /// "Connect Gmail". Read-only.
+        case mailInboxRecent = "mail_inbox_recent"
     }
 
     private struct ToolFunctionCall: Codable {
@@ -628,7 +649,21 @@ actor SkillRunner {
             let limit = max(1, min(args.limit ?? 10, 30))
             return await photosSearch(tenantID: tenantID, query: args.query, limit: limit)
         case AvailableTool.locationRecent.rawValue:
-            return await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
+            let result = await deviceRead(tenantID: tenantID, domain: .location, payload: [:])
+            // Keep the fix for offline weather jobs (M136).
+            if let fix = LocationFix.fromDeviceReadResult(result) {
+                await saveLocationFix(tenantID: tenantID, fix: fix)
+            }
+            return result
+        case AvailableTool.weatherForecast.rawValue:
+            return await weatherTool.run(tenantID: tenantID)
+        case AvailableTool.mailInboxRecent.rawValue:
+            struct Args: Decodable { let limit: Int? }
+            let args = (try? decoder.decode(Args.self, from: argsData)) ?? Args(limit: nil)
+            guard let gmailInbox else {
+                return Self.toolErrorJSON("Gmail is not available on this server")
+            }
+            return await gmailInbox.recentInboxJSON(tenantID: tenantID, limit: max(1, min(args.limit ?? 15, 25)))
         case AvailableTool.filesPick.rawValue:
             return await deviceRead(tenantID: tenantID, domain: .files, payload: [:])
         default:
@@ -646,6 +681,46 @@ actor SkillRunner {
 
     private func deviceRead(tenantID: UUID, domain: AppleDataDomain, payload: [String: String]) async -> String {
         await personalData.deviceRead(tenantID: tenantID, domain: domain, payload: payload)
+    }
+
+    private var weatherTool: WeatherForecastTool {
+        let personalData = personalData
+        let fluent = fluent
+        let logger = logger
+        return WeatherForecastTool(
+            forecast: weatherForecast,
+            liveLocation: { tenantID in
+                LocationFix.fromDeviceReadResult(
+                    await personalData.deviceRead(tenantID: tenantID, domain: .location, payload: [:])
+                )
+            },
+            consentAllowsLocation: { tenantID in
+                guard let sql = fluent.db() as? any SQLDatabase else { return false }
+                return await AppleConsentController.isAllowed(tenantID: tenantID, domain: .location, sql: sql).allowed
+            },
+            loadCached: { tenantID in
+                guard let sql = fluent.db() as? any SQLDatabase else { return nil }
+                return try? await LastKnownLocationStore(sql: sql).load(tenantID: tenantID)
+            },
+            saveCached: { tenantID, fix in
+                guard let sql = fluent.db() as? any SQLDatabase else { return }
+                do {
+                    try await LastKnownLocationStore(sql: sql).save(tenantID: tenantID, fix: fix)
+                } catch {
+                    logger.warning("weather: could not keep location fix tenant=\(tenantID): \(error)")
+                }
+            },
+            logger: logger
+        )
+    }
+
+    private func saveLocationFix(tenantID: UUID, fix: LocationFix) async {
+        guard let sql = fluent.db() as? any SQLDatabase else { return }
+        do {
+            try await LastKnownLocationStore(sql: sql).save(tenantID: tenantID, fix: fix)
+        } catch {
+            logger.warning("location_recent: could not keep fix tenant=\(tenantID): \(error)")
+        }
     }
 
     /// Apple Photos derived-text recall. When a `query` is given and the tenant
@@ -714,6 +789,13 @@ actor SkillRunner {
                 try await apns.notifyDigest(userID: tenantID, username: profileUsername, body: content)
             case .apnsNudge:
                 try await apns.notifyNudge(userID: tenantID, username: profileUsername, body: content)
+            case .chatMessage:
+                guard let proactiveChat else {
+                    throw HTTPError(.internalServerError, message: "chat_message output is not wired on this server")
+                }
+                // An empty result is not worth interrupting anyone for.
+                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                try await proactiveChat.deliver(tenantID: tenantID, content: content, sourceLabel: skill.name)
             case .memoryEmit:
                 _ = try await persistMemory(tenantID: tenantID, content: content, sourceVaultFileID: sourceVaultFileID(from: trigger))
             case .vaultRewrite:
@@ -1018,6 +1100,23 @@ actor SkillRunner {
                 name: tool.rawValue,
                 description: "Prompt the user to pick one or more documents on their device; extracted text (from PDFs and plain-text files) is read on-device and only that text is returned, never the file bytes. Requires Files access and the app to be open. Returns a JSON array of {name,type,chars,text}.",
                 parameters: .init(properties: [:], required: [])
+            ))
+        case .weatherForecast:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "7-day daily weather forecast for the user's location (live phone location when available, otherwise the last known one). Requires Location access. Returns {location:{place,lat,lng,source,captured_at}, days:[{date,summary,precipitation_mm,weather_code,dry}], dry_streak_days} where dry means under 1 mm of rain and dry_streak_days counts consecutive dry days starting today.",
+                parameters: .init(properties: [:], required: [])
+            ))
+        case .mailInboxRecent:
+            ToolDefinition(function: .init(
+                name: tool.rawValue,
+                description: "The user's Gmail inbox from the last 24 hours as metadata only: sender, subject, Google's short snippet, unread/important flags. No message bodies. Requires the user to have connected Gmail. Returns {count, messages:[{from,subject,snippet,date,unread,important}]}.",
+                parameters: .init(
+                    properties: [
+                        "limit": .init(type: "integer", description: "Maximum messages, 1-25 (default 15)."),
+                    ],
+                    required: []
+                )
             ))
         }
     }

@@ -100,6 +100,9 @@ struct AppleConsentController {
         case .photos:
             // Privacy contract: revoking Photos deletes the derived-text index.
             try await sql.raw("DELETE FROM photo_index WHERE tenant_id = \(bind: tenantID)").run()
+        case .location:
+            // Revoking Location forgets the fix kept for offline weather jobs.
+            try await LastKnownLocationStore(sql: sql).clear(tenantID: tenantID)
         default:
             break
         }

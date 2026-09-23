@@ -9,7 +9,8 @@ import SQLKit
 /// SkillDTO already conforms to ResponseEncodable in SkillsController.
 extension JobProposalDTO: @retroactive ResponseEncodable {}
 
-/// Lumina Jobs P3 — chat→job detection + creation.
+/// Lumina Jobs P3 — chat→job detection + creation. New jobs post their
+/// result into the Hermie thread (`chat_message`, see `JobAuthoring`).
 ///   POST /v1/jobs/detect  — classify a chat message → JobProposalDTO
 ///   POST /v1/jobs         — create a scheduled job (a vault cron skill)
 ///

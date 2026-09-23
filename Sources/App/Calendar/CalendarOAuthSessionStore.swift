@@ -16,6 +16,14 @@ actor CalendarOAuthSessionStore {
         /// Web page to send the browser back to; `nil` for the iOS app,
         /// which gets the `luminavault://` deep link.
         var returnTo: String?
+        /// Which "Connect" started this flow. Both share one Google client
+        /// and one callback URL, so the callback reads it from here.
+        var purpose: Purpose = .calendar
+    }
+
+    enum Purpose: Equatable {
+        case calendar
+        case gmail
     }
 
     private var sessions: [String: Session] = [:]

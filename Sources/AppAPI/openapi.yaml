@@ -645,6 +645,31 @@ paths:
 
   # ───────────────────────── Me — Suggestions (HER-37) ──────────────────
 
+  /v1/me/location:
+    get:
+      tags: [Me]
+      operationId: meLastKnownLocation
+      summary: The location fix kept for offline scheduled jobs.
+      description: |
+        Whenever a live device location read succeeds (the `location_recent`
+        or `weather_forecast` tools), the server keeps that one fix so a
+        scheduled job — the 07:00 weather check — still works while the phone
+        is asleep. It is overwritten, never a history, used only while
+        Location access is on, and cleared when Location access is turned off.
+      responses:
+        '200':
+          description: The stored fix, or `cached=false`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LastKnownLocationResponse' }
+    delete:
+      tags: [Me]
+      operationId: meForgetLastKnownLocation
+      summary: Forget the kept location fix.
+      responses:
+        '204':
+          description: Forgotten.
+
   /v1/me/suggestions:
     get:
       tags: [Me]
@@ -6545,10 +6570,77 @@ paths:
       summary: Disconnect Google Calendar.
       description: |
         Revokes the grant at Google (best-effort), deletes the stored tokens,
-        and purges this tenant's cached Google calendar events.
+        and purges this tenant's cached Google calendar events. When the same
+        grant also serves Gmail, only the Calendar scope is dropped
+        server-side (and the cached events purged) so Gmail keeps working.
       responses:
         '204':
           description: Disconnected and purged.
+
+  /v1/mail/gmail/status:
+    get:
+      tags: [Calendar]
+      operationId: gmailStatus
+      summary: Gmail read access state.
+      description: |
+        Gmail is an incremental `gmail.readonly` scope on the Google Calendar
+        OAuth client and grant — one Google account per tenant.
+      responses:
+        '200':
+          description: Gmail status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GmailStatusResponse' }
+
+  /v1/mail/gmail/connect:
+    post:
+      tags: [Calendar]
+      operationId: gmailConnect
+      summary: Begin "Connect Gmail" (read-only metadata).
+      description: |
+        Returns Google's consent URL asking for `gmail.readonly` with
+        `include_granted_scopes=true`, so an existing Calendar grant is kept
+        and extended. Google redirects to `/v1/calendar/oauth/callback`, which
+        303s to `luminavault://oauth/google-gmail?status=ok` (iOS) or to
+        `returnTo` with `status=ok|error&reason=…` (web).
+
+        Gmail is a Google restricted scope: until the OAuth app passes
+        Google's verification only test users on the consent screen can
+        connect.
+      parameters:
+        - in: query
+          name: returnTo
+          required: false
+          description: Web only. Absolute URL on an allowed web origin.
+          schema: { type: string, format: uri }
+      responses:
+        '200':
+          description: Consent URL to open.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarConnectStartResponse' }
+        '400':
+          description: '`returnTo` is not on an allowed web origin.'
+        '503':
+          description: Google OAuth not configured on this server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/mail/gmail/disconnect:
+    post:
+      tags: [Calendar]
+      operationId: gmailDisconnect
+      summary: Stop reading Gmail.
+      description: |
+        When the Google grant also serves Calendar, the Gmail scope is
+        dropped server-side (Google has no per-scope revoke) and Calendar
+        stays connected. Otherwise the grant is revoked at Google and the
+        stored tokens deleted. Mail is never stored, so there is nothing
+        else to purge.
+      responses:
+        '204':
+          description: Disconnected.
 
   /v1/calendar/events:
     get:
@@ -9128,6 +9220,33 @@ components:
         authorizeURL:
           type: string
           description: Google consent URL to open in ASWebAuthenticationSession.
+
+    GmailStatusResponse:
+      type: object
+      required: [connected, needsReauth, calendarConnected]
+      properties:
+        connected:
+          type: boolean
+          description: The Google grant is live and includes gmail.readonly.
+        needsReauth:
+          type: boolean
+          description: Google rejected the refresh token; offer a reconnect.
+        accountEmail: { type: [string, 'null'] }
+        calendarConnected:
+          type: boolean
+          description: |
+            The same Google grant also serves Calendar. Disconnecting Gmail
+            then keeps Calendar; otherwise it revokes the whole grant.
+
+    LastKnownLocationResponse:
+      type: object
+      required: [cached]
+      properties:
+        cached: { type: boolean }
+        place: { type: [string, 'null'] }
+        latitude: { type: [number, 'null'], format: double }
+        longitude: { type: [number, 'null'], format: double }
+        capturedAt: { type: [string, 'null'], format: date-time }
 
     CalendarEventDTO:
       type: object
@@ -12524,7 +12643,27 @@ components:
           description: |
             How many tools the assistant invoked. Zero is a real answer — the
             turn ran without tools — and null means unknown.
+        origin:
+          $ref: '#/components/schemas/ConversationMessageOrigin'
+        sourceLabel:
+          type: [string, 'null']
+          description: |
+            Who sent a proactive message — the skill or job name
+            (`daily-brief`, `job-weather-watch`). Clients caption the bubble
+            with it ("From daily-brief"). Null for ordinary replies.
         createdAt: { type: string, format: date-time }
+
+    ConversationMessageOrigin:
+      type: string
+      enum: [reply, proactive]
+      default: reply
+      description: |
+        `proactive` marks a message the server appended without a user turn:
+        a scheduled skill or job with a `chat_message` output (the morning
+        brief, a standing watch). It lands in the tenant's Hermie thread and
+        is pushed with category `chat`. Always sent by servers since 5.20.0;
+        absent from older servers, and clients treat absent or unknown values
+        as `reply`.
 
     AgentTurnTraceDTO:
       type: object

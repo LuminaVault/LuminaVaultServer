@@ -168,7 +168,8 @@ struct ConnectionsController {
     }
 
     private func calendarConnection(row: CalendarAccount?) -> ConnectionSummaryDTO {
-        guard let row else {
+        // A Google grant made by "Connect Gmail" alone has no Calendar scope.
+        guard let row, GoogleCalendarOAuthClient.grants(row.scope, GoogleCalendarOAuthClient.calendarEventsScope) else {
             return ConnectionSummaryDTO(
                 id: "calendar:google",
                 kind: .calendar,
