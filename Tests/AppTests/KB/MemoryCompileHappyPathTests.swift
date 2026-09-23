@@ -9,9 +9,9 @@ import Testing
 
 /// HER-36 happy-path coverage for `POST /v1/memory-compile`. Uses the
 /// `kbCompileTransportOverride` hook on `buildApplication` to swap the
-/// real Hermes chat transport for a deterministic stub that returns a
-/// single assistant message with no tool calls — the loop exits after
-/// one iteration with zero collected memories. That's enough to assert
+/// real Hermes chat transport for a deterministic stub whose single reply
+/// holds no extractable memories, so the compile collects none. That's
+/// enough to assert
 /// the side effects the controller is responsible for:
 ///
 ///   * `vault_files.processed_at` is flipped on every row picked up.
@@ -19,8 +19,7 @@ import Testing
 ///     successful compile and is idempotent on the second call.
 ///   * Response carries `durationMs > 0`.
 ///
-/// Coverage of memory upserts via the `memory_upsert` tool would need a
-/// stub that emits tool-call JSON. Out of scope for the first pass.
+/// Memory persistence is covered by `MemoryCompileMemoryUpsertTests`.
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct MemoryCompileHappyPathTests {
     private static let testPassword = "CorrectHorseBatteryStaple1!"
@@ -120,7 +119,7 @@ struct MemoryCompileHappyPathTests {
             ) { response in
                 #expect(response.status == .ok)
                 let body = try Self.decodeCompileResponse(response.body)
-                #expect(body.memoriesIngested == 0) // stub returned no tool calls
+                #expect(body.memoriesIngested == 0) // stub reply held no memories
                 #expect(body.durationMs ?? 0 > 0)
             }
 
@@ -160,9 +159,8 @@ struct MemoryCompileHappyPathTests {
 // MARK: - Stub transport
 
 /// Returns a minimal `ChatResponseBody`-shaped JSON payload with a single
-/// assistant message and no tool calls. The KB compile agent loop reads
-/// `choices[0].message`, sees no `tool_calls`, and exits with the message
-/// `content` as the summary.
+/// assistant message. The compile reads `choices[0].message.content`, finds
+/// no `{"memories": [...]}` in it, and persists nothing.
 private struct StubHermesChatTransport: HermesChatTransport {
     func chatCompletions(payload _: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
         Data("""

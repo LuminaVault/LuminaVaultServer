@@ -37,12 +37,11 @@ enum MemoryCompileError: Error {
 
 // MARK: - Service
 
-/// kb-compile = "ingest a batch of new vault files + run Hermes' learning
-/// loop over them". Writes each file into `<rawRoot>/<path>` (same surface
-/// as `VaultController.upload`), then sends the compiled corpus to the
-/// per-user Hermes profile through `HermesMemoryService.runAgent`-style
-/// chat with `memory_upsert` exposed. The model decides which memories to
-/// persist; the service reports back the ones that landed.
+/// kb-compile = "ingest a batch of new vault files and distil memories from
+/// them". Writes each file into `<rawRoot>/<path>` (same surface as
+/// `VaultController.upload`), then asks the per-user Hermes profile for one
+/// structured JSON extraction of the batch and persists each extracted memory
+/// server-side. The service reports back the ones that landed.
 actor MemoryCompileService {
     let vaultPaths: VaultPathService
     let transport: any HermesChatTransport
@@ -52,7 +51,6 @@ actor MemoryCompileService {
     let logger: Logger
     let maxFileSize: Int
     let maxBatchBytes: Int
-    let maxToolIterations: Int
 
     /// Max chars of a single file's text fed to the extraction LLM (the lead of
     /// an enriched article — enough for durable facts, small enough to keep the
@@ -73,7 +71,6 @@ actor MemoryCompileService {
         logger: Logger,
         maxFileSize: Int = 10 * 1024 * 1024,
         maxBatchBytes: Int = 32 * 1024 * 1024,
-        maxToolIterations: Int = 12,
         progress: any MemoryCompileProgressPublisher = NoopMemoryCompileProgressPublisher()
     ) {
         self.vaultPaths = vaultPaths
@@ -84,7 +81,6 @@ actor MemoryCompileService {
         self.logger = logger
         self.maxFileSize = maxFileSize
         self.maxBatchBytes = maxBatchBytes
-        self.maxToolIterations = maxToolIterations
         self.progress = progress
     }
 
@@ -178,10 +174,10 @@ actor MemoryCompileService {
         logger.info("kb-compile processing \(writtenFiles.count) existing files (\(totalBytes) bytes, \(missingRowIDs.count) missing skipped, \(deferredEnriching) still enriching) for tenant \(tenantID)")
 
         // HER-290 — load the tenant's reject list once per compile so we can
-        // dedup `memory_upsert` calls whose content the user already rejected.
+        // skip extracted memories whose content the user already rejected.
         let rejectedHashes = try await loadRejectedHashes(tenantID: tenantID)
 
-        // HER-288 — vault files are on disk, agent loop is about to start.
+        // HER-288 — vault files are on disk, extraction is about to start.
         // Emit `.preparing` so subscribers can show a "thinking…" surface
         // before the first model round-trip lands.
         await progress.publish(
@@ -224,71 +220,9 @@ actor MemoryCompileService {
         let memories: [InternalKBCompileMemoryRef]
     }
 
-    private struct ChatPayload: Encodable {
-        let model: String
-        let messages: [AgentMessage]
-        let tools: [ToolDefinition]
-        let toolChoice: String
-        let temperature: Double?
-        let stream: Bool
-
-        enum CodingKeys: String, CodingKey {
-            case model, messages, tools, temperature, stream
-            case toolChoice = "tool_choice"
-        }
-    }
-
     private struct AgentMessage: Codable {
         let role: String
         let content: String?
-        let toolCalls: [ToolCall]?
-        let toolCallId: String?
-        let name: String?
-        enum CodingKeys: String, CodingKey {
-            case role, content, name
-            case toolCalls = "tool_calls"
-            case toolCallId = "tool_call_id"
-        }
-
-        init(role: String, content: String? = nil, toolCalls: [ToolCall]? = nil, toolCallId: String? = nil, name: String? = nil) {
-            self.role = role
-            self.content = content
-            self.toolCalls = toolCalls
-            self.toolCallId = toolCallId
-            self.name = name
-        }
-    }
-
-    private struct ToolCall: Codable {
-        let id: String
-        let type: String
-        let function: FunctionCall
-    }
-
-    private struct FunctionCall: Codable {
-        let name: String
-        let arguments: String
-    }
-
-    private struct ToolDefinition: Encodable {
-        let type = "function"
-        let function: FunctionInfo
-        struct FunctionInfo: Encodable {
-            let name: String
-            let description: String
-            let parameters: ParameterSchema
-        }
-    }
-
-    private struct ParameterSchema: Encodable {
-        let type = "object"
-        let properties: [String: PropertySchema]
-        let required: [String]
-    }
-
-    private struct PropertySchema: Encodable {
-        let type: String
-        let description: String?
     }
 
     private struct ChatResponseBody: Decodable {
@@ -304,10 +238,6 @@ actor MemoryCompileService {
         let id: String
         let model: String
         let choices: [Choice]
-    }
-
-    private struct MemoryUpsertArgs: Decodable {
-        let content: String
     }
 
     private func runCompileLoop(
@@ -475,65 +405,6 @@ actor MemoryCompileService {
         }
     }
 
-    private func dispatch(
-        tenantID: UUID,
-        toolCall: ToolCall,
-        memories: inout [InternalKBCompileMemoryRef],
-        runId: UUID,
-        rejectedHashes: Set<String>
-    ) async throws -> String {
-        guard toolCall.function.name == "memory_upsert" else {
-            return Self.toolErrorJSON("unknown tool \(toolCall.function.name)")
-        }
-        guard let argsData = toolCall.function.arguments.data(using: .utf8) else {
-            return Self.toolErrorJSON("invalid arguments encoding")
-        }
-        do {
-            let args = try JSONDecoder().decode(MemoryUpsertArgs.self, from: argsData)
-
-            // HER-290 — if the user previously rejected this exact content,
-            // suppress the insert and tell the agent so it doesn't retry.
-            let hash = Self.contentHash(args.content)
-            if rejectedHashes.contains(hash) {
-                logger.info("kb-compile skipped rejected memory hash for tenant \(tenantID)")
-                return Self.encodeJSON([
-                    "status": "skipped",
-                    "reason": "user previously rejected this memory; do not propose it again",
-                ])
-            }
-
-            let embedding = try await embeddings.embed(args.content, tenantID: tenantID)
-            let saved = try await self.memories.create(
-                tenantID: tenantID,
-                content: args.content,
-                embedding: embedding,
-                reviewState: "pending"
-            )
-            let id = try saved.requireID()
-            memories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
-
-            // HER-288 — emit the wire-shape DTO that the client also gets
-            // from `GET /v1/memory/{id}`. Tags default to [] (the agent
-            // loop does not author tags); geo anchor fields stay nil since
-            // kb-compile is server-side and has no device location.
-            let dto = MemoryDTO(
-                id: id,
-                content: saved.content,
-                tags: saved.tags ?? [],
-                createdAt: saved.createdAt,
-                reviewState: saved.reviewState
-            )
-            await progress.publish(
-                .memorySaved(.init(runId: runId, memory: dto)),
-                tenantID: tenantID
-            )
-
-            return Self.encodeJSON(["status": "ok", "id": id.uuidString])
-        } catch {
-            return Self.toolErrorJSON("memory_upsert failed: \(error)")
-        }
-    }
-
     // MARK: - HER-290 reject-list helpers
 
     /// SHA256 hex digest of UTF-8 content. Stable across whitespace-equal
@@ -545,33 +416,12 @@ actor MemoryCompileService {
 
     /// Tenant-scoped `(content_hash)` set for the rejected list, loaded once
     /// at the top of `compileExistingVaultFiles` and threaded through the
-    /// agent loop. Empty when the tenant has never rejected anything.
+    /// extraction. Empty when the tenant has never rejected anything.
     private func loadRejectedHashes(tenantID: UUID) async throws -> Set<String> {
         let rows = try await KBCompileRejectListEntry.query(on: memories.fluent.db())
             .filter(\.$tenantID == tenantID)
             .all()
         return Set(rows.map(\.contentHash))
-    }
-
-    // MARK: - Tool schema
-
-    private static func memoryUpsertTool() -> ToolDefinition {
-        ToolDefinition(function: .init(
-            name: "memory_upsert",
-            description: """
-            Persist a single distilled memory from the kb-compile batch. The \
-            content is embedded server-side and stored under the user's tenant.
-            """,
-            parameters: ParameterSchema(
-                properties: [
-                    "content": PropertySchema(
-                        type: "string",
-                        description: "The memory text to persist verbatim. Should be self-contained."
-                    ),
-                ],
-                required: ["content"]
-            )
-        ))
     }
 
     // MARK: - Helpers
@@ -737,19 +587,5 @@ actor MemoryCompileService {
         }
         let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         return trimmed.isEmpty ? "untitled" : trimmed
-    }
-
-    private static func encodeJSON(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value),
-              let s = String(data: data, encoding: .utf8)
-        else {
-            return "{\"status\":\"error\"}"
-        }
-        return s
-    }
-
-    private static func toolErrorJSON(_ reason: String) -> String {
-        encodeJSON(["status": "error", "reason": reason])
     }
 }

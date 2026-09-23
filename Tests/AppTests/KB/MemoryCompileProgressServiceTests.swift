@@ -232,34 +232,6 @@ struct KBCompileProgressServiceTests {
 
     // MARK: - Scripted chat-completions transport
 
-    /// Wraps a `tool_calls`-style chat-completions JSON envelope with a
-    /// single function call. `argsJSON` is the inner arguments object as a
-    /// JSON string (matching OpenAI's wire shape — `arguments` is itself a
-    /// JSON-encoded string, not a nested object).
-    private static func toolCallTurn(id: String, name: String, argsJSON: String) -> String {
-        let escaped = argsJSON
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return """
-        {
-          "id": "stub-tool",
-          "model": "stub-model",
-          "choices": [{
-            "message": {
-              "role": "assistant",
-              "content": null,
-              "tool_calls": [{
-                "id": "\(id)",
-                "type": "function",
-                "function": {"name": "\(name)", "arguments": "\(escaped)"}
-              }]
-            },
-            "finish_reason": "tool_calls"
-          }]
-        }
-        """
-    }
-
     /// The reply the compile service actually asks for since it became a
     /// one-shot extraction: an OpenAI-shaped completion whose `content` is a
     /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
@@ -277,19 +249,6 @@ struct KBCompileProgressServiceTests {
         ]
         let data = try JSONSerialization.data(withJSONObject: outer)
         return String(decoding: data, as: UTF8.self)
-    }
-
-    private static func contentTurn(text: String) -> String {
-        """
-        {
-          "id": "stub-final",
-          "model": "stub-model",
-          "choices": [{
-            "message": {"role": "assistant", "content": "\(text)"},
-            "finish_reason": "stop"
-          }]
-        }
-        """
     }
 }
 

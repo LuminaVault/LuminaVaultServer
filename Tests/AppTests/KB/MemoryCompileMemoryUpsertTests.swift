@@ -7,8 +7,8 @@ import HummingbirdTesting
 import LuminaVaultShared
 import Testing
 
-/// HER-36 — proves the `memory_upsert` tool dispatch path actually
-/// persists rows to the `memories` table during memory-compile. The stub
+/// HER-36 — proves memory-compile actually persists rows to the `memories`
+/// table. The stub
 /// transport scripts one turn: the JSON object `{"memories": [...]}` that the
 /// compile service asks for. It used to script a `memory_upsert` tool-call
 /// loop, but the service stopped using tools — routed to Gemini the model
@@ -166,46 +166,6 @@ struct MemoryCompileMemoryUpsertTests {
         ]
         let data = try JSONSerialization.data(withJSONObject: outer)
         return String(decoding: data, as: UTF8.self)
-    }
-
-    private static func toolCallsTurn(calls: [(id: String, name: String, args: String)]) -> String {
-        let toolCallsJSON = calls.map { call in
-            // The `arguments` field on the wire is a JSON-encoded STRING (not
-            // a nested object), matching OpenAI's chat-completions spec.
-            let escaped = call.args
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-            return """
-            {
-              "id": "\(call.id)",
-              "type": "function",
-              "function": {"name": "\(call.name)", "arguments": "\(escaped)"}
-            }
-            """
-        }.joined(separator: ",")
-        return """
-        {
-          "id": "stub-tool",
-          "model": "stub-model",
-          "choices": [{
-            "message": {"role": "assistant", "content": null, "tool_calls": [\(toolCallsJSON)]},
-            "finish_reason": "tool_calls"
-          }]
-        }
-        """
-    }
-
-    private static func contentTurn(text: String) -> String {
-        """
-        {
-          "id": "stub-final",
-          "model": "stub-model",
-          "choices": [{
-            "message": {"role": "assistant", "content": "\(text)"},
-            "finish_reason": "stop"
-          }]
-        }
-        """
     }
 }
 
