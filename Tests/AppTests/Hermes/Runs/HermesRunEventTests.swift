@@ -165,4 +165,42 @@ struct HermesRunEventTests {
         #expect(long?.count == APNSHermesRunPushNotifier.bodyLimit)
         #expect(long?.hasSuffix("…") == true)
     }
+
+    // MARK: - Terminal output (LuminaVaultHermesAgent#14)
+
+    /// Hermes streams background-process output as `terminal.output`. The
+    /// server relays it verbatim: it must persist, replay, and never be read
+    /// as a status change — a chunk of output is not the run ending.
+    @Test
+    func `terminal output is relayed verbatim and changes no status`() throws {
+        let data = #"{"event":"terminal.output","run_id":"run_1","timestamp":1700000000,"process_id":"proc_9","chunk":"server listening\n"}"#
+        let frame = try #require(HermesRunEvent.decode(eventName: nil, data: data))
+
+        #expect(frame.name == "terminal.output")
+        #expect(frame.event.impliedStatus == nil)
+        #expect(!frame.event.isTerminal)
+        #expect(frame.payload.objectValue?["process_id"]?.stringValue == "proc_9")
+        #expect(frame.payload.objectValue?["chunk"]?.stringValue == "server listening\n")
+    }
+
+    /// The terminal tool's command and output ride as extra fields on the
+    /// existing tool events. The typed view ignores them; the persisted
+    /// payload, which is what clients replay, must keep them.
+    @Test
+    func `terminal fields on tool events survive into the persisted payload`() throws {
+        let started = try #require(HermesRunEvent.decode(
+            eventName: nil,
+            data: #"{"event":"tool.started","tool":"terminal","preview":"ls","command":"ls -la","background":false}"#
+        ))
+        let completed = try #require(HermesRunEvent.decode(
+            eventName: nil,
+            data: #"{"event":"tool.completed","tool":"terminal","duration":0.2,"error":false,"output":"a.txt","exit_code":0,"output_truncated":false}"#
+        ))
+
+        #expect(started.event == .toolStarted(tool: "terminal", preview: "ls"))
+        #expect(started.payload.objectValue?["command"]?.stringValue == "ls -la")
+        #expect(completed.event == .toolCompleted(tool: "terminal", durationSeconds: 0.2, isError: false))
+        #expect(completed.payload.objectValue?["output"]?.stringValue == "a.txt")
+        #expect(completed.payload.objectValue?["exit_code"]?.doubleValue == 0)
+    }
 }
