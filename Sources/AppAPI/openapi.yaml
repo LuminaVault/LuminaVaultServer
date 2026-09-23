@@ -3223,7 +3223,12 @@ paths:
         '400':
           description: |
             Validation error in `message`:
-            `primary_model_required` / `fallback_model_required`.
+            `primary_model_required` / `fallback_model_required`, or
+            `primary_model_placeholder` / `fallback_model_placeholder` when a
+            BYOK save carries what a managed read shows in place of a model
+            (the brain label, or `openRouter/auto`). A BYOK primary carrying it
+            keeps the user's stored BYOK model on the same provider instead,
+            when there is one; the managed model is never substituted.
 
   # ─────────────── Cerberus Router ─────────────────
 

@@ -188,4 +188,127 @@ struct LLMPreferencesControllerTests {
             }
         }
     }
+
+    // MARK: - The managed label is not a model
+
+    private static func putPrefs(
+        client: some TestClientProtocol,
+        token: String,
+        _ json: String
+    ) async throws -> (status: HTTPResponse.Status, body: String) {
+        try await client.execute(
+            uri: "/v1/me/preferences/llm",
+            method: .put,
+            headers: [.authorization: "Bearer \(token)", .contentType: "application/json"],
+            body: ByteBuffer(string: json)
+        ) { ($0.status, String(buffer: $0.body)) }
+    }
+
+    private static func getPrefs(client: some TestClientProtocol, token: String) async throws -> LLMPreferencesGetResponse {
+        try await client.execute(
+            uri: "/v1/me/preferences/llm",
+            method: .get,
+            headers: [.authorization: "Bearer \(token)"]
+        ) { try decodePrefs($0.body) }
+    }
+
+    /// A managed read shows `primaryModel` as the brain label. A client that
+    /// keeps that value as the model and switches to BYOK sends the label back
+    /// as a model id. Stored, it breaks every chat. When the user already has a
+    /// real BYOK model on that provider, that model is kept.
+    @Test
+    func `a byok save carrying the label keeps the stored byok model`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let first = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"anthropic","primaryModel":"claude-opus-4-7","fallbackChain":[]}
+            """)
+            #expect(first.status == .ok)
+
+            let relabelled = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"anthropic","primaryModel":"\(ModelDisclosurePolicy.genericBrainName)","fallbackChain":[]}
+            """)
+            #expect(relabelled.status == .ok)
+
+            let prefs = try await Self.getPrefs(client: client, token: token)
+            #expect(prefs.mode == .byok)
+            #expect(prefs.primaryModel == "claude-opus-4-7")
+        }
+    }
+
+    @Test
+    func `a byok save carrying the label with nothing to restore is refused`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let put = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"openRouter","primaryModel":"\(ModelDisclosurePolicy.genericBrainName)","fallbackChain":[]}
+            """)
+            #expect(put.status == .badRequest)
+            #expect(put.body.contains("primary_model_placeholder"))
+            #expect(try await Self.getPrefs(client: client, token: token).mode == .managed)
+        }
+    }
+
+    /// The managed snapshot holds the platform's real model. Restoring from it
+    /// would pin that model to the user's BYOK key and reveal what it is.
+    @Test
+    func `a stored managed model is never used as the restore`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            #expect(try await Self.putPrefs(client: client, token: token, """
+            {"mode":"managed","primaryProvider":"openRouter","primaryModel":"stale-client-model","fallbackChain":[]}
+            """).status == .ok)
+            let put = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"openRouter","primaryModel":"\(ModelDisclosurePolicy.genericBrainName)","fallbackChain":[]}
+            """)
+            #expect(put.status == .badRequest)
+            #expect(try await Self.getPrefs(client: client, token: token).mode == .managed)
+        }
+    }
+
+    @Test
+    func `the restore only applies on the same provider`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            _ = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"anthropic","primaryModel":"claude-opus-4-7","fallbackChain":[]}
+            """)
+            let put = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"openai","primaryModel":"\(ModelDisclosurePolicy.genericBrainName)","fallbackChain":[]}
+            """)
+            #expect(put.status == .badRequest)
+            #expect(try await Self.getPrefs(client: client, token: token).primaryModel == "claude-opus-4-7")
+        }
+    }
+
+    @Test
+    func `the hidden route id is refused as a byok model too`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let put = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"openRouter","primaryModel":"\(ModelDisclosurePolicy.genericModelID)","fallbackChain":[]}
+            """)
+            #expect(put.status == .badRequest)
+            #expect(put.body.contains("primary_model_placeholder"))
+        }
+    }
+
+    @Test
+    func `a fallback step carrying the label is refused`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderFreeLaneOff)
+        try await app.test(.router) { client in
+            let token = try await Self.register(client: client)
+            let put = try await Self.putPrefs(client: client, token: token, """
+            {"mode":"byok","primaryProvider":"anthropic","primaryModel":"claude-opus-4-7",\
+            "fallbackChain":[{"provider":"openRouter","model":"\(ModelDisclosurePolicy.genericBrainName)"}]}
+            """)
+            #expect(put.status == .badRequest)
+            #expect(put.body.contains("fallback_model_placeholder"))
+        }
+    }
 }
