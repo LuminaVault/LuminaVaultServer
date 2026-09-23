@@ -375,6 +375,31 @@ struct FreeLaneRoutingTests {
         }
     }
 
+    /// Exhaustion is the same question as unavailability: the ways out must be
+    /// the ones that are real for this user. A paying BYOK user without a key
+    /// who spends the lane is offered managed, not an upgrade.
+    @Test
+    func `an exhausted lane offers a paying byok user managed, not an upgrade`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.route.exhausted.pro") { fluent in
+            let user = Self.makeUser(tier: "pro")
+            try await Self.prepare(fluent, user: user)
+            let preference = UserLLMPreference()
+            preference.tenantID = try user.requireID()
+            preference.mode = "byok"
+            preference.primaryProvider = "anthropic"
+            preference.primaryModel = "claude-opus-4-7"
+            preference.fallbackChain = .init(steps: [])
+            try await preference.save(on: fluent.db())
+
+            let router = Self.router(fluent: fluent, freeLane: Self.runtime(fluent: fluent, perUser: 1))
+            _ = await router.pick(forModel: nil, capability: .medium, user: user)
+            let decision = await router.pick(forModel: nil, capability: .medium, user: user)
+
+            let error = try #require(decision.cerberus?.preflightError() as? FreeLaneExhaustedError)
+            #expect(error.actions == ["add_key", "switch_to_managed"])
+        }
+    }
+
     // MARK: - Kill switch
 
     @Test

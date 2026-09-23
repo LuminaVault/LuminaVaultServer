@@ -7770,8 +7770,9 @@ components:
             Optional recovery actions for clients. `upgrade` accompanies
             `free_lane_exhausted` and `usage_cap_exceeded`; `add_key` /
             `switch_to_managed` accompany `byok_keys_required`. On
-            `free_lane_unavailable` the set depends on the caller's tier and
-            mode, so render whatever is present.
+            `free_lane_exhausted` and `free_lane_unavailable` the set depends
+            on the caller's tier and mode (`upgrade` only for free and lapsed
+            accounts), so render whatever is present.
         retryAfterSeconds:
           type: integer
           description: |
