@@ -357,6 +357,202 @@ struct RoutedLLMTransportStreamingTests {
             #expect(payload["model"] as? String == "gpt-stream")
         }
     }
+
+    // MARK: - Free lane
+
+    /// A provider stub of any kind that streams two chunks and records every
+    /// payload it was sent, so a test can prove who was — and was not — called.
+    actor LaneStubAdapter: ProviderAdapter {
+        nonisolated let kind: ProviderKind
+        private(set) var calls: [Data] = []
+
+        init(kind: ProviderKind) {
+            self.kind = kind
+        }
+
+        func chatCompletions(payload: Data, sessionKey _: String, sessionID _: String?) async throws -> Data {
+            calls.append(payload)
+            return Data(#"{"choices":[{"message":{"role":"assistant","content":"lane reply"}}]}"#.utf8)
+        }
+
+        nonisolated func chatStream(
+            payload: Data,
+            sessionKey _: String,
+            sessionID _: String?
+        ) -> AsyncThrowingStream<ChatStreamChunk, Error> {
+            AsyncThrowingStream { continuation in
+                let task = Task {
+                    await self.record(payload)
+                    continuation.yield(ChatStreamChunk(delta: "free "))
+                    continuation.yield(ChatStreamChunk(delta: "reply", finishReason: "stop"))
+                    continuation.finish()
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+
+        private func record(_ payload: Data) {
+            calls.append(payload)
+        }
+    }
+
+    /// What `CerberusRouterService.freeLaneDecision` returns: managed, locked,
+    /// flagged as the lane, routed to one free OpenRouter model.
+    private static func freeLaneDecision(tenantID: UUID, exhausted: Bool = false) -> RouteDecision {
+        let route = RouterModelRouteDTO(provider: .openRouter, model: "free/lane-model:free")
+        let metadata = CerberusDecisionMetadata(
+            executionID: UUID(),
+            tenantID: tenantID,
+            vaultID: tenantID,
+            actorUserID: tenantID,
+            profileID: UUID(),
+            profileName: "Free lane",
+            ruleID: nil,
+            taskType: .general,
+            surface: .chat,
+            spaceID: nil,
+            conversationID: nil,
+            strategy: .sequential,
+            parallelStrategy: nil,
+            participants: nil,
+            routes: exhausted ? [] : [route],
+            synthesisRoute: nil,
+            minimumSuccessfulResults: 1,
+            retryPolicy: .fast,
+            predictedCostUsdMicros: 0,
+            budgetReservationUsdMicros: 0,
+            budgetDenied: false,
+            mode: .managed,
+            routingPolicy: .locked,
+            complexity: .medium,
+            reason: exhausted ? "Free lane exhausted" : "Free lane: openRouterFree",
+            isFreeLane: true,
+            freeLaneExhausted: exhausted,
+            freeLaneRetryAfterSeconds: exhausted ? 3600 : 0
+        )
+        return RouteDecision(
+            primary: ModelRoute(provider: .openRouter, modelID: route.model),
+            fallbacks: [],
+            cerberus: metadata,
+            credentialMode: .managed
+        )
+    }
+
+    /// The cost bug. A free-lane decision is `locked`, and the managed stream
+    /// branch only honoured `autoSmart` decisions, so it fell through to the
+    /// managed gateway — the platform's paid key — having already charged the
+    /// lane for the message. `FailingManagedFallback` is that gateway: reaching
+    /// it fails the test.
+    @Test
+    func `a granted free lane streams through the routed transport, never the paid gateway`() async throws {
+        try await Self.withManagedHarness { user, preferences in
+            let tenantID = try user.requireID()
+            let lane = LaneStubAdapter(kind: .openRouter)
+            let decision = Self.freeLaneDecision(tenantID: tenantID)
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [lane], logger: Logger(label: "test.free-lane-stream")),
+                router: FixedDecisionRouter(decision: decision),
+                currentUser: { user },
+                logger: Logger(label: "test.free-lane-stream")
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: FailingManagedFallback(),
+                transport: transport,
+                preferences: preferences,
+                logger: Logger(label: "test.free-lane-stream"),
+                router: FixedDecisionRouter(decision: decision)
+            )
+
+            let chunks = try await Self.collect(service.chatStream(
+                sessionKey: tenantID.uuidString,
+                sessionID: "conversation-1",
+                request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+            ))
+
+            #expect(chunks.map(\.delta).joined() == "free reply")
+            #expect(await lane.calls.count == 1)
+        }
+    }
+
+    /// And when the lane is spent, the stream must stop — not carry on for
+    /// free on the paid gateway.
+    @Test
+    func `an exhausted free lane ends the stream instead of falling back to the gateway`() async throws {
+        try await Self.withManagedHarness { user, preferences in
+            let tenantID = try user.requireID()
+            let decision = Self.freeLaneDecision(tenantID: tenantID, exhausted: true)
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [], logger: Logger(label: "test.free-lane-stream")),
+                router: FixedDecisionRouter(decision: decision),
+                currentUser: { user },
+                logger: Logger(label: "test.free-lane-stream")
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: FailingManagedFallback(),
+                transport: transport,
+                preferences: preferences,
+                logger: Logger(label: "test.free-lane-stream"),
+                router: FixedDecisionRouter(decision: decision)
+            )
+
+            await #expect(throws: FreeLaneExhaustedError.self) {
+                _ = try await Self.collect(service.chatStream(
+                    sessionKey: tenantID.uuidString,
+                    sessionID: "conversation-1",
+                    request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+                ))
+            }
+        }
+    }
+
+    /// The second cost bug. A BYOK tenant with no key is diverted to the free
+    /// lane, but the BYOK branch pins their stored model as a forced route, and
+    /// `applyingForcedRoute` swapped it in while keeping the managed credential
+    /// mode. The platform key then paid for whatever model they had pinned.
+    @Test
+    func `a forced route never overrides a free-lane decision`() {
+        let decision = Self.freeLaneDecision(tenantID: UUID())
+        let applied = LLMRoutingContext.withValues({
+            $0.forcedRoute = RouterModelRouteDTO(provider: .anthropic, model: "claude-opus-4-7")
+        }) {
+            RoutedLLMTransport.applyingForcedRoute(decision)
+        }
+        #expect(applied.primary.provider == .openRouter)
+        #expect(applied.primary.modelID == "free/lane-model:free")
+    }
+
+    @Test
+    func `a BYOK tenant without keys is served by the lane, never their pinned model`() async throws {
+        try await Self.withBYOKHarness { user, preferences in
+            let tenantID = try user.requireID()
+            // The harness pins openai/gpt-stream as the BYOK preference.
+            let pinned = LaneStubAdapter(kind: .openai)
+            let lane = LaneStubAdapter(kind: .openRouter)
+            let decision = Self.freeLaneDecision(tenantID: tenantID)
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [pinned, lane], logger: Logger(label: "test.free-lane-byok")),
+                router: FixedDecisionRouter(decision: decision),
+                currentUser: { user },
+                logger: Logger(label: "test.free-lane-byok")
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: FailingManagedFallback(),
+                transport: transport,
+                preferences: preferences,
+                logger: Logger(label: "test.free-lane-byok"),
+                router: FixedDecisionRouter(decision: decision)
+            )
+
+            _ = try await Self.collect(service.chatStream(
+                sessionKey: tenantID.uuidString,
+                sessionID: "conversation-1",
+                request: ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+            ))
+
+            #expect(await pinned.calls.isEmpty, "the pinned model was dispatched on the platform key")
+            #expect(await lane.calls.count == 1)
+        }
+    }
 }
 
 private final class RoutingCapture: @unchecked Sendable {

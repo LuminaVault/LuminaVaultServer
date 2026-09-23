@@ -48,8 +48,14 @@ ENV UV_LINK_MODE=copy \
 # bind-mounted, so we can't rely on it either). So we install a *fresh* 3.12
 # explicitly under /opt/uv-python, build the venv against that absolute path,
 # and chmod a+rX so any uid (the base may remap HERMES_UID) can read/traverse/
-# exec it. The `gosu hermes` line asserts this for real at build time — `su`
-# does NOT drop privileges in this base image, so it would falsely pass.
+# exec it. The `/command/s6-setuidgid hermes` line (s6 binaries live in
+# /command, which is not on PATH during a build) asserts this for real at build
+# time: it is how the base image's supervisor drops each service to the
+# hermes user, so it is the honest check. (`su` would not drop privileges
+# here and would falsely pass.)
+# No purge afterwards: the base image installs gcc, g++, make and cmake as
+# runtime dependencies of its own, so purging them (and autoremoving what
+# they pulled in) would strip packages the base relies on.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends build-essential cmake; \
@@ -62,8 +68,7 @@ RUN set -eux; \
     uv pip install --python /opt/mnemosyne-venv/bin/python "mcp==1.26.0"; \
     ln -sf /opt/mnemosyne-venv/bin/mnemosyne /usr/local/bin/mnemosyne; \
     chmod -R a+rX /opt/uv-python /opt/mnemosyne-venv; \
-    gosu hermes /usr/local/bin/mnemosyne --help >/dev/null; \
-    apt-get purge -y build-essential cmake; apt-get autoremove -y; \
+    /command/s6-setuidgid hermes /usr/local/bin/mnemosyne --help >/dev/null; \
     rm -rf /var/lib/apt/lists/*
 
 # Bake the Mnemosyne MCP registration into Hermes's default config example so
@@ -75,13 +80,17 @@ RUN set -eux; \
 RUN printf '\n# HER-XXX — Mnemosyne memory MCP server (baked default)\nmcp_servers:\n  mnemosyne:\n    command: mnemosyne\n    args: ["mcp"]\n    env:\n      MNEMOSYNE_DATA_DIR: /opt/data/mnemosyne\n      FASTEMBED_CACHE_PATH: /opt/data/mnemosyne/cache\n' >> /opt/hermes/cli-config.yaml.example
 
 # Baked layout — read-only inside the container. The runtime path
-# (`/opt/data/skills/`) is populated by the entrypoint on each start.
+# (`/opt/data/skills/`) is populated by the cont-init step on each start.
 COPY Sources/App/Resources/HermesSkills/ /opt/baked-skills/
 
-# Idempotent seed: no-clobber copy preserves user-edited skill files
-# under the bind-mounted `/opt/data` volume.
-COPY docker/hermes-entrypoint.sh /usr/local/bin/hermes-entrypoint.sh
-RUN chmod +x /usr/local/bin/hermes-entrypoint.sh
+# Seed the baked skills, the Mnemosyne store and the profiles dir on each
+# start. The base image runs everything under s6-overlay: /init is PID 1,
+# /etc/cont-init.d/* run as root in order, then services drop to `hermes`.
+# `03-` sorts after the base image's 01-hermes-setup (which chowns the
+# volume) and 015/02, so this sees the volume already prepared.
+#
+# No ENTRYPOINT override: the base's `/init main-wrapper.sh` receives CMD
+# (`gateway run`) and runs `hermes gateway run` as the hermes user.
+COPY --chmod=0755 docker/hermes-cont-init.sh /etc/cont-init.d/03-luminavault-seed
 
-ENTRYPOINT ["/usr/local/bin/hermes-entrypoint.sh"]
 CMD ["gateway", "run"]

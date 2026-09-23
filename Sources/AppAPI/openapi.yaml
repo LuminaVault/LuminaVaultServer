@@ -2530,6 +2530,16 @@ paths:
         `seq > after` are replayed first, so a client reconnecting with the
         `lastSeq` it already holds loses nothing and sees nothing twice. The
         stream closes once the run is terminal and fully drained.
+
+        Terminal output. On a Hermes with LuminaVaultHermesAgent#14, the
+        `terminal` tool's events carry extra payload fields, relayed verbatim:
+        `tool.started` has `command` and `background`; `tool.completed` has
+        `output` (the last 16k characters), `exit_code` and
+        `output_truncated`. A background process the run started streams
+        `terminal.output` events with `process_id` and `chunk`, coalesced by
+        Hermes, and one final `truncated: true` once the run's 256k-character
+        budget is spent. All of it is redacted upstream. An older Hermes sends
+        none of these, so a client renders the tool row alone.
       parameters:
         - name: after
           in: query
@@ -3213,7 +3223,12 @@ paths:
         '400':
           description: |
             Validation error in `message`:
-            `primary_model_required` / `fallback_model_required`.
+            `primary_model_required` / `fallback_model_required`, or
+            `primary_model_placeholder` / `fallback_model_placeholder` when a
+            BYOK save carries what a managed read shows in place of a model
+            (the brain label, or `openRouter/auto`). A BYOK primary carrying it
+            keeps the user's stored BYOK model on the same provider instead,
+            when there is one; the managed model is never substituted.
 
   # ─────────────── Cerberus Router ─────────────────
 
@@ -3243,6 +3258,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '400':
+          description: |
+            Validation failed. `router_placeholder_route` means a BYOK save
+            carried the `openRouter/auto` placeholder that this API shows in
+            place of a managed profile's routes, and the tenant has no saved
+            BYOK model to put in its place. When one is saved, the placeholder
+            is replaced by that primary and its fallbacks instead.
 
   /v1/router/{id}:
     parameters:
@@ -3265,6 +3287,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RouterProfileDTO' }
+        '400':
+          description: |
+            Validation failed. `router_placeholder_route` means a BYOK save
+            carried the `openRouter/auto` placeholder that this API shows in
+            place of a managed profile's routes, and the tenant has no saved
+            BYOK model to put in its place. When one is saved, the placeholder
+            is replaced by that primary and its fallbacks instead.
         '409': { description: Revision conflict or attempt to delete the default profile. }
     delete:
       tags: [LLM]
@@ -3772,6 +3801,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UpstreamError'
+        '503':
+          description: |
+            The free fallback lane was the only route open to this caller and
+            none of its providers is configured (`free_lane_unavailable`). This
+            is not exhaustion: no allowance was spent and nothing resets, so
+            there is no `Retry-After` and no `retryAfterSeconds`. `cta` holds
+            only the actions that would work for this caller: `upgrade` for
+            free and lapsed accounts, `switch_to_managed` for paying accounts
+            in BYOK mode, and `add_key` always. On the streaming endpoints the
+            same condition arrives as an SSE `error` event carrying `message`
+            only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredAPIErrorEnvelope'
+              examples:
+                freeLaneUnavailable:
+                  value:
+                    error:
+                      code: free_lane_unavailable
+                      message: Free messages are unavailable right now. Add your own API key in Settings to keep going.
+                      cta: [upgrade, add_key]
         '504':
           description: LLM upstream timed out. Safe to retry once after retry_after_ms.
           content:
@@ -6463,24 +6514,12 @@ paths:
         browser session (ASWebAuthenticationSession, scheme `luminavault`).
         Google redirects to the server callback, which exchanges the code and
         hands back to the app via `luminavault://oauth/google-calendar`.
-
-        A web client passes `returnTo`, the page to land back on. It must be
-        on the server's `cors.allowedOrigins`; the callback then redirects
-        there with `status=ok` or `status=error&reason=…` appended.
-      parameters:
-        - in: query
-          name: returnTo
-          required: false
-          description: Web only. Absolute URL on an allowed web origin.
-          schema: { type: string, format: uri }
       responses:
         '200':
           description: Consent URL to open.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CalendarConnectStartResponse' }
-        '400':
-          description: '`returnTo` is not on an allowed web origin.'
         '503':
           description: Google Calendar not configured on this server.
           content:
@@ -7730,11 +7769,14 @@ components:
           description: |
             Optional recovery actions for clients. `upgrade` accompanies
             `free_lane_exhausted` and `usage_cap_exceeded`; `add_key` /
-            `switch_to_managed` accompany `byok_keys_required`.
+            `switch_to_managed` accompany `byok_keys_required`. On
+            `free_lane_unavailable` the set depends on the caller's tier and
+            mode, so render whatever is present.
         retryAfterSeconds:
           type: integer
           description: |
-            Present on `free_lane_exhausted` and `usage_cap_exceeded`. Seconds
+            Present on `free_lane_exhausted` and `usage_cap_exceeded`, never on
+            `free_lane_unavailable`. Seconds
             until the daily allowance resets (UTC midnight). Mirrors the
             `Retry-After` header.
 

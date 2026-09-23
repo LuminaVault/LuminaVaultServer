@@ -60,6 +60,9 @@ struct JobAuthoring {
         // Enable it + record domain/space for filing (P4), Jobs grouping, and
         // one-shot fire time. ON CONFLICT also resets run_at so re-authoring a
         // recurring job clears any prior one-shot schedule.
+        // `database` is the caller's transaction when there is one: taking a
+        // second pooled connection while the caller holds the first can wait
+        // out the pool timeout when both land on the same event loop.
         if let sql = (database ?? fluent.db()) as? any SQLDatabase {
             try await sql.raw("""
             INSERT INTO skills_state (tenant_id, source, name, enabled, domain, space_id, run_at)
