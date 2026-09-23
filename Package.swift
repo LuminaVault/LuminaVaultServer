@@ -22,7 +22,9 @@ let package = Package(
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.8.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
         // v5.14.0 — Hermes artifacts gallery DTOs and `HermesMirrorSyncScope.artifacts`.
-        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "5.20.0"),
+        // v5.21.0 — `ConversationMessageDTO.origin`/`sourceLabel` (proactive
+        // messages), `GmailStatusResponse`, `LastKnownLocationResponse`.
+        .package(url: "https://github.com/LuminaVault/LuminaVaultShared.git", from: "5.21.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/apple/swift-metrics.git", "1.0.0" ..< "3.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.4.1"),
