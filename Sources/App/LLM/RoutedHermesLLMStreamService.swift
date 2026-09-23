@@ -118,8 +118,37 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
                     continuation.finish()
                 } else {
                     // Managed: Cerberus picks the per-turn OpenRouter model;
-                    // the gateway call itself is unchanged.
-                    let managedRoute = try await managedAutoRequest(request)
+                    // the gateway call itself is unchanged — unless the router
+                    // put this turn on the free lane.
+                    let managedRoute: ManagedAutoRoute?
+                    switch try await managedAutoRequest(request) {
+                    case let .freeLane(decision):
+                        if let preflight = decision.cerberus?.preflightError() {
+                            throw preflight
+                        }
+                        // Fail closed rather than fall back to the gateway: a
+                        // transport that cannot execute the lane's decision
+                        // must not quietly turn a free turn into a paid one.
+                        guard let routed = transport as? any DecidedStreamTransport else {
+                            throw UpstreamErrorResponse(
+                                reasonCode: "free_lane_unroutable",
+                                userMessage: "Free messages are unavailable right now. Add your own API key in Settings, or upgrade."
+                            )
+                        }
+                        let payload = try Self.makeOpenAIPayload(model: decision.primary.modelID, request: request)
+                        for try await chunk in routed.chatStream(
+                            payload: payload,
+                            sessionKey: sessionKey,
+                            sessionID: sessionID,
+                            decision: decision
+                        ) {
+                            continuation.yield(chunk)
+                        }
+                        continuation.finish()
+                        return
+                    case let .gateway(route):
+                        managedRoute = route
+                    }
                     let started = DispatchTime.now().uptimeNanoseconds
                     var outputCharacters = 0
                     do {
@@ -169,11 +198,28 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
         let modelID: String
     }
 
-    private func managedAutoRequest(_ request: ChatRequest) async throws -> ManagedAutoRoute? {
-        guard let router else { return nil }
+    /// What the managed branch should do with this turn.
+    private enum ManagedPlan {
+        /// Stream through the managed gateway, optionally with a Cerberus Auto
+        /// pick. `nil` keeps the deployment default model.
+        case gateway(ManagedAutoRoute?)
+        /// The router put this turn on the free lane. It must be executed as
+        /// decided, by the routed transport — never by the paid gateway.
+        case freeLane(RouteDecision)
+    }
+
+    private func managedAutoRequest(_ request: ChatRequest) async throws -> ManagedPlan {
+        guard let router else { return .gateway(nil) }
         let prompt = request.messages.last { $0.role == "user" }?.content ?? ""
         let decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
             await router.pick(forModel: nil, capability: .high, user: LLMRoutingContext.currentUser)
+        }
+        // A lane decision is `locked`, so the Auto guard below rejects it. This
+        // function used to answer "use the gateway" for it, which served a
+        // free-tier turn on the platform's paid key — after the pick above had
+        // already charged the lane for it — and never checked exhaustion.
+        if decision.cerberus?.isFreeLane == true {
+            return .freeLane(decision)
         }
         guard let cerberus = decision.cerberus,
               // Gateway rides the platform's system key — never spend it for
@@ -185,7 +231,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
               // Managed Auto decisions are mapped onto the gateway route with
               // the picked OpenRouter model id (see CerberusModelRouter).
               decision.primary.provider == .hermesGateway || decision.primary.provider == .openRouter
-        else { return nil }
+        else { return .gateway(nil) }
         guard !cerberus.budgetDenied else { throw UsageCapExceededError(retryAfter: 3600) }
 
         logger.info("managed stream auto-routed", metadata: [
@@ -219,7 +265,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             complexity: cerberus.complexity,
             taskType: cerberus.taskType
         ))
-        return ManagedAutoRoute(
+        return .gateway(ManagedAutoRoute(
             request: ChatRequest(
                 messages: request.messages,
                 model: decision.primary.modelID,
@@ -233,7 +279,7 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
             prompt: prompt,
             provider: .openRouter,
             modelID: decision.primary.modelID
-        )
+        ))
     }
 
     private func completeManagedAutoRoute(

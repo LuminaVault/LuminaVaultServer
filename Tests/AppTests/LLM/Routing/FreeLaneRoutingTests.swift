@@ -104,6 +104,63 @@ struct FreeLaneRoutingTests {
         try await user.save(on: fluent.db())
     }
 
+    // MARK: - Streaming: one message, one grant
+
+    /// The property that matters most, end to end through the real router and
+    /// the real gate: each streamed message costs exactly one lane grant, and
+    /// the lane — not the paid gateway — serves it.
+    ///
+    /// With an allowance of one, turn 1 must stream and turn 2 must be refused.
+    /// Both ways of getting this wrong fail here. The old bypass served turn 1
+    /// on the managed gateway (the failing fallback below throws). A double
+    /// claim — the stream service picking, then the transport picking again —
+    /// would spend the only grant on the first pick and refuse turn 1 itself.
+    @Test
+    func `each streamed message claims exactly one free-lane grant`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.stream.oneclaim") { fluent in
+            let user = Self.makeUser(tier: "lapsed")
+            try await Self.prepare(fluent, user: user)
+            let logger = Logger(label: "test.freelane.stream")
+
+            let router = Self.router(fluent: fluent, freeLane: Self.runtime(fluent: fluent, perUser: 1))
+            let lane = RoutedLLMTransportStreamingTests.LaneStubAdapter(kind: .openRouter)
+            let reserve = RoutedLLMTransportStreamingTests.LaneStubAdapter(kind: .nvidia)
+            let transport = RoutedLLMTransport(
+                registry: ProviderRegistry(adapters: [lane, reserve], logger: logger),
+                router: router,
+                currentUser: { user },
+                logger: logger
+            )
+            let service = RoutedHermesLLMStreamService(
+                fallback: RoutedLLMTransportStreamingTests.FailingManagedFallback(),
+                transport: transport,
+                preferences: UserLLMPreferenceRepository(fluent: fluent, logger: logger),
+                logger: logger,
+                router: router
+            )
+            let tenant = try user.requireID().uuidString
+            let request = ChatRequest(messages: [ChatMessage(role: "user", content: "Hello")], model: nil)
+
+            func turn() async throws -> String {
+                try await LLMRoutingContext.withValues({ $0.currentUser = user }) {
+                    var text = ""
+                    for try await chunk in service.chatStream(sessionKey: tenant, sessionID: "c1", request: request) {
+                        text += chunk.delta
+                    }
+                    return text
+                }
+            }
+
+            #expect(try await turn() == "free reply")
+            #expect(await lane.calls.count == 1)
+
+            await #expect(throws: FreeLaneExhaustedError.self) {
+                _ = try await turn()
+            }
+            #expect(await lane.calls.count == 1, "the refused turn must not have been dispatched")
+        }
+    }
+
     // MARK: - The forced lane
 
     @Test
@@ -259,13 +316,51 @@ struct FreeLaneRoutingTests {
         }
     }
 
-    /// Both legs unfunded is exhaustion, not a silent fall-through to the
-    /// gateway — that fall-through is the bug this whole change removes.
+    /// Both legs unfunded is not a silent fall-through to the gateway — that
+    /// fall-through is the bug the lane exists to remove. Nor is it
+    /// exhaustion, which is what it used to report: the user was told they had
+    /// "used today's free messages" when no free provider was configured at
+    /// all and they had used none. It is unavailability, it charges nothing,
+    /// and it offers the ways out that are real for this user.
     @Test
-    func `no funded leg is exhaustion rather than a gateway fallback`() async throws {
+    func `no funded leg is unavailability rather than a gateway fallback`() async throws {
         try await withTestFluent(label: "lv.test.freelane.route.nolegs") { fluent in
             let user = Self.makeUser(tier: "lapsed")
             try await Self.prepare(fluent, user: user)
+
+            let runtime = Self.runtime(fluent: fluent, perUser: 5)
+            let router = Self.router(
+                fluent: fluent,
+                freeLane: runtime,
+                openRouterEnabled: false,
+                nvidiaEnabled: false
+            )
+            let decision = await router.pick(forModel: nil, capability: .medium, user: user)
+
+            #expect(decision.cerberus?.freeLaneUnavailable == true)
+            #expect(decision.cerberus?.freeLaneExhausted == false)
+            #expect(decision.fallbacks.isEmpty)
+            #expect(try await runtime.gate.remainingToday(tenantID: user.requireID()) == 5, "no grant may be charged")
+            // A lapsed user can pay or bring a key; both are real ways out.
+            #expect(decision.cerberus?.freeLaneActions == ["upgrade", "add_key"])
+        }
+    }
+
+    /// An entitled user who picked BYOK and stored no key reaches the lane by
+    /// rule 2b. Telling them to upgrade would be wrong — they already pay — but
+    /// managed inference is available to them, so that is the offer.
+    @Test
+    func `an unavailable lane offers a paying byok user managed, not an upgrade`() async throws {
+        try await withTestFluent(label: "lv.test.freelane.route.nolegs.pro") { fluent in
+            let user = Self.makeUser(tier: "pro")
+            try await Self.prepare(fluent, user: user)
+            let preference = UserLLMPreference()
+            preference.tenantID = try user.requireID()
+            preference.mode = "byok"
+            preference.primaryProvider = "anthropic"
+            preference.primaryModel = "claude-opus-4-7"
+            preference.fallbackChain = .init(steps: [])
+            try await preference.save(on: fluent.db())
 
             let router = Self.router(
                 fluent: fluent,
@@ -275,8 +370,8 @@ struct FreeLaneRoutingTests {
             )
             let decision = await router.pick(forModel: nil, capability: .medium, user: user)
 
-            #expect(decision.cerberus?.freeLaneExhausted == true)
-            #expect(decision.fallbacks.isEmpty)
+            #expect(decision.cerberus?.freeLaneUnavailable == true)
+            #expect(decision.cerberus?.freeLaneActions == ["add_key", "switch_to_managed"])
         }
     }
 

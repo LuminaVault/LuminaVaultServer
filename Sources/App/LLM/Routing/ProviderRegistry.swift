@@ -112,7 +112,7 @@ actor ProviderRegistry: Service {
         try await gracefulShutdown()
     }
 
-    private static func loadConfigs(from reader: ConfigReader) -> [ProviderConfig] {
+    static func loadConfigs(from reader: ConfigReader) -> [ProviderConfig] {
         [
             loadConfig(kind: .anthropic, key: "anthropic", reader: reader),
             loadConfig(kind: .openai, key: "openai", reader: reader),
