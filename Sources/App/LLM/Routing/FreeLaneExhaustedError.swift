@@ -9,8 +9,13 @@ import Hummingbird
 /// the rest of the routing layer uses.
 ///
 /// 429 rather than 402: the allowance resets, so this is rate limiting, not
-/// payment required. The two CTAs are the two real ways out — pay us, or bring
-/// a key and stop being rate limited at all.
+/// payment required.
+///
+/// The CTAs and the sentence both come from `actions`, which the router
+/// decides from the caller's tier and mode (`FreeLanePolicy.recoveryActions`).
+/// A free or lapsed user can pay or bring a key. A paying user reaches the
+/// lane only by choosing BYOK without a key, or during an outage, and telling
+/// them to upgrade would name something they already have.
 ///
 /// The message deliberately names no model or provider: the free lane runs as
 /// managed mode, and `ModelDisclosurePolicy` hides model identity for managed
@@ -18,8 +23,18 @@ import Hummingbird
 struct FreeLaneExhaustedError: Error, Equatable, HTTPResponseError {
     let reasonCode = "free_lane_exhausted"
     let retryAfterSeconds: Int
-    let userMessage =
-        "You've used today's free messages. Upgrade for the full brain, or add your own API key in Settings to keep going now."
+    var actions: [String] = ["upgrade", "add_key"]
+
+    var userMessage: String {
+        let spent = "You've used today's free messages."
+        if actions.contains("upgrade") {
+            return "\(spent) Upgrade for the full brain, or add your own API key in Settings to keep going now."
+        }
+        if actions.contains("switch_to_managed") {
+            return "\(spent) Switch to Managed, or add your own API key in Settings to keep going now."
+        }
+        return "\(spent) Add your own API key in Settings to keep going now."
+    }
 
     var status: HTTPResponse.Status {
         .tooManyRequests
@@ -30,7 +45,7 @@ struct FreeLaneExhaustedError: Error, Equatable, HTTPResponseError {
             "error": [
                 "code": reasonCode,
                 "message": userMessage,
-                "cta": ["upgrade", "add_key"],
+                "cta": actions,
                 "retryAfterSeconds": retryAfterSeconds,
             ],
         ]

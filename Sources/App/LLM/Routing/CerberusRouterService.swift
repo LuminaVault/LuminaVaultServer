@@ -153,7 +153,13 @@ extension CerberusDecisionMetadata {
             return FreeLaneUnavailableError(actions: freeLaneActions)
         }
         if freeLaneExhausted {
-            return FreeLaneExhaustedError(retryAfterSeconds: freeLaneRetryAfterSeconds)
+            // A lane decision always carries its actions; an empty list means a
+            // decision built elsewhere, which keeps the historical offer.
+            let exhausted = FreeLaneExhaustedError(retryAfterSeconds: freeLaneRetryAfterSeconds)
+            return freeLaneActions.isEmpty ? exhausted : FreeLaneExhaustedError(
+                retryAfterSeconds: freeLaneRetryAfterSeconds,
+                actions: freeLaneActions
+            )
         }
         if budgetDenied {
             return UsageCapExceededError(retryAfter: 3600)
