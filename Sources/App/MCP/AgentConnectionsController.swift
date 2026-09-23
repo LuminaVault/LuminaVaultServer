@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 /// `/v1/me/agent-connections` — issue, list, preview, revoke the
 /// personal tokens an outside agent uses on `/v1/mcp`.

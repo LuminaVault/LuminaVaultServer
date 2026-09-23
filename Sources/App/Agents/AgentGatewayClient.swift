@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Foundation
 import Logging
+import LuminaVaultShared
 import NIOCore
 import NIOHTTP1
 

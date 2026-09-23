@@ -4,6 +4,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
 /// Issues and authenticates the per-user bearer tokens that let an
 /// outside agent (Claude Code, Codex, Hermes, any MCP client) act as

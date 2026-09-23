@@ -306,6 +306,11 @@ struct ConversationE2ETests {
                 let message = try #require(errors.first, "the stream carried no error event")
                 #expect(message != "upstream failure")
                 #expect(message.isEmpty == false)
+                // The ways out travel with it, so a client can offer them as
+                // buttons: this trial user can add a key or use managed.
+                let frame = try #require(Self.sseErrorFrames(in: String(buffer: resp.body)).first)
+                #expect(frame["code"] as? String == "free_lane_unavailable")
+                #expect(frame["cta"] as? [String] == ["add_key", "switch_to_managed"])
             }
         }
     }
@@ -346,21 +351,29 @@ struct ConversationE2ETests {
                 let errors = Self.sseErrorMessages(in: String(buffer: resp.body))
                 let message = try #require(errors.first, "the stream carried no error event")
                 #expect(message == FreeLaneUnavailableError(actions: []).userMessage)
+                let frame = try #require(Self.sseErrorFrames(in: String(buffer: resp.body)).first)
+                #expect(frame["code"] as? String == "free_lane_unavailable")
+                #expect(frame["cta"] as? [String] == ["upgrade", "add_key"])
             }
         }
     }
 
     /// The `error` payloads of an SSE body, in order.
     private static func sseErrorMessages(in body: String) -> [String] {
+        sseErrorFrames(in: body).compactMap { $0["payload"] as? String }
+    }
+
+    /// The whole `error` frames of an SSE body, in order.
+    private static func sseErrorFrames(in body: String) -> [[String: Any]] {
         body.components(separatedBy: "\n")
             .filter { $0.hasPrefix("data:") }
-            .compactMap { line -> String? in
+            .compactMap { line -> [String: Any]? in
                 let json = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
                 guard let data = json.data(using: .utf8),
                       let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       event["type"] as? String == "error"
                 else { return nil }
-                return event["payload"] as? String
+                return event
             }
     }
 

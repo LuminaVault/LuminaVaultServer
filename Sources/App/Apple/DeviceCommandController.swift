@@ -35,7 +35,4 @@ struct DeviceCommandController {
     }
 }
 
-/// Local copy until LuminaVaultShared ships it (see `AgentConnectionDTOs.swift`).
-struct PendingDeviceCommandsResponse: Codable, Sendable, ResponseEncodable {
-    let commands: [DeviceCommand]
-}
+extension PendingDeviceCommandsResponse: @retroactive ResponseEncodable {}

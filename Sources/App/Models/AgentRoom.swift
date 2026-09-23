@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 /// A thread where the user and several of their agents talk.
 final class AgentRoom: Model, TenantModel, @unchecked Sendable {

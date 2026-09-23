@@ -109,7 +109,7 @@ enum ModelDisclosurePolicy {
                 errorCode: progress.errorCode,
                 status: progress.status
             ))
-        case .source, .token, .summary, .followUps, .done, .error, .linkSaved:
+        case .source, .token, .summary, .followUps, .done, .error, .errorDetail, .linkSaved:
             return event
         // The run pointer carries a run id, a Hermes session id, a cursor and
         // a timestamp — no provider, no model, no route. Nothing to scrub.

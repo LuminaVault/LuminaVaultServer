@@ -1,6 +1,7 @@
 @testable import App
 import Foundation
 import Hummingbird
+import LuminaVaultShared
 import Testing
 
 /// Who speaks next in an agent room.

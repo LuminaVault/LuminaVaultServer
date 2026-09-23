@@ -51,4 +51,8 @@ struct FreeLaneUnavailableError: Error, Equatable, HTTPResponseError {
     }
 }
 
-extension FreeLaneUnavailableError: UserFacingError {}
+extension FreeLaneUnavailableError: UserFacingError {
+    var recoveryActions: [String] {
+        actions
+    }
+}

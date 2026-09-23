@@ -51,11 +51,15 @@ struct UsageCapExceededError: Error, Equatable, HTTPResponseError {
             "error": [
                 "code": reasonCode,
                 "message": userMessage,
-                "cta": ["upgrade", "add_key"],
+                "cta": recoveryActions,
                 "retryAfterSeconds": retryAfterSeconds,
             ],
         ]
         return (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()
+    }
+
+    var recoveryActions: [String] {
+        ["upgrade", "add_key"]
     }
 
     func response(from _: Request, context _: some RequestContext) throws -> Response {

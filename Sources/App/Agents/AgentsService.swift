@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import SQLKit
 
 /// One list of a user's agents and their sessions, wherever they run.

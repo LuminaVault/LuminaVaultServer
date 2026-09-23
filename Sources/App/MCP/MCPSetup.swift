@@ -1,4 +1,5 @@
 import Foundation
+import LuminaVaultShared
 
 /// Setup snippets a user pastes into Claude Code, Codex, Hermes, or a
 /// generic MCP client. Same contract as North's `connections.Setup`:
