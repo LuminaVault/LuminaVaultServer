@@ -44,7 +44,12 @@ struct RouterController {
     func create(_ req: Request, ctx: AppRequestContext) async throws -> RouterProfileDTO {
         let user = try ctx.requireIdentity()
         guard Self.isProOrUltimate(user) else { throw HTTPError(.forbidden, message: "router_custom_profile_requires_pro") }
-        let body = try await req.decode(as: RouterProfileWriteRequest.self, context: ctx)
+        // Substitution runs before validation: splicing in a saved chain can
+        // change the route count an ensemble is validated against.
+        let body = try await resolvingPlaceholders(
+            req.decode(as: RouterProfileWriteRequest.self, context: ctx),
+            tenantID: user.requireID()
+        )
         try Self.validate(body, user: user, ensemblesEnabled: ensemblesEnabled)
         try await validateAutoPolicy(body, tenantID: user.requireID())
         let profile = try await repository.create(tenantID: user.requireID(), request: body)
@@ -55,7 +60,12 @@ struct RouterController {
     func update(_ req: Request, ctx: AppRequestContext) async throws -> RouterProfileDTO {
         let user = try ctx.requireIdentity()
         let id = try Self.pathID(ctx, name: "id")
-        let body = try await req.decode(as: RouterProfileWriteRequest.self, context: ctx)
+        // Substitution runs before validation: splicing in a saved chain can
+        // change the route count an ensemble is validated against.
+        let body = try await resolvingPlaceholders(
+            req.decode(as: RouterProfileWriteRequest.self, context: ctx),
+            tenantID: user.requireID()
+        )
         try Self.validate(body, user: user, ensemblesEnabled: ensemblesEnabled)
         try await validateAutoPolicy(body, tenantID: user.requireID())
         do {
@@ -181,6 +191,17 @@ struct RouterController {
     /// Auto (Smart) is OpenRouter-only. Managed profiles ride the shared
     /// gateway's system key; BYOK profiles must hold their own OpenRouter
     /// credential before `autoSmart` can be saved.
+    private func resolvingPlaceholders(
+        _ body: RouterProfileWriteRequest,
+        tenantID: UUID
+    ) async throws -> RouterProfileWriteRequest {
+        do {
+            return try await repository.resolvingPlaceholders(tenantID: tenantID, request: body)
+        } catch RouterProfileRepositoryError.placeholderRoute {
+            throw HTTPError(.badRequest, message: "router_placeholder_route")
+        }
+    }
+
     private func validateAutoPolicy(_ body: RouterProfileWriteRequest, tenantID: UUID) async throws {
         guard body.routingPolicy == .autoSmart, body.mode == .byok, let credentials else { return }
         let credential = try? await credentials.credential(for: .openRouter, tenantID: tenantID)

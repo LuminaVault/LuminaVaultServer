@@ -145,6 +145,36 @@ actor RouterProfileRepository {
         return try await ensureDefault(tenantID: tenantID)
     }
 
+    /// Replaces the managed placeholder in a BYOK save with the tenant's saved
+    /// BYOK chain, or refuses the save when there is none. See
+    /// `RouterPlaceholderRoutes`.
+    func resolvingPlaceholders(
+        tenantID: UUID,
+        request: RouterProfileWriteRequest
+    ) async throws -> RouterProfileWriteRequest {
+        try await RouterPlaceholderRoutes.substitute(in: request, chain: savedByokChain(tenantID: tenantID))
+    }
+
+    /// The tenant's saved BYOK primary and fallbacks, or empty when they have
+    /// no BYOK preference with a real model in it.
+    private func savedByokChain(tenantID: UUID) async throws -> [RouterModelRouteDTO] {
+        guard let saved = try await legacyPreferences.get(tenantID: tenantID),
+              saved.mode == .byok,
+              let provider = saved.primaryProvider.toShared()
+        else { return [] }
+        let primary = RouterModelRouteDTO(provider: provider, model: saved.primaryModel)
+        let fallbacks = saved.fallbackChain.compactMap { step in
+            step.provider.toShared().map { RouterModelRouteDTO(provider: $0, model: step.model) }
+        }
+        // A saved model that is itself the placeholder or the label is no
+        // better than none.
+        return ([primary] + fallbacks).filter { route in
+            !route.model.isEmpty
+                && route.model != ModelDisclosurePolicy.genericBrainName
+                && !ModelDisclosurePolicy.isPlaceholder(route)
+        }
+    }
+
     /// Keeps the profile bound at user scope aligned with the brain-mode
     /// preference. This closes the gap where a managed preference could still
     /// execute a stale BYOK/Cerberus profile (or vice versa).
@@ -337,8 +367,9 @@ actor RouterProfileRepository {
     }
 }
 
-enum RouterProfileRepositoryError: Error {
+enum RouterProfileRepositoryError: Error, Equatable {
     case revisionConflict
     case cannotDeleteDefault
     case profileNotFound
+    case placeholderRoute
 }
