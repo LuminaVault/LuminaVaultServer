@@ -58,18 +58,14 @@ struct CalendarController {
     }
 
     @Sendable
-    func connect(_ req: Request, ctx: AppRequestContext) async throws -> CalendarConnectStartResponse {
+    func connect(_: Request, ctx: AppRequestContext) async throws -> CalendarConnectStartResponse {
         let tenantID = try ctx.requireTenantID()
-        // `?returnTo=` — web clients: the page Google should land back on.
-        let returnTo = req.uri.queryParameters["returnTo"].map(String.init)
         do {
-            let url = try await oauthService.start(tenantID: tenantID, returnTo: returnTo)
+            let url = try await oauthService.start(tenantID: tenantID)
             PostHogAnalytics.capture("calendar_connected")
             return CalendarConnectStartResponse(authorizeURL: url)
         } catch GoogleCalendarOAuthService.Error.notConfigured {
             throw HTTPError(.serviceUnavailable, message: "Google Calendar is not configured on this server")
-        } catch GoogleCalendarOAuthService.Error.invalidReturn {
-            throw HTTPError(.badRequest, message: "invalid_return_to")
         }
     }
 
