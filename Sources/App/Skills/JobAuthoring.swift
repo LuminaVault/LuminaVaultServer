@@ -17,12 +17,15 @@ struct JobAuthoring {
     /// Validates the cron, writes the skill file, and enables it. Returns the
     /// created slug. Idempotent per title (slug derives from title; the
     /// `skills_state` upsert re-enables on conflict).
-    /// Pass `database` when calling from inside a transaction, so the
-    /// `skills_state` row commits (or rolls back) with it.
     /// Authors a job. Exactly one of `cron` (recurring) or `runAt` (one-shot,
     /// #10) must be supplied. Recurring jobs carry the cron in SKILL.md
     /// frontmatter; one-shot jobs omit `schedule` and store `run_at` on
     /// `skills_state` (the scheduler fires once then disables the row).
+    ///
+    /// `database` is the connection to write `skills_state` on. A caller that
+    /// is already inside a transaction must pass it: taking a second pooled
+    /// connection there can wait on the one the transaction holds, and the
+    /// write would land outside the transaction it belongs to.
     @discardableResult
     func author(
         tenantID: UUID,
