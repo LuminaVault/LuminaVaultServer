@@ -21,6 +21,11 @@ struct JobAuthoring {
     /// #10) must be supplied. Recurring jobs carry the cron in SKILL.md
     /// frontmatter; one-shot jobs omit `schedule` and store `run_at` on
     /// `skills_state` (the scheduler fires once then disables the row).
+    ///
+    /// `database` is the connection to write `skills_state` on. A caller that
+    /// is already inside a transaction must pass it: taking a second pooled
+    /// connection there can wait on the one the transaction holds, and the
+    /// write would land outside the transaction it belongs to.
     @discardableResult
     func author(
         tenantID: UUID,
@@ -29,7 +34,8 @@ struct JobAuthoring {
         runAt: Date? = nil,
         domain: String?,
         spec: String,
-        spaceID: UUID?
+        spaceID: UUID?,
+        on database: (any Database)? = nil
     ) async throws -> String {
         switch (cron, runAt) {
         case let (cron?, nil):
@@ -54,7 +60,7 @@ struct JobAuthoring {
         // Enable it + record domain/space for filing (P4), Jobs grouping, and
         // one-shot fire time. ON CONFLICT also resets run_at so re-authoring a
         // recurring job clears any prior one-shot schedule.
-        if let sql = fluent.db() as? any SQLDatabase {
+        if let sql = (database ?? fluent.db()) as? any SQLDatabase {
             try await sql.raw("""
             INSERT INTO skills_state (tenant_id, source, name, enabled, domain, space_id, run_at)
             VALUES (\(bind: tenantID), 'vault', \(bind: slug), TRUE, \(bind: domain), \(bind: spaceID), \(bind: runAt))

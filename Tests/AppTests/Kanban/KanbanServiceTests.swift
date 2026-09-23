@@ -6,6 +6,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import NIOPosix
 import SQLKit
 import Testing
 
@@ -19,9 +20,10 @@ import Testing
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct KanbanServiceTests {
     private static func withFluent<T: Sendable>(
+        eventLoopGroupProvider: EventLoopGroupProvider = .singleton,
         _ body: @Sendable (Fluent) async throws -> T
     ) async throws -> T {
-        let fluent = try await makeFluent()
+        let fluent = try await makeFluent(eventLoopGroupProvider: eventLoopGroupProvider)
         do {
             let result = try await body(fluent)
             try await fluent.shutdown()
@@ -33,9 +35,11 @@ struct KanbanServiceTests {
         }
     }
 
-    private static func makeFluent() async throws -> Fluent {
+    private static func makeFluent(
+        eventLoopGroupProvider: EventLoopGroupProvider = .singleton
+    ) async throws -> Fluent {
         let logger = Logger(label: "test.kanban")
-        let fluent = Fluent(logger: logger)
+        let fluent = Fluent(eventLoopGroupProvider: eventLoopGroupProvider, logger: logger)
         fluent.databases.use(
             .postgres(configuration: TestPostgres.configuration()),
             as: .psql
@@ -323,6 +327,39 @@ struct KanbanServiceTests {
             #expect(reloaded.extra?.job?.jobSlug == promoted.slug)
             #expect(reloaded.extra?.job?.promotedAt != nil)
         }
+    }
+
+    /// Promotion runs in one transaction, and authoring the job used to take a
+    /// second pooled connection for its `skills_state` write. Whenever that
+    /// checkout landed on the event loop whose only connection the transaction
+    /// was holding, it waited for itself until `connectionRequestTimeout` —
+    /// a failure that depended on core count and ordering, and turned CI red.
+    /// A one-thread event loop group has exactly one connection, so the
+    /// deadlock is certain rather than occasional.
+    @Test
+    func `promote completes with a single pooled connection`() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        do {
+            try await Self.withFluent(eventLoopGroupProvider: .shared(group)) { fluent in
+                let tenantID = UUID()
+                try await saveTenant(Self.makeUser(tenantID, "p1\(UUID().uuidString.prefix(4).lowercased())"), on: fluent.db())
+                let (svc, _) = Self.makePromoteService(fluent)
+                let (boardID, columnID) = try await Self.seedBoardColumn(svc, tenantID)
+                let card = try await svc.createCard(
+                    tenantID: tenantID, boardID: boardID, columnID: columnID,
+                    req: CardCreateRequest(columnID: columnID, title: "Single Connection")
+                )
+                card.extra = CardExtra(job: CardJobConfig(cron: "0 9 * * 1", prompt: "Summarize"))
+                try await card.save(on: fluent.db())
+
+                let promoted = try await svc.promoteCard(tenantID: tenantID, cardID: card.requireID())
+                #expect(promoted.alreadyPromoted == false)
+            }
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
+        try await group.shutdownGracefully()
     }
 
     /// Re-promoting a card returns the existing job without re-authoring.
