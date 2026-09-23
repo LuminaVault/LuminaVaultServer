@@ -278,7 +278,7 @@ struct QueryController {
                     // Same rule as the conversation stream. Routing errors
                     // cannot reach this path while it has no router, but it
                     // will once the free lane gates it too.
-                    continuation.yield(.error(StreamErrorMessage.forClient(error)))
+                    continuation.yield(StreamErrorMessage.event(for: error))
                     continuation.finish()
                     return
                 }

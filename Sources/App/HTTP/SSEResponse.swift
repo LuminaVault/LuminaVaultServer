@@ -37,8 +37,9 @@ struct SSEStreamResponse: ResponseGenerator {
                 }
             } catch {
                 // Best-effort error event. If the writer itself is broken
-                // there's nothing useful left to do.
-                if let buf = try? Self.encodeEventLine(.error("\(error)"), encoder: encoder) {
+                // there's nothing useful left to do. Never the raw error: its
+                // description can hold SQL, paths or provider payloads.
+                if let buf = try? Self.encodeEventLine(StreamErrorMessage.event(for: error), encoder: encoder) {
                     try? await writer.write(buf)
                 }
             }

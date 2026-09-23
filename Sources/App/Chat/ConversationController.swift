@@ -885,7 +885,7 @@ struct ConversationController {
                     // missing key — instead of a generic "upstream failure"
                     // the user can't act on. Only errors with no user-facing
                     // message stay generic. See `StreamErrorMessage`.
-                    continuation.yield(.error(StreamErrorMessage.forClient(error)))
+                    continuation.yield(StreamErrorMessage.event(for: error))
                     continuation.finish()
                     return
                 }

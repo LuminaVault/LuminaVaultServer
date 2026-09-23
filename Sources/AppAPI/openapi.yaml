@@ -12243,7 +12243,12 @@ components:
         - `summary` — `string` (final summary, sent after all tokens)
         - `follow_ups` — `array<string>` (server-generated follow-up chips)
         - `done` — no payload (stream terminator)
-        - `error` — `string` (stream-level error; client surfaces and aborts)
+        - `error` — `string` (stream-level error; client surfaces and aborts).
+          When the user can act on it, `code` and `cta` sit beside
+          `payload` — the same code and recovery actions the HTTP
+          `StructuredAPIErrorBody` would carry (e.g. `free_lane_exhausted`,
+          `[add_key, switch_to_managed]`). Clients that ignore them keep the
+          message.
         - `fallback` — `ProviderFallbackNoticeDTO` (HER-252 routing failover)
         - `routing` — `RouterRoutingEventDTO` (Cerberus route/phase)
         - `usage` — `RouterUsageDTO` (prompt-free terminal usage)
@@ -12267,6 +12272,20 @@ components:
           enum: [source, token, summary, follow_ups, done, error, fallback, routing, usage, parallel, link_saved, hermes_run]
         payload:
           description: Case-specific payload; absent for `done`.
+        code:
+          type: string
+          description: |
+            `error` events only, and only when the user can act on the
+            error: its machine reason (e.g. `free_lane_exhausted`,
+            `byok_keys_required`).
+        cta:
+          type: array
+          items:
+            type: string
+            enum: [add_key, switch_to_managed, upgrade]
+          description: |
+            `error` events only, alongside `code`: the recovery actions that
+            are real for this caller. Render the ones you know.
 
     HermesWorkspaceRepoDTO:
       type: object
