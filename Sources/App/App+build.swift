@@ -1373,6 +1373,16 @@ func buildRouter(
             default: FreeLaneCatalog.defaultNvidiaModel
         )
     ) : nil
+    // Boot is synchronous and the registry is an actor, so read the same
+    // configs it was seeded from rather than asking it.
+    let loadedProviders = Set(ProviderRegistry.loadConfigs(from: reader).filter(\.isEnabled).map(\.kind))
+    if let warning = FreeLaneRuntime.startupWarning(
+        enabled: freeLaneEnabled,
+        openRouterEnabled: loadedProviders.contains(.openRouter),
+        nvidiaEnabled: loadedProviders.contains(.nvidia)
+    ) {
+        routingLogger.warning("\(warning)")
+    }
     let cerberusRouter: any ModelRouter = CerberusModelRouter(
         profiles: routerProfileRepo,
         fallback: legacyModelRouter,
@@ -2023,10 +2033,9 @@ func buildRouter(
     captureController.addRoutes(to: captureGroup)
 
     // Query (natural-language semantic search) — protected.
-    // HER-37 — streaming counterpart at POST /v1/query/stream hits the
-    // central Hermes gateway directly (routed/Gemini streaming is out of
-    // scope). Bypasses the routing layer; falls back to non-streaming
-    // `/v1/query` via the existing agent loop.
+    // HER-37 — the raw Hermes gateway stream. Not handed to any controller
+    // directly: it is the managed fallback inside the routed stream service
+    // below, which decides per turn whether the gateway may be used at all.
     // Idle (inter-chunk) timeout for Hermes SSE. Bounds silence between body
     // chunks so a stalled upstream fails fast instead of hanging until the
     // client's request timeout. Tune via HERMES_STREAM_IDLE_TIMEOUT.
@@ -2041,6 +2050,21 @@ func buildRouter(
         apiKey: services.hermesAPIKey,
         streamIdleTimeout: .seconds(hermesStreamIdleSeconds)
     )
+    // The routed stream service: free lane, BYOK, usage budget and managed
+    // Auto routing, falling through to the managed Hermes gateway
+    // (`queryStreamService`) only for turns the router sends there. Both
+    // streaming surfaces use it. `/v1/query/stream` used to take the raw
+    // gateway service directly, so a free-tier query skipped the lane and its
+    // allowance and ran on the platform's paid key, and a BYOK tenant's query
+    // ran on the platform key instead of their own.
+    let conversationStreamService: any HermesLLMStreamService = RoutedHermesLLMStreamService(
+        fallback: queryStreamService,
+        transport: routedTransport,
+        preferences: userLLMPreferenceRepo,
+        logger: Logger(label: "lv.chat.stream.routed"),
+        router: modelRouter,
+        routerTelemetry: routerTelemetry
+    )
     // HER-37 Slice C — single FollowUpGenerator instance shared by the
     // Query + Conversation controllers. Reuses the routed transport so
     // Gemini/Grok/BYO routing applies to the follow-up call too.
@@ -2054,7 +2078,7 @@ func buildRouter(
         achievements: achievementsWorker,
         memories: makeMemoryRepository(),
         embeddings: embeddingService,
-        streamService: queryStreamService,
+        streamService: conversationStreamService,
         followUpGenerator: followUpGenerator,
         defaultModel: services.hermesDefaultModel,
         vaultAccess: vaultAccessService,
@@ -2071,21 +2095,6 @@ func buildRouter(
         // `POST /v1/query/stream` is SSE; see the note on `llmGroup`.
         .add(middleware: InFlightLimitMiddleware(maxConcurrent: streamConcurrencyPerUser))
     queryController.addRoutes(to: queryGroup)
-
-    // Per-tenant BYOK streaming. When a tenant is in BYOK mode with a
-    // native-streaming provider (Gemini today), route the chat stream
-    // straight to their provider; otherwise fall through to the managed
-    // Hermes gateway (`queryStreamService`). Only built when the SecretBox
-    // exists (same gate as the credential store) — without it BYOK keys
-    // can't be decrypted, so we keep the unchanged managed behaviour.
-    let conversationStreamService: any HermesLLMStreamService = RoutedHermesLLMStreamService(
-        fallback: queryStreamService,
-        transport: routedTransport,
-        preferences: userLLMPreferenceRepo,
-        logger: Logger(label: "lv.chat.stream.routed"),
-        router: modelRouter,
-        routerTelemetry: routerTelemetry
-    )
 
     // HER-37 Slice B — multi-turn chat persistence. Reuses the same
     // retrieval pipeline as /v1/query/stream. BYO Hermes middleware is in

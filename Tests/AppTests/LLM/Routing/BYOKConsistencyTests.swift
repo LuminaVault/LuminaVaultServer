@@ -99,12 +99,13 @@ struct BYOKConsistencyTests {
     ///
     /// `FreeLanePolicy` rule 2b diverts the request to the free lane on every
     /// entitled tier instead. In this test environment no platform provider key
-    /// is registered, so the lane has no funded leg and reports exhaustion — a
-    /// 429 with a retry hint, not a 403 telling the user to go add a key. With
+    /// is registered, so the lane has no funded leg and reports that it is
+    /// unavailable — a 503 with ways out, not a 403 telling the user to go add
+    /// a key, and not a 429 claiming an allowance they never used. With
     /// `LLM_PROVIDER_OPEN_ROUTER_API_KEY` present the same request answers
     /// normally off the free lane; see `FreeLaneRoutingTests`.
     @Test
-    func `byok chat without provider keys falls to the free lane, not a 403`() async throws {
+    func `byok chat without provider keys reaches the free lane, not a 403`() async throws {
         let app = try await buildApplication(reader: dbTestReaderWithStubChat())
         try await app.test(.router) { client in
             let token = try await Self.register(client: client)
@@ -127,17 +128,26 @@ struct BYOKConsistencyTests {
                 {"messages":[{"role":"user","content":"Hello"}]}
                 """)
             ) { response in
-                #expect(response.status == .tooManyRequests)
+                // No lane provider is loaded in tests, so the lane cannot
+                // serve this turn. That is unavailability — a 503 with no
+                // reset timer — not "you've used today's free messages".
+                #expect(response.status == .serviceUnavailable)
+                #expect(response.headers[.retryAfter] == nil)
                 let json = try #require(
                     JSONSerialization.jsonObject(with: Data(buffer: response.body)) as? [String: Any]
                 )
                 let error = try #require(json["error"] as? [String: Any])
-                // The dead end this change removed.
+                // The dead end the lane removed.
                 #expect(error["code"] as? String != "byok_keys_required")
-                #expect(error["code"] as? String == "free_lane_exhausted")
+                #expect(error["code"] as? String == "free_lane_unavailable")
+                #expect(error["retryAfterSeconds"] == nil)
                 #expect((error["message"] as? String)?.isEmpty == false)
                 let cta = try #require(error["cta"] as? [String])
                 #expect(cta.contains("add_key"))
+                // A fresh signup is a trial account: entitled to managed, so it
+                // is offered managed rather than an upgrade.
+                #expect(cta.contains("switch_to_managed"))
+                #expect(!cta.contains("upgrade"))
             }
         }
     }

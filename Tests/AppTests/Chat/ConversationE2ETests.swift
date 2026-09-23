@@ -310,6 +310,46 @@ struct ConversationE2ETests {
         }
     }
 
+    /// `/v1/query/stream` used the raw Hermes stream service, with no router
+    /// at all, so a free-tier user's query skipped the free lane and its
+    /// allowance and was served on the managed gateway's paid key — the same
+    /// leak the conversation stream had, by a different door. A lapsed user is
+    /// forced onto the lane; with no lane providers loaded in tests the lane
+    /// refuses the turn, and that refusal is what must reach the user. Before
+    /// the fix the query went to the gateway instead, which is unreachable in
+    /// tests, and the user saw "upstream failure".
+    @Test
+    func `a free-tier query stream goes through the free lane, not the gateway`() async throws {
+        let app = try await buildApplication(reader: dbTestReaderWithStubChat())
+        try await app.test(.router) { client in
+            let (email, username) = Self.randomUser()
+            let auth = try await client.execute(
+                uri: "/v1/auth/register",
+                method: .post,
+                headers: [.contentType: "application/json"],
+                body: Self.registerBody(email: email, username: username)
+            ) { try Self.decodeAuth($0.body) }
+
+            try await withTestFluent(label: "lv.test.query-stream.lapsed") { fluent in
+                let user = try #require(try await User.find(auth.userId, on: fluent.db()))
+                user.tier = "lapsed"
+                try await user.save(on: fluent.db())
+            }
+
+            try await client.execute(
+                uri: "/v1/query/stream",
+                method: .post,
+                headers: Self.auth(auth.accessToken),
+                body: ByteBuffer(string: #"{"query":"what did I save?"}"#)
+            ) { resp in
+                #expect(resp.status == .ok)
+                let errors = Self.sseErrorMessages(in: String(buffer: resp.body))
+                let message = try #require(errors.first, "the stream carried no error event")
+                #expect(message == FreeLaneUnavailableError(actions: []).userMessage)
+            }
+        }
+    }
+
     /// The `error` payloads of an SSE body, in order.
     private static func sseErrorMessages(in body: String) -> [String] {
         body.components(separatedBy: "\n")
