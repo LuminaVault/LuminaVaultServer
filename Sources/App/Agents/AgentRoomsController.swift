@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 
 /// `/v1/agents/rooms` — threads where the user and several of their agents
 /// talk. Scoped to the caller's own account.

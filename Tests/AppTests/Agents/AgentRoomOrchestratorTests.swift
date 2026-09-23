@@ -3,6 +3,7 @@ import FluentKit
 import Foundation
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import Testing
 
 /// The loop guard, against Postgres with scripted agents.

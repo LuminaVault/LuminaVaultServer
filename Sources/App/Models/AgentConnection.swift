@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 /// One inbound MCP agent token. The plaintext token is not a column —
 /// see `tokenHash`. A revoked row stays so the settings page can show

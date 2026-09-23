@@ -2,6 +2,7 @@
 import Foundation
 import Hummingbird
 import HummingbirdTesting
+import LuminaVaultShared
 import struct LuminaVaultShared.AuthResponse
 import Testing
 

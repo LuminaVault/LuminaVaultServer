@@ -1,6 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
+import LuminaVaultShared
 
 /// `/v1/agents` — the Agents page: where the user's agents run, their
 /// sessions, and each session's log. Read-only.
