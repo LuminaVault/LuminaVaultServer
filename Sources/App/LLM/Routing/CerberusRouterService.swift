@@ -183,10 +183,14 @@ struct BYOKKeysRequiredError: Error, Equatable, HTTPResponseError {
             "error": [
                 "code": reasonCode,
                 "message": userMessage,
-                "cta": ["add_key", "switch_to_managed"],
+                "cta": recoveryActions,
             ],
         ]
         return (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()
+    }
+
+    var recoveryActions: [String] {
+        ["add_key", "switch_to_managed"]
     }
 
     func response(from _: Request, context _: some RequestContext) throws -> Response {
