@@ -290,7 +290,8 @@ struct KanbanService {
                 runAt: effectiveRunAt,
                 domain: job.domain,
                 spec: spec,
-                spaceID: job.spaceID
+                spaceID: job.spaceID,
+                on: database
             )
             job.jobSlug = slug
             job.promotedAt = Date()

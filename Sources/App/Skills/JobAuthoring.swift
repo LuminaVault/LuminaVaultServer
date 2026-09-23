@@ -17,6 +17,8 @@ struct JobAuthoring {
     /// Validates the cron, writes the skill file, and enables it. Returns the
     /// created slug. Idempotent per title (slug derives from title; the
     /// `skills_state` upsert re-enables on conflict).
+    /// Pass `database` when calling from inside a transaction, so the
+    /// `skills_state` row commits (or rolls back) with it.
     /// Authors a job. Exactly one of `cron` (recurring) or `runAt` (one-shot,
     /// #10) must be supplied. Recurring jobs carry the cron in SKILL.md
     /// frontmatter; one-shot jobs omit `schedule` and store `run_at` on
@@ -29,7 +31,8 @@ struct JobAuthoring {
         runAt: Date? = nil,
         domain: String?,
         spec: String,
-        spaceID: UUID?
+        spaceID: UUID?,
+        on database: (any Database)? = nil
     ) async throws -> String {
         switch (cron, runAt) {
         case let (cron?, nil):
@@ -54,7 +57,10 @@ struct JobAuthoring {
         // Enable it + record domain/space for filing (P4), Jobs grouping, and
         // one-shot fire time. ON CONFLICT also resets run_at so re-authoring a
         // recurring job clears any prior one-shot schedule.
-        if let sql = fluent.db() as? any SQLDatabase {
+        // `database` is the caller's transaction when there is one: taking a
+        // second pooled connection while the caller holds the first can wait
+        // out the pool timeout when both land on the same event loop.
+        if let sql = (database ?? fluent.db()) as? any SQLDatabase {
             try await sql.raw("""
             INSERT INTO skills_state (tenant_id, source, name, enabled, domain, space_id, run_at)
             VALUES (\(bind: tenantID), 'vault', \(bind: slug), TRUE, \(bind: domain), \(bind: spaceID), \(bind: runAt))
