@@ -10,12 +10,11 @@ import Testing
 @Suite(.serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct RoutedLLMTransportStreamingTests {
     /// Streams the way every production chat adapter does now: by
-    /// implementing `ProviderAdapter.chatStream` itself. It used to implement
-    /// `StreamingProviderAdapter.chatCompletionsStream`, the hook native
-    /// streaming ran through in July; that path was folded into each adapter's
-    /// `chatStream`, and nothing calls `chatCompletionsStream` any more. A stub
-    /// still speaking the old hook inherited `ProviderAdapter`'s buffering
-    /// default, which is why this test saw one "fallback full reply" chunk.
+    /// implementing `ProviderAdapter.chatStream` itself. Native streaming used
+    /// to run through a separate `chatCompletionsStream` hook, since folded into
+    /// each adapter's `chatStream` and deleted. A stub that only buffered
+    /// inherited `ProviderAdapter`'s default, which is why this test once saw a
+    /// single "fallback full reply" chunk.
     actor StreamingStubAdapter: ProviderAdapter {
         nonisolated let kind: ProviderKind = .openai
         private(set) var calls: [Data] = []

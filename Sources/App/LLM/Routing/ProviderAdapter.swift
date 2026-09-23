@@ -46,18 +46,6 @@ protocol ProviderAdapter: Sendable {
     var acceptsUserCredentials: Bool { get }
 }
 
-/// Optional extension for providers that can return OpenAI-compatible
-/// `text/event-stream` chat deltas natively. The routed stream service uses
-/// this when available and keeps the single-shot fallback for providers that
-/// only implement `ProviderAdapter`.
-protocol StreamingProviderAdapter: ProviderAdapter {
-    func chatCompletionsStream(
-        payload: Data,
-        sessionKey: String,
-        sessionID: String?
-    ) async throws -> AsyncThrowingStream<ChatStreamChunk, Error>
-}
-
 extension ProviderAdapter {
     /// Adapters that hold no credential store — the platform-key-only ones —
     /// keep the default.
