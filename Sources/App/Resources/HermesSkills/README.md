@@ -17,7 +17,7 @@ image from GHCR. That fork owns the `/v1/ingestions` API and its advertised
 remote-source capability fields; this server layer adds LuminaVault skills,
 Mnemosyne, and the runtime entrypoint. It `COPY`s this directory into
 `/opt/baked-skills/` inside the
-container image. The runtime entrypoint (`docker/hermes-entrypoint.sh`)
+container image. The runtime cont-init step (`docker/hermes-cont-init.sh`)
 seeds `/opt/data/skills/` from `/opt/baked-skills/` on each container
 start using `cp -Rn` (no-clobber), so:
 
