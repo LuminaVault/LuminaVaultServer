@@ -6514,12 +6514,24 @@ paths:
         browser session (ASWebAuthenticationSession, scheme `luminavault`).
         Google redirects to the server callback, which exchanges the code and
         hands back to the app via `luminavault://oauth/google-calendar`.
+
+        A web client passes `returnTo`, the page to land back on. It must be
+        on the server's `cors.allowedOrigins`; the callback then redirects
+        there with `status=ok` or `status=error&reason=…` appended.
+      parameters:
+        - in: query
+          name: returnTo
+          required: false
+          description: Web only. Absolute URL on an allowed web origin.
+          schema: { type: string, format: uri }
       responses:
         '200':
           description: Consent URL to open.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CalendarConnectStartResponse' }
+        '400':
+          description: '`returnTo` is not on an allowed web origin.'
         '503':
           description: Google Calendar not configured on this server.
           content:
