@@ -45,7 +45,10 @@ struct CalendarSyncService {
         let db = fluent.db()
         guard let account = try await CalendarAccount.query(on: db, tenantID: tenantID)
             .filter(\.$provider == Self.source)
-            .first(), account.status == "connected"
+            .first(), account.status == "connected",
+            // "Connect Gmail" alone creates the same Google row without the
+            // Calendar scope; syncing it would only collect 403s.
+            GoogleCalendarOAuthClient.grants(account.scope, GoogleCalendarOAuthClient.calendarEventsScope)
         else {
             return 0
         }

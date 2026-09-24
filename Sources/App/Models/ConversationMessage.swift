@@ -22,6 +22,12 @@ final class ConversationMessage: Model, @unchecked Sendable {
     /// Nil for every ordinary turn. Doubles as the idempotency key for the
     /// watcher's write — see the migration.
     @OptionalField(key: "hermes_run_id") var hermesRunID: UUID?
+    /// `proactive` for a message the server appended without a user turn
+    /// (M135). Nil — every row written before M135 and every ordinary turn
+    /// since — reads as `reply`.
+    @OptionalField(key: "origin") var origin: String?
+    /// Who sent a proactive message ("daily-brief"). Nil for replies.
+    @OptionalField(key: "source_label") var sourceLabel: String?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
 
     init() {
@@ -37,7 +43,9 @@ final class ConversationMessage: Model, @unchecked Sendable {
         sourceMemoryIDs: [UUID] = [],
         parallelExecutionID: UUID? = nil,
         localExecutionID: UUID? = nil,
-        toolCallCount: Int = 0
+        toolCallCount: Int = 0,
+        origin: ConversationMessageOrigin? = nil,
+        sourceLabel: String? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -47,6 +55,8 @@ final class ConversationMessage: Model, @unchecked Sendable {
         self.parallelExecutionID = parallelExecutionID
         self.localExecutionID = localExecutionID
         self.toolCallCount = toolCallCount
+        self.origin = origin?.rawValue
+        self.sourceLabel = sourceLabel
     }
 
     /// Convert to the wire DTO. Defaults `role` to `.user` if the row
@@ -69,6 +79,8 @@ final class ConversationMessage: Model, @unchecked Sendable {
             // in the same transaction as the message itself. The trace is only
             // consulted for a turn that predates that column being populated.
             toolCallCount: toolCallCount,
+            origin: origin.flatMap(ConversationMessageOrigin.init(rawValue:)) ?? .reply,
+            sourceLabel: sourceLabel,
             createdAt: createdAt ?? Date()
         )
     }

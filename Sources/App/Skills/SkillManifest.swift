@@ -28,6 +28,10 @@ struct SkillManifest: Codable, Hashable {
         case apnsNudge = "apns_nudge"
         case memoryEmit = "memory_emit"
         case vaultRewrite = "vault_rewrite"
+        /// Muse Chat stage C — append the result to the tenant's Hermie
+        /// thread as a proactive assistant message and push a `chat`
+        /// notification deep-linking to it.
+        case chatMessage = "chat_message"
     }
 
     struct Output: Codable, Hashable {

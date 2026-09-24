@@ -15,6 +15,9 @@ final class Conversation: Model, TenantModel, @unchecked Sendable {
     @Field(key: "pinned_memory_ids") var pinnedMemoryIDs: [UUID]
     @OptionalField(key: "route_provider") var routeProvider: String?
     @OptionalField(key: "route_model") var routeModel: String?
+    /// Marks a server-owned thread (M135). `hermie` is where proactive
+    /// messages land. Nil for every thread a user started.
+    @OptionalField(key: "system_key") var systemKey: String?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 

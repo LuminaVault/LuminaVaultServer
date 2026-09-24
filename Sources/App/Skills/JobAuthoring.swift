@@ -99,6 +99,11 @@ struct JobAuthoring {
 
     /// Renders a valid `SKILL.md` (SkillManifestParser-compatible frontmatter)
     /// for a scheduled job. The body asks for P2 block output, domain-adaptive.
+    ///
+    /// Muse Chat stage C: a job's result lands in the Hermie chat thread as a
+    /// proactive message (`chat_message`, which also pushes) instead of a
+    /// bare digest push, and a job may check the weather or the inbox.
+    /// Jobs authored before this keep their own SKILL.md until re-authored.
     /// `cron` nil ⇒ one-shot: the `schedule` line is omitted (the fire time
     /// lives on `skills_state.run_at`).
     static func skillMarkdown(slug: String, title: String, cron: String?, domain: String?, spec: String) -> String {
@@ -111,14 +116,14 @@ struct JobAuthoring {
         name: \(slug)
         description: \(title)
         license: MIT
-        allowed-tools: session_search vault_read
+        allowed-tools: session_search vault_read weather_forecast mail_inbox_recent
         metadata:
           capability: medium\(scheduleLine)
           on_event: []
           daily_run_cap: { trial: 1, pro: 6, ultimate: 24 }
           maxInputTokens: 8000
           outputs:
-            - kind: apns_digest
+            - kind: chat_message
         ---
         You are a LuminaVault job: "\(title)".
         \(domainLine)

@@ -1812,6 +1812,9 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .meTodayByUser, storage: rateLimitStorage))
     SuggestionsController().addRoutes(to: suggestionsGroup)
+    // Muse Chat stage C — GET/DELETE /v1/me/location: the fix kept so the
+    // 07:00 weather job works while the phone is offline. Own data, JWT only.
+    LastKnownLocationController(fluent: services.fluent).addRoutes(to: suggestionsGroup)
 
     // HER-204 — POST /v1/tts. OpenAI-only adapter at MVP. Provider key
     // sourced from the same `llm.provider.openai.apiKey` slot already
@@ -2799,6 +2802,9 @@ func buildRouter(
     // is disabled (the connect endpoint would 503 anyway). The actual
     // Google client id/secret/redirect come from `oauth.googleCalendar.*`
     // and are surfaced as `isConfigured` to gate the connect flow + worker.
+    // Muse Chat stage C — Gmail reuses the Calendar Google grant, so its
+    // inbox reader can only exist where the calendar token store does.
+    var gmailInbox: GmailInboxService?
     if let secretBox = secretBoxRef {
         let calendarLogger = Logger(label: "lv.calendar")
         let calendarConfigured = !services.googleCalendarClientID.isEmpty
@@ -2829,6 +2835,7 @@ func buildRouter(
             syncService: calendarSyncService,
             sessionStore: CalendarOAuthSessionStore(),
             isConfigured: calendarConfigured,
+            webReturnOrigins: Set(services.corsAllowedOrigins),
             logger: calendarLogger
         )
         let calendarController = CalendarController(
@@ -2840,6 +2847,23 @@ func buildRouter(
         let calendarGroup = router.group("/v1/calendar").add(middleware: jwtAuthenticator)
         calendarController.addRoutes(to: calendarGroup)
         calendarController.addPublicRoutes(to: router)
+        // "Connect Gmail" — incremental gmail.readonly on the same client;
+        // Google redirects to the calendar callback above.
+        let gmailGroup = router.group("/v1/mail/gmail").add(middleware: jwtAuthenticator)
+        GmailController(oauthService: calendarOAuthService, logger: calendarLogger).addRoutes(to: gmailGroup)
+        let gmailFluent = services.fluent
+        gmailInbox = GmailInboxService(
+            grantedScope: { tenantID in
+                let account = try? await CalendarAccount.query(on: gmailFluent.db(), tenantID: tenantID)
+                    .filter(\.$provider == "google")
+                    .filter(\.$status == "connected")
+                    .first()
+                return account?.scope
+            },
+            accessToken: { tenantID in try await calendarTokenStore.validAccessToken(tenantID: tenantID) },
+            client: GmailClient(),
+            logger: Logger(label: "lv.mail")
+        )
         if calendarConfigured {
             managedServices.append(CalendarSyncWorker(
                 fluent: services.fluent,
@@ -3388,6 +3412,12 @@ func buildRouter(
         capGuard: skillRunCapGuard,
         eventBus: eventBus,
         usageMeter: usageMeterService,
+        proactiveChat: ProactiveChatDelivery(
+            fluent: services.fluent,
+            apns: pushService,
+            logger: Logger(label: "lv.chat.proactive")
+        ),
+        gmailInbox: gmailInbox,
         logger: skillsLogger
     )
     // HER-171 — fire-and-forget; the actor stores the subscription Tasks
