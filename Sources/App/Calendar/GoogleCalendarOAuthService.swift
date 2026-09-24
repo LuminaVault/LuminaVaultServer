@@ -146,7 +146,9 @@ actor GoogleCalendarOAuthService {
     /// normally lists every granted scope): what was there plus what this
     /// flow asked for.
     static func effectiveScope(returned: String?, existing: String?, requested: String) -> String {
-        if let returned, !returned.isEmpty { return returned }
+        if let returned, !returned.isEmpty {
+            return returned
+        }
         var seen: [String] = []
         for part in ((existing ?? "") + " " + requested).split(separator: " ").map(String.init) where !seen.contains(part) {
             seen.append(part)

@@ -37,7 +37,9 @@ struct GoogleCalendarOAuthClient {
     static func grants(_ scopeString: String?, _ wanted: String) -> Bool {
         guard let scopeString else { return false }
         let granted = Set(scopeString.split(separator: " ").map(String.init))
-        if granted.contains(wanted) { return true }
+        if granted.contains(wanted) {
+            return true
+        }
         switch wanted {
         case gmailReadonlyScope:
             return granted.contains("https://mail.google.com/")
