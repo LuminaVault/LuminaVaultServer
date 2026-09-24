@@ -146,6 +146,7 @@ removes it entirely and restores pre-lane routing exactly.
 | # | Leg | Provider | Default model | Context | Why it's free |
 |---|---|---|---|---|---|
 | 1 | `openRouterFree` | platform OpenRouter key | `nvidia/nemotron-3-ultra-550b-a55b:free` | 1,000,000 | zero-rated slug — cannot bill us |
+| 1b | `openRouterFree` (same counter) | platform OpenRouter key | `nvidia/nemotron-3-super-120b-a12b:free` | 262,144 | zero-rated slug — cannot bill us |
 | 2 | `nvidiaDirect` | platform NVIDIA NIM key | `nvidia/nemotron-3-super-120b-a12b` | 1,000,000 | finite signup credits |
 
 **The two legs are free for different reasons, and only one is free by
@@ -210,8 +211,8 @@ buy capacity. Giving it its own `Leg` would double-spend the same allowance.
 | Key | Env | Default |
 |---|---|---|
 | `freelane.enabled` | `FREELANE_ENABLED` | `true` |
-| `freelane.openRouterModel` | `FREELANE_OPEN_ROUTER_MODEL` | `z-ai/glm-5.2:free` |
-| `freelane.openRouterSecondaryModel` | `FREELANE_OPEN_ROUTER_SECONDARY_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `freelane.openRouterModel` | `FREELANE_OPEN_ROUTER_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `freelane.openRouterSecondaryModel` | `FREELANE_OPEN_ROUTER_SECONDARY_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` |
 | `freelane.nvidiaModel` | `FREELANE_NVIDIA_MODEL` | `nvidia/nemotron-3-super-120b-a12b` |
 | `freelane.perUserDailyRequests` | `FREELANE_PER_USER_DAILY_REQUESTS` | `20` |
 | `freelane.openRouterDailyRequests` | `FREELANE_OPEN_ROUTER_DAILY_REQUESTS` | `45` |

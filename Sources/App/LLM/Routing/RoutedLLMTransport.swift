@@ -284,7 +284,9 @@ struct RoutedLLMTransport: HermesChatTransport {
                 }
                 Self.publishRouteOutcome(candidate, cerberus: decision.cerberus)
                 return metadata
-            } catch let providerError as ProviderError where providerError.isRecoverable {
+            } catch let providerError as ProviderError
+                where Self.shouldAdvance(after: providerError, freeLane: decision.cerberus?.isFreeLane == true)
+            {
                 lastRecoverable = providerError
                 lastFailedCandidate = (candidate, providerError)
                 logger.warning("provider \(candidate.provider.rawValue) failed (\(providerError.reasonCode)): \(providerError)")
@@ -300,7 +302,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 }
                 throw UpstreamErrorResponse(
                     reasonCode: providerError.reasonCode,
-                    userMessage: providerError.userMessage,
+                    userMessage: Self.clientMessage(for: providerError, decision: decision),
                     retryAfterMs: Self.retryHint(for: providerError.reasonCode)
                 )
             } catch let fatal as BYOKKeysRequiredError {
@@ -337,7 +339,7 @@ struct RoutedLLMTransport: HermesChatTransport {
             )
             throw UpstreamErrorResponse(
                 reasonCode: lastFailedCandidate.error.reasonCode,
-                userMessage: lastFailedCandidate.error.userMessage,
+                userMessage: Self.clientMessage(for: lastFailedCandidate.error, decision: decision),
                 retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode)
             )
         }
@@ -537,7 +539,9 @@ struct RoutedLLMTransport: HermesChatTransport {
                     lastFailedCandidate = (candidate, empty)
                     logger.warning("provider \(candidate.provider.rawValue) streamed no chunks; failing over")
                     continue
-                } catch let providerError as ProviderError where providerError.isRecoverable && !yieldedAny {
+                } catch let providerError as ProviderError
+                    where Self.shouldAdvance(after: providerError, freeLane: decision.cerberus?.isFreeLane == true) && !yieldedAny
+                {
                     lastFailedCandidate = (candidate, providerError)
                     logger.warning("provider \(candidate.provider.rawValue) stream failed (\(providerError.reasonCode)): \(providerError)")
                     continue
@@ -552,7 +556,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                     }
                     continuation.finish(throwing: UpstreamErrorResponse(
                         reasonCode: providerError.reasonCode,
-                        userMessage: providerError.userMessage,
+                        userMessage: Self.clientMessage(for: providerError, decision: decision),
                         retryAfterMs: Self.retryHint(for: providerError.reasonCode)
                     ))
                     return
@@ -595,7 +599,7 @@ struct RoutedLLMTransport: HermesChatTransport {
                 )
                 continuation.finish(throwing: UpstreamErrorResponse(
                     reasonCode: lastFailedCandidate.error.reasonCode,
-                    userMessage: lastFailedCandidate.error.userMessage,
+                    userMessage: Self.clientMessage(for: lastFailedCandidate.error, decision: decision),
                     retryAfterMs: Self.retryHint(for: lastFailedCandidate.error.reasonCode)
                 ))
             } else if sawUnclassifiedFailure {
@@ -890,6 +894,31 @@ struct RoutedLLMTransport: HermesChatTransport {
 
     private static func retryHint(for reasonCode: String) -> Int? {
         reasonCode == "upstream_timeout" ? UpstreamErrorResponse.timeoutRetryHintMs : nil
+    }
+
+    /// Whether a failed candidate should hand the request to the next one.
+    ///
+    /// Recoverable errors always advance. On the free lane a 404 advances too:
+    /// OpenRouter answers a retired `:free` tier with 404 "This model is
+    /// unavailable for free", which says nothing about the payload — the next
+    /// rung (another `:free` slug, then NIM) can still serve the turn. Outside
+    /// the lane a 404 keeps meaning "our request is wrong" and stops.
+    static func shouldAdvance(after error: ProviderError, freeLane: Bool) -> Bool {
+        if case let .permanent(_, status, _) = error {
+            return freeLane && status == 404
+        }
+        return error.isRecoverable
+    }
+
+    /// Free-lane turns run as managed, so the client must not learn which
+    /// provider or model served them. `ProviderError.userMessage` names the
+    /// provider and echoes the upstream body (which for OpenRouter often
+    /// contains the slug), so the lane gets a neutral message instead.
+    static let freeLaneFailureMessage =
+        "Free messages are having trouble right now. Try again in a moment, or add your own API key in Settings."
+
+    static func clientMessage(for error: ProviderError, decision: RouteDecision) -> String {
+        decision.cerberus?.isFreeLane == true ? freeLaneFailureMessage : error.userMessage
     }
 }
 
