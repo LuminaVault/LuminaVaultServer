@@ -690,8 +690,8 @@ actor SkillRunner {
         return WeatherForecastTool(
             forecast: weatherForecast,
             liveLocation: { tenantID in
-                LocationFix.fromDeviceReadResult(
-                    await personalData.deviceRead(tenantID: tenantID, domain: .location, payload: [:])
+                await LocationFix.fromDeviceReadResult(
+                    personalData.deviceRead(tenantID: tenantID, domain: .location, payload: [:])
                 )
             },
             consentAllowsLocation: { tenantID in
