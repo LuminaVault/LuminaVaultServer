@@ -13,6 +13,16 @@ struct FreeLaneCatalogTests {
         #expect(routes[1].model == FreeLaneCatalog.defaultOpenRouterSecondaryModel)
     }
 
+    /// Nemotron ultra first, super second. `z-ai/glm-5.2:free` was dropped: it
+    /// served 32K without tools, and OpenRouter has retired its free tier before.
+    @Test("default free slugs are the Nemotron ultra, then the Nemotron super")
+    func defaultSlugs() {
+        #expect(FreeLaneCatalog.defaultOpenRouterModel == "nvidia/nemotron-3-ultra-550b-a55b:free")
+        #expect(FreeLaneCatalog.defaultOpenRouterSecondaryModel == "nvidia/nemotron-3-super-120b-a12b:free")
+        #expect(FreeLaneCatalog.defaultNvidiaModel == "nvidia/nemotron-3-super-120b-a12b")
+        #expect(!FreeLaneCatalog.routes().contains { $0.model.hasPrefix("z-ai/glm") })
+    }
+
     /// The whole reason the second slug shares `openRouterFree` rather than
     /// getting its own `Leg`.
     ///

@@ -37,16 +37,20 @@ enum FreeLaneCatalog {
         let model: String
     }
 
-    /// `z-ai/glm-5.2:free` — 256,000 token context, $0 in / $0 out,
-    /// tool-calling supported. Verified against the OpenRouter models API on
-    /// 2026-08-21. Primary because it is materially faster than the Nemotron
-    /// ultra it replaced, and 256K covers all but long-document work.
-    static let defaultOpenRouterModel = "z-ai/glm-5.2:free"
+    /// `nvidia/nemotron-3-ultra-550b-a55b:free` — 1,000,000 token context,
+    /// $0 in / $0 out, tool-calling supported. The strongest free slug, and the
+    /// long context means no free-lane request outgrows it.
+    ///
+    /// `z-ai/glm-5.2:free` held this slot until 2026-09-24 and was dropped: in
+    /// practice it served 32K context without tools, and OpenRouter has retired
+    /// its free tier before, answering 404 "This model is unavailable for free"
+    /// — which took down another app's whole free chain.
+    static let defaultOpenRouterModel = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
     /// Second hop on the *same* OpenRouter key and the *same* gate counter.
-    /// 1,000,000 token context — carries long-document requests the primary
-    /// cannot, at higher latency.
-    static let defaultOpenRouterSecondaryModel = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    /// 262,144 token context, faster than the ultra. Buys resilience against
+    /// the primary being down, retired (404) or per-minute throttled.
+    static let defaultOpenRouterSecondaryModel = "nvidia/nemotron-3-super-120b-a12b:free"
 
     /// NIM serves the same family under its own catalogue. The `:free` suffix
     /// is an OpenRouter *routing directive*, not part of the model id — sending
