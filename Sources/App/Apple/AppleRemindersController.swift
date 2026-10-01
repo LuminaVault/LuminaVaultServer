@@ -102,7 +102,7 @@ struct AppleRemindersController {
         }
 
         logger.info("apple.reminders.sync tenant=\(tenantID) inserted=\(inserted) updated=\(updated) skipped=\(skipped)")
-        PostHogAnalytics.capture("apple_reminders_synced", properties: ["inserted_count": inserted, "updated_count": updated, "skipped_count": skipped])
+        PostHogAnalytics.capture("apple_reminders_synced", distinctID: tenantID.uuidString, properties: ["inserted_count": inserted, "updated_count": updated, "skipped_count": skipped])
         return AppleSyncResponse(inserted: inserted, updated: updated, skipped: skipped)
     }
 

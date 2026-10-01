@@ -408,6 +408,14 @@ struct DefaultAuthService: AuthService {
     func issueTokens(for user: User) async throws -> AuthResponse {
         let userID = try user.requireID()
         try await applyTierOverrideAllowlist(to: user)
+        // `is_internal` lets the analytics funnel exclude founder and tester
+        // accounts. Any ops grant (allowlist or admin endpoint) marks one, and
+        // since every session passes through here the flag follows the
+        // allowlist without a backfill.
+        let isInternal = (TierOverride(rawValue: user.tierOverride) ?? .none) != .none
+        PostHogAnalytics.capture("$set", distinctID: userID.uuidString, properties: [
+            "$set": JSONValue.object(["is_internal": .bool(isInternal)]),
+        ])
         // HER-29 — only a ready profile's ID belongs in the token. A degraded
         // gateway leaves a `pending-<uuid>` sentinel row; leaking that into
         // `hpid` would hand clients an endpoint that doesn't exist yet.

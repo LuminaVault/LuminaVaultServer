@@ -46,7 +46,7 @@ struct GmailController {
         let returnTo = req.uri.queryParameters["returnTo"].map(String.init)
         do {
             let url = try await oauthService.start(tenantID: tenantID, returnTo: returnTo, purpose: .gmail)
-            PostHogAnalytics.capture("gmail_connect_started")
+            PostHogAnalytics.capture("gmail_connect_started", distinctID: tenantID.uuidString)
             return CalendarConnectStartResponse(authorizeURL: url)
         } catch GoogleCalendarOAuthService.Error.notConfigured {
             throw HTTPError(.serviceUnavailable, message: "Google sign-in is not configured on this server")

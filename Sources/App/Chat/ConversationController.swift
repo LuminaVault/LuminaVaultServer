@@ -924,7 +924,7 @@ struct ConversationController {
                     try await conversation.save(on: fluent.db())
                     // Activation metric: a turn answered while grounded in the
                     // user's own memories — the product's magic moment.
-                    PostHogAnalytics.capture("chat_grounded_answer", properties: [
+                    PostHogAnalytics.capture("chat_grounded_answer", distinctID: actorID.uuidString, properties: [
                         "grounded_hits": sourceIDs.count,
                         "used_tools": !toolCallIDs.isEmpty,
                     ])

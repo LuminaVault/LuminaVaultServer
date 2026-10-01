@@ -266,7 +266,7 @@ struct HealthIngestController {
 
         logger.info("health ingest tenant=\(tenantID) inserted=\(refs.count) skipped=\(skipped)")
         if !refs.isEmpty {
-            PostHogAnalytics.capture("health_events_synced", properties: [
+            PostHogAnalytics.capture("health_events_synced", distinctID: tenantID.uuidString, properties: [
                 "inserted_count": refs.count,
                 "skipped_count": skipped,
                 "dominant_type": Self.dominantSampleType(refs),
