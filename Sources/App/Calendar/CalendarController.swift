@@ -64,7 +64,7 @@ struct CalendarController {
         let returnTo = req.uri.queryParameters["returnTo"].map(String.init)
         do {
             let url = try await oauthService.start(tenantID: tenantID, returnTo: returnTo)
-            PostHogAnalytics.capture("calendar_connected")
+            PostHogAnalytics.capture("calendar_connected", distinctID: tenantID.uuidString)
             return CalendarConnectStartResponse(authorizeURL: url)
         } catch GoogleCalendarOAuthService.Error.notConfigured {
             throw HTTPError(.serviceUnavailable, message: "Google Calendar is not configured on this server")
@@ -115,7 +115,7 @@ struct CalendarController {
                 notes: body.notes,
                 attendees: body.attendees ?? []
             )
-            PostHogAnalytics.capture("calendar_event_created", properties: ["has_attendees": !(body.attendees ?? []).isEmpty])
+            PostHogAnalytics.capture("calendar_event_created", distinctID: tenantID.uuidString, properties: ["has_attendees": !(body.attendees ?? []).isEmpty])
             return Self.toDTO(saved)
         } catch CalendarTokenStore.Error.notConnected, CalendarTokenStore.Error.needsReauth {
             throw HTTPError(.conflict, message: "Google Calendar is not connected")

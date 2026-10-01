@@ -272,7 +272,7 @@ struct VaultController {
         // is keyed on the vault file id; tags ride the metadata sidecar.
         // Failures are logged, not fatal — the file write already succeeded.
         let isNote = request.uri.queryParameters["note"].map(String.init) == "true"
-        PostHogAnalytics.capture("vault_file_uploaded", properties: [
+        try PostHogAnalytics.capture("vault_file_uploaded", distinctID: user.requireID().uuidString, properties: [
             "content_type": contentType,
             "is_note": isNote,
             "has_space": spaceID != nil,
@@ -470,7 +470,7 @@ struct VaultController {
         }
         try await row.delete(on: fluent.db())
         logger.info("vault delete tenant=\(tenantID) path=\(safeRelative)")
-        PostHogAnalytics.capture("vault_file_deleted")
+        try PostHogAnalytics.capture("vault_file_deleted", distinctID: ctx.requireTenantID().uuidString)
         return Response(status: .noContent)
     }
 

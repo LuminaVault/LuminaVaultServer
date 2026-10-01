@@ -50,7 +50,7 @@ struct AuthController {
         let response = try await telemetry.observe("auth.register") {
             try await service.register(email: body.email, username: body.username, password: body.password)
         }
-        PostHogAnalytics.capture("user_registered", properties: ["auth_method": "password"])
+        PostHogAnalytics.capture("user_registered", distinctID: response.userId.uuidString, properties: ["auth_method": "password"])
         return response
     }
 
@@ -65,7 +65,7 @@ struct AuthController {
                 requireMFA: requireMFA
             )
         }
-        PostHogAnalytics.capture("user_logged_in", properties: ["auth_method": "password", "mfa_required": requireMFA])
+        PostHogAnalytics.capture("user_logged_in", distinctID: response.userId.uuidString, properties: ["auth_method": "password", "mfa_required": requireMFA])
         return response
     }
 
