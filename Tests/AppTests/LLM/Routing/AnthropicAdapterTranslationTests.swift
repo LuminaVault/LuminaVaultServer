@@ -580,7 +580,8 @@ struct AnthropicAdapterManagedDispatchTests {
         StubProtocol.handler = { request in
             capture.record(request)
             let url = request.url ?? URL(fileURLWithPath: "/")
-            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil) ?? HTTPURLResponse()
+            // HTTPURLResponse() has no zero-argument init on Linux Foundation.
+            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
             return (response, Data(body.utf8))
         }
     }
