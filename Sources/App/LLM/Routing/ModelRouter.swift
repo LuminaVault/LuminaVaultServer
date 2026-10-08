@@ -38,17 +38,25 @@ struct RouteDecision: Hashable {
     /// `nil` still means "nobody declared an intent" — internal and cron work
     /// with no user attached — and keeps managed semantics.
     let credentialMode: LLMBrainMode?
+    /// `primary` is the Anthropic trial route that `AnthropicManagedTrialRouter`
+    /// put in front of the decision another router made; `fallbacks` is that
+    /// original decision, in order. Callers that cannot dispatch to Anthropic
+    /// themselves (the managed gateway stream) use `removingManagedTrialRoute()`
+    /// to get the original decision back.
+    let managedTrialPrepended: Bool
 
     init(
         primary: ModelRoute,
         fallbacks: [ModelRoute],
         cerberus: CerberusDecisionMetadata? = nil,
-        credentialMode: LLMBrainMode? = nil
+        credentialMode: LLMBrainMode? = nil,
+        managedTrialPrepended: Bool = false
     ) {
         self.primary = primary
         self.fallbacks = fallbacks
         self.cerberus = cerberus
         self.credentialMode = credentialMode
+        self.managedTrialPrepended = managedTrialPrepended
     }
 
     var candidates: [ModelRoute] {

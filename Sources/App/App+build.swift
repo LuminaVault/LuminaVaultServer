@@ -1258,12 +1258,18 @@ func buildRouter(
     }
     let anthropicEnvKey = providerAPIKey("anthropic")
     let anthropicRawBaseURL = providerBaseURL("anthropic")
+    // Haiku trial. `ANTHROPIC_API_KEY` is read here, never by
+    // `ProviderRegistry`: enabling `.anthropic` there would put Sonnet/Opus at
+    // the front of pro routing and into the Auto pools. With
+    // `ANTHROPIC_FIRST` unset or no key, this is nil and nothing changes.
+    let anthropicManagedTrial = AnthropicManagedTrialConfig.load(from: reader)
     providerAdapters.append(AnthropicAdapter(
         apiKey: anthropicEnvKey,
         baseURL: anthropicRawBaseURL.isEmpty ? URL(string: "https://api.anthropic.com")! : (URL(string: anthropicRawBaseURL) ?? URL(string: "https://api.anthropic.com")!),
         session: .shared,
         logger: routingLogger,
-        userCredentials: userCredentialStore
+        userCredentials: userCredentialStore,
+        managedTrial: anthropicManagedTrial
     ))
     let ollamaRawBaseURL = providerBaseURL("ollama")
     providerAdapters.append(OllamaAdapter(
@@ -1393,9 +1399,21 @@ func buildRouter(
         registry: providerRegistry,
         freeLane: freeLaneRuntime
     )
-    let modelRouter: any ModelRouter = cerberusExecutionMode == "active"
+    let baseModelRouter: any ModelRouter = cerberusExecutionMode == "active"
         ? cerberusRouter
         : legacyModelRouter
+    let modelRouter: any ModelRouter
+    if let anthropicManagedTrial {
+        modelRouter = AnthropicManagedTrialRouter(inner: baseModelRouter, config: anthropicManagedTrial)
+        routingLogger.info("anthropic managed trial enabled", metadata: [
+            "model": .string(anthropicManagedTrial.model),
+            "effort": .string(anthropicManagedTrial.effort ?? "default"),
+            "thinking": .string(anthropicManagedTrial.thinking.rawValue),
+            "scope": .string(anthropicManagedTrial.scope.rawValue),
+        ])
+    } else {
+        modelRouter = baseModelRouter
+    }
     let usageMeterService = UsageMeterService(
         fluent: services.fluent,
         freeMtokDaily: services.usageFreeMtokDaily,

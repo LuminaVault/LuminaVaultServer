@@ -211,16 +211,20 @@ struct RoutedHermesLLMStreamService: HermesLLMStreamService {
     private func managedAutoRequest(_ request: ChatRequest) async throws -> ManagedPlan {
         guard let router else { return .gateway(nil) }
         let prompt = request.messages.last { $0.role == "user" }?.content ?? ""
-        let decision = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
+        let picked = await LLMRoutingContext.withValues({ $0.cerberusPrompt = prompt }) {
             await router.pick(forModel: nil, capability: .high, user: LLMRoutingContext.currentUser)
         }
         // A lane decision is `locked`, so the Auto guard below rejects it. This
         // function used to answer "use the gateway" for it, which served a
         // free-tier turn on the platform's paid key — after the pick above had
         // already charged the lane for it — and never checked exhaustion.
-        if decision.cerberus?.isFreeLane == true {
-            return .freeLane(decision)
+        // The routed transport executes it, Anthropic trial route included.
+        if picked.cerberus?.isFreeLane == true {
+            return .freeLane(picked)
         }
+        // The gateway branch cannot dispatch to Anthropic; judge the Auto pick
+        // the router made before the trial route was put in front of it.
+        let decision = picked.removingManagedTrialRoute()
         guard let cerberus = decision.cerberus,
               // Gateway rides the platform's system key — never spend it for
               // a BYOK profile that merely fell through to this branch.

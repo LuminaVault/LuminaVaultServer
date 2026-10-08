@@ -1,5 +1,6 @@
 import Foundation
 import Logging
+import NIOConcurrencyHelpers
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
@@ -10,16 +11,19 @@ import Logging
 /// `POST /v1/messages`, and translates the response back to OpenAI shape
 /// so the rest of the server pipeline sees a uniform wire format.
 ///
-/// Payload differences (OpenAI → Anthropic):
-/// - `messages[role=system].content` → top-level `system` string
-/// - `messages[role=user|assistant]` → kept; `tool` role not yet
-///   translated (Anthropic uses a different `tool_use`/`tool_result`
-///   shape; out of scope for HER-252).
-/// - `max_tokens` is required by Anthropic — defaulted to 4096 if the
-///   caller omits it.
+/// The translation itself (messages, tools, images, thinking, JSON output,
+/// stream records) lives in `AnthropicAdapter+Translation.swift`.
 ///
 /// Auth: `x-api-key: <key>` + `anthropic-version: 2023-06-01` (the
 /// last stable Messages API version pinned in the public SDK).
+///
+/// **Managed trial.** When `managedTrial` is set (`ANTHROPIC_FIRST=true` plus a
+/// key), requests that spend the platform key get the trial's model, effort and
+/// thinking settings, and every failure is reshaped so `RoutedLLMTransport`
+/// fails over rather than stopping (see `managedFailure`). When the deployment
+/// has no registry Anthropic key of its own, the trial key is reserved for the
+/// trial model: any other Anthropic model on the platform key fails exactly as
+/// it did before the trial, when that key was empty.
 struct AnthropicAdapter: ProviderAdapter {
     let kind: ProviderKind = .anthropic
     private let apiKey: String
@@ -27,6 +31,7 @@ struct AnthropicAdapter: ProviderAdapter {
     private let session: URLSession
     private let logger: Logger
     private let userCredentials: UserCredentialStore?
+    private let managedTrial: AnthropicManagedTrialConfig?
     var acceptsUserCredentials: Bool {
         userCredentials != nil
     }
@@ -40,13 +45,15 @@ struct AnthropicAdapter: ProviderAdapter {
         baseURL: URL = URL(string: "https://api.anthropic.com")!,
         session: URLSession = .shared,
         logger: Logger,
-        userCredentials: UserCredentialStore? = nil
+        userCredentials: UserCredentialStore? = nil,
+        managedTrial: AnthropicManagedTrialConfig? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.session = session
         self.logger = logger
         self.userCredentials = userCredentials
+        self.managedTrial = managedTrial
     }
 
     func chatCompletions(payload: Data, sessionKey: String, sessionID: String?) async throws -> Data {
@@ -58,11 +65,17 @@ struct AnthropicAdapter: ProviderAdapter {
         sessionKey _: String,
         sessionID _: String?
     ) async throws -> HermesChatTransportMetadata {
-        // 1–2. Translate the OpenAI payload to Anthropic Messages shape.
-        let (body, model) = try Self.translateRequest(payload: payload, stream: false)
+        // 1. Resolve credentials first: whether the platform key is spent
+        //    decides the model default, thinking/effort and error mapping.
+        let credentials = try await resolveCredentials()
+        let options = requestOptions(for: credentials)
+
+        // 2. Translate the OpenAI payload to Anthropic Messages shape.
+        let translated = try Self.translateRequest(payload: payload, stream: false, options: options)
+        try guardTrialKeyModel(translated.model, credentials: credentials)
         let bodyData: Data
         do {
-            bodyData = try JSONSerialization.data(withJSONObject: body)
+            bodyData = try JSONSerialization.data(withJSONObject: translated.body)
         } catch {
             throw ProviderError.permanent(
                 provider: kind,
@@ -71,12 +84,11 @@ struct AnthropicAdapter: ProviderAdapter {
             )
         }
 
-        // 3. Resolve credentials + dispatch.
-        let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
-        let url = resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages")
+        // 3. Dispatch.
+        let url = credentials.baseURL.appendingPathComponent("v1").appendingPathComponent("messages")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.setValue(resolvedKey, forHTTPHeaderField: "x-api-key")
+        req.setValue(credentials.key, forHTTPHeaderField: "x-api-key")
         req.setValue(Self.apiVersion, forHTTPHeaderField: "anthropic-version")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = bodyData
@@ -95,10 +107,17 @@ struct AnthropicAdapter: ProviderAdapter {
         let status = http.statusCode
         if (200 ..< 300).contains(status) {
             // 4. Translate Anthropic → OpenAI response shape.
-            let openAIResponse = Self.translateResponse(body: data, model: model)
+            let translatedResponse = try Self.translateResponse(
+                body: data,
+                model: translated.model,
+                stripJSONFences: translated.stripJSONFences
+            )
+            if let usage = translatedResponse.usage {
+                logUsage(usage, model: translated.model, managed: options.managed, streamed: false)
+            }
             let responseData: Data
             do {
-                responseData = try JSONSerialization.data(withJSONObject: openAIResponse)
+                responseData = try JSONSerialization.data(withJSONObject: translatedResponse.openAI)
             } catch {
                 throw ProviderError.transient(
                     provider: kind,
@@ -113,144 +132,102 @@ struct AnthropicAdapter: ProviderAdapter {
             return HermesChatTransportMetadata(data: responseData, headers: headers)
         }
 
-        let error = ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
+        let error = options.managed
+            ? Self.managedFailure(status: status, body: data)
+            : ProviderErrorClassifier.classify(provider: kind, status: status, body: data)
         logger.error("anthropic upstream \(error.reasonCode) status=\(status)")
         throw error
-    }
-
-    /// Translate an OpenAI chat-completions payload into an Anthropic
-    /// Messages v1 request body. Shared by the buffered and streaming
-    /// paths so request shaping stays in one place.
-    static func translateRequest(payload: Data, stream: Bool) throws -> (body: [String: Any], model: String) {
-        guard
-            let openAI = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
-            let messages = openAI["messages"] as? [[String: Any]]
-        else {
-            throw ProviderError.permanent(
-                provider: .anthropic,
-                status: 400,
-                body: "invalid OpenAI payload: cannot parse messages"
-            )
-        }
-
-        var systemPrompt: String?
-        var anthropicMessages: [[String: Any]] = []
-        for message in messages {
-            let role = message["role"] as? String ?? "user"
-            let content = message["content"] as? String ?? ""
-            if role == "system" {
-                // Concatenate consecutive system messages on the boundary
-                // between OpenAI's permissive "system anywhere" model and
-                // Anthropic's single top-level `system` field.
-                systemPrompt = systemPrompt.map { "\($0)\n\n\(content)" } ?? content
-            } else {
-                anthropicMessages.append(["role": role, "content": content])
-            }
-        }
-
-        let model = (openAI["model"] as? String) ?? "claude-sonnet-4-6"
-        let temperature = (openAI["temperature"] as? Double) ?? 0.4
-        // Anthropic requires `max_tokens`; OpenAI treats it optional.
-        let maxTokens = (openAI["max_tokens"] as? Int) ?? 4096
-
-        var body: [String: Any] = [
-            "model": model,
-            "messages": anthropicMessages,
-            "max_tokens": maxTokens,
-            "temperature": temperature,
-        ]
-        if let systemPrompt {
-            body["system"] = systemPrompt
-        }
-        if stream {
-            body["stream"] = true
-        }
-        return (body, model)
     }
 
     // MARK: - Streaming (P2)
 
     /// Native per-token streaming via the Anthropic Messages SSE protocol:
     /// `content_block_delta` carries `delta.text`; `message_delta` carries
-    /// the terminal `stop_reason`; `message_stop` ends the stream.
+    /// the terminal `stop_reason` and cumulative usage; `message_stop` ends
+    /// the stream.
+    ///
+    /// `RoutedLLMTransport` does not meter streams, so usage from
+    /// `message_start` / `message_delta` is logged here as `anthropic_usage`.
     func chatStream(payload: Data, sessionKey _: String, sessionID _: String?) -> AsyncThrowingStream<ChatStreamChunk, Error> {
-        ProviderStreamKit.run(
+        let usage = NIOLockedValueBox(AnthropicStreamState())
+        // Set once credentials resolve inside `makeRequest`; read when an error
+        // leaves the stream so the managed failover mapping can apply.
+        let managed = NIOLockedValueBox(false)
+        let logger = logger
+        let upstream = ProviderStreamKit.run(
             kind: kind,
             framing: .sse,
             logger: logger,
             makeRequest: {
-                let (body, _) = try Self.translateRequest(payload: payload, stream: true)
-                let bodyData = try JSONSerialization.data(withJSONObject: body)
-                let (resolvedKey, resolvedBaseURL) = try await resolveCredentials()
+                let credentials = try await resolveCredentials()
+                let options = requestOptions(for: credentials)
+                managed.withLockedValue { $0 = options.managed }
+                let translated = try Self.translateRequest(payload: payload, stream: true, options: options)
+                try guardTrialKeyModel(translated.model, credentials: credentials)
+                usage.withLockedValue { $0.model = translated.model }
+                let bodyData = try JSONSerialization.data(withJSONObject: translated.body)
                 return ProviderStreamRequest(
-                    url: resolvedBaseURL.appendingPathComponent("v1").appendingPathComponent("messages"),
+                    url: credentials.baseURL.appendingPathComponent("v1").appendingPathComponent("messages"),
                     headers: [
                         ("Accept", "text/event-stream"),
-                        ("x-api-key", resolvedKey),
+                        ("x-api-key", credentials.key),
                         ("anthropic-version", Self.apiVersion),
                     ],
                     body: bodyData
                 )
             },
             process: { record, yield in
-                try Self.processStreamRecord(record, yield: yield)
+                let (done, state) = try usage.withLockedValue { current in
+                    let finished = try Self.processStreamRecord(record, state: &current, yield: yield)
+                    return (finished, current)
+                }
+                if done {
+                    Self.logUsage(
+                        state.usage,
+                        model: state.model,
+                        managed: managed.withLockedValue { $0 },
+                        streamed: true,
+                        logger: logger
+                    )
+                }
+                return done
             }
         )
-    }
-
-    /// Parse one Anthropic SSE record. Returns `true` on `message_stop`.
-    static func processStreamRecord(_ record: String, yield: (ChatStreamChunk) -> Void) throws -> Bool {
-        var eventName: String?
-        for rawLine in record.split(separator: "\n", omittingEmptySubsequences: true) {
-            let line = String(rawLine)
-            if line.hasPrefix("event:") {
-                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                continue
-            }
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            guard
-                !payload.isEmpty,
-                let data = payload.data(using: .utf8),
-                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { continue }
-            // The event type rides both the `event:` line and the JSON
-            // `type` field; prefer the line, fall back to the field.
-            switch eventName ?? (obj["type"] as? String ?? "") {
-            case "content_block_delta":
-                if let delta = obj["delta"] as? [String: Any],
-                   let text = delta["text"] as? String,
-                   !text.isEmpty
-                {
-                    yield(ChatStreamChunk(delta: text))
+        let (stream, continuation) = AsyncThrowingStream<ChatStreamChunk, Error>.makeStream()
+        let relay = Task {
+            do {
+                for try await chunk in upstream {
+                    continuation.yield(chunk)
                 }
-            case "message_delta":
-                // Terminal metadata frame; keep the raw stop_reason for
-                // consistency with the buffered path's translateResponse.
-                if let delta = obj["delta"] as? [String: Any],
-                   let stop = delta["stop_reason"] as? String
-                {
-                    yield(ChatStreamChunk(delta: "", finishReason: stop))
-                }
-            case "message_stop":
-                return true
-            case "error":
-                let message = ((obj["error"] as? [String: Any])?["message"] as? String) ?? "anthropic stream error"
-                throw ProviderError.transient(provider: .anthropic, status: 0, body: message)
-            default:
-                break
+                continuation.finish()
+            } catch let error as ProviderError where managed.withLockedValue({ $0 }) {
+                continuation.finish(throwing: Self.remapManaged(error))
+            } catch {
+                continuation.finish(throwing: error)
             }
         }
-        return false
+        continuation.onTermination = { _ in relay.cancel() }
+        return stream
+    }
+
+    // MARK: - Credentials
+
+    struct ResolvedCredentials {
+        let key: String
+        let baseURL: URL
+        /// The deployment key is being spent (managed, or no tenant key).
+        let isPlatform: Bool
+        /// The platform key is the trial's own (no registry Anthropic key).
+        let isTrialOnlyKey: Bool
     }
 
     /// Managed mode spends the platform key; BYOK mode spends the tenant's key
     /// or throws. See `OpenAICompatibleAdapter.resolveCredentials` for the full
     /// rationale — this is the same rule for Anthropic.
-    private func resolveCredentials() async throws -> (key: String, baseURL: URL) {
+    private func resolveCredentials() async throws -> ResolvedCredentials {
         let mode = LLMRoutingContext.credentialMode
         if mode == .managed {
-            return (apiKey, baseURL)
+            return platformCredentials()
         }
 
         guard let userCredentials,
@@ -261,7 +238,7 @@ struct AnthropicAdapter: ProviderAdapter {
                 logger.error("byok request for anthropic has no resolvable tenant; failing closed")
                 throw BYOKKeysRequiredError()
             }
-            return (apiKey, baseURL)
+            return platformCredentials()
         }
 
         let creds: UserCredentialStore.ResolvedCredential?
@@ -272,52 +249,93 @@ struct AnthropicAdapter: ProviderAdapter {
             if mode == .byok {
                 throw BYOKKeysRequiredError()
             }
-            return (apiKey, baseURL)
+            return platformCredentials()
         }
 
         if let key = creds?.apiKey, !key.isEmpty {
-            return (key, creds?.baseURL ?? baseURL)
+            return ResolvedCredentials(key: key, baseURL: creds?.baseURL ?? baseURL, isPlatform: false, isTrialOnlyKey: false)
         }
         if mode == .byok {
             logger.error("byok request for anthropic has no usable credential; failing closed")
             throw BYOKKeysRequiredError()
         }
-        return (apiKey, baseURL)
+        return platformCredentials()
     }
 
-    /// Translate Anthropic `/v1/messages` response → OpenAI chat
-    /// completions response shape. Mirrors the projection
-    /// `GeminiContentsAdapter` does for Gemini.
-    static func translateResponse(body: Data, model: String) -> [String: Any] {
-        guard
-            let anthropic = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
-        else {
-            return ["error": "unparseable anthropic response"]
+    /// The registry key when the deployment has one; otherwise the trial key.
+    private func platformCredentials() -> ResolvedCredentials {
+        if apiKey.isEmpty, let managedTrial {
+            return ResolvedCredentials(key: managedTrial.apiKey, baseURL: baseURL, isPlatform: true, isTrialOnlyKey: true)
         }
-        let textChunks = (anthropic["content"] as? [[String: Any]] ?? [])
-            .compactMap { ($0["type"] as? String) == "text" ? ($0["text"] as? String) : nil }
-        let assistantText = textChunks.joined(separator: "")
-        let usage = anthropic["usage"] as? [String: Any] ?? [:]
-        let inputTokens = usage["input_tokens"] as? Int ?? 0
-        let outputTokens = usage["output_tokens"] as? Int ?? 0
-        return [
-            "id": anthropic["id"] as? String ?? UUID().uuidString,
-            "object": "chat.completion",
-            "created": Int(Date().timeIntervalSince1970),
-            "model": model,
-            "choices": [[
-                "index": 0,
-                "message": [
-                    "role": "assistant",
-                    "content": assistantText,
-                ],
-                "finish_reason": anthropic["stop_reason"] as? String ?? "stop",
-            ]],
-            "usage": [
-                "prompt_tokens": inputTokens,
-                "completion_tokens": outputTokens,
-                "total_tokens": inputTokens + outputTokens,
-            ],
-        ]
+        return ResolvedCredentials(key: apiKey, baseURL: baseURL, isPlatform: true, isTrialOnlyKey: false)
+    }
+
+    private func requestOptions(for credentials: ResolvedCredentials) -> AnthropicRequestOptions {
+        guard credentials.isPlatform, let managedTrial else { return AnthropicRequestOptions() }
+        return AnthropicRequestOptions(managed: true, trial: managedTrial)
+    }
+
+    /// Before the trial this adapter's platform key was empty, so any managed
+    /// Anthropic route — a locked profile, an "ask another model" override —
+    /// got a 401. The trial key must not quietly start paying for those at
+    /// Sonnet/Opus rates; they keep failing the same way.
+    private func guardTrialKeyModel(_ model: String, credentials: ResolvedCredentials) throws {
+        guard credentials.isTrialOnlyKey, let managedTrial, model != managedTrial.model else { return }
+        throw ProviderError.permanent(
+            provider: kind,
+            status: 401,
+            body: "anthropic platform key is reserved for the managed trial model"
+        )
+    }
+
+    // MARK: - Managed failover mapping
+
+    /// Failover rule for platform-paid traffic: every failure must hand the
+    /// request to the next candidate. 401/402/403, and a 400 that names the
+    /// usage limit or credit balance (how a workspace spend cap surfaces), are
+    /// billing/auth — `.creditExhausted`. Everything else, including 400, 404,
+    /// 429, 5xx and 529, is `.transient`. BYOK keeps `ProviderErrorClassifier`.
+    static func managedFailure(status: Int, body: Data?) -> ProviderError {
+        let preview = body.flatMap { String(data: $0.prefix(2048), encoding: .utf8) }
+        let lower = preview?.lowercased() ?? ""
+        switch status {
+        case 401, 402, 403:
+            return .creditExhausted(provider: .anthropic, status: status, body: preview)
+        case 400 where lower.contains("usage limit") || lower.contains("credit balance"):
+            return .creditExhausted(provider: .anthropic, status: status, body: preview)
+        default:
+            return .transient(provider: .anthropic, status: status, body: preview)
+        }
+    }
+
+    /// Streaming counterpart: `ProviderStreamKit` has already classified the
+    /// HTTP failure with the shared classifier; re-map the non-recoverable ones.
+    static func remapManaged(_ error: ProviderError) -> ProviderError {
+        switch error {
+        case let .permanent(_, status, body):
+            managedFailure(status: status, body: body.map { Data($0.utf8) })
+        case .transient, .network, .creditExhausted:
+            error
+        }
+    }
+
+    // MARK: - Usage logging
+
+    private func logUsage(_ usage: AnthropicUsage, model: String, managed: Bool, streamed: Bool) {
+        Self.logUsage(usage, model: model, managed: managed, streamed: streamed, logger: logger)
+    }
+
+    private static func logUsage(_ usage: AnthropicUsage, model: String, managed: Bool, streamed: Bool, logger: Logger) {
+        logger.info("anthropic_usage", metadata: [
+            "event": .string("anthropic_usage"),
+            "model": .string(model),
+            "managed": .stringConvertible(managed),
+            "streamed": .stringConvertible(streamed),
+            "input_tokens": .stringConvertible(usage.inputTokens),
+            "output_tokens": .stringConvertible(usage.outputTokens),
+            "cache_read_input_tokens": .stringConvertible(usage.cacheReadInputTokens),
+            "cache_creation_input_tokens": .stringConvertible(usage.cacheCreationInputTokens),
+            "est_cost_usd_micros": .stringConvertible(usage.estimatedCostUsdMicros),
+        ])
     }
 }
