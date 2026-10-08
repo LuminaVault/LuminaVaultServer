@@ -64,8 +64,10 @@ clean: ## Remove build artifacts and data
 	rm -rf .build
 	rm -rf data/postgres18 data/redis data/hermes
 
-lint:
+lint: ## Check SwiftFormat, SwiftLint, and Periphery (macOS)
 	swiftformat --lint .
+	swiftlint
+	periphery scan
 
 bruno-regen: ## Regenerate the LuminaVaultCollection Bruno collection from Sources/AppAPI/openapi.yaml (HER-229)
 	./scripts/generate-bruno.sh
