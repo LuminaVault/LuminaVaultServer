@@ -552,7 +552,9 @@ func buildRouter(
     if fluentEnabled {
         managedServices.append(memoryHitCountUpdates)
     }
-    // Every repository that runs semantic search shares the one queue.
+    // swiftformat:disable docComments
+    /// Every repository that runs semantic search shares the one queue.
+    // swiftformat:enable docComments
     func makeMemoryRepository() -> MemoryRepository {
         var repository = MemoryRepository(fluent: services.fluent)
         repository.hitCountUpdates = memoryHitCountUpdates
@@ -1149,12 +1151,14 @@ func buildRouter(
         )
     }
     var providerAdapters: [any ProviderAdapter] = [gatewayAdapter]
-    // Canonical platform-funded OpenRouter pool. `OPENROUTER_API_KEY` remains
-    // a compatibility alias for the Hermes sidecar and older deployments.
-    // Provider secrets are read canonical-first (`LLM_PROVIDER_OPEN_ROUTER_API_KEY`),
-    // then via the pre-fix legacy spelling that every .env and compose file shipped
-    // (`LLM_PROVIDER_OPENROUTER_APIKEY`), then any documented alias. See
-    // `ProviderRegistry.apiKeyConfigKey` for why the two spellings differ.
+    // swiftformat:disable docComments
+    /// Canonical platform-funded OpenRouter pool. `OPENROUTER_API_KEY` remains
+    /// a compatibility alias for the Hermes sidecar and older deployments.
+    /// Provider secrets are read canonical-first (`LLM_PROVIDER_OPEN_ROUTER_API_KEY`),
+    /// then via the pre-fix legacy spelling that every .env and compose file shipped
+    /// (`LLM_PROVIDER_OPENROUTER_APIKEY`), then any documented alias. See
+    /// `ProviderRegistry.apiKeyConfigKey` for why the two spellings differ.
+    // swiftformat:enable docComments
     func providerAPIKey(_ key: String, alias: String = "") -> String {
         [
             reader.string(forKey: ConfigKey(ProviderRegistry.apiKeyConfigKey(key)), isSecret: true, default: ""),
