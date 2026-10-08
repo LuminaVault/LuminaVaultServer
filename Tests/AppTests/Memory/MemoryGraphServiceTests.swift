@@ -154,9 +154,9 @@ struct MemoryGraphServiceTests {
         let n2 = try #require(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
         let n3 = try #require(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
 
-        /// All pairs (n0,n1), (n0,n2), (n0,n3), (n1,n2), (n1,n3), (n2,n3) with
-        /// identical 1.0 similarity. With cap=2 every node must end up with
-        /// degree ≤ 2 in the pruned set.
+        // All pairs (n0,n1), (n0,n2), (n0,n3), (n1,n2), (n1,n3), (n2,n3) with
+        // identical 1.0 similarity. With cap=2 every node must end up with
+        // degree ≤ 2 in the pruned set.
         func edge(_ a: UUID, _ b: UUID, weight: Double = 1.0) -> MemoryGraphEdgeDTO {
             MemoryGraphEdgeDTO(from: a, to: b, kind: .semantic, tag: nil, similarity: weight, weight: weight)
         }

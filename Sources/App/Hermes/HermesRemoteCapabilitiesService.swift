@@ -214,11 +214,11 @@ struct HermesRemoteCapabilitiesService {
         let flags = await fetchCapabilityFlags(base: base, auth: auth)
         let jobsReachable = await probeJobs(base: base, auth: auth)
 
-        /// Map the remote contract onto our per-domain availability. hermes-agent
-        /// keeps SOUL/config/gateways/memory file-on-disk, so those are
-        /// structurally unsupported for a live proxy regardless of flags
-        /// (see docs/hermes-api-server-surface.md). Chat is always live once the
-        /// box is reachable (the resolver already routes it).
+        // Map the remote contract onto our per-domain availability. hermes-agent
+        // keeps SOUL/config/gateways/memory file-on-disk, so those are
+        // structurally unsupported for a live proxy regardless of flags
+        // (see docs/hermes-api-server-surface.md). Chat is always live once the
+        // box is reachable (the resolver already routes it).
         func avail(_ flag: Bool) -> HermesDomainAvailability {
             flag ? .live : .unsupported
         }
