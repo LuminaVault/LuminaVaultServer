@@ -267,8 +267,41 @@ enum RouterModelCatalog {
         // asserts this file stays clean.
     ]
 
+    /// Rates for models the server can be *charged* for but that nothing may
+    /// *route* to by choice.
+    ///
+    /// Kept out of `entries` on purpose: the Auto pool builder, the model list
+    /// the clients render and the "ask another model" validation all read
+    /// `entries` (via `entry(provider:model:)`), so a row there would let any
+    /// tenant pin the model and spend the trial key even with
+    /// `ANTHROPIC_FIRST=false`. Only the meters consult this list, through
+    /// `pricing(provider:model:)`.
+    static let pricingOnlyEntries: [RouterModelCatalogEntryDTO] = [
+        // Haiku trial (`AnthropicManagedTrialRouter`). $0.10 / $0.50 per MTok
+        // for prompts of 100K tokens or fewer; the 5x long-prompt rate is not
+        // modelled here (see `anthropic_usage` for the per-call estimate).
+        .init(
+            provider: .anthropic,
+            model: "claude-haiku-5-5",
+            displayName: "Claude Haiku 5.5",
+            taskQuality: ratings(general: 84, reasoning: 82, coding: 82, search: 70, summarization: 86),
+            inputPerMillionUsdMicros: 100_000,
+            outputPerMillionUsdMicros: 500_000,
+            defaultLatencyMs: 600,
+            capabilities: ["chat", "tools"],
+            tier: .fast
+        ),
+    ]
+
     static func entry(provider: ProviderID, model: String) -> RouterModelCatalogEntryDTO? {
         entries.first { $0.provider == provider && $0.model == model }
+    }
+
+    /// Price lookup for meters: the routable catalogue first, then the
+    /// pricing-only rows.
+    static func pricing(provider: ProviderID, model: String) -> RouterModelCatalogEntryDTO? {
+        entry(provider: provider, model: model)
+            ?? pricingOnlyEntries.first { $0.provider == provider && $0.model == model }
     }
 
     private static func ratings(

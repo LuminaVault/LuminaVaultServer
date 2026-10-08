@@ -820,8 +820,9 @@ struct RoutedLLMTransport: HermesChatTransport {
     /// Micro-USD for a call, from the router's own price table.
     ///
     /// The decision's routes carry the rate actually quoted for this request,
-    /// so they win; `RouterModelCatalog` is the fallback for a call that never
-    /// went through Cerberus. A model in neither yields 0 — recording a
+    /// so they win; `RouterModelCatalog` (pricing-only rows included) is the
+    /// fallback for a call that never went through Cerberus, or for the
+    /// Anthropic trial route that was put in front of its decision. A model in neither yields 0 — recording a
     /// guessed price would be worse than recording nothing, because the
     /// ledger's only job is to answer "what does a user cost" truthfully.
     static func catalogCost(
@@ -832,7 +833,7 @@ struct RoutedLLMTransport: HermesChatTransport {
         cerberus: CerberusDecisionMetadata?
     ) -> Int64 {
         let route = cerberus?.routes.first { $0.provider == provider && $0.model == model }
-        let catalog = RouterModelCatalog.entry(provider: provider, model: model)
+        let catalog = RouterModelCatalog.pricing(provider: provider, model: model)
         let inputRate = route?.inputPerMillionUsdMicros ?? catalog?.inputPerMillionUsdMicros ?? 0
         let outputRate = route?.outputPerMillionUsdMicros ?? catalog?.outputPerMillionUsdMicros ?? 0
         return Int64(max(0, tokensIn)) * inputRate / 1_000_000
