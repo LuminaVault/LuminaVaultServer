@@ -59,9 +59,11 @@ struct UserPreferenceModelRouter: ModelRouter {
         let primary = ModelRoute(provider: pref.primaryProvider, modelID: pref.primaryModel)
         let chain = pref.fallbackChain.map { ModelRoute(provider: $0.provider, modelID: $0.model) }
 
-        // Provider allow/block lists constrain every candidate, including the
-        // stitched-on table defaults. Block-list always wins; a non-empty
-        // allow-list means "only these providers".
+        // swiftformat:disable docComments
+        /// Provider allow/block lists constrain every candidate, including the
+        /// stitched-on table defaults. Block-list always wins; a non-empty
+        /// allow-list means "only these providers".
+        // swiftformat:enable docComments
         func isAllowed(_ provider: ProviderKind) -> Bool {
             if pref.blockedProviders.contains(provider) {
                 return false
