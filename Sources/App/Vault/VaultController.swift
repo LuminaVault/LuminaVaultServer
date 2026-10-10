@@ -5,6 +5,7 @@ import Hummingbird
 import HummingbirdFluent
 import Logging
 import LuminaVaultShared
+import SQLKit
 
 // MARK: - Server-side conformances
 
@@ -515,10 +516,47 @@ struct VaultController {
         if fm.fileExists(atPath: src.path) {
             try fm.moveItem(at: src, to: dst)
         }
+        let spaceID = try await Self.spaceID(forPath: to, tenantID: tenantID, db: db)
+        let fileID = try row.requireID()
         row.path = to
-        try await row.save(on: db)
+        row.spaceID = spaceID
+        try await db.transaction { tx in
+            try await row.save(on: tx)
+            // The folder is the Space (HER-105), so a move between folders is a
+            // re-file. Memories compiled from this file and their chunks carry
+            // their own copy of the Space and path; without this, a moved note
+            // keeps answering Space-scoped searches for the folder it left and
+            // cites a path that no longer exists.
+            guard let sql = tx as? any SQLDatabase else {
+                throw HTTPError(.internalServerError, message: "SQL driver required for vault move")
+            }
+            try await sql.raw("""
+            UPDATE memories
+            SET space_id = \(bind: spaceID), updated_at = NOW()
+            WHERE tenant_id = \(bind: tenantID) AND source_vault_file_id = \(bind: fileID)
+            """).run()
+            try await sql.raw("""
+            UPDATE memory_chunks
+            SET space_id = \(bind: spaceID), source_path = \(bind: to)
+            WHERE tenant_id = \(bind: tenantID) AND vault_file_id = \(bind: fileID)
+            """).run()
+        }
         logger.info("vault move tenant=\(tenantID) from=\(from) to=\(to)")
         return try VaultFileDTO.fromRow(row)
+    }
+
+    /// The Space a vault path is filed under: its first folder, matched against
+    /// the tenant's Space slugs. `inbox/` and any folder that is not a Space
+    /// slug mean unfiled, the same rule the upload path uses in reverse.
+    static func spaceID(forPath path: String, tenantID: UUID, db: any Database) async throws -> UUID? {
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count > 1, let folder = components.first, folder != "inbox" else {
+            return nil
+        }
+        return try await Space.query(on: db, tenantID: tenantID)
+            .filter(\.$slug == String(folder))
+            .first()?
+            .requireID()
     }
 
     // MARK: - Export (HER-91)

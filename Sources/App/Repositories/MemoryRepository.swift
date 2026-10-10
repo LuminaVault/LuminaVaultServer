@@ -418,6 +418,13 @@ struct MemoryRepository {
 
     /// Updates content + embedding atomically. Used when a user edits a memory
     /// — content drift invalidates the existing vector, so we re-embed.
+    ///
+    /// The memory's chunks are dropped in the same transaction: they hold the
+    /// old text, and the chunk arm of hybrid search would keep returning it
+    /// after a correction. The document arm finds the memory by its new
+    /// embedding until the chunks are rebuilt. `updated_at` is bumped by hand
+    /// because raw SQL bypasses Fluent's timestamp, and the local-sync cursor
+    /// reads it.
     func updateContent(
         tenantID: UUID,
         id: UUID,
@@ -425,17 +432,27 @@ struct MemoryRepository {
         embedding: [Float],
         contribution: MemoryContributionInput? = nil
     ) async throws -> Bool {
-        guard let sql = fluent.db() as? any SQLDatabase else {
-            throw HTTPError(.internalServerError, message: "SQL driver required for vector update")
-        }
         let vec = MemoryRepository.formatVector(embedding)
-        let rows = try await sql.raw("""
-        UPDATE memories
-        SET content = \(bind: content),
-            embedding = \(unsafeRaw: "'\(vec)'::vector")
-        WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
-        RETURNING id
-        """).all(decoding: DeletedIDRow.self)
+        let rows = try await fluent.db().transaction { db in
+            guard let tx = db as? any SQLDatabase else {
+                throw HTTPError(.internalServerError, message: "SQL driver required for vector update")
+            }
+            let rows = try await tx.raw("""
+            UPDATE memories
+            SET content = \(bind: content),
+                embedding = \(unsafeRaw: "'\(vec)'::vector"),
+                updated_at = NOW()
+            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+            RETURNING id
+            """).all(decoding: DeletedIDRow.self)
+            if !rows.isEmpty {
+                try await tx.raw("""
+                DELETE FROM memory_chunks
+                WHERE tenant_id = \(bind: tenantID) AND memory_id = \(bind: id)
+                """).run()
+            }
+            return rows
+        }
         if !rows.isEmpty, let contribution {
             try await MemoryProvenanceRepository(fluent: fluent).record(
                 tenantID: tenantID,
