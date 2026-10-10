@@ -3557,6 +3557,117 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HybridRoutingPreferencesDTO' }
+  /v1/me/agent-connections:
+    get:
+      tags: [Me]
+      operationId: agentConnectionsList
+      summary: List the caller's live agent keys for MCP.
+      description: |
+        Revoked keys are omitted. The plaintext token is never returned
+        after the response that issued it; rows carry only `tokenPrefix`.
+      responses:
+        '200':
+          description: Live keys, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentConnectionsListResponse' }
+    post:
+      tags: [Me]
+      operationId: agentConnectionIssue
+      summary: Issue a new agent key and its setup snippet.
+      description: |
+        The response is the only place the plaintext `token` ever appears.
+        `access` defaults to `read` and `allowPersonalData` to `false`: a new
+        key can search and read the vault and nothing more until the user
+        grants more.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentConnectionIssueRequest' }
+      responses:
+        '200':
+          description: The new key, its plaintext token, and setup instructions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentConnectionIssuedResponse' }
+        '400':
+          description: "`name_required` or `name_too_long`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/me/agent-connections/preview:
+    get:
+      tags: [Me]
+      operationId: agentConnectionPreview
+      summary: Setup snippet for a client kind, with a placeholder token.
+      description: Issues nothing. Used to show the steps before a key exists.
+      parameters:
+        - in: query
+          name: clientKind
+          required: false
+          schema: { $ref: '#/components/schemas/AgentClientKind' }
+      responses:
+        '200':
+          description: Setup instructions carrying `AgentConnectionService.placeholderToken`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentConnectionSetupDTO' }
+        '400':
+          description: "`invalid_client_kind`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /v1/me/agent-connections/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Me]
+      operationId: agentConnectionUpdate
+      summary: Change a key's personal-data grant, its access, or both.
+      description: |
+        Fields left out stay as they are. A body naming neither field is
+        rejected. A `read` key gets an MCP tool error from every tool that
+        writes (`index`, `calendar_create`, `reminder_create`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentConnectionUpdateRequest' }
+      responses:
+        '200':
+          description: The updated key.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentConnectionDTO' }
+        '400':
+          description: "`invalid_id` or `nothing_to_update`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: No live key with this id for the caller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Me]
+      operationId: agentConnectionRevoke
+      summary: Revoke a key. It stops authenticating immediately.
+      responses:
+        '204':
+          description: Revoked.
+        '404':
+          description: No live key with this id for the caller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /v1/me/connections:
     get:
       tags: [Me]
@@ -11329,6 +11440,79 @@ components:
         - open_plugin
         - open_server_settings
         - view_diagnostics
+
+    AgentClientKind:
+      type: string
+      enum: [claude_code, codex, hermes, other]
+
+    AgentConnectionAccess:
+      type: string
+      description: |
+        `read` keys can only call MCP tools that change nothing; `read_write`
+        keys can also call the tools that write. Keys issued before this
+        field existed were migrated to `read_write`.
+      enum: [read, read_write]
+
+    AgentConnectionDTO:
+      type: object
+      required: [id, name, clientKind, tokenPrefix, createdAt, allowPersonalData, access]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        clientKind: { $ref: '#/components/schemas/AgentClientKind' }
+        tokenPrefix: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time }
+        allowPersonalData: { type: boolean }
+        access: { $ref: '#/components/schemas/AgentConnectionAccess' }
+
+    AgentConnectionsListResponse:
+      type: object
+      required: [connections]
+      properties:
+        connections:
+          type: array
+          items: { $ref: '#/components/schemas/AgentConnectionDTO' }
+
+    AgentConnectionIssueRequest:
+      type: object
+      required: [name, clientKind]
+      properties:
+        name: { type: string, maxLength: 60 }
+        clientKind: { $ref: '#/components/schemas/AgentClientKind' }
+        allowPersonalData: { type: boolean, default: false }
+        access: { $ref: '#/components/schemas/AgentConnectionAccess' }
+
+    AgentConnectionUpdateRequest:
+      type: object
+      properties:
+        allowPersonalData: { type: boolean }
+        access: { $ref: '#/components/schemas/AgentConnectionAccess' }
+
+    AgentConnectionSetupDTO:
+      type: object
+      required: [kind, url, token, configLabel, configLang, config, prompt]
+      properties:
+        kind: { $ref: '#/components/schemas/AgentClientKind' }
+        url: { type: string }
+        token: { type: string }
+        configLabel: { type: string }
+        configLang: { type: string }
+        config: { type: string }
+        safeLabel: { type: string }
+        safeLang: { type: string }
+        safe: { type: string }
+        export: { type: string }
+        safeNote: { type: string }
+        prompt: { type: string }
+
+    AgentConnectionIssuedResponse:
+      type: object
+      required: [connection, token, setup]
+      properties:
+        connection: { $ref: '#/components/schemas/AgentConnectionDTO' }
+        token: { type: string, description: Plaintext token. Returned once, never again. }
+        setup: { $ref: '#/components/schemas/AgentConnectionSetupDTO' }
 
     ConnectionSummaryDTO:
       type: object
