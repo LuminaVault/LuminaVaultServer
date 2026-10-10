@@ -124,6 +124,19 @@ struct MCPController {
             throw MCPError.invalidParams("unknown argument '\(unknown)' for tool '\(name)'")
         }
 
+        // A read-only agent key never reaches a tool that changes something,
+        // whichever group the tool belongs to. A first-party session JWT is
+        // the user themselves and is not limited here.
+        if tool.writes, let token = Self.agentToken(request), try await !(agents.allowsWrites(token: token)) {
+            return Self.toolContent(.object([
+                "isError": .bool(true),
+                "message": .string("""
+                this agent key is read-only — the user can give it write access \
+                in LuminaVault Settings → Agent connections
+                """),
+            ]))
+        }
+
         if tool.personal {
             return try await callPersonalTool(tool, arguments: arguments, request: request, ctx: ctx)
         }

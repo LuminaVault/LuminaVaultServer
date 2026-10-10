@@ -33,7 +33,8 @@ struct AgentConnectionsController {
             tenantID: tenantID,
             name: body.name,
             kind: body.clientKind,
-            allowPersonalData: body.allowPersonalData ?? false
+            allowPersonalData: body.allowPersonalData ?? false,
+            access: body.access ?? .read
         )
         let setup = MCPSetup.instructions(
             kind: body.clientKind,
@@ -60,7 +61,15 @@ struct AgentConnectionsController {
             throw HTTPError(.badRequest, message: "invalid_id")
         }
         let body = try await req.decode(as: AgentConnectionUpdateRequest.self, context: ctx)
-        return try await service.setAllowPersonalData(id: id, tenantID: tenantID, allow: body.allowPersonalData)
+        guard body.allowPersonalData != nil || body.access != nil else {
+            throw HTTPError(.badRequest, message: "nothing_to_update")
+        }
+        return try await service.update(
+            id: id,
+            tenantID: tenantID,
+            allowPersonalData: body.allowPersonalData,
+            access: body.access
+        )
     }
 
     @Sendable

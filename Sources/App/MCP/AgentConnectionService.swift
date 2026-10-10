@@ -27,7 +27,8 @@ struct AgentConnectionService: Sendable {
         tenantID: UUID,
         name: String,
         kind: AgentClientKind,
-        allowPersonalData: Bool = false
+        allowPersonalData: Bool = false,
+        access: AgentConnectionAccess = .read
     ) async throws -> (AgentConnectionDTO, String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -45,6 +46,7 @@ struct AgentConnectionService: Sendable {
         row.tokenHash = Self.hash(token)
         row.tokenPrefix = String(token.prefix(Self.displayPrefixLen))
         row.allowPersonalData = allowPersonalData
+        row.access = access
         try await row.save(on: fluent.db())
         return try (row.asDTO(), token)
     }
@@ -69,7 +71,14 @@ struct AgentConnectionService: Sendable {
         try await row.save(on: fluent.db())
     }
 
-    func setAllowPersonalData(id: UUID, tenantID: UUID, allow: Bool) async throws -> AgentConnectionDTO {
+    /// Applies whichever of the two grants the request names; a `nil` leaves
+    /// that grant as it is.
+    func update(
+        id: UUID,
+        tenantID: UUID,
+        allowPersonalData: Bool?,
+        access: AgentConnectionAccess?
+    ) async throws -> AgentConnectionDTO {
         guard let row = try await AgentConnection.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$id == id)
             .filter(\.$revokedAt == nil)
@@ -77,7 +86,12 @@ struct AgentConnectionService: Sendable {
         else {
             throw HTTPError(.notFound, message: "not_found")
         }
-        row.allowPersonalData = allow
+        if let allowPersonalData {
+            row.allowPersonalData = allowPersonalData
+        }
+        if let access {
+            row.access = access
+        }
         try await row.save(on: fluent.db())
         return try row.asDTO()
     }
@@ -91,6 +105,17 @@ struct AgentConnectionService: Sendable {
             .filter(\.$revokedAt == nil)
             .first()?
             .allowPersonalData ?? false
+    }
+
+    /// Whether a presented, live key may call tools that write. Unknown and
+    /// revoked keys answer `false`.
+    func allowsWrites(token: String) async throws -> Bool {
+        guard token.hasPrefix(Self.tokenPrefix) else { return false }
+        return try await AgentConnection.query(on: fluent.db())
+            .filter(\.$tokenHash == Self.hash(token))
+            .filter(\.$revokedAt == nil)
+            .first()?
+            .access == .readWrite
     }
 
     /// Resolves a presented bearer to the user it acts as. Unknown and

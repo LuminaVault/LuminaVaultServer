@@ -21,10 +21,18 @@ final class AgentConnection: Model, TenantModel, @unchecked Sendable {
     /// over MCP. Off by default: a key made to search notes must not
     /// quietly gain health data.
     @Field(key: "allow_personal_data") var allowPersonalData: Bool
+    /// `read` keys can only call tools that change nothing. See
+    /// `MCPController.callTool`.
+    @Field(key: "access") var accessRaw: String
 
     var clientKind: AgentClientKind {
         get { AgentClientKind(rawValue: clientKindRaw) ?? .other }
         set { clientKindRaw = newValue.rawValue }
+    }
+
+    var access: AgentConnectionAccess {
+        get { AgentConnectionAccess(rawValue: accessRaw) ?? .read }
+        set { accessRaw = newValue.rawValue }
     }
 
     init() {}
@@ -38,7 +46,8 @@ final class AgentConnection: Model, TenantModel, @unchecked Sendable {
             tokenPrefix: tokenPrefix,
             createdAt: createdAt ?? Date(),
             lastUsedAt: lastUsedAt,
-            allowPersonalData: allowPersonalData
+            allowPersonalData: allowPersonalData,
+            access: access
         )
     }
 }

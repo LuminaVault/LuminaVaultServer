@@ -264,6 +264,111 @@ struct AgentConnectionsControllerTests {
     }
 
     @Test
+    func `a new key is read-only until the user grants write access`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let jwt = try await Self.register(client: client)
+            let userHeaders: HTTPFields = [
+                .authorization: "Bearer \(jwt)",
+                .contentType: "application/json",
+            ]
+            let issued: AgentConnectionIssuedResponse = try await client.execute(
+                uri: "/v1/me/agent-connections",
+                method: .post,
+                headers: userHeaders,
+                body: ByteBuffer(string: #"{"name":"cursor","clientKind":"other"}"#)
+            ) { response in
+                try testJSONDecoder().decode(
+                    AgentConnectionIssuedResponse.self,
+                    from: Data(response.body.readableBytesView)
+                )
+            }
+            #expect(issued.connection.access == .read)
+
+            let agentHeaders: HTTPFields = [
+                .authorization: "Bearer \(issued.token)",
+                .contentType: "application/json",
+            ]
+            let indexCall = ByteBuffer(string: """
+            {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"index","arguments":{}}}
+            """)
+            let searchCall = ByteBuffer(string: """
+            {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"status","arguments":{}}}
+            """)
+
+            // Read key: a writing tool is refused, a reading tool is not.
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: indexCall) { response in
+                #expect(response.status == .ok)
+                let body = String(buffer: response.body)
+                #expect(body.contains("\"isError\":true"))
+                #expect(body.contains("read-only"))
+            }
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: searchCall) { response in
+                #expect(!String(buffer: response.body).contains("read-only"))
+            }
+
+            // The personal-data grant does not imply write access.
+            let reminderCall = ByteBuffer(string: """
+            {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"reminder_create","arguments":{"title":"x"}}}
+            """)
+            _ = try await client.execute(
+                uri: "/v1/me/agent-connections/\(issued.connection.id.uuidString)",
+                method: .patch,
+                headers: userHeaders,
+                body: ByteBuffer(string: #"{"allowPersonalData":true}"#)
+            ) { _ in }
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: reminderCall) { response in
+                #expect(String(buffer: response.body).contains("read-only"))
+            }
+
+            // Granting write access touches only access.
+            let updated: AgentConnectionDTO = try await client.execute(
+                uri: "/v1/me/agent-connections/\(issued.connection.id.uuidString)",
+                method: .patch,
+                headers: userHeaders,
+                body: ByteBuffer(string: #"{"access":"read_write"}"#)
+            ) { response in
+                try testJSONDecoder().decode(AgentConnectionDTO.self, from: Data(response.body.readableBytesView))
+            }
+            #expect(updated.access == .readWrite)
+            #expect(updated.allowPersonalData == true)
+
+            try await client.execute(uri: "/v1/mcp", method: .post, headers: agentHeaders, body: indexCall) { response in
+                #expect(response.status == .ok)
+                #expect(!String(buffer: response.body).contains("read-only"))
+            }
+
+            // An update that names nothing is a client bug, not a no-op.
+            try await client.execute(
+                uri: "/v1/me/agent-connections/\(issued.connection.id.uuidString)",
+                method: .patch,
+                headers: userHeaders,
+                body: ByteBuffer(string: "{}")
+            ) { #expect($0.status == .badRequest) }
+        }
+    }
+
+    @Test
+    func `a key can be issued with write access`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let jwt = try await Self.register(client: client)
+            let issued: AgentConnectionIssuedResponse = try await client.execute(
+                uri: "/v1/me/agent-connections",
+                method: .post,
+                headers: [.authorization: "Bearer \(jwt)", .contentType: "application/json"],
+                body: ByteBuffer(string: #"{"name":"codex","clientKind":"codex","access":"read_write"}"#)
+            ) { response in
+                try testJSONDecoder().decode(
+                    AgentConnectionIssuedResponse.self,
+                    from: Data(response.body.readableBytesView)
+                )
+            }
+            #expect(issued.connection.access == .readWrite)
+        }
+    }
+
+    @Test
     func `blank name is rejected`() async throws {
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
