@@ -264,6 +264,13 @@ enum ModelDisclosurePolicy {
 
     static func scrub(_ contribution: MemoryContributionDTO, disclosure: ModelDisclosure) -> MemoryContributionDTO {
         guard disclosure == .hidden else { return contribution }
+        // An agent key's attribution ("mcp:codex" / the key's name) is the
+        // user's own connection, not the upstream model this policy hides.
+        // Scrubbing it would leave "saved by an agent" with no way to tell
+        // which one.
+        if contribution.model.map(MCPCaller.isAgentAttribution) == true {
+            return contribution
+        }
         return MemoryContributionDTO(
             id: contribution.id,
             operation: contribution.operation,

@@ -466,15 +466,8 @@ struct MemoryController {
     func delete(_ req: Request, ctx: AppRequestContext) async throws -> Response {
         let id = try Self.parseID(ctx)
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
-        if let memory = try await repository.find(tenantID: tenantID, id: id) {
-            try await provenanceRepository.suppressJob(tenantID: tenantID, memory: memory)
-        }
-        let deleted = try await repository.delete(tenantID: tenantID, id: id)
-        guard deleted else { throw HTTPError(.notFound, message: "memory not found") }
-        if await (try? MemorySyncTombstone.query(on: repository.fluent.db(), tenantID: tenantID)
-            .filter(\.$memoryID == id).first()) == nil
-        {
-            try? await MemorySyncTombstone(tenantID: tenantID, memoryID: id).save(on: repository.fluent.db())
+        guard try await repository.forget(tenantID: tenantID, id: id) else {
+            throw HTTPError(.notFound, message: "memory not found")
         }
         return Response(status: .noContent)
     }
