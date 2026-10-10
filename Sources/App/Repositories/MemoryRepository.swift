@@ -416,6 +416,23 @@ struct MemoryRepository {
         return !result.isEmpty
     }
 
+    /// Deletes a memory the way the user's own delete does: the source job is
+    /// suppressed so it is not re-learned, and a tombstone tells local-sync
+    /// clients to drop their copy. Returns `false` when there was no such
+    /// memory in this tenant.
+    func forget(tenantID: UUID, id: UUID) async throws -> Bool {
+        if let memory = try await find(tenantID: tenantID, id: id) {
+            try await MemoryProvenanceRepository(fluent: fluent).suppressJob(tenantID: tenantID, memory: memory)
+        }
+        guard try await delete(tenantID: tenantID, id: id) else { return false }
+        if await (try? MemorySyncTombstone.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$memoryID == id).first()) == nil
+        {
+            try? await MemorySyncTombstone(tenantID: tenantID, memoryID: id).save(on: fluent.db())
+        }
+        return true
+    }
+
     /// Updates content + embedding atomically. Used when a user edits a memory
     /// — content drift invalidates the existing vector, so we re-embed.
     ///

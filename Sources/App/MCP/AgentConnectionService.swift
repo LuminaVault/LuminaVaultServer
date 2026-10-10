@@ -118,6 +118,15 @@ struct AgentConnectionService: Sendable {
             .access == .readWrite
     }
 
+    /// The live row behind a presented key, for attributing what it writes.
+    func connection(token: String) async throws -> AgentConnection? {
+        guard token.hasPrefix(Self.tokenPrefix) else { return nil }
+        return try await AgentConnection.query(on: fluent.db())
+            .filter(\.$tokenHash == Self.hash(token))
+            .filter(\.$revokedAt == nil)
+            .first()
+    }
+
     /// Resolves a presented bearer to the user it acts as. Unknown and
     /// revoked tokens are indistinguishable (`nil`) so a guess cannot
     /// confirm that a token once existed.

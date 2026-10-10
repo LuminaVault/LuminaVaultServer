@@ -150,7 +150,8 @@ struct MCPController {
         )
         let tenantID = access.vaultID
 
-        let result = try await service.call(name: name, arguments: arguments, tenantID: tenantID)
+        let caller = try await caller(request: request, ctx: ctx)
+        let result = try await service.call(name: name, arguments: arguments, tenantID: tenantID, caller: caller)
         return Self.toolContent(result)
     }
 
@@ -176,6 +177,23 @@ struct MCPController {
         }
         let result = try await service.callPersonal(name: tool.name, arguments: arguments, userID: userID)
         return Self.toolContent(result)
+    }
+
+    /// The account plus, for an agent key, which key — so a memory an agent
+    /// saves says which connection saved it.
+    private func caller(request: Request, ctx: AppRequestContext) async throws -> MCPCaller {
+        let userID = try ctx.requireTenantID()
+        guard let token = Self.agentToken(request),
+              let connection = try await agents.connection(token: token)
+        else {
+            return .session(userID: userID)
+        }
+        return try MCPCaller(
+            userID: userID,
+            connectionID: connection.requireID(),
+            connectionName: connection.name,
+            clientKind: connection.clientKind
+        )
     }
 
     private static func agentToken(_ request: Request) -> String? {

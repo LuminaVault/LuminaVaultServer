@@ -22,9 +22,10 @@ enum MCPProtocol {
     LuminaVault exposes one user's knowledge vault: markdown documents, a
     chunk index with line-level citations, and a wiki-link graph.
 
-    Every tool except `index` is read-only and never modifies source
-    documents. `index` writes derived state only (chunks and links); it never
-    rewrites the user's markdown.
+    No tool modifies the user's markdown. `index` writes derived state only
+    (chunks and links). `memory_save`, `memory_update` and `memory_forget`
+    change the user's saved memories, and work only for keys the user gave
+    write access.
 
     A conservative sequence is: call `status` first; call `index` only when it
     reports drift and the user permits a refresh; use `search` to find
@@ -57,6 +58,10 @@ enum MCPLimits {
     static let maxReadChars = 100_000
     static let defaultReadChars = 20000
     static let maxQueryLength = 1000
+    /// A memory is one durable statement, not a document. Documents belong in
+    /// the vault.
+    static let maxMemoryLength = 4000
+    static let maxMemoryTags = 10
 
     /// Clamp with an explicit error rather than silently, so an agent asking
     /// for 5000 results learns the ceiling instead of quietly getting 50.
@@ -137,6 +142,12 @@ struct MCPTool: Sendable {
     /// than a vault. Always runs as the caller, never as a shared vault, and
     /// an agent key only reaches it when the user allowed personal data.
     var personal = false
+    /// Removes or overwrites something the user can see. Advertised so a
+    /// client can ask before calling.
+    var destructive = false
+    /// `nil` means the default: every tool is idempotent except personal
+    /// creates.
+    var idempotent: Bool?
 }
 
 enum MCPToolCatalog {
@@ -170,6 +181,7 @@ enum MCPToolCatalog {
                         maximum: MCPLimits.maxSearchLimit,
                         default: MCPLimits.defaultSearchLimit
                     ),
+                    "space": schema("string", "Optional Space slug to search within. Omit to search everything."),
                 ],
                 required: ["query"]
             ),
@@ -290,6 +302,70 @@ enum MCPToolCatalog {
             writes: true
         ),
 
+        // MARK: Memory — durable statements the user or an agent saved.
+
+        MCPTool(
+            name: "memory_save",
+            title: "Save a memory",
+            description: """
+            Save one durable statement worth remembering in later sessions: a \
+            preference, a decision, or a fact about the user or their work. One \
+            statement per call, in plain words, e.g. "Prefers Python for \
+            scripts." Search first; if a memory already says this, update it \
+            instead. An exact repeat returns the existing memory. Never save \
+            secrets, credentials, or anything the user asked you not to keep.
+            """,
+            inputSchema: object(
+                properties: [
+                    "content": schema("string", "The statement, at most \(MCPLimits.maxMemoryLength) characters."),
+                    "space": schema("string", "Optional Space slug to file it under; omit or `inbox` for unfiled."),
+                    "tags": .object([
+                        "type": .string("array"),
+                        "items": .object(["type": .string("string")]),
+                        "maxItems": .number(Double(MCPLimits.maxMemoryTags)),
+                        "description": .string("Optional short labels."),
+                    ]),
+                ],
+                required: ["content"]
+            ),
+            writes: true
+        ),
+        MCPTool(
+            name: "memory_update",
+            title: "Correct a memory",
+            description: """
+            Replace the text of a memory that has changed or was wrong. Use the \
+            `memoryID` from `search` or `memory_save`. The old wording stops \
+            being searchable.
+            """,
+            inputSchema: object(
+                properties: [
+                    "memoryID": schema("string", "The memory to correct."),
+                    "content": schema("string", "The corrected statement."),
+                ],
+                required: ["memoryID", "content"]
+            ),
+            writes: true,
+            destructive: true
+        ),
+        MCPTool(
+            name: "memory_forget",
+            title: "Forget a memory",
+            description: """
+            Delete a memory that is no longer true or that the user asked you to \
+            forget. Confirm with the user first. This removes it from search; it \
+            does not edit any vault document it came from.
+            """,
+            inputSchema: object(
+                properties: [
+                    "memoryID": schema("string", "The memory to delete."),
+                ],
+                required: ["memoryID"]
+            ),
+            writes: true,
+            destructive: true
+        ),
+
         // MARK: Personal data — the user's own, never a shared vault's.
 
         MCPTool(
@@ -393,11 +469,11 @@ enum MCPToolCatalog {
                 "inputSchema": tool.inputSchema,
                 "annotations": .object([
                     "readOnlyHint": .bool(!tool.writes),
-                    // Nothing here deletes or overwrites user content, including
-                    // `index`, which only rebuilds derived rows.
-                    "destructiveHint": .bool(false),
+                    // Only the memory correct/forget tools overwrite or delete
+                    // anything; `index` rebuilds derived rows.
+                    "destructiveHint": .bool(tool.destructive),
                     // Calling a create tool twice makes two events.
-                    "idempotentHint": .bool(!(tool.personal && tool.writes)),
+                    "idempotentHint": .bool(tool.idempotent ?? !(tool.personal && tool.writes)),
                 ]),
             ])
         })

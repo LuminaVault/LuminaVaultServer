@@ -12,24 +12,34 @@ struct MCPContractTests {
     private static let expectedTools = [
         "status", "search", "browse", "read", "recent", "links", "context", "index",
         "health_query", "calendar_query", "reminders_list", "calendar_create", "reminder_create",
+        "memory_save", "memory_update", "memory_forget",
     ]
+
+    /// Every tool that changes something. A read-only key is refused all of
+    /// these (`MCPController.callTool`).
+    private static let writers = [
+        "calendar_create", "index", "memory_forget", "memory_save", "memory_update", "reminder_create",
+    ]
+
+    /// The only tools allowed to overwrite or delete something the user sees.
+    private static let destructive: Set = ["memory_update", "memory_forget"]
 
     private static let personalTools: Set = [
         "health_query", "calendar_query", "reminders_list", "calendar_create", "reminder_create",
     ]
 
     @Test
-    func `the advertised tool set is exactly these thirteen`() {
+    func `the advertised tool set is exactly these sixteen`() {
         #expect(MCPToolCatalog.all.map(\.name).sorted() == Self.expectedTools.sorted())
     }
 
     @Test
-    func `only index and the two create tools may write`() {
-        // The read-only promise is the security argument for exposing the
-        // vault to an autonomous agent. The create tools are the one
-        // exception, and they sit behind consent plus "allow changes".
+    func `only index, the create tools and the memory tools may write`() {
+        // Every writer sits behind the key's write access; the personal
+        // creates also need consent. A tool that writes without being listed
+        // here would slip past a read-only key.
         let writers = MCPToolCatalog.all.filter(\.writes).map(\.name).sorted()
-        #expect(writers == ["calendar_create", "index", "reminder_create"])
+        #expect(writers == Self.writers)
     }
 
     @Test
@@ -95,11 +105,12 @@ struct MCPContractTests {
             let object = try #require(entry.objectValue)
             let name = try #require(object["name"]?.stringValue)
             let readOnly = object["annotations"]?.objectValue?["readOnlyHint"]?.boolValue
-            let writes = ["index", "calendar_create", "reminder_create"].contains(name)
+            let writes = Self.writers.contains(name)
             #expect(readOnly == !writes, "\(name) readOnlyHint")
-            // Nothing here deletes user content — not even `index`, which only
-            // rebuilds derived rows.
-            #expect(object["annotations"]?.objectValue?["destructiveHint"]?.boolValue == false, "\(name)")
+            // Only correcting and forgetting a memory overwrite or delete
+            // anything — not `index`, which only rebuilds derived rows.
+            let destructive = object["annotations"]?.objectValue?["destructiveHint"]?.boolValue
+            #expect(destructive == Self.destructive.contains(name), "\(name)")
         }
     }
 

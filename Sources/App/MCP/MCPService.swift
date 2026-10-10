@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import SQLKit
 
 /// Executes MCP tools against the tenant's vault.
@@ -31,7 +32,12 @@ struct MCPService: Sendable {
     /// Run one tool. Throws only for protocol-level problems; a tool that
     /// legitimately fails (no such document) returns a result the agent can
     /// read and react to.
-    func call(name: String, arguments: [String: JSONValue], tenantID: UUID) async throws -> JSONValue {
+    func call(
+        name: String,
+        arguments: [String: JSONValue],
+        tenantID: UUID,
+        caller: MCPCaller
+    ) async throws -> JSONValue {
         switch name {
         case "status": try await JSONValue.encoding(status.status(tenantID: tenantID))
         case "search": try await runSearch(arguments, tenantID: tenantID)
@@ -41,6 +47,9 @@ struct MCPService: Sendable {
         case "links": try await runLinks(arguments, tenantID: tenantID)
         case "context": try await runContext(arguments, tenantID: tenantID)
         case "index": try await runIndex(arguments, tenantID: tenantID)
+        case "memory_save": try await runMemorySave(arguments, tenantID: tenantID, caller: caller)
+        case "memory_update": try await runMemoryUpdate(arguments, tenantID: tenantID, caller: caller)
+        case "memory_forget": try await runMemoryForget(arguments, tenantID: tenantID, caller: caller)
         default: throw MCPError.methodNotFound("unknown tool '\(name)'")
         }
     }
@@ -113,12 +122,14 @@ struct MCPService: Sendable {
             maximum: MCPLimits.maxSearchLimit
         )
 
+        let spaceID = try await resolveSpace(arguments["space"]?.stringValue, tenantID: tenantID)
         let embedding = try await embeddings.embed(query, tenantID: tenantID)
         let hits = try await search.search(
             tenantID: tenantID,
             query: query,
             queryEmbedding: embedding,
-            limit: limit
+            limit: limit,
+            spaceID: spaceID
         )
 
         return .object([
@@ -148,6 +159,168 @@ struct MCPService: Sendable {
                 }
                 return .object(row)
             }),
+        ])
+    }
+
+    // MARK: - Memory writes
+
+    private var memories: MemoryRepository {
+        MemoryRepository(fluent: fluent)
+    }
+
+    /// Saves one durable fact, preference or decision. Exact repeats return
+    /// the existing memory rather than a second copy, so an agent that saves
+    /// the same thing every session does not fill the vault with duplicates.
+    private func runMemorySave(
+        _ arguments: [String: JSONValue],
+        tenantID: UUID,
+        caller: MCPCaller
+    ) async throws -> JSONValue {
+        let content = try memoryContent(arguments)
+        let spaceID = try await resolveSpace(arguments["space"]?.stringValue, tenantID: tenantID)
+        let tags = try memoryTags(arguments)
+
+        if let existing = try await Memory.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$content == content)
+            .filter(\.$reviewState != MemoryReviewState.rejected)
+            .first()
+        {
+            return try .object([
+                "memoryID": .string(existing.requireID().uuidString),
+                "duplicate": .bool(true),
+                "message": .string("An identical memory already exists; nothing was added."),
+            ])
+        }
+
+        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let memory = try await memories.create(
+            tenantID: tenantID,
+            content: content,
+            embedding: embedding,
+            tags: tags,
+            spaceID: spaceID,
+            contribution: caller.contribution(.create)
+        )
+        memory.createdByUserID = caller.userID
+        memory.updatedByUserID = caller.userID
+        try await memory.update(on: fluent.db())
+        let memoryID = try memory.requireID()
+        await backfill.indexer.indexBestEffort(
+            tenantID: tenantID,
+            memoryID: memoryID,
+            vaultFileID: nil,
+            spaceID: spaceID,
+            sourcePath: nil,
+            content: content
+        )
+        logger.info("mcp.memory.save tenant=\(tenantID) memory=\(memoryID) connection=\(caller.connectionID?.uuidString ?? "session")")
+        return .object([
+            "memoryID": .string(memoryID.uuidString),
+            "duplicate": .bool(false),
+        ])
+    }
+
+    /// Replaces a memory's text. The old chunks go with it, so a correction
+    /// is what later searches see.
+    private func runMemoryUpdate(
+        _ arguments: [String: JSONValue],
+        tenantID: UUID,
+        caller: MCPCaller
+    ) async throws -> JSONValue {
+        let memoryID = try memoryID(arguments)
+        let content = try memoryContent(arguments)
+        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let updated = try await memories.updateContent(
+            tenantID: tenantID,
+            id: memoryID,
+            content: content,
+            embedding: embedding,
+            contribution: caller.contribution(.update)
+        )
+        guard updated, let row = try await memories.find(tenantID: tenantID, id: memoryID) else {
+            return Self.notFound(memoryID)
+        }
+        row.updatedByUserID = caller.userID
+        try await row.update(on: fluent.db())
+        await backfill.indexer.indexBestEffort(
+            tenantID: tenantID,
+            memoryID: memoryID,
+            vaultFileID: nil,
+            spaceID: row.spaceID,
+            sourcePath: nil,
+            content: content
+        )
+        logger.info("mcp.memory.update tenant=\(tenantID) memory=\(memoryID) connection=\(caller.connectionID?.uuidString ?? "session")")
+        return .object(["memoryID": .string(memoryID.uuidString), "updated": .bool(true)])
+    }
+
+    private func runMemoryForget(
+        _ arguments: [String: JSONValue],
+        tenantID: UUID,
+        caller: MCPCaller
+    ) async throws -> JSONValue {
+        let memoryID = try memoryID(arguments)
+        guard try await memories.forget(tenantID: tenantID, id: memoryID) else {
+            return Self.notFound(memoryID)
+        }
+        logger.info("mcp.memory.forget tenant=\(tenantID) memory=\(memoryID) connection=\(caller.connectionID?.uuidString ?? "session")")
+        return .object(["memoryID": .string(memoryID.uuidString), "forgotten": .bool(true)])
+    }
+
+    private func memoryContent(_ arguments: [String: JSONValue]) throws -> String {
+        let content = (arguments["content"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else {
+            throw MCPError.invalidParams("content is required and must be a non-empty string")
+        }
+        guard content.count <= MCPLimits.maxMemoryLength else {
+            throw MCPError.invalidParams("content must be at most \(MCPLimits.maxMemoryLength) characters")
+        }
+        return content
+    }
+
+    private func memoryID(_ arguments: [String: JSONValue]) throws -> UUID {
+        guard let raw = arguments["memoryID"]?.stringValue, let id = UUID(uuidString: raw) else {
+            throw MCPError.invalidParams("memoryID is required and must be a UUID from search or memory_save")
+        }
+        return id
+    }
+
+    private func memoryTags(_ arguments: [String: JSONValue]) throws -> [String]? {
+        guard let value = arguments["tags"] else { return nil }
+        guard case let .array(items) = value else {
+            throw MCPError.invalidParams("tags must be an array of strings")
+        }
+        let tags = try items.map { item in
+            guard let tag = item.stringValue?.trimmingCharacters(in: .whitespaces), !tag.isEmpty else {
+                throw MCPError.invalidParams("tags must be non-empty strings")
+            }
+            return tag
+        }
+        guard tags.count <= MCPLimits.maxMemoryTags else {
+            throw MCPError.invalidParams("at most \(MCPLimits.maxMemoryTags) tags")
+        }
+        return tags.isEmpty ? nil : tags
+    }
+
+    /// A Space slug from a tool argument. `inbox`, or nothing, is unfiled.
+    /// An unknown slug is the agent's mistake and gets a readable error with
+    /// the slugs that do exist, rather than a silent save to the inbox.
+    private func resolveSpace(_ slug: String?, tenantID: UUID) async throws -> UUID? {
+        guard let slug = slug?.trimmingCharacters(in: .whitespaces), !slug.isEmpty, slug != "inbox" else {
+            return nil
+        }
+        let spaces = try await Space.query(on: fluent.db(), tenantID: tenantID).all()
+        guard let space = spaces.first(where: { $0.slug == slug }) else {
+            let known = spaces.map(\.slug).sorted().joined(separator: ", ")
+            throw MCPError.invalidParams("unknown space '\(slug)'. Known spaces: \(known.isEmpty ? "none" : known), or inbox")
+        }
+        return try space.requireID()
+    }
+
+    private static func notFound(_ memoryID: UUID) -> JSONValue {
+        .object([
+            "isError": .bool(true),
+            "message": .string("no memory \(memoryID.uuidString) in this vault"),
         ])
     }
 
