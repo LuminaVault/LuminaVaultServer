@@ -123,6 +123,12 @@ struct MemoryController {
     /// react to a freshly-saved memory. Optional: test wirings can omit it.
     var eventBus: EventBus?
 
+    /// Rebuilds a memory's chunks after a user corrects its content, so the
+    /// chunk arm of hybrid search returns the new text straight away instead
+    /// of waiting for a backfill. Optional: test wirings can omit it, and the
+    /// document arm still finds the memory without chunks.
+    var chunkIndexer: DocumentChunkIndexer?
+
     private static let defaultLimit = 20
     private static let maxLimit = 100
 
@@ -366,8 +372,6 @@ struct MemoryController {
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
-        row.updatedByUserID = try ctx.requireTenantID()
-        try await row.update(on: repository.fluent.db())
         let summary = try await provenanceRepository.summaries(
             tenantID: tenantID,
             memoryIDs: [row.savedID]
@@ -572,6 +576,22 @@ struct MemoryController {
 
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
+        }
+        row.updatedByUserID = try ctx.requireTenantID()
+        try await row.update(on: repository.fluent.db())
+        if let content = body.content {
+            // Chunked from the corrected text with no file path: the source
+            // file still holds the old wording, so its line numbers no longer
+            // describe this memory. Having chunks also keeps the backfill from
+            // re-chunking the old file text back into search.
+            await chunkIndexer?.indexBestEffort(
+                tenantID: tenantID,
+                memoryID: id,
+                vaultFileID: nil,
+                spaceID: row.spaceID,
+                sourcePath: nil,
+                content: content
+            )
         }
         let summary = try await provenanceRepository.summaries(
             tenantID: tenantID,

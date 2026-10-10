@@ -1973,7 +1973,8 @@ func buildRouter(
         rejectListRepository: KBCompileRejectListRepository(fluent: services.fluent),
         hybridExecutionEnabled: reader.string(forKey: "hybridExecution.enabled", default: "true").lowercased() == "true",
         llmPreferences: userLLMPreferenceRepo,
-        eventBus: eventBus
+        eventBus: eventBus,
+        chunkIndexer: chunkIndexer
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
     // HermesMemoryService); attach the resolution middleware so user-
