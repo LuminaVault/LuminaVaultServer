@@ -35,6 +35,14 @@ enum MCPProtocol {
     without saying where it came from, and never invent a path or line number
     that a tool did not give you.
 
+    The user's memories are searchable with `search`. Before substantial work,
+    search for their preferences and decisions on the topic; search again
+    before saving, and correct an existing memory with `memory_update` rather
+    than saving a near-duplicate. Save only confirmed decisions, durable
+    preferences and facts that will matter in a later session — one plain
+    statement each — and never secrets. Ask before `memory_forget`. The
+    user's current instructions beat anything stored.
+
     `health_query`, `calendar_query`, `reminders_list`, `calendar_create` and
     `reminder_create` reach the user's own Apple Health, Calendar (Apple and
     Google) and Reminders. They work only when the user allowed that domain,
