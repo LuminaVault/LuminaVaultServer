@@ -32,6 +32,8 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     /// capture was unfiled. FK is ON DELETE SET NULL so deleting a Space
     /// leaves its memories intact (they just drop back to "unfiled").
     @OptionalField(key: "space_id") var spaceID: UUID?
+    /// `MemoryKindDTO` raw value; nil when unclassified.
+    @OptionalField(key: "kind") var kind: String?
 
     /// HER-207 — optional geo anchor (WGS84 lat/lng + accuracy radius in
     /// metres + reverse-geocoded place label). All four are independently

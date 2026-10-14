@@ -1,4 +1,5 @@
 import Foundation
+import LuminaVaultShared
 
 /// JSON-RPC 2.0 envelopes and the MCP tool catalog.
 ///
@@ -319,6 +320,14 @@ enum MCPToolCatalog {
                 properties: [
                     "content": schema("string", "The statement, at most \(MCPLimits.maxMemoryLength) characters."),
                     "space": schema("string", "Optional Space slug to file it under; omit or `inbox` for unfiled."),
+                    "kind": .object([
+                        "type": .string("string"),
+                        "enum": .array(MemoryKindDTO.allCases.map { .string($0.rawValue) }),
+                        "description": .string(
+                            "preference (how the user likes things), decision (something settled), "
+                                + "fact (about the user or their work), or note."
+                        ),
+                    ]),
                     "tags": .object([
                         "type": .string("array"),
                         "items": .object(["type": .string("string")]),

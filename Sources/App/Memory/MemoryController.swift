@@ -67,7 +67,8 @@ extension MemoryDTO {
             reviewState: memory.reviewState,
             provenance: provenance ?? memory.originSummary,
             createdByUserId: memory.createdByUserID,
-            updatedByUserId: memory.updatedByUserID
+            updatedByUserId: memory.updatedByUserID,
+            kind: memory.kind.flatMap(MemoryKindDTO.init(rawValue:))
         )
     }
 }
@@ -201,7 +202,8 @@ struct MemoryController {
             content: content,
             embedding: embedding,
             spaceID: spaceID,
-            contribution: .user(.create)
+            contribution: .user(.create),
+            kind: body.kind
         )
         let actorID = try ctx.requireTenantID()
         memory.createdByUserID = actorID
@@ -344,11 +346,22 @@ struct MemoryController {
             reviewStates = nil
         }
 
+        let kind: MemoryKindDTO?
+        if let raw = req.uri.queryParameters["kind"], !raw.isEmpty {
+            guard let parsed = MemoryKindDTO(rawValue: String(raw)) else {
+                throw HTTPError(.badRequest, message: "kind must be one of \(MemoryKindDTO.allCases.map(\.rawValue).joined(separator: ", "))")
+            }
+            kind = parsed
+        } else {
+            kind = nil
+        }
+
         let rows = try await repository.listPaginated(
             tenantID: tenantID,
             tag: tag,
             reviewStates: reviewStates,
             healthFilter: healthFilter,
+            kind: kind,
             limit: limit,
             offset: offset
         )
@@ -500,8 +513,8 @@ struct MemoryController {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
         let body = try await req.decode(as: MemoryPatchRequest.self, context: ctx)
 
-        guard body.content != nil || body.tags != nil || body.reviewState != nil else {
-            throw HTTPError(.badRequest, message: "patch body must include content, tags, or reviewState")
+        guard body.content != nil || body.tags != nil || body.reviewState != nil || body.kind != nil else {
+            throw HTTPError(.badRequest, message: "patch body must include content, tags, reviewState, or kind")
         }
 
         if let content = body.content {
@@ -571,6 +584,14 @@ struct MemoryController {
             throw HTTPError(.notFound, message: "memory not found")
         }
         row.updatedByUserID = try ctx.requireTenantID()
+        if let kind = body.kind {
+            row.kind = kind.rawValue
+            // A kind-only change is still the user's edit; the other fields
+            // record their own contribution above.
+            if body.content == nil, body.tags == nil, body.reviewState == nil {
+                try await provenanceRepository.record(tenantID: tenantID, memoryID: id, input: .user(.update))
+            }
+        }
         try await row.update(on: repository.fluent.db())
         if let content = body.content {
             // Chunked from the corrected text with no file path: the source

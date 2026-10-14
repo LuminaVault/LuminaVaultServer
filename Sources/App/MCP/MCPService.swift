@@ -179,6 +179,7 @@ struct MCPService: Sendable {
         let content = try memoryContent(arguments)
         let spaceID = try await resolveSpace(arguments["space"]?.stringValue, tenantID: tenantID)
         let tags = try memoryTags(arguments)
+        let kind = try memoryKind(arguments)
 
         if let existing = try await Memory.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$content == content)
@@ -199,7 +200,8 @@ struct MCPService: Sendable {
             embedding: embedding,
             tags: tags,
             spaceID: spaceID,
-            contribution: caller.contribution(.create)
+            contribution: caller.contribution(.create),
+            kind: kind
         )
         memory.createdByUserID = caller.userID
         memory.updatedByUserID = caller.userID
@@ -283,6 +285,15 @@ struct MCPService: Sendable {
             throw MCPError.invalidParams("memoryID is required and must be a UUID from search or memory_save")
         }
         return id
+    }
+
+    private func memoryKind(_ arguments: [String: JSONValue]) throws -> MemoryKindDTO? {
+        guard let raw = arguments["kind"]?.stringValue else { return nil }
+        guard let kind = MemoryKindDTO(rawValue: raw) else {
+            let allowed = MemoryKindDTO.allCases.map(\.rawValue).joined(separator: ", ")
+            throw MCPError.invalidParams("kind must be one of \(allowed)")
+        }
+        return kind
     }
 
     private func memoryTags(_ arguments: [String: JSONValue]) throws -> [String]? {

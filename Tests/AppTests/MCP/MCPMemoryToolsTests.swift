@@ -256,6 +256,33 @@ struct MCPMemoryToolsTests {
     }
 
     @Test
+    func `memory_save records the kind and rejects an unknown one`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let account = try await Self.register(client: client)
+            let token = try await Self.issueKey(client: client, account: account, name: "rw", access: .readWrite)
+            let saved = try #require(try await Self.result(Self.call(
+                client: client, token: token, tool: "memory_save",
+                arguments: ["content": "Prefers dark mode.", "kind": "preference"]
+            )))
+            let memoryID = try #require(saved["memoryID"] as? String)
+            let memory: MemoryDTO = try await client.execute(
+                uri: "/v1/memory/\(memoryID)",
+                method: .get,
+                headers: [.authorization: "Bearer \(account.jwt)"]
+            ) { try testJSONDecoder().decode(MemoryDTO.self, from: Data($0.body.readableBytesView)) }
+            #expect(memory.kind == .preference)
+
+            let envelope = try await Self.call(
+                client: client, token: token, tool: "memory_save",
+                arguments: ["content": "x", "kind": "hunch"]
+            )
+            let error = try #require(envelope["error"] as? [String: Any])
+            #expect((error["message"] as? String ?? "").contains("kind must be one of"))
+        }
+    }
+
+    @Test
     func `hiding the model leaves an agent key's attribution visible`() {
         let agent = MemoryContributionDTO(
             id: UUID(), operation: .create, actor: .model, source: .manual,

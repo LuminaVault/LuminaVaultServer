@@ -232,7 +232,8 @@ enum ModelDisclosurePolicy {
             reviewState: memory.reviewState,
             provenance: memory.provenance.map { scrub($0, disclosure: disclosure) },
             createdByUserId: memory.createdByUserId,
-            updatedByUserId: memory.updatedByUserId
+            updatedByUserId: memory.updatedByUserId,
+            kind: memory.kind
         )
     }
 
