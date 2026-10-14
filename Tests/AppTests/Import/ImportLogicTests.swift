@@ -98,6 +98,18 @@ struct CompileParseTests {
     }
 
     @Test
+    func `extracted items carry kind and source, and old shapes still parse`() {
+        let items = MemoryCompileService.parseExtractedItems(
+            #"{"memories":[{"text":"a","kind":"fact","source":"x.md"},{"content":"b","kind":"nope"},"c"]}"#
+        )
+        #expect(items == [
+            .init(text: "a", kind: .fact, source: "x.md"),
+            .init(text: "b", kind: nil, source: nil),
+            .init(text: "c", kind: nil, source: nil),
+        ])
+    }
+
+    @Test
     func `wikiSlug sanitizes a path basename`() {
         #expect(MemoryCompileService.wikiSlug("captures/2026-05-30-Foo Bar.md") == "2026-05-30-foo-bar")
         #expect(MemoryCompileService.wikiSlug("ai/note.md").isEmpty == false)

@@ -20,7 +20,7 @@ import Testing
 /// Pattern mirrors `KBCompileSpaceCountersTests` — go around `buildApplication`
 /// and call the service directly so the suite stays focused on the service
 /// contract.
-@Suite("MemoryCompileService progress ordering", .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
+@Suite("MemoryCompileService progress ordering", .serialized, .tags(.integration), .integrationDatabase, .disabled(if: IntegrationTestEnv.skipIntegration))
 struct KBCompileProgressServiceTests {
     @Test func `happy path emits preparing then thinking then memory saved`() async throws {
         try await withTestFluent(label: "lv.test.kbcompile.progress.happy") { fluent in
@@ -104,6 +104,69 @@ struct KBCompileProgressServiceTests {
             for event in observed {
                 #expect(Self.runId(of: event) == runId)
             }
+        }
+    }
+
+    @Test func `extracted memories keep their kind and the file they came from`() async throws {
+        try await withTestFluent(label: "lv.test.kbcompile.kind") { fluent in
+            await registerMigrations(on: fluent)
+            try await fluent.migrate()
+            let tenantID = try await Self.seedUser(on: fluent)
+            let rootURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("lv-kbkind-\(UUID().uuidString)", isDirectory: true)
+            let relativePath = "notes/prefs.md"
+            try Self.writeFile(
+                tenantID: tenantID,
+                rootPath: rootURL.path,
+                relativePath: relativePath,
+                content: "Prefers Python for scripts. We ship on Tuesdays."
+            )
+            let row = VaultFile(
+                tenantID: tenantID,
+                path: relativePath,
+                contentType: "text/markdown",
+                sizeBytes: 48,
+                sha256: String(repeating: "e", count: 64)
+            )
+            try await row.save(on: fluent.db())
+            let fileID = try row.requireID()
+
+            let transport = try ScriptedChatTransport(turns: [
+                Self.extractionTurn(objects: [
+                    ["text": "Prefers Python for scripts.", "kind": "preference", "source": relativePath],
+                    // A path not in the batch must not be trusted as lineage.
+                    ["text": "Ships on Tuesdays.", "kind": "decision", "source": "elsewhere/other.md"],
+                    ["text": "Likes long walks.", "kind": "hunch"],
+                ]),
+            ])
+            let service = MemoryCompileService(
+                vaultPaths: VaultPathService(rootPath: rootURL.path),
+                transport: transport,
+                memories: MemoryRepository(fluent: fluent),
+                embeddings: DeterministicEmbeddingService(),
+                defaultModel: "test-model",
+                logger: Logger(label: "lv.test.kbcompile.kind"),
+                progress: RecordingProgressPublisher()
+            )
+            _ = try await service.compileExistingVaultFiles(
+                tenantID: tenantID,
+                sessionKey: "test-user",
+                rows: [row],
+                hint: nil,
+                runId: UUID()
+            )
+
+            let saved = try await Memory.query(on: fluent.db(), tenantID: tenantID).all()
+            let byText = Dictionary(uniqueKeysWithValues: saved.map { ($0.content, $0) })
+            let python = try #require(byText["Prefers Python for scripts."])
+            #expect(python.kind == "preference")
+            #expect(python.sourceVaultFileID == fileID)
+            #expect(python.originKind == MemorySourceKindDTO.knowledgeCompile.rawValue)
+            let tuesday = try #require(byText["Ships on Tuesdays."])
+            #expect(tuesday.kind == "decision")
+            #expect(tuesday.sourceVaultFileID == nil)
+            let walks = try #require(byText["Likes long walks."])
+            #expect(walks.kind == nil, "an unknown kind is stored unclassified")
         }
     }
 
@@ -237,7 +300,15 @@ struct KBCompileProgressServiceTests {
     /// JSON object `{"memories": [...]}`. Built with JSONSerialization so the
     /// nested JSON is escaped correctly inside the content string.
     private static func extractionTurn(memories: [String]) throws -> String {
-        let inner = try JSONSerialization.data(withJSONObject: ["memories": memories])
+        try extractionTurn(payload: ["memories": memories])
+    }
+
+    private static func extractionTurn(objects: [[String: String]]) throws -> String {
+        try extractionTurn(payload: ["memories": objects])
+    }
+
+    private static func extractionTurn(payload: [String: Any]) throws -> String {
+        let inner = try JSONSerialization.data(withJSONObject: payload)
         let content = String(decoding: inner, as: UTF8.self)
         let outer: [String: Any] = [
             "id": "stub-extract",

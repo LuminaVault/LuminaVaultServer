@@ -114,7 +114,8 @@ struct MemoryRepository {
         spaceID: UUID? = nil,
         reviewState: String = "auto",
         contribution: MemoryContributionInput = .legacy,
-        originConversationMessageID: UUID? = nil
+        originConversationMessageID: UUID? = nil,
+        kind: MemoryKindDTO? = nil
     ) async throws -> Memory {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
@@ -132,7 +133,7 @@ struct MemoryRepository {
             INSERT INTO memories (
                 id, tenant_id, content, embedding, tags, source_vault_file_id,
                 space_id, review_state, origin_kind, origin_source_id,
-                origin_provider, origin_model, origin_conversation_message_id, created_at
+                origin_provider, origin_model, origin_conversation_message_id, kind, created_at
             )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
@@ -145,6 +146,7 @@ struct MemoryRepository {
                     \(bind: contribution.provider),
                     \(bind: contribution.model),
                     \(bind: originConversationMessageID),
+                    \(bind: kind?.rawValue),
                     NOW())
             """).run()
         } else {
@@ -152,7 +154,7 @@ struct MemoryRepository {
             INSERT INTO memories (
                 id, tenant_id, content, embedding, source_vault_file_id,
                 space_id, review_state, origin_kind, origin_source_id,
-                origin_provider, origin_model, origin_conversation_message_id, created_at
+                origin_provider, origin_model, origin_conversation_message_id, kind, created_at
             )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
                     \(unsafeRaw: "'\(vec)'::vector"),
@@ -164,6 +166,7 @@ struct MemoryRepository {
                     \(bind: contribution.provider),
                     \(bind: contribution.model),
                     \(bind: originConversationMessageID),
+                    \(bind: kind?.rawValue),
                     NOW())
             """).run()
         }
@@ -312,6 +315,7 @@ struct MemoryRepository {
         tag: String?,
         reviewStates: [String]? = nil,
         healthFilter: MemoryHealthFilter? = nil,
+        kind: MemoryKindDTO? = nil,
         limit: Int,
         offset: Int
     ) async throws -> [Memory] {
@@ -355,6 +359,9 @@ struct MemoryRepository {
             q.filter(\.$queryHitCount == 0)
         case nil:
             break
+        }
+        if let kind {
+            q.filter(\.$kind == kind.rawValue)
         }
         if let tag, !tag.isEmpty {
             guard let sql = fluent.db() as? any SQLDatabase else {

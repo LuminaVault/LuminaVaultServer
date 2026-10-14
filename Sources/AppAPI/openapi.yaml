@@ -4184,6 +4184,10 @@ paths:
             type: string
             enum: [review-overdue, pending, unorganized, unused]
           description: Actionable memory-health queue used by analytics recommendations.
+        - in: query
+          name: kind
+          schema: { $ref: '#/components/schemas/MemoryKind' }
+          description: Only memories of this kind. Unclassified memories never match.
       responses:
         '200':
           description: Memory page.
@@ -11906,6 +11910,15 @@ components:
             content hash on the per-tenant `kb_compile_reject_list` so future
             compile runs skip the same content.
         provenance: { $ref: '#/components/schemas/MemoryProvenanceSummaryDTO' }
+        kind: { $ref: '#/components/schemas/MemoryKind' }
+
+    MemoryKind:
+      type: string
+      enum: [preference, decision, fact, note]
+      description: |
+        What kind of statement a memory is. Absent when unclassified, which
+        is every memory saved before kinds existed. Clients must treat an
+        unknown value as unclassified.
 
     MemoryActorKindDTO:
       type: string
@@ -11993,6 +12006,7 @@ components:
           type: array
           items: { type: string }
         sourceVaultFileId: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/MemoryKind' }
 
     MemorySearchRequest:
       type: object
@@ -12034,6 +12048,9 @@ components:
             transitions are legal. Other source/target combinations return
             422. On `rejected` the server records the source + content_hash
             so future kb-compile runs skip the same content.
+        kind:
+          allOf: [{ $ref: '#/components/schemas/MemoryKind' }]
+          description: Set or change the kind; omit to leave it as it is.
 
     MemoryLineageResponse:
       type: object

@@ -269,8 +269,11 @@ actor MemoryCompileService {
         having a file (e.g. avoid "User captured a Wikipedia article" or "User \
         maintains a knowledge base"). Skip navigation/boilerplate. \
         Return ONLY a JSON object of the form \
-        {"memories": ["<memory 1>", "<memory 2>", ...]}, or {"memories": []} when \
-        there is nothing durable to store.
+        {"memories": [{"text": "<memory>", "kind": "<kind>", "source": "<file path>"}, ...]}, \
+        or {"memories": []} when there is nothing durable to store. `kind` is \
+        "preference" (how the user likes things), "decision" (something the user \
+        settled), "fact" (about the user, their work, or the material), or "note". \
+        `source` is the FILE path the memory came from, exactly as given below.
         \(hint.map { "User hint: \($0)" } ?? "")
         """
 
@@ -298,12 +301,25 @@ actor MemoryCompileService {
         let raw = try await transport.chatCompletions(payload: payload, sessionKey: sessionKey, sessionID: nil)
         let response = try JSONDecoder().decode(ChatResponseBody.self, from: raw)
         let content = response.choices.first?.message.content ?? ""
-        let parsed = Self.parseExtractedMemories(content)
+        let parsed = Self.parseExtractedItems(content)
         logger.info("kb-compile extracted \(parsed.count) candidate memories for tenant \(tenantID)")
 
+        // Lineage: a memory names the file it came from, which we only trust
+        // when it is one of the files actually in this batch.
+        let batchPaths = Set(blocks.map(\.path))
+        var fileIDsByPath: [String: UUID] = [:]
+        for path in batchPaths {
+            if let file = try await VaultFile.query(on: memories.fluent.db(), tenantID: tenantID)
+                .filter(\.$path == path)
+                .first()
+            {
+                fileIDsByPath[path] = try file.requireID()
+            }
+        }
+
         var collectedMemories: [InternalKBCompileMemoryRef] = []
-        for text in parsed {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for item in parsed {
+            let trimmed = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
 
             // Hardening: cap LLM-extracted memory length before embedding/persist
@@ -320,7 +336,15 @@ actor MemoryCompileService {
                 tenantID: tenantID,
                 content: capped,
                 embedding: embedding,
-                reviewState: "pending"
+                sourceVaultFileID: item.source.flatMap { fileIDsByPath[$0] },
+                reviewState: "pending",
+                contribution: .model(
+                    .create,
+                    source: .knowledgeCompile,
+                    provider: "hermes",
+                    model: defaultModel
+                ),
+                kind: item.kind
             )
             let id = try saved.requireID()
             collectedMemories.append(InternalKBCompileMemoryRef(id: id, content: saved.content))
@@ -329,7 +353,8 @@ actor MemoryCompileService {
                 content: saved.content,
                 tags: saved.tags ?? [],
                 createdAt: saved.createdAt,
-                reviewState: saved.reviewState
+                reviewState: saved.reviewState,
+                kind: item.kind
             )
             await progress.publish(.memorySaved(.init(runId: runId, memory: dto)), tenantID: tenantID)
         }
@@ -341,17 +366,33 @@ actor MemoryCompileService {
     /// Lenient parse of the model's JSON memory list. Accepts the canonical
     /// `{"memories": ["a","b"]}`, an array of objects `[{"content":"a"}]`, and a
     /// bare array `["a","b"]`. Tolerates markdown code fences some models add.
+    /// One extracted memory. `kind` and `source` are nil when the model
+    /// returned a bare string, or a kind this server does not know.
+    struct ExtractedMemory: Equatable {
+        let text: String
+        let kind: MemoryKindDTO?
+        let source: String?
+    }
+
     static func parseExtractedMemories(_ raw: String) -> [String] {
-        func stringFrom(_ any: Any) -> String? {
+        parseExtractedItems(raw).map(\.text)
+    }
+
+    static func parseExtractedItems(_ raw: String) -> [ExtractedMemory] {
+        func stringFrom(_ any: Any) -> ExtractedMemory? {
             if let str = any as? String {
-                return str
+                return ExtractedMemory(text: str, kind: nil, source: nil)
             }
-            if let dict = any as? [String: Any], let c = dict["content"] as? String {
-                return c
+            if let dict = any as? [String: Any], let text = (dict["text"] ?? dict["content"]) as? String {
+                return ExtractedMemory(
+                    text: text,
+                    kind: (dict["kind"] as? String).flatMap(MemoryKindDTO.init(rawValue:)),
+                    source: dict["source"] as? String
+                )
             }
             return nil
         }
-        func memories(from obj: Any) -> [String]? {
+        func memories(from obj: Any) -> [ExtractedMemory]? {
             if let dict = obj as? [String: Any], let arr = dict["memories"] as? [Any] {
                 return arr.compactMap(stringFrom)
             }
