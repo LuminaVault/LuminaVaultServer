@@ -86,8 +86,10 @@ func buildApplication(
                 // don't race the first migration insert into a duplicate-key
                 // on `_fluent_migrations`. No-op in prod. See `MigrationGate`.
                 let database = reader.string(forKey: "postgres.database", default: "luminavault")
-                try await MigrationGate.shared.migrateOnce(database: database) {
-                    try await fluent.migrate()
+                try await MigrationGate.shared.migrateOnce(database: database) { [fluentLogger] in
+                    try await StartupRetry.run("boot migration check", logger: fluentLogger) {
+                        try await fluent.migrate()
+                    }
                 }
             }
         } catch {
