@@ -35,7 +35,8 @@ enum MCPProtocol {
     without saying where it came from, and never invent a path or line number
     that a tool did not give you.
 
-    The user's memories are searchable with `search`. Before substantial work,
+    At the start of a session call `memory_context` for the user's SOUL.md and
+    recent decisions. The user's memories are searchable with `search`. Before substantial work,
     search for their preferences and decisions on the topic; search again
     before saving, and correct an existing memory with `memory_update` rather
     than saving a near-duplicate. Save only confirmed decisions, durable
@@ -71,6 +72,8 @@ enum MCPLimits {
     /// the vault.
     static let maxMemoryLength = 4000
     static let maxMemoryTags = 10
+    /// Decisions and preferences `memory_context` returns, newest first.
+    static let maxContextMemories = 30
 
     /// Clamp with an explicit error rather than silently, so an agent asking
     /// for 5000 results learns the ceiling instead of quietly getting 50.
@@ -313,6 +316,23 @@ enum MCPToolCatalog {
 
         // MARK: Memory — durable statements the user or an agent saved.
 
+        MCPTool(
+            name: "memory_context",
+            title: "Start with context",
+            description: """
+            Call once at the start of a session. Returns the user's SOUL.md \
+            (how they want you to work; read-only — never try to edit it) and \
+            their most recent decisions and preferences, optionally for one \
+            Space. Use `search` for anything more specific.
+            """,
+            inputSchema: object(
+                properties: [
+                    "space": schema("string", "Optional Space slug to narrow the decisions and preferences to."),
+                ],
+                required: []
+            ),
+            writes: false
+        ),
         MCPTool(
             name: "memory_save",
             title: "Save a memory",

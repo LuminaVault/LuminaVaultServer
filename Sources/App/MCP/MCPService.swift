@@ -27,6 +27,9 @@ struct MCPService: Sendable {
     let backfill: ChunkBackfillService
     /// Phone writes the app is closed for are queued here, not failed.
     var deviceQueue: DeviceCommandQueue?
+    /// Source of SOUL.md for `memory_context`. Optional: without it the tool
+    /// still returns decisions and preferences.
+    var soul: SOULService?
     let logger: Logger
 
     /// Run one tool. Throws only for protocol-level problems; a tool that
@@ -50,6 +53,7 @@ struct MCPService: Sendable {
         case "memory_save": try await runMemorySave(arguments, tenantID: tenantID, caller: caller)
         case "memory_update": try await runMemoryUpdate(arguments, tenantID: tenantID, caller: caller)
         case "memory_forget": try await runMemoryForget(arguments, tenantID: tenantID, caller: caller)
+        case "memory_context": try await runMemoryContext(arguments, tenantID: tenantID, caller: caller)
         default: throw MCPError.methodNotFound("unknown tool '\(name)'")
         }
     }
@@ -267,6 +271,46 @@ struct MCPService: Sendable {
         }
         logger.info("mcp.memory.forget tenant=\(tenantID) memory=\(memoryID) connection=\(caller.connectionID?.uuidString ?? "session")")
         return .object(["memoryID": .string(memoryID.uuidString), "forgotten": .bool(true)])
+    }
+
+    /// What an agent should know before it starts: the user's SOUL.md and
+    /// their most recent decisions and preferences, optionally for one Space.
+    /// SOUL comes back read-only — a BYO-Hermes server refuses writes to it,
+    /// and it is the user's to change, not an agent's.
+    private func runMemoryContext(
+        _ arguments: [String: JSONValue],
+        tenantID: UUID,
+        caller: MCPCaller
+    ) async throws -> JSONValue {
+        let spaceID = try await resolveSpace(arguments["space"]?.stringValue, tenantID: tenantID)
+        var query = Memory.query(on: fluent.db(), tenantID: tenantID)
+            .filter(\.$kind ~~ [MemoryKindDTO.decision.rawValue, MemoryKindDTO.preference.rawValue])
+            .filter(\.$reviewState != MemoryReviewState.rejected)
+            .sort(\.$createdAt, .descending)
+            .limit(MCPLimits.maxContextMemories)
+        if let spaceID {
+            query = query.filter(\.$spaceID == spaceID)
+        }
+        let memories = try await query.all()
+
+        var soulText: JSONValue = .null
+        if let soul, let user = try await User.find(caller.userID, on: fluent.db()) {
+            let text = try SOULCore.strip(from: soul.read(for: user)).trimmingCharacters(in: .whitespacesAndNewlines)
+            soulText = text.isEmpty ? .null : .string(text)
+        }
+
+        return try .object([
+            "soul": soulText,
+            "soulEditable": .bool(false),
+            "memories": .array(memories.map { memory in
+                try .object([
+                    "memoryID": .string(memory.requireID().uuidString),
+                    "kind": memory.kind.map { .string($0) } ?? .null,
+                    "text": .string(memory.content),
+                    "savedAt": memory.createdAt.map { .string(ISO8601DateFormatter().string(from: $0)) } ?? .null,
+                ])
+            }),
+        ])
     }
 
     private func memoryContent(_ arguments: [String: JSONValue]) throws -> String {

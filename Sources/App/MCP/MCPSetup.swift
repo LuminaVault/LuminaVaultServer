@@ -145,6 +145,7 @@ enum MCPSetup {
     static let memoryHabit = """
     ## LuminaVault memory
     LuminaVault (MCP server "\(serverName)") is my long-term memory across sessions and tools.
+    - At the start of a session, call `memory_context` for my SOUL.md and recent decisions and preferences.
     - Before substantial work, `search` it for my preferences, decisions and context on the topic.
     - Search before saving. If a memory already says it, correct it with `memory_update` instead of saving another.
     - Save with `memory_save`: decisions I confirmed, durable preferences, and facts about me or my work that will matter next time. One plain statement per memory, with its `kind` (preference, decision or fact), filed with `space` when one fits.

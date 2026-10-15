@@ -12,7 +12,7 @@ struct MCPContractTests {
     private static let expectedTools = [
         "status", "search", "browse", "read", "recent", "links", "context", "index",
         "health_query", "calendar_query", "reminders_list", "calendar_create", "reminder_create",
-        "memory_save", "memory_update", "memory_forget",
+        "memory_context", "memory_save", "memory_update", "memory_forget",
     ]
 
     /// Every tool that changes something. A read-only key is refused all of
@@ -29,7 +29,7 @@ struct MCPContractTests {
     ]
 
     @Test
-    func `the advertised tool set is exactly these sixteen`() {
+    func `the advertised tool set is exactly these seventeen`() {
         #expect(MCPToolCatalog.all.map(\.name).sorted() == Self.expectedTools.sorted())
     }
 
