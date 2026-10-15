@@ -260,7 +260,8 @@ struct MemoryChunkRepository {
                     headingPath: Self.decodeHeadingPath(row.heading_path_json),
                     startLine: row.start_line,
                     endLine: row.end_line
-                )
+                ),
+                lexicalScore: row.lexical_score.map(Float.init)
             )
         }
     }
