@@ -2984,9 +2984,18 @@ func buildRouter(
     // Cross-model context: final grounded answers are persisted first, then
     // embedded by a durable outbox worker. Fresh-chat answers never enqueue.
     if fluentEnabled, lvEnvironment != "test" {
+        // Off by default: one model call per assistant reply. Turned on per
+        // deploy (MEMORY_KEEPGATE_ENABLED) so the rollout is deliberate.
+        let keepGateEnabled = reader.string(forKey: "memory.keepGate.enabled", default: "false").lowercased() == "true"
         managedServices.append(MemoryIndexWorker(
             fluent: services.fluent,
-            embeddings: embeddingService
+            embeddings: embeddingService,
+            keepJudge: keepGateEnabled ? LLMMemoryKeepJudge(
+                transport: routedTransport,
+                preferences: userLLMPreferenceRepo,
+                model: services.hermesDefaultModel,
+                logger: Logger(label: "lv.memory.keep")
+            ) : nil
         ))
     }
 

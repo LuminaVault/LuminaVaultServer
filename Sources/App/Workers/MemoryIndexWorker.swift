@@ -13,17 +13,34 @@ actor MemoryIndexWorker: Service {
     let embeddings: any EmbeddingService
     let logger: Logger
     let tickInterval: Duration
+    /// When set, a reply is stored only if the judge says it is durable
+    /// (`memory.keepGate.enabled`). Nil keeps every reply, as before.
+    let keepJudge: (any MemoryKeepJudge)?
 
     init(
         fluent: Fluent,
         embeddings: any EmbeddingService,
         logger: Logger = Logger(label: "lv.memory.index.worker"),
-        tickInterval: Duration = .seconds(2)
+        tickInterval: Duration = .seconds(2),
+        keepJudge: (any MemoryKeepJudge)? = nil
     ) {
         self.fluent = fluent
         self.embeddings = embeddings
         self.logger = logger
         self.tickInterval = tickInterval
+        self.keepJudge = keepJudge
+    }
+
+    /// The judge's verdict, failing open: an error keeps the reply, so a
+    /// broken judge degrades to the old behaviour instead of losing replies.
+    private func decide(_ job: MemoryIndexJobRow) async -> MemoryKeepDecision {
+        guard let keepJudge else { return .keepUnclassified }
+        do {
+            return try await keepJudge.judge(content: job.content, tenantID: job.tenant_id)
+        } catch {
+            logger.warning("memory.keep.judge.failed job=\(job.id): \(error)")
+            return .keepUnclassified
+        }
     }
 
     func run() async throws {
@@ -62,6 +79,16 @@ actor MemoryIndexWorker: Service {
         """).first(decoding: MemoryIndexJobRow.self) else { return 0 }
 
         do {
+            let decision = await decide(job)
+            if !decision.keep {
+                try await sql.raw("""
+                UPDATE memory_index_jobs
+                SET status = 'skipped', last_error = NULL, updated_at = NOW()
+                WHERE id = \(bind: job.id)
+                """).run()
+                logger.info("memory.keep.skipped job=\(job.id) tenant=\(job.tenant_id)")
+                return 1
+            }
             if try await existingMemory(sql: sql, job: job) == nil {
                 let content = String(job.content.prefix(12000))
                 let vector = try await embeddings.embed(content, tenantID: job.tenant_id)
@@ -78,7 +105,8 @@ actor MemoryIndexWorker: Service {
                         model: job.model,
                         reference: job.source_id
                     ),
-                    originConversationMessageID: job.conversation_message_id
+                    originConversationMessageID: job.conversation_message_id,
+                    kind: decision.kind
                 )
             }
             try await sql.raw("""
