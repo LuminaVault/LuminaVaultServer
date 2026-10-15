@@ -249,6 +249,13 @@ struct KanbanServiceTests {
             """).first(decoding: EnabledRow.self)
             #expect(row?.enabled == true)
 
+            // The job remembers the card it came from.
+            let state = try #require(try await SkillsState.query(on: fluent.db())
+                .filter(\.$id == tenantID)
+                .filter(\.$name == promoted.slug)
+                .first())
+            #expect(try state.origin == JobOriginDTO(kind: .card, id: card.requireID()))
+
             // Card back-filled with the job slug.
             let reloaded = try #require(try await KanbanCard.find(card.requireID(), on: fluent.db()))
             #expect(reloaded.extra?.job?.jobSlug == promoted.slug)

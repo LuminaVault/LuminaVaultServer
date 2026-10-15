@@ -347,7 +347,8 @@ struct SkillsController {
             dailyRunCount: dailyRunCount,
             dailyRunCap: manifest.dailyRunCap?.value(for: userTier) ?? 0,
             apnsCategory: state?.apnsCategory.flatMap { LuminaVaultShared.APNSCategory(rawValue: $0) },
-            bodyExcerpt: String(manifest.body.prefix(200))
+            bodyExcerpt: String(manifest.body.prefix(200)),
+            origin: state?.origin
         )
     }
 

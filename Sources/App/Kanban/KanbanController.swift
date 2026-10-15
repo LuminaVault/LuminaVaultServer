@@ -221,7 +221,7 @@ struct KanbanController {
             expectedVersion: expectedVersion(req, access: access)
         )
         try await record(access, ctx, "card.promoted", "card", cardID(ctx), promoted.title)
-        return SkillDTO(
+        return try SkillDTO(
             id: promoted.slug,
             source: .vault,
             name: promoted.slug,
@@ -233,7 +233,8 @@ struct KanbanController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(promoted.spec.prefix(160))
+            bodyExcerpt: String(promoted.spec.prefix(160)),
+            origin: JobOriginDTO(kind: .card, id: cardID(ctx))
         )
     }
 

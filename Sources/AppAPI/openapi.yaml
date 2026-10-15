@@ -8577,6 +8577,7 @@ components:
         dailyRunCap: { type: integer }
         apnsCategory: { $ref: '#/components/schemas/APNSCategory' }
         bodyExcerpt: { type: string }
+        origin: { $ref: '#/components/schemas/JobOriginDTO' }
 
     SkillListResponse:
       type: object
@@ -8767,6 +8768,20 @@ components:
         domain: { type: string }
         spec: { type: string }
         spaceId: { type: string, format: uuid }
+        conversationId:
+          type: string
+          format: uuid
+          description: The chat the job was proposed in; must be one of the caller's. Recorded as the job's origin.
+
+    JobOriginDTO:
+      type: object
+      required: [kind, id]
+      description: What a job was created from. Clients must tolerate kinds they do not know.
+      properties:
+        kind:
+          type: string
+          enum: [conversation, card]
+        id: { type: string, format: uuid }
 
     WorkflowTriggerKind:
       type: string

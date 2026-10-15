@@ -291,6 +291,7 @@ struct KanbanService {
                 domain: job.domain,
                 spec: spec,
                 spaceID: job.spaceID,
+                origin: JobOriginDTO(kind: .card, id: card.requireID()),
                 on: database
             )
             job.jobSlug = slug
