@@ -42,7 +42,9 @@ extension VaultFileDTO {
                     // Captured links only; nil for everything else. Without it
                     // a client cannot distinguish a placeholder note from a
                     // finished one and has to guess from elapsed time.
-                    enrichmentStatus: $0.enrichmentStatus
+                    enrichmentStatus: $0.enrichmentStatus,
+                    // Only meaningful while the file is unfiled.
+                    suggestedSpaceId: row.spaceID == nil ? $0.suggestedSpaceID : nil
                 )
             },
             createdByUserId: row.createdByUserID,
@@ -74,6 +76,9 @@ struct VaultController {
     let memories: MemoryRepository?
     let embeddings: (any EmbeddingService)?
     let vaultAccess: VaultAccessService?
+    /// Suggests a Space for an unfiled note after upload. Nil (the default,
+    /// and whenever `capture.autoFile.enabled` is off) means no suggestion.
+    var captureFiling: CaptureFilingService?
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
@@ -304,6 +309,13 @@ struct VaultController {
             } catch {
                 logger.error("note memory upsert failed tenant=\(tenantID) path=\(safeRelative): \(error)")
             }
+        }
+
+        // An unfiled note gets a Space suggestion in the background; the
+        // upload never waits on the model.
+        if isNote, spaceID == nil, let captureFiling {
+            let fileID = savedID
+            Task { await captureFiling.suggestBestEffort(tenantID: tenantID, fileID: fileID) }
         }
 
         return VaultUploadResponse(

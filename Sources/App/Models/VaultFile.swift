@@ -20,6 +20,9 @@ struct VaultFileMetadata: Codable {
     /// Where an imported file came from (`hermes-mirror`, `hermes-session`).
     /// Nil for files the user wrote or captured directly.
     var provenance: String?
+    /// A Space suggested for an unfiled capture (`CaptureFilingService`).
+    /// Never acted on by the server.
+    var suggestedSpaceID: UUID?
 
     init(
         enrichmentStatus: String? = nil,

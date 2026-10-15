@@ -2262,7 +2262,7 @@ func buildRouter(
     )
 
     // Vault file upload (markdown + images) + init handshake — protected.
-    let vaultController = VaultController(
+    var vaultController = VaultController(
         vaultPaths: vaultPaths,
         fluent: services.fluent,
         initService: vaultInitService,
@@ -2274,6 +2274,17 @@ func buildRouter(
         embeddings: embeddingService,
         vaultAccess: vaultAccessService
     )
+    // Off by default: each unfiled note costs one model call. Turned on per
+    // deploy (CAPTURE_AUTOFILE_ENABLED) so the rollout is a deliberate step.
+    if reader.string(forKey: "capture.autoFile.enabled", default: "false").lowercased() == "true" {
+        vaultController.captureFiling = CaptureFilingService(
+            fluent: services.fluent,
+            transport: routedTransport,
+            vaultPaths: vaultPaths,
+            defaultModel: services.hermesDefaultModel,
+            logger: Logger(label: "lv.capture.autofile")
+        )
+    }
     let vaultGroup = router.group("/v1/vault")
         .add(middleware: jwtAuthenticator)
         .add(middleware: IdempotencyMiddleware(fluent: services.fluent))

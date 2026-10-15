@@ -13210,6 +13210,14 @@ components:
         # pending | done | failed. A captured link is written as a placeholder
         # and rewritten once the server has fetched the page.
         enrichmentStatus: { type: string }
+        suggestedSpaceId:
+          type: string
+          format: uuid
+          description: |
+            A Space the server suggests for this unfiled capture
+            (`capture.autoFile.enabled`). Only a suggestion: nothing moves until
+            the user files it with `POST /v1/vault/files/move`. Absent once the
+            file has a `spaceId`.
 
     VaultListResponse:
       type: object
