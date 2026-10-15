@@ -142,4 +142,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M136_AddUserLastLocation())
     await fluent.migrations.add(M137_AddAgentConnectionAccess())
     await fluent.migrations.add(M138_AddMemoryKind())
+    await fluent.migrations.add(M139_AddSkillOrigin())
 }

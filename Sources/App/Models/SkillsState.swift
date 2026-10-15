@@ -1,5 +1,6 @@
 import FluentKit
 import Foundation
+import LuminaVaultShared
 
 /// Per-tenant runtime state for a skill. Composite primary key
 /// `(tenant_id, source, name)` so a builtin and vault skill of the same
@@ -31,6 +32,16 @@ final class SkillsState: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "apns_category") var apnsCategory: String?
     @OptionalField(key: "domain") var domain: String?
     @OptionalField(key: "space_id") var spaceID: UUID?
+    /// `conversation` or `card`, with `origin_id` (M139). Nil when unknown.
+    @OptionalField(key: "origin_kind") var originKind: String?
+    @OptionalField(key: "origin_id") var originID: UUID?
+
+    /// The job's origin for the wire, when both halves are present.
+    var origin: JobOriginDTO? {
+        guard let originKind, let originID else { return nil }
+        return JobOriginDTO(kind: JobOriginKind(rawValue: originKind) ?? .unknown, id: originID)
+    }
+
     /// Set once this legacy scheduled skill has been represented by an
     /// Automation 2.0 workflow. CronScheduler then leaves delivery to the
     /// workflow scheduler, preventing double execution during migration.

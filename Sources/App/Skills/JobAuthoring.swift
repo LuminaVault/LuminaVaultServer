@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import LuminaVaultShared
 import SQLKit
 
 /// Authors a recurring Job as a vault cron skill: writes `skills/<slug>/SKILL.md`
@@ -35,6 +36,7 @@ struct JobAuthoring {
         domain: String?,
         spec: String,
         spaceID: UUID?,
+        origin: JobOriginDTO? = nil,
         on database: (any Database)? = nil
     ) async throws -> String {
         switch (cron, runAt) {
@@ -65,10 +67,14 @@ struct JobAuthoring {
         // out the pool timeout when both land on the same event loop.
         if let sql = (database ?? fluent.db()) as? any SQLDatabase {
             try await sql.raw("""
-            INSERT INTO skills_state (tenant_id, source, name, enabled, domain, space_id, run_at)
-            VALUES (\(bind: tenantID), 'vault', \(bind: slug), TRUE, \(bind: domain), \(bind: spaceID), \(bind: runAt))
+            INSERT INTO skills_state (tenant_id, source, name, enabled, domain, space_id, run_at, origin_kind, origin_id)
+            VALUES (\(bind: tenantID), 'vault', \(bind: slug), TRUE, \(bind: domain), \(bind: spaceID), \(bind: runAt),
+                    \(bind: origin?.kind.rawValue), \(bind: origin?.id))
             ON CONFLICT (tenant_id, source, name) DO UPDATE
-              SET enabled = TRUE, domain = EXCLUDED.domain, space_id = EXCLUDED.space_id, run_at = EXCLUDED.run_at
+              SET enabled = TRUE, domain = EXCLUDED.domain, space_id = EXCLUDED.space_id, run_at = EXCLUDED.run_at,
+                  -- Re-authoring without an origin keeps the one it already has.
+                  origin_kind = COALESCE(EXCLUDED.origin_kind, skills_state.origin_kind),
+                  origin_id = COALESCE(EXCLUDED.origin_id, skills_state.origin_id)
             """).run()
         }
 

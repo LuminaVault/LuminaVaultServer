@@ -42,13 +42,26 @@ struct JobsController {
         let user = try ctx.requireIdentity()
         let tenantID = try user.requireID()
         let body = try await req.decode(as: JobCreateRequest.self, context: ctx)
+        // A job links back only to a chat of the caller's own; anything else
+        // is a client bug, not something to store.
+        var origin: JobOriginDTO?
+        if let conversationID = body.conversationId {
+            guard try await Conversation.query(on: authoring.fluent.db(), tenantID: tenantID)
+                .filter(\.$id == conversationID)
+                .first() != nil
+            else {
+                throw HTTPError(.badRequest, message: "conversationId does not belong to the caller")
+            }
+            origin = JobOriginDTO(kind: .conversation, id: conversationID)
+        }
         let slug = try await authoring.author(
             tenantID: tenantID,
             title: body.title,
             cron: body.cron,
             domain: body.domain,
             spec: body.spec,
-            spaceID: body.spaceId
+            spaceID: body.spaceId,
+            origin: origin
         )
         return SkillDTO(
             id: slug,
@@ -62,7 +75,8 @@ struct JobsController {
             dailyRunCount: 0,
             dailyRunCap: 0,
             apnsCategory: nil,
-            bodyExcerpt: String(body.spec.prefix(160))
+            bodyExcerpt: String(body.spec.prefix(160)),
+            origin: origin
         )
     }
 }
