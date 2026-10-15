@@ -68,7 +68,8 @@ extension MemoryDTO {
             provenance: provenance ?? memory.originSummary,
             createdByUserId: memory.createdByUserID,
             updatedByUserId: memory.updatedByUserID,
-            kind: memory.kind.flatMap(MemoryKindDTO.init(rawValue:))
+            kind: memory.kind.flatMap(MemoryKindDTO.init(rawValue:)),
+            spaceId: memory.spaceID
         )
     }
 }
@@ -129,6 +130,11 @@ struct MemoryController {
     /// of waiting for a backfill. Optional: test wirings can omit it, and the
     /// document arm still finds the memory without chunks.
     var chunkIndexer: DocumentChunkIndexer?
+
+    /// Moving a note-backed memory moves its note (`VaultFileMover`). Without
+    /// it such a move is refused rather than leaving the two in different
+    /// Spaces.
+    var vaultPaths: VaultPathService?
 
     private static let defaultLimit = 20
     private static let maxLimit = 100
@@ -307,10 +313,23 @@ struct MemoryController {
     func list(_ req: Request, ctx: AppRequestContext) async throws -> MemoryListResponse {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
 
-        if let space = req.uri.queryParameters["space"], !space.isEmpty {
-            // Memory <-> Space binding lands with HER-105 (vault browser).
-            // Surface this loudly instead of silently returning all memories.
-            throw HTTPError(.notImplemented, message: "space filter awaits HER-105 space binding")
+        // `?space=<slug>` lists one Space; `?space=inbox` lists unfiled
+        // memories, the same convention as the vault list.
+        let space: MemorySpaceAssignment?
+        if let raw = req.uri.queryParameters["space"], !raw.isEmpty {
+            if raw == "inbox" {
+                space = .unfiled
+            } else {
+                guard let row = try await Space.query(on: repository.fluent.db(), tenantID: tenantID)
+                    .filter(\.$slug == String(raw))
+                    .first()
+                else {
+                    throw HTTPError(.notFound, message: "unknown space `\(raw)`")
+                }
+                space = try .space(row.requireID())
+            }
+        } else {
+            space = nil
         }
 
         let limit = Self.clamp(
@@ -362,6 +381,7 @@ struct MemoryController {
             reviewStates: reviewStates,
             healthFilter: healthFilter,
             kind: kind,
+            space: space,
             limit: limit,
             offset: offset
         )
@@ -513,8 +533,13 @@ struct MemoryController {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
         let body = try await req.decode(as: MemoryPatchRequest.self, context: ctx)
 
-        guard body.content != nil || body.tags != nil || body.reviewState != nil || body.kind != nil else {
-            throw HTTPError(.badRequest, message: "patch body must include content, tags, reviewState, or kind")
+        guard body.content != nil || body.tags != nil || body.reviewState != nil || body.kind != nil
+            || body.spaceId != nil
+        else {
+            throw HTTPError(.badRequest, message: "patch body must include content, tags, reviewState, kind, or spaceId")
+        }
+        if let move = body.spaceId {
+            try await moveToSpace(move, memoryID: id, tenantID: tenantID)
         }
 
         if let content = body.content {
@@ -588,7 +613,7 @@ struct MemoryController {
             row.kind = kind.rawValue
             // A kind-only change is still the user's edit; the other fields
             // record their own contribution above.
-            if body.content == nil, body.tags == nil, body.reviewState == nil {
+            if body.content == nil, body.tags == nil, body.reviewState == nil, body.spaceId == nil {
                 try await provenanceRepository.record(tenantID: tenantID, memoryID: id, input: .user(.update))
             }
         }
@@ -614,6 +639,48 @@ struct MemoryController {
         let response = MemoryDTO.fromMemory(row, provenance: summary)
         let disclosure = try await disclosure(ctx: ctx)
         return ModelDisclosurePolicy.scrub(response, disclosure: disclosure)
+    }
+
+    /// Files a memory into a Space, or takes it out of every Space.
+    ///
+    /// A memory compiled from a note is filed wherever its note is, so moving
+    /// it moves the note into the target Space's folder (which re-files the
+    /// memory and its chunks with it). Any other memory is re-filed directly.
+    private func moveToSpace(_ move: MemorySpaceAssignment, memoryID: UUID, tenantID: UUID) async throws {
+        guard let memory = try await repository.find(tenantID: tenantID, id: memoryID) else {
+            throw HTTPError(.notFound, message: "memory not found")
+        }
+        let target: Space?
+        switch move {
+        case let .space(spaceID):
+            guard let space = try await Space.query(on: repository.fluent.db(), tenantID: tenantID)
+                .filter(\.$id == spaceID)
+                .first()
+            else {
+                throw HTTPError(.badRequest, message: "`spaceId` does not belong to the caller")
+            }
+            target = space
+        case .unfiled:
+            target = nil
+        }
+        let targetID = try target?.requireID()
+        guard memory.spaceID != targetID else { return }
+
+        if let fileID = memory.sourceVaultFileID,
+           let file = try await VaultFile.query(on: repository.fluent.db(), tenantID: tenantID)
+           .filter(\.$id == fileID)
+           .first()
+        {
+            guard let vaultPaths else {
+                throw HTTPError(.conflict, message: "this memory comes from a note; move the note instead")
+            }
+            let destination = try VaultFileMover.path(forFile: file.path, inSpaceSlug: target?.slug)
+            try await VaultFileMover(fluent: repository.fluent, vaultPaths: vaultPaths)
+                .move(file, to: destination, tenantID: tenantID)
+        } else {
+            _ = try await repository.setSpace(tenantID: tenantID, id: memoryID, spaceID: targetID)
+        }
+        try await provenanceRepository.record(tenantID: tenantID, memoryID: memoryID, input: .user(.update))
     }
 
     @Sendable

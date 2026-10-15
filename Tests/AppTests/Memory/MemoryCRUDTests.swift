@@ -107,7 +107,8 @@ struct MemoryCRUDTests {
     }
 
     @Test
-    func `list rejects space filter until HER 105`() async throws {
+    func `list filter by an unknown space is a 404`() async throws {
+        // The filter itself is covered by MemorySpaceMoveTests.
         let app = try await buildApplication(reader: dbTestReader)
         try await app.test(.router) { client in
             let token = try await Self.registerAndAuth(client: client)
@@ -116,7 +117,7 @@ struct MemoryCRUDTests {
                 method: .get,
                 headers: [.authorization: "Bearer \(token)"]
             ) { response in
-                #expect(response.status == .notImplemented)
+                #expect(response.status == .notFound)
             }
         }
     }

@@ -316,6 +316,7 @@ struct MemoryRepository {
         reviewStates: [String]? = nil,
         healthFilter: MemoryHealthFilter? = nil,
         kind: MemoryKindDTO? = nil,
+        space: MemorySpaceAssignment? = nil,
         limit: Int,
         offset: Int
     ) async throws -> [Memory] {
@@ -362,6 +363,11 @@ struct MemoryRepository {
         }
         if let kind {
             q.filter(\.$kind == kind.rawValue)
+        }
+        switch space {
+        case let .space(id): q.filter(\.$spaceID == id)
+        case .unfiled: q.filter(\.$spaceID == nil)
+        case nil: break
         }
         if let tag, !tag.isEmpty {
             guard let sql = fluent.db() as? any SQLDatabase else {
@@ -421,6 +427,30 @@ struct MemoryRepository {
         RETURNING id
         """).all(decoding: DeletedIDRow.self)
         return !result.isEmpty
+    }
+
+    /// Re-files a memory that has no source note: the memory and its chunks
+    /// move together, so Space-scoped search agrees with the list. Returns
+    /// `false` when there is no such memory in this tenant.
+    func setSpace(tenantID: UUID, id: UUID, spaceID: UUID?) async throws -> Bool {
+        try await fluent.db().transaction { db in
+            guard let tx = db as? any SQLDatabase else {
+                throw HTTPError(.internalServerError, message: "SQL driver required for a Space move")
+            }
+            let rows = try await tx.raw("""
+            UPDATE memories
+            SET space_id = \(bind: spaceID), updated_at = NOW()
+            WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+            RETURNING id
+            """).all(decoding: DeletedIDRow.self)
+            guard !rows.isEmpty else { return false }
+            try await tx.raw("""
+            UPDATE memory_chunks
+            SET space_id = \(bind: spaceID)
+            WHERE tenant_id = \(bind: tenantID) AND memory_id = \(bind: id)
+            """).run()
+            return true
+        }
     }
 
     /// Deletes a memory the way the user's own delete does: the source job is

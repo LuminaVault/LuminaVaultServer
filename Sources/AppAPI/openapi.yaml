@@ -4188,6 +4188,10 @@ paths:
           name: kind
           schema: { $ref: '#/components/schemas/MemoryKind' }
           description: Only memories of this kind. Unclassified memories never match.
+        - in: query
+          name: space
+          schema: { type: string }
+          description: A Space slug, or `inbox` for unfiled memories. 404 for an unknown slug.
       responses:
         '200':
           description: Memory page.
@@ -11911,6 +11915,10 @@ components:
             compile runs skip the same content.
         provenance: { $ref: '#/components/schemas/MemoryProvenanceSummaryDTO' }
         kind: { $ref: '#/components/schemas/MemoryKind' }
+        spaceId:
+          type: string
+          format: uuid
+          description: The Space the memory is filed in. Absent when unfiled.
 
     MemoryKind:
       type: string
@@ -12051,6 +12059,14 @@ components:
         kind:
           allOf: [{ $ref: '#/components/schemas/MemoryKind' }]
           description: Set or change the kind; omit to leave it as it is.
+        spaceId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            Move the memory. A Space id files it there, `null` takes it out of
+            every Space, and omitting the key leaves it where it is. A memory
+            compiled from a note moves with its note: the note is moved into
+            the target Space's folder.
 
     MemoryLineageResponse:
       type: object
