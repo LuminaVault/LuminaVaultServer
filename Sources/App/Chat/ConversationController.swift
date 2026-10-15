@@ -60,6 +60,8 @@ struct ConversationController {
     /// controller tests and the local-only stack keep working; nil means the
     /// chat surface never escalates and every turn takes the classic path.
     let hermesRuns: HermesRunsService?
+    /// Hybrid retrieval plus a relevance floor for every chat path.
+    let grounding: ChatGrounding
 
     init(
         fluent: Fluent,
@@ -79,8 +81,11 @@ struct ConversationController {
         selfImprovement: SelfImprovementService? = nil,
         onboardingLatches: OnboardingLatches? = nil,
         llmPreferences: UserLLMPreferenceRepository? = nil,
-        hermesRuns: HermesRunsService? = nil
+        hermesRuns: HermesRunsService? = nil,
+        hybridSearch: HybridMemorySearch? = nil,
+        maxGroundingDistance: Float = ChatGrounding.defaultMaxDistance
     ) {
+        grounding = ChatGrounding(memories: memories, hybrid: hybridSearch, maxDistance: maxGroundingDistance)
         self.fluent = fluent
         self.memories = memories
         self.embeddings = embeddings
@@ -266,7 +271,9 @@ struct ConversationController {
             .sort(\.$createdAt, .ascending)
             .all()
         let embedding = try await embeddings.embed(content, tenantID: memoryTenantID)
-        let semanticHits = try await memories.semanticSearch(tenantID: memoryTenantID, queryEmbedding: embedding, limit: 5)
+        let semanticHits = try await grounding.retrieve(
+            tenantID: memoryTenantID, query: content, queryEmbedding: embedding, limit: 5
+        )
         retrievalTelemetry?.enqueue(.from(
             tenantID: memoryTenantID, distances: semanticHits.map(\.distance),
             source: .localReply, spaceID: nil, limit: 5
@@ -351,8 +358,9 @@ struct ConversationController {
         switch body.name {
         case .memorySearch:
             let embedding = try await embeddings.embed(query, tenantID: memoryTenantID)
-            let hits = try await memories.semanticSearch(
+            let hits = try await grounding.retrieve(
                 tenantID: memoryTenantID,
+                query: query,
                 queryEmbedding: embedding,
                 limit: limit
             )
@@ -680,8 +688,9 @@ struct ConversationController {
             try await embeddings.embed(content, tenantID: memoryTenantID)
         }
         let semanticHits = try await loggedStage("chat.search", logger: log) {
-            try await memories.semanticSearch(
+            try await grounding.retrieve(
                 tenantID: memoryTenantID,
+                query: content,
                 queryEmbedding: queryEmbedding,
                 limit: 5
             )

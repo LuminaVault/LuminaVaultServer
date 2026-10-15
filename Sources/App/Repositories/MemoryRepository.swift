@@ -690,6 +690,9 @@ struct MemorySearchResult {
     let snippet: String?
     /// Nil on the legacy whole-memory path. See `MemoryCitation`.
     let citation: MemoryCitation?
+    /// `ts_rank_cd` from the lexical arm; nil or 0 when no query term matched.
+    /// `snippet` cannot tell you this: `ts_headline` writes one regardless.
+    let lexicalScore: Float?
 
     init(
         id: UUID,
@@ -701,7 +704,8 @@ struct MemorySearchResult {
         provider: String? = nil,
         model: String? = nil,
         snippet: String? = nil,
-        citation: MemoryCitation? = nil
+        citation: MemoryCitation? = nil,
+        lexicalScore: Float? = nil
     ) {
         self.id = id
         self.tenantID = tenantID
@@ -713,6 +717,7 @@ struct MemorySearchResult {
         self.model = model
         self.snippet = snippet
         self.citation = citation
+        self.lexicalScore = lexicalScore
     }
 }
 

@@ -2171,7 +2171,12 @@ func buildRouter(
         selfImprovement: selfImprovementService,
         onboardingLatches: onboardingLatches,
         llmPreferences: userLLMPreferenceRepo,
-        hermesRuns: hermesRunsService
+        hermesRuns: hermesRunsService,
+        hybridSearch: hybridMemorySearch,
+        maxGroundingDistance: Float(reader.double(
+            forKey: "chat.retrieval.maxDistance",
+            default: Double(ChatGrounding.defaultMaxDistance)
+        ))
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
