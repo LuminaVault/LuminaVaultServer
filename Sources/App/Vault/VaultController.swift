@@ -495,52 +495,7 @@ struct VaultController {
         guard let row else {
             throw HTTPError(.notFound, message: "vault file not found")
         }
-        // Reject overwrites — UNIQUE (tenant_id, path) would also reject this
-        // at the DB layer, but a 409 is friendlier than a 500.
-        let conflict = try await VaultFile.query(on: db, tenantID: tenantID)
-            .filter(\.$path == to)
-            .first()
-        guard conflict == nil else {
-            throw HTTPError(.conflict, message: "destination path already exists")
-        }
-
-        let rawRoot = vaultPaths.rawDirectory(for: tenantID)
-        let src = try Self.resolveInside(rawRoot: rawRoot, relative: from)
-        let dst = try Self.resolveInside(rawRoot: rawRoot, relative: to)
-
-        let fm = FileManager.default
-        try fm.createDirectory(
-            at: dst.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        if fm.fileExists(atPath: src.path) {
-            try fm.moveItem(at: src, to: dst)
-        }
-        let spaceID = try await Self.spaceID(forPath: to, tenantID: tenantID, db: db)
-        let fileID = try row.requireID()
-        row.path = to
-        row.spaceID = spaceID
-        try await db.transaction { tx in
-            try await row.save(on: tx)
-            // The folder is the Space (HER-105), so a move between folders is a
-            // re-file. Memories compiled from this file and their chunks carry
-            // their own copy of the Space and path; without this, a moved note
-            // keeps answering Space-scoped searches for the folder it left and
-            // cites a path that no longer exists.
-            guard let sql = tx as? any SQLDatabase else {
-                throw HTTPError(.internalServerError, message: "SQL driver required for vault move")
-            }
-            try await sql.raw("""
-            UPDATE memories
-            SET space_id = \(bind: spaceID), updated_at = NOW()
-            WHERE tenant_id = \(bind: tenantID) AND source_vault_file_id = \(bind: fileID)
-            """).run()
-            try await sql.raw("""
-            UPDATE memory_chunks
-            SET space_id = \(bind: spaceID), source_path = \(bind: to)
-            WHERE tenant_id = \(bind: tenantID) AND vault_file_id = \(bind: fileID)
-            """).run()
-        }
+        try await VaultFileMover(fluent: fluent, vaultPaths: vaultPaths).move(row, to: to, tenantID: tenantID)
         logger.info("vault move tenant=\(tenantID) from=\(from) to=\(to)")
         return try VaultFileDTO.fromRow(row)
     }

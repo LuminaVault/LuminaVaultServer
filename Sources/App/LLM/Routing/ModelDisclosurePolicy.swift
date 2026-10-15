@@ -233,7 +233,8 @@ enum ModelDisclosurePolicy {
             provenance: memory.provenance.map { scrub($0, disclosure: disclosure) },
             createdByUserId: memory.createdByUserId,
             updatedByUserId: memory.updatedByUserId,
-            kind: memory.kind
+            kind: memory.kind,
+            spaceId: memory.spaceId
         )
     }
 
