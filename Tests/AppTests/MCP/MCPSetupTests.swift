@@ -1,5 +1,6 @@
 @testable import App
 import Foundation
+import LuminaVaultShared
 import Testing
 
 struct MCPSetupTests {
@@ -51,6 +52,56 @@ struct MCPSetupTests {
         let setup = MCPSetup.instructions(kind: .hermes, publicBaseURL: base, token: token)
         #expect(setup.config.contains("hermes mcp add luminavault --url https://api.example.com/v1/mcp --auth header"))
         #expect(setup.config.contains("Authorization: Bearer lv_TESTTOKEN"))
+    }
+
+    @Test
+    func `every client's prompt installs the memory habit where that client reads it`() {
+        let homes: [AgentClientKind: String] = [
+            .claudeCode: "CLAUDE.md",
+            .codex: "AGENTS.md",
+            .hermes: "persistent memory",
+            .other: "every session",
+        ]
+        for kind in AgentClientKind.allCases {
+            let prompt = MCPSetup.instructions(kind: kind, publicBaseURL: base, token: token).prompt
+            #expect(prompt.contains(MCPSetup.memoryHabit), "\(kind) prompt must carry the habit")
+            #expect(prompt.contains(homes[kind] ?? "?"), "\(kind) prompt must say where to put it")
+            #expect(prompt.contains("Keep everything already there"), "\(kind) must not overwrite instructions")
+        }
+    }
+
+    @Test
+    func `the habit never asks an agent to edit SOUL`() {
+        // SOUL.md is the user's, and a BYO-Hermes server refuses writes to it.
+        #expect(!MCPSetup.memoryHabit.localizedCaseInsensitiveContains("soul"))
+        #expect(!MCPProtocol.instructions.localizedCaseInsensitiveContains("soul"))
+    }
+
+    @Test
+    func `every tool the prompt and instructions name is a real tool`() {
+        // Backticked names in agent-facing text must be a tool or one of its
+        // arguments, or an agent is told to use something that is not there.
+        let tools = Set(MCPToolCatalog.all.map(\.name))
+        let arguments = Set(MCPToolCatalog.all.flatMap { tool in
+            tool.inputSchema.objectValue?["properties"]?.objectValue?.keys.map(\.self) ?? []
+        })
+        let known = tools.union(arguments)
+        let texts = [
+            MCPSetup.memoryHabit,
+            MCPProtocol.instructions,
+            MCPSetup.instructions(kind: .claudeCode, publicBaseURL: base, token: token).prompt,
+        ]
+        for text in texts {
+            for name in Self.backticked(text) where name.allSatisfy({ $0.isLowercase || $0 == "_" }) {
+                #expect(known.contains(name), "`\(name)` is not an MCP tool or argument")
+            }
+        }
+        #expect(Self.backticked(MCPSetup.memoryHabit).isSuperset(of: ["search", "memory_save", "memory_update", "memory_forget"]))
+    }
+
+    private static func backticked(_ text: String) -> Set<String> {
+        let parts = text.split(separator: "`", omittingEmptySubsequences: false)
+        return Set(stride(from: 1, to: parts.count, by: 2).map { String(parts[$0]) })
     }
 
     @Test
