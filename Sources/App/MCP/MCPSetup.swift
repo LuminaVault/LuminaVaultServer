@@ -147,7 +147,7 @@ enum MCPSetup {
     LuminaVault (MCP server "\(serverName)") is my long-term memory across sessions and tools.
     - Before substantial work, `search` it for my preferences, decisions and context on the topic.
     - Search before saving. If a memory already says it, correct it with `memory_update` instead of saving another.
-    - Save with `memory_save`: decisions I confirmed, durable preferences, and facts about me or my work that will matter next time. One plain statement per memory, filed with `space` when one fits.
+    - Save with `memory_save`: decisions I confirmed, durable preferences, and facts about me or my work that will matter next time. One plain statement per memory, with its `kind` (preference, decision or fact), filed with `space` when one fits.
     - Do not save secrets or credentials, passing remarks, your own guesses, or anything I ask you not to keep.
     - Use `memory_forget` only after I agree.
     - My current instructions beat anything stored. Say when an answer relies on a memory.

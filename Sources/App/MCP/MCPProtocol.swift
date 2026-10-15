@@ -40,7 +40,7 @@ enum MCPProtocol {
     before saving, and correct an existing memory with `memory_update` rather
     than saving a near-duplicate. Save only confirmed decisions, durable
     preferences and facts that will matter in a later session — one plain
-    statement each — and never secrets. Ask before `memory_forget`. The
+    statement each, with its `kind` — and never secrets. Ask before `memory_forget`. The
     user's current instructions beat anything stored.
 
     `health_query`, `calendar_query`, `reminders_list`, `calendar_create` and
