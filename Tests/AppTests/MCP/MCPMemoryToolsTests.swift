@@ -283,6 +283,38 @@ struct MCPMemoryToolsTests {
     }
 
     @Test
+    func `memory_context returns SOUL and the recent decisions and preferences only`() async throws {
+        let app = try await buildApplication(reader: dbTestReader)
+        try await app.test(.router) { client in
+            let account = try await Self.register(client: client)
+            let token = try await Self.issueKey(client: client, account: account, name: "ro", access: .read)
+            let writer = try await Self.issueKey(client: client, account: account, name: "rw", access: .readWrite)
+            for (content, kind) in [
+                ("Prefers short answers.", "preference"),
+                ("We ship on Tuesdays.", "decision"),
+                ("The office is in Lisbon.", "fact"),
+            ] {
+                _ = try await Self.call(
+                    client: client, token: writer, tool: "memory_save",
+                    arguments: ["content": content, "kind": kind]
+                )
+            }
+
+            // A read-only key may call it: it changes nothing.
+            let context = try #require(try await Self.result(Self.call(
+                client: client, token: token, tool: "memory_context", arguments: [:]
+            )))
+            let memories = context["memories"] as? [[String: Any]] ?? []
+            let texts = memories.compactMap { $0["text"] as? String }
+            #expect(Set(texts) == ["Prefers short answers.", "We ship on Tuesdays."])
+            #expect(context["soulEditable"] as? Bool == false)
+            let soul = context["soul"] as? String
+            #expect(soul?.isEmpty == false, "a new account has the default SOUL")
+            #expect(soul?.contains("lv:core") == false, "the Hermes core covenant is not the user's")
+        }
+    }
+
+    @Test
     func `hiding the model leaves an agent key's attribution visible`() {
         let agent = MemoryContributionDTO(
             id: UUID(), operation: .create, actor: .model, source: .manual,

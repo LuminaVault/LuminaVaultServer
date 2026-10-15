@@ -2178,7 +2178,8 @@ func buildRouter(
         maxGroundingDistance: Float(reader.double(
             forKey: "chat.retrieval.maxDistance",
             default: Double(ChatGrounding.defaultMaxDistance)
-        ))
+        )),
+        soul: soulService
     )
     let conversationsBase = router.group("/v1/conversations").add(middleware: jwtAuthenticator)
     let conversationsWithByo = byoHermesMiddleware.map { conversationsBase.add(middleware: $0) } ?? conversationsBase
@@ -2342,6 +2343,7 @@ func buildRouter(
                 logger: Logger(label: "lv.mcp.index")
             ),
             deviceQueue: deviceCommandQueue,
+            soul: soulService,
             logger: mcpLogger
         ),
         vaultAccess: vaultAccessService,

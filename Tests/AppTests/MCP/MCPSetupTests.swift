@@ -73,8 +73,16 @@ struct MCPSetupTests {
     @Test
     func `the habit never asks an agent to edit SOUL`() {
         // SOUL.md is the user's, and a BYO-Hermes server refuses writes to it.
-        #expect(!MCPSetup.memoryHabit.localizedCaseInsensitiveContains("soul"))
-        #expect(!MCPProtocol.instructions.localizedCaseInsensitiveContains("soul"))
+        // Agents may read it (memory_context); no sentence about it may ask
+        // them to change it.
+        let editVerbs = ["edit", "write", "update", "change", "rewrite", "append"]
+        for text in [MCPSetup.memoryHabit, MCPProtocol.instructions] {
+            let sentences = text.replacingOccurrences(of: "\n", with: " ").split(separator: ".")
+            for sentence in sentences where sentence.localizedCaseInsensitiveContains("soul") {
+                let lowered = sentence.lowercased()
+                #expect(!editVerbs.contains { lowered.contains($0) }, "asks to change SOUL: \(sentence)")
+            }
+        }
     }
 
     @Test

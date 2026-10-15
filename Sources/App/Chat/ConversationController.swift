@@ -62,6 +62,10 @@ struct ConversationController {
     let hermesRuns: HermesRunsService?
     /// Hybrid retrieval plus a relevance floor for every chat path.
     let grounding: ChatGrounding
+    /// The user's SOUL.md, for turns Hermes does not see. Hermes builds its
+    /// own system prompt with SOUL in it, so only BYOK turns (straight to the
+    /// user's provider) and on-device local replies get it from here.
+    let soul: SOULService?
 
     init(
         fluent: Fluent,
@@ -83,9 +87,11 @@ struct ConversationController {
         llmPreferences: UserLLMPreferenceRepository? = nil,
         hermesRuns: HermesRunsService? = nil,
         hybridSearch: HybridMemorySearch? = nil,
-        maxGroundingDistance: Float = ChatGrounding.defaultMaxDistance
+        maxGroundingDistance: Float = ChatGrounding.defaultMaxDistance,
+        soul: SOULService? = nil
     ) {
         grounding = ChatGrounding(memories: memories, hybrid: hybridSearch, maxDistance: maxGroundingDistance)
+        self.soul = soul
         self.fluent = fluent
         self.memories = memories
         self.embeddings = embeddings
@@ -300,7 +306,12 @@ struct ConversationController {
             count: hits.count
         )
         let timezone = TimeZone(identifier: user.timezone) ?? .gmt
-        let prompt = await Self.buildPrompt(history: history, hits: Array(hits), schedule: scheduleContext(tenantID: actorID, timezone: timezone))
+        let prompt = await Self.buildPrompt(
+            history: history,
+            hits: Array(hits),
+            schedule: scheduleContext(tenantID: actorID, timezone: timezone),
+            soul: soulExcerpt(for: user)
+        )
         let expiresAt = Date().addingTimeInterval(15 * 60)
         let execution = PreparedLocalExecution(
             tenantID: actorID,
@@ -746,7 +757,10 @@ struct ConversationController {
                 history: history,
                 hits: hits,
                 schedule: schedule,
-                includeModelIdentityGuard: disclosure == .hidden
+                includeModelIdentityGuard: disclosure == .hidden,
+                // `.visible` is BYOK: the turn goes straight to the user's
+                // provider and never through Hermes, which adds SOUL itself.
+                soul: disclosure == .visible ? soulExcerpt(for: user) : nil
             ),
             model: defaultModel.isEmpty ? nil : defaultModel,
             temperature: 0.4
@@ -1043,7 +1057,8 @@ struct ConversationController {
         history: [ConversationMessage],
         hits: [MemorySearchResult],
         schedule: String? = nil,
-        includeModelIdentityGuard: Bool = false
+        includeModelIdentityGuard: Bool = false,
+        soul: String? = nil
     ) -> [ChatMessage] {
         let context: String = if hits.isEmpty {
             "(no relevant memories were found)"
@@ -1064,6 +1079,9 @@ struct ConversationController {
         // HER-340 — lightweight schedule awareness (today + next event only).
         // Omitted entirely when the calendar isn't connected.
         let scheduleSection = schedule.map { "\n\n\($0)" } ?? ""
+        let soulSection = soul.map {
+            "\n\nHow the user wants you to work (their SOUL.md; follow it unless the conversation says otherwise):\n\($0)"
+        } ?? ""
         let system = ChatMessage(role: "system", content: """
         You are Lumina, the user's second-brain assistant. Use the
         retrieved memories below to ground your answer. Cite by their
@@ -1072,7 +1090,7 @@ struct ConversationController {
         say so plainly rather than inventing detail.
 
         Retrieved memories:
-        \(context)\(scheduleSection)
+        \(context)\(scheduleSection)\(soulSection)
 
         Prior model outputs are drafts, not authoritative user facts. Prefer
         direct user memories when sources disagree and state uncertainty.
@@ -1080,6 +1098,23 @@ struct ConversationController {
         """)
         let turns = history.map { ChatMessage(role: $0.role, content: $0.content) }
         return [system] + turns
+    }
+
+    /// SOUL.md without the Hermes core covenant (it describes Hermes's own
+    /// duties, not the user) and capped: it rides every turn, and a BYOK user
+    /// pays for those tokens.
+    func soulExcerpt(for user: User) -> String? {
+        guard let soul, let text = try? soul.read(for: user) else { return nil }
+        let personal = SOULCore.strip(from: text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !personal.isEmpty else { return nil }
+        return Self.capped(personal, maxCharacters: Self.maxSoulCharacters)
+    }
+
+    static let maxSoulCharacters = 4000
+
+    static func capped(_ text: String, maxCharacters: Int) -> String {
+        guard text.count > maxCharacters else { return text }
+        return String(text.prefix(maxCharacters)) + "\n…(truncated)"
     }
 
     /// HER-340 — compact schedule block for prompt injection: whether the
