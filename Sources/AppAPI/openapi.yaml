@@ -641,6 +641,39 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/me/recap:
+    get:
+      tags: [Me]
+      operationId: meRecap
+      summary: What the user did over their last 7 or 30 local days.
+      description: |
+        Days are the user's own calendar days in `users.timezone`, oldest
+        first, with empty days included. `previousTotals` is the same-length
+        window just before, for deltas. `captures` are memories the user put
+        in (notes, links, files, chat saves); `learned` are memories Lumina
+        distilled (Sync & Learn, kept replies); `asked` are messages the user
+        sent in chat; `reviewed` are memory reviews. `shareText` holds numbers
+        only, never memory content.
+      parameters:
+        - name: range
+          in: query
+          required: false
+          description: '`7d` (default) or `30d`. Anything else is a 400.'
+          schema:
+            type: string
+            enum: [7d, 30d]
+            default: 7d
+      responses:
+        '200':
+          description: Recap for the range.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeRecapResponse' }
+        '400':
+          description: Range is not `7d` or `30d`.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
 
   # ───────────────────────── Me — Suggestions (HER-37) ──────────────────
@@ -4284,6 +4317,33 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryLineageResponse' }
+
+  /v1/memory/{id}/related:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+    get:
+      tags: [Memory]
+      operationId: memoryRelated
+      summary: Memories close to this one in meaning ("connects to N").
+      description: |
+        Nearest first, by the embedding already stored on the memory. Leaves
+        out the memory itself, rejected memories, and anything past the
+        cosine-distance floor (`memory.related.maxDistance`, default 0.45),
+        so an empty list means nothing is really connected. Reading this
+        does not count as a search hit.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 10, default: 5 }
+      responses:
+        '200':
+          description: Related memories.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemoryRelatedResponse' }
+        '404':
+          description: No such memory in the caller's vault.
 
   /v1/memory/{id}/provenance:
     parameters:
@@ -9824,6 +9884,85 @@ components:
         reviewedAt: { type: string, format: date-time }
         reviewCount: { type: integer, minimum: 1 }
 
+    RelatedMemoryDTO:
+      type: object
+      required: [id, snippet, createdAt, similarity]
+      properties:
+        id: { type: string, format: uuid }
+        snippet: { type: string, description: 'First ~160 characters, one line.' }
+        kind: { $ref: '#/components/schemas/MemoryKind' }
+        createdAt: { type: string, format: date-time }
+        spaceId: { type: string, format: uuid }
+        similarity: { type: number, format: double, minimum: 0, maximum: 1, description: 'Cosine similarity.' }
+    MemoryRelatedResponse:
+      type: object
+      required: [memoryId, items]
+      properties:
+        memoryId: { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RelatedMemoryDTO' }
+
+    RecapTotalsDTO:
+      type: object
+      required: [captures, learned, asked, reviewed, activeDays, streakDays]
+      properties:
+        captures: { type: integer }
+        learned: { type: integer }
+        asked: { type: integer }
+        reviewed: { type: integer }
+        activeDays: { type: integer }
+        streakDays: { type: integer }
+    RecapDayDTO:
+      type: object
+      required: [date, captures, learned, asked, reviewed]
+      properties:
+        date: { type: string, format: date, description: 'Local day, `yyyy-MM-dd`.' }
+        captures: { type: integer }
+        learned: { type: integer }
+        asked: { type: integer }
+        reviewed: { type: integer }
+    RecapKindsDTO:
+      type: object
+      required: [preference, decision, fact, note]
+      properties:
+        preference: { type: integer }
+        decision: { type: integer }
+        fact: { type: integer }
+        note: { type: integer }
+    RecapHighlightKind:
+      type: string
+      enum: [decision, preference, achievement, mostRevisited]
+      description: Clients must read an unknown value as `unknown`.
+    RecapHighlightDTO:
+      type: object
+      required: [kind, refId, title, date]
+      properties:
+        kind: { $ref: '#/components/schemas/RecapHighlightKind' }
+        refId: { type: string, description: 'A memory id, or an achievement key for `achievement`.' }
+        title: { type: string }
+        date: { type: string, format: date-time }
+    MeRecapResponse:
+      type: object
+      required: [range, start, end, timezone, totals, previousTotals, daily, kinds, highlights, shareText]
+      properties:
+        range: { type: string, enum: [7d, 30d] }
+        start: { type: string, format: date, description: 'First local day of the range, `yyyy-MM-dd`.' }
+        end: { type: string, format: date, description: 'Last local day (today), `yyyy-MM-dd`.' }
+        timezone: { type: string, description: 'IANA zone the days are cut in.' }
+        totals: { $ref: '#/components/schemas/RecapTotalsDTO' }
+        previousTotals: { $ref: '#/components/schemas/RecapTotalsDTO' }
+        daily:
+          type: array
+          description: One entry per local day, oldest first, zero days included.
+          items: { $ref: '#/components/schemas/RecapDayDTO' }
+        kinds: { $ref: '#/components/schemas/RecapKindsDTO' }
+        highlights:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/RecapHighlightDTO' }
+        shareText: { type: string, description: 'Numbers only, never memory content.' }
+
     TaskState:
       type: string
       enum: [running, queued, completed, failed]
@@ -13254,6 +13393,12 @@ components:
         size: { type: integer }
         contentType: { type: string }
         sha256: { type: string }
+        memoryId:
+          type: string
+          format: uuid
+          description: |
+            The memory a note upload (`note=true`) created or updated, for
+            `GET /v1/memory/{id}/related`. Absent for plain files.
 
     VaultMoveRequest:
       type: object

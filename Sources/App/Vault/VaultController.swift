@@ -278,6 +278,10 @@ struct VaultController {
         // is keyed on the vault file id; tags ride the metadata sidecar.
         // Failures are logged, not fatal — the file write already succeeded.
         let isNote = request.uri.queryParameters["note"].map(String.init) == "true"
+        // The note's memory, returned so the client can ask what it connects
+        // to (`GET /v1/memory/{id}/related`). Stays nil for plain files and
+        // when the memory write below fails.
+        var noteMemoryID: UUID?
         try PostHogAnalytics.capture("vault_file_uploaded", distinctID: user.requireID().uuidString, properties: [
             "content_type": contentType,
             "is_note": isNote,
@@ -295,8 +299,9 @@ struct VaultController {
                         tenantID: tenantID, id: existingMemID,
                         content: content, embedding: embedding
                     )
+                    noteMemoryID = existingMemID
                 } else {
-                    _ = try await memories.create(
+                    let created = try await memories.create(
                         tenantID: tenantID,
                         content: content,
                         embedding: embedding,
@@ -305,6 +310,7 @@ struct VaultController {
                         spaceID: spaceID,
                         reviewState: "auto"
                     )
+                    noteMemoryID = created.id
                 }
             } catch {
                 logger.error("note memory upsert failed tenant=\(tenantID) path=\(safeRelative): \(error)")
@@ -322,7 +328,8 @@ struct VaultController {
             path: safeRelative,
             size: data.count,
             contentType: contentType,
-            sha256: digest
+            sha256: digest,
+            memoryId: noteMemoryID
         )
     }
 
