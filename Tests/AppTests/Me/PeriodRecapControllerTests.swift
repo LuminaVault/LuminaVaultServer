@@ -212,9 +212,12 @@ struct PeriodRecapControllerTests {
             #expect(body.shareText == "My March 2026 on LuminaVault: 11 memories, 2 questions asked, a 3-day streak.")
             #expect(!body.shareText.contains("swift"))
 
-            // A second view while the first claim is in flight does not claim again.
+            // A second view does not claim again. The app's own worker may
+            // already have tried (Hermes is unreachable here) and stored the
+            // fallback, so the card is pending or fallback, but never re-claimed.
             let (_, again, _) = try await Self.recap(client: client, token: account.token, query: query)
-            #expect(again?.themes?.status == .pending)
+            let status = try #require(again?.themes?.status)
+            #expect(status == .pending || status == .fallback)
             let attempts = try await withTestFluent(label: "test.recap.period.attempts") { fluent in
                 try await PeriodRecapThemesStore(fluent: fluent).load(userID: account.userID, periodKey: "2026-03")?.attempts
             }
