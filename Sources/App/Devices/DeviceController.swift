@@ -2,12 +2,17 @@ import FluentKit
 import Foundation
 import Hummingbird
 import HummingbirdFluent
+import Logging
 import LuminaVaultShared
 
 extension DeviceRegistrationResponse: @retroactive ResponseEncodable {}
 
 struct DeviceController {
     let fluent: Fluent
+    /// `apns.bundleId`. A device's own bundle id is kept only when it is this
+    /// or a variant of it (`APNSNotificationService.isAllowedBundleID`).
+    var apnsBundleID: String = ""
+    var logger = Logger(label: "lv.devices")
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.post("", use: register)
@@ -21,6 +26,7 @@ struct DeviceController {
         guard !body.token.isEmpty else { throw HTTPError(.badRequest, message: "token required") }
         let platform = body.platform.rawValue
         let tenantID = try user.requireID()
+        let bundleID = allowedBundleID(body.bundleId)
 
         let db = fluent.db()
         if let existing = try await DeviceToken.query(on: db, tenantID: tenantID)
@@ -29,6 +35,10 @@ struct DeviceController {
         {
             existing.platform = platform
             existing.lastSeenAt = Date()
+            // An older client sends no bundle id; keep what a newer one stored.
+            if body.bundleId != nil {
+                existing.bundleID = bundleID
+            }
             try await existing.save(on: db)
             return try DeviceRegistrationResponse(
                 id: existing.requireID(),
@@ -37,13 +47,27 @@ struct DeviceController {
             )
         }
 
-        let row = DeviceToken(tenantID: tenantID, token: body.token, platform: platform)
+        let row = DeviceToken(tenantID: tenantID, token: body.token, platform: platform, bundleID: bundleID)
         try await row.save(on: db)
         return try DeviceRegistrationResponse(
             id: row.requireID(),
             token: row.token,
             platform: row.platform
         )
+    }
+
+    /// The requested bundle id when the server may push to it, else nil (the
+    /// push then uses the configured id). A foreign id is dropped, not refused:
+    /// registration must still succeed.
+    func allowedBundleID(_ requested: String?) -> String? {
+        guard let requested = requested?.trimmingCharacters(in: .whitespacesAndNewlines), !requested.isEmpty else {
+            return nil
+        }
+        guard APNSNotificationService.isAllowedBundleID(requested, configured: apnsBundleID) else {
+            logger.debug("device bundle id \(requested) is not \(apnsBundleID) or a variant of it; using the default topic")
+            return nil
+        }
+        return requested
     }
 
     @Sendable

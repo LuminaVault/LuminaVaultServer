@@ -21,6 +21,10 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
     @OptionalField(key: "last_accessed_at") var lastAccessedAt: Date?
     @OptionalField(key: "last_reviewed_at") var lastReviewedAt: Date?
     @Field(key: "review_count") var reviewCount: Int64
+    /// Resurfacing (M142): when a `soon` / `later` review asked to see it
+    /// again, and whether `never` took it out of `GET /v1/me/resurface`.
+    @OptionalField(key: "next_review_at") var nextReviewAt: Date?
+    @Field(key: "resurface_muted") var resurfaceMuted: Bool
 
     /// HER-150 lineage. NULL when the upsert path didn't declare a source
     /// (older rows, direct API writes without context). FK is ON DELETE SET
@@ -60,6 +64,7 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         accessCount = 0
         queryHitCount = 0
         reviewCount = 0
+        resurfaceMuted = false
         reviewState = "auto"
         originKind = MemorySourceKindDTO.legacy.rawValue
     }
@@ -102,5 +107,6 @@ final class Memory: Model, TenantModel, @unchecked Sendable {
         accessCount = 0
         queryHitCount = 0
         reviewCount = 0
+        resurfaceMuted = false
     }
 }

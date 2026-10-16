@@ -143,4 +143,7 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M137_AddAgentConnectionAccess())
     await fluent.migrations.add(M138_AddMemoryKind())
     await fluent.migrations.add(M139_AddSkillOrigin())
+    await fluent.migrations.add(M140_AddDeviceTokenBundleID())
+    await fluent.migrations.add(M141_CreateProactivePushLog())
+    await fluent.migrations.add(M142_AddMemoryResurfacing())
 }

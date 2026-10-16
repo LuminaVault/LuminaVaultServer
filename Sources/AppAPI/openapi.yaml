@@ -674,6 +674,43 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/me/resurface:
+    get:
+      tags: [Me]
+      operationId: meResurface
+      summary: A few memories worth another look today.
+      description: |
+        Deterministic, no model call. Lanes are filled in priority order and
+        deduped by memory: `due` (the user asked to see it again via
+        `soon`/`later` on `POST /v1/memory/{id}/review` and that time has
+        passed, oldest first), `onThisDay` (saved exactly a month, six months
+        or a year ago — or this month/day two or more years ago — on the
+        user's own calendar in `users.timezone`, longest ago first), and
+        `fading` (a decision or preference not looked at for more than 30
+        days, oldest first). Never returned: rejected or muted memories,
+        model-made memories still pending approval, anything reviewed in the
+        last 24 hours, and anything scheduled for a later review.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: 1 to 10 (default 3). Anything else is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 3
+      responses:
+        '200':
+          description: Up to `limit` memories, in lane order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResurfaceResponse' }
+        '400':
+          description: Limit is not an integer between 1 and 10.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
 
   # ───────────────────────── Me — Suggestions (HER-37) ──────────────────
@@ -4366,12 +4403,28 @@ paths:
       tags: [Memory]
       operationId: memoryReview
       summary: Mark a memory as explicitly reviewed now.
+      description: |
+        Always sets `reviewedAt`, bumps `reviewCount` and records a
+        `memory_reviewed` event. The optional body decides when it resurfaces
+        in `GET /v1/me/resurface`: `kept` (the default, also what an empty
+        body means) clears any schedule; `soon` schedules it 3 days out and
+        `later` 30 days out (both lift an earlier `never`); `never` mutes it
+        for good. The memory itself is never changed or removed.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryReviewRequest' }
       responses:
         '200':
           description: Updated review metadata.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MemoryReviewResponse' }
+        '400':
+          description: Body is present but not a valid `MemoryReviewRequest`.
+        '404':
+          description: No such memory in this vault.
 
   /v1/memory/facets:
     get:
@@ -9883,6 +9936,47 @@ components:
         memoryId: { type: string, format: uuid }
         reviewedAt: { type: string, format: date-time }
         reviewCount: { type: integer, minimum: 1 }
+        nextReviewAt:
+          type: string
+          format: date-time
+          description: When it resurfaces next; absent unless `soon` or `later` scheduled it.
+        resurfaceMuted:
+          type: boolean
+          description: True once `never` was chosen.
+
+    MemoryReviewAction:
+      type: string
+      enum: [kept, soon, later, never]
+    MemoryReviewRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { $ref: '#/components/schemas/MemoryReviewAction' }
+
+    ResurfaceReason:
+      type: string
+      enum: [due, onThisDay, fading]
+      description: Clients decode unknown values as `unknown`.
+    ResurfaceItemDTO:
+      type: object
+      required: [memoryId, snippet, createdAt, reason, why]
+      properties:
+        memoryId: { type: string, format: uuid }
+        snippet: { type: string, description: 'First ~160 characters, one line.' }
+        kind: { type: string, description: 'Raw memory kind (decision, preference, fact, note, …).' }
+        createdAt: { type: string, format: date-time }
+        spaceId: { type: string, format: uuid }
+        reason: { $ref: '#/components/schemas/ResurfaceReason' }
+        why:
+          type: string
+          description: 'One line, e.g. "Saved a year ago today" or "A decision you haven''t revisited since March 2026".'
+    ResurfaceResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ResurfaceItemDTO' }
 
     RelatedMemoryDTO:
       type: object
@@ -11827,6 +11921,13 @@ components:
       properties:
         token: { type: string }
         platform: { type: string, enum: [ios, android] }
+        bundleId:
+          type: string
+          description: |
+            The app's bundle id (e.g. `com.lumina.fernando.beta`). Pushes to
+            this device use it as the APNs topic when it is the server's
+            configured bundle id or a variant of it; any other value is
+            ignored. Omit it to keep a previously stored value.
 
     DeviceRegistrationResponse:
       type: object

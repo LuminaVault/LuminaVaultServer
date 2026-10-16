@@ -514,16 +514,21 @@ struct MemoryController {
         return Response(status: .noContent)
     }
 
+    /// `POST /v1/memory/:id/review` with an optional `MemoryReviewRequest`.
+    /// No body (or an empty one) is `kept`, which is exactly the pre-resurfacing
+    /// behaviour: mark it reviewed and leave no schedule behind.
     @Sendable
     func markReviewed(_ req: Request, ctx: AppRequestContext) async throws -> MemoryReviewResponse {
         let id = try Self.parseID(ctx)
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .write).vaultID
+        let action = try await Self.reviewAction(req)
         guard let row = try await repository.find(tenantID: tenantID, id: id) else {
             throw HTTPError(.notFound, message: "memory not found")
         }
         let now = Date()
         row.lastReviewedAt = now
         row.reviewCount += 1
+        Self.applyReviewAction(action, to: row, now: now)
         row.updatedByUserID = try ctx.requireTenantID()
         try await row.update(on: repository.fluent.db())
         if let sql = repository.fluent.db() as? any SQLDatabase {
@@ -533,7 +538,50 @@ struct MemoryController {
             VALUES (\(bind: tenantID), \(bind: row.updatedByUserID), 'memory_reviewed', 'server', '{}'::jsonb)
             """).run()
         }
-        return MemoryReviewResponse(memoryId: id, reviewedAt: now, reviewCount: Int(row.reviewCount))
+        return MemoryReviewResponse(
+            memoryId: id,
+            reviewedAt: now,
+            reviewCount: Int(row.reviewCount),
+            nextReviewAt: row.nextReviewAt,
+            resurfaceMuted: row.resurfaceMuted
+        )
+    }
+
+    /// `soon` and `later` are how far off "show me this again" is.
+    static let reviewSoonInterval: TimeInterval = 3 * 24 * 60 * 60
+    static let reviewLaterInterval: TimeInterval = 30 * 24 * 60 * 60
+
+    static func applyReviewAction(_ action: MemoryReviewAction, to row: Memory, now: Date) {
+        switch action {
+        case .kept:
+            row.nextReviewAt = nil
+        case .soon:
+            // Asking to see it again is an explicit yes, so it also lifts an
+            // earlier `never`.
+            row.nextReviewAt = now.addingTimeInterval(reviewSoonInterval)
+            row.resurfaceMuted = false
+        case .later:
+            row.nextReviewAt = now.addingTimeInterval(reviewLaterInterval)
+            row.resurfaceMuted = false
+        case .never:
+            row.nextReviewAt = nil
+            row.resurfaceMuted = true
+        }
+    }
+
+    /// The optional review body. Absent or blank is `kept`; anything else must
+    /// decode as `MemoryReviewRequest` or the request is a 400.
+    static func reviewAction(_ req: Request) async throws -> MemoryReviewAction {
+        let buffer = try await req.body.collect(upTo: 4096)
+        let bytes = Data(buffer.readableBytesView)
+        guard bytes.contains(where: { !Character(UnicodeScalar($0)).isWhitespace }) else {
+            return .kept
+        }
+        do {
+            return try JSONDecoder().decode(MemoryReviewRequest.self, from: bytes).action
+        } catch {
+            throw HTTPError(.badRequest, message: "body must be {\"action\": \"kept|soon|later|never\"}")
+        }
     }
 
     @Sendable

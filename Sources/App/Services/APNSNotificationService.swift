@@ -33,6 +33,41 @@ enum APNSPushCategory: String {
     case deviceCommand
 }
 
+// MARK: - Delivery options
+
+/// How loudly a push arrives. Mirrors APNs `aps.interruption-level`; nil leaves
+/// it out, which iOS treats as `active`.
+enum APNSPushInterruptionLevel: String, Sendable {
+    case passive
+    case active
+    case timeSensitive
+
+    var apns: APNSAlertNotificationInterruptionLevel {
+        switch self {
+        case .passive: .passive
+        case .active: .active
+        case .timeSensitive: .timeSensitive
+        }
+    }
+}
+
+/// Per-push `aps` fields beyond the alert text.
+struct APNSPushOptions: Sendable, Equatable {
+    /// Sent as `aps.category` — the `UNNotificationCategory` iOS renders
+    /// actions for. Usually the base category's raw value; an actionable
+    /// variant (`notify(actionCategory:)`) overrides it.
+    var apsCategory: String
+    var interruptionLevel: APNSPushInterruptionLevel?
+    /// `aps.thread-id` — groups related notifications in Notification Center.
+    var threadID: String?
+
+    init(apsCategory: String, interruptionLevel: APNSPushInterruptionLevel? = nil, threadID: String? = nil) {
+        self.apsCategory = apsCategory
+        self.interruptionLevel = interruptionLevel
+        self.threadID = threadID
+    }
+}
+
 // MARK: - Push sender protocol (testable seam)
 
 /// Decouples the APNS network call from `APNSNotificationService` so tests
@@ -45,7 +80,8 @@ protocol APNSPushSender: Sendable {
         body: String,
         category: APNSPushCategory,
         payload: [String: String],
-        topic: String
+        topic: String,
+        options: APNSPushOptions
     ) async throws
 }
 
@@ -62,7 +98,8 @@ struct LiveAPNSPushSender: APNSPushSender {
         body: String,
         category: APNSPushCategory,
         payload: [String: String],
-        topic: String
+        topic: String,
+        options: APNSPushOptions
     ) async throws {
         let content = APNSAlertNotificationContent(
             title: .raw(title),
@@ -83,7 +120,9 @@ struct LiveAPNSPushSender: APNSPushSender {
             // nil. That went unnoticed while every category was a plain banner;
             // it makes an actionable one (Phase 1 `approval`) impossible —
             // the buttons simply never render.
-            category: category.rawValue
+            threadID: options.threadID,
+            category: options.apsCategory,
+            interruptionLevel: options.interruptionLevel?.apns
         )
         let request = APNSRequest(
             message: notification,
@@ -107,6 +146,11 @@ struct LiveAPNSPushSender: APNSPushSender {
 /// is dead forever" (`BadDeviceToken`, `Unregistered`,
 /// `DeviceTokenNotForTopic`, `MissingDeviceToken`) trigger a hard-delete
 /// of the row so we stop pushing to ghost devices.
+///
+/// Each device is pushed under its own app's topic (`device_tokens.bundle_id`,
+/// e.g. the TestFlight `….beta` build), falling back to the configured
+/// `bundleID`. `DeviceTokenNotForTopic` is therefore a real per-device verdict
+/// and the reap stays correct.
 struct APNSNotificationService {
     let enabled: Bool
     let bundleID: String
@@ -290,13 +334,23 @@ struct APNSNotificationService {
 
     /// Generic per-user push. Looks up every active `DeviceToken` row,
     /// sends to each, reaps tokens that APNS marks as dead.
+    ///
+    /// - `interruptionLevel`: `aps.interruption-level`; nil omits it.
+    /// - `threadID`: `aps.thread-id`, for grouping in Notification Center.
+    /// - `actionCategory`: sent as `aps.category` instead of the base
+    ///   category, so a surface can ship an actionable variant. Opt-out
+    ///   gating (`isCategorySuppressed`) and the payload's `category` key
+    ///   still use the base `category`.
     func notify(
         userID: UUID,
         title: String,
         subtitle: String?,
         body: String,
         category: APNSPushCategory,
-        payload: [String: String] = [:]
+        payload: [String: String] = [:],
+        interruptionLevel: APNSPushInterruptionLevel? = nil,
+        threadID: String? = nil,
+        actionCategory: String? = nil
     ) async throws {
         guard enabled, let pushSender, !bundleID.isEmpty else { return }
 
@@ -316,6 +370,11 @@ struct APNSNotificationService {
             return
         }
 
+        let options = APNSPushOptions(
+            apsCategory: actionCategory ?? category.rawValue,
+            interruptionLevel: interruptionLevel,
+            threadID: threadID
+        )
         for row in tokens {
             do {
                 try await pushSender.send(
@@ -325,7 +384,8 @@ struct APNSNotificationService {
                     body: body,
                     category: category,
                     payload: payload,
-                    topic: bundleID
+                    topic: Self.topic(for: row.bundleID, configured: bundleID),
+                    options: options
                 )
                 row.lastSeenAt = Date()
                 try await row.save(on: db)
@@ -346,6 +406,24 @@ struct APNSNotificationService {
     }
 
     // MARK: - Internals
+
+    /// A bundle id this server may push to: the configured one, or a variant
+    /// of it (`<configured>.beta`, `<configured>.test`). Anything else is a
+    /// different app, which this key must not address.
+    static func isAllowedBundleID(_ candidate: String, configured: String) -> Bool {
+        guard !configured.isEmpty, !candidate.isEmpty else { return false }
+        return candidate == configured || candidate.hasPrefix(configured + ".")
+    }
+
+    /// The APNs topic for one device: its own app's id when that is still
+    /// allowed, else the configured one. Re-checked at send time so a stored
+    /// id never outlives a change of `apns.bundleId`.
+    static func topic(for deviceBundleID: String?, configured: String) -> String {
+        if let deviceBundleID, isAllowedBundleID(deviceBundleID, configured: configured) {
+            return deviceBundleID
+        }
+        return configured
+    }
 
     /// True when the error means "this device token is permanently dead"
     /// per Apple's `Reason` enum. Anything else is a transient failure
