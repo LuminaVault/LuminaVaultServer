@@ -216,8 +216,8 @@ struct PeriodRecapControllerTests {
             // already have tried (Hermes is unreachable here) and stored the
             // fallback, so the card is pending or fallback, but never re-claimed.
             let (_, again, _) = try await Self.recap(client: client, token: account.token, query: query)
-            let status = try #require(again?.themes?.status)
-            #expect(status == .pending || status == .fallback)
+            let secondStatus = try #require(again?.themes?.status)
+            #expect(secondStatus == .pending || secondStatus == .fallback)
             let attempts = try await withTestFluent(label: "test.recap.period.attempts") { fluent in
                 try await PeriodRecapThemesStore(fluent: fluent).load(userID: account.userID, periodKey: "2026-03")?.attempts
             }
