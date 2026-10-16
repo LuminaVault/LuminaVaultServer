@@ -10,6 +10,11 @@ enum MemoryHealthFilter: String, CaseIterable {
     case pending
     case unorganized
     case unused
+
+    /// How long since a memory was last looked at before it counts as overdue
+    /// for review. Shared by the `review-overdue` health filter and the
+    /// `fading` lane of `GET /v1/me/resurface`.
+    static let reviewOverdueAge: TimeInterval = 30 * 24 * 60 * 60
 }
 
 /// One Space (concern folder) in the tenant's vault topology. Backs the
@@ -344,7 +349,7 @@ struct MemoryRepository {
         }
         switch healthFilter {
         case .reviewOverdue:
-            let cutoff = Date.now.addingTimeInterval(-30 * 24 * 60 * 60)
+            let cutoff = Date.now.addingTimeInterval(-MemoryHealthFilter.reviewOverdueAge)
             q.group(.or) { stale in
                 stale.filter(\.$lastReviewedAt < cutoff)
                 stale.group(.and) { neverReviewed in

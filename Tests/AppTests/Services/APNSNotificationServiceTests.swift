@@ -282,6 +282,7 @@ actor RecordingPushSender: APNSPushSender {
         let category: APNSPushCategory
         let payload: [String: String]
         let topic: String
+        let options: APNSPushOptions
     }
 
     private(set) var sends: [Send] = []
@@ -298,7 +299,8 @@ actor RecordingPushSender: APNSPushSender {
         body: String,
         category: APNSPushCategory,
         payload: [String: String],
-        topic: String
+        topic: String,
+        options: APNSPushOptions
     ) async throws {
         try await record(
             deviceToken: deviceToken,
@@ -307,7 +309,8 @@ actor RecordingPushSender: APNSPushSender {
             body: body,
             category: category,
             payload: payload,
-            topic: topic
+            topic: topic,
+            options: options
         )
     }
 
@@ -318,7 +321,8 @@ actor RecordingPushSender: APNSPushSender {
         body: String,
         category: APNSPushCategory,
         payload: [String: String],
-        topic: String
+        topic: String,
+        options: APNSPushOptions
     ) throws {
         sends.append(Send(
             token: deviceToken,
@@ -327,7 +331,8 @@ actor RecordingPushSender: APNSPushSender {
             body: body,
             category: category,
             payload: payload,
-            topic: topic
+            topic: topic,
+            options: options
         ))
         if let reason = failures[deviceToken] {
             throw try APNSNotificationServiceTests.makeAPNSError(reason: reason)

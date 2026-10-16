@@ -1833,6 +1833,10 @@ func buildRouter(
     MeRecapController(
         service: MeRecapService(fluent: services.fluent, catalog: .current, logger: Logger(label: "lv.me.recap"))
     ).addRoutes(to: meTodayGroup)
+    // GET /v1/me/resurface — what to look at again today (due, on this day,
+    // fading). Same group and limits as `/v1/me/recap`.
+    MeResurfaceController(service: MeResurfaceService(fluent: services.fluent))
+        .addRoutes(to: meTodayGroup)
 
     // HER-37 — GET /v1/me/suggestions. Static list at scaffold; iterates to
     // per-user dynamic generation in HER-37a. Sibling of `/v1/me/today` —
@@ -3238,7 +3242,7 @@ func buildRouter(
     BillingAdminController(fluent: services.fluent).addRoutes(to: billingAdminGroup)
 
     // Device tokens (APNS / FCM) — protected.
-    let deviceController = DeviceController(fluent: services.fluent)
+    let deviceController = DeviceController(fluent: services.fluent, apnsBundleID: services.apnsBundleID)
     let deviceGroup = router.group("/v1/devices").add(middleware: jwtAuthenticator)
     deviceController.addRoutes(to: deviceGroup)
     // Apple Integration P0b — device-RPC result callback.

@@ -11,15 +11,20 @@ final class DeviceToken: Model, TenantModel, @unchecked Sendable {
     @Field(key: "token") var token: String
     @Field(key: "platform") var platform: String // "ios" | "android" | future
     @OptionalField(key: "last_seen_at") var lastSeenAt: Date?
+    /// The app the token was issued for (M140). Only an allowed id is stored
+    /// (`DeviceController.allowedBundleID`); nil means "the configured
+    /// `apns.bundleId`", which is what every pre-M140 row gets.
+    @OptionalField(key: "bundle_id") var bundleID: String?
     @Timestamp(key: "created_at", on: .create) var createdAt: Date?
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {}
 
-    init(tenantID: UUID, token: String, platform: String) {
+    init(tenantID: UUID, token: String, platform: String, bundleID: String? = nil) {
         self.tenantID = tenantID
         self.token = token
         self.platform = platform
+        self.bundleID = bundleID
         lastSeenAt = Date()
     }
 }
