@@ -1828,6 +1828,11 @@ func buildRouter(
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .meTodayByUser, storage: rateLimitStorage))
     meTodayController.addRoutes(to: meTodayGroup)
+    // GET /v1/me/recap — 7/30-day recap on the user's local days. Same
+    // group as `/v1/me/today`: JWT + per-user rate limit, read of own data.
+    MeRecapController(
+        service: MeRecapService(fluent: services.fluent, catalog: .current, logger: Logger(label: "lv.me.recap"))
+    ).addRoutes(to: meTodayGroup)
 
     // HER-37 — GET /v1/me/suggestions. Static list at scaffold; iterates to
     // per-user dynamic generation in HER-37a. Sibling of `/v1/me/today` —
@@ -1977,7 +1982,11 @@ func buildRouter(
         llmPreferences: userLLMPreferenceRepo,
         eventBus: eventBus,
         chunkIndexer: chunkIndexer,
-        vaultPaths: vaultPaths
+        vaultPaths: vaultPaths,
+        relatedMaxDistance: Float(reader.double(
+            forKey: "memory.related.maxDistance",
+            default: Double(MemoryController.defaultRelatedMaxDistance)
+        ))
     )
     // HER-223 — memory routes also fire chat calls (memory agent loop in
     // HermesMemoryService); attach the resolution middleware so user-

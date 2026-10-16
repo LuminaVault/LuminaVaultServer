@@ -199,11 +199,16 @@ struct MemoryRepository {
     /// on shutdown. HER-330 removed the `Task.detached` this used to use:
     /// it kept a `Fluent` alive past the request and crashed the process
     /// when the database went away underneath it.
+    ///
+    /// `countHits: false` reads without the bump — for lookups that are not
+    /// recall, such as "related memories", which would otherwise inflate the
+    /// hit counts of everything shown next to a memory the user opened.
     func semanticSearch(
         tenantID: UUID,
         queryEmbedding: [Float],
         limit: Int,
-        spaceID: UUID? = nil
+        spaceID: UUID? = nil,
+        countHits: Bool = true
     ) async throws -> [MemorySearchResult] {
         // HER-234 — wrap the SQL hop in `RouteTelemetry.observe` when wired
         // (request counter + duration timer + tracing span). Falls through
@@ -211,17 +216,22 @@ struct MemoryRepository {
         // the migration CLI keep compiling against `MemoryRepository(fluent:)`.
         if let telemetry {
             return try await telemetry.observe("memory.semanticSearch") {
-                try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID)
+                try await semanticSearchRaw(
+                    tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID, countHits: countHits
+                )
             }
         }
-        return try await semanticSearchRaw(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID)
+        return try await semanticSearchRaw(
+            tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID, countHits: countHits
+        )
     }
 
     private func semanticSearchRaw(
         tenantID: UUID,
         queryEmbedding: [Float],
         limit: Int,
-        spaceID: UUID?
+        spaceID: UUID?,
+        countHits: Bool
     ) async throws -> [MemorySearchResult] {
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector query")
@@ -240,7 +250,7 @@ struct MemoryRepository {
 
         let selected = Self.balanced(rows, limit: limit)
         let hitIDs = selected.map(\.id)
-        if !hitIDs.isEmpty {
+        if countHits, !hitIDs.isEmpty {
             if let hitCountUpdates {
                 // Preferred path: the queue coalesces hit-count bumps and owns
                 // its own lifecycle, so search never blocks on the UPDATE.
@@ -414,6 +424,29 @@ struct MemoryRepository {
         try await Memory.query(on: fluent.db(), tenantID: tenantID)
             .filter(\.$id == id)
             .first()
+    }
+
+    /// The memory's stored embedding, tenant-scoped. `nil` when no such
+    /// memory exists for the tenant; `.some(nil)` when it exists but was
+    /// never embedded.
+    func storedEmbedding(tenantID: UUID, id: UUID) async throws -> [Float]?? {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for vector read")
+        }
+        struct Row: Decodable { let embedding: String? }
+        guard let row = try await sql.raw("""
+        SELECT embedding::text AS embedding
+        FROM memories
+        WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
+        """).first(decoding: Row.self) else { return nil }
+        return .some(row.embedding.map(Self.parseVector))
+    }
+
+    /// Parses pgvector's text form, `[0.1,0.2,...]`.
+    static func parseVector(_ text: String) -> [Float] {
+        text.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
+            .split(separator: ",")
+            .compactMap { Float($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     /// Tenant-scoped delete. Returns `true` if a row was removed.

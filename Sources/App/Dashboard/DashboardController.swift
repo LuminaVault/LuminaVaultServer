@@ -515,29 +515,45 @@ struct DashboardController {
 
     /// Current consecutive-day activity streak: the length of the most recent
     /// unbroken run of days with at least one memory or conversation. Computed
-    /// in SQL from distinct UTC activity days so large tenants do not ship
+    /// in SQL from distinct activity days so large tenants do not ship
     /// their full history back to Swift just to count the current island.
-    static func currentStreakDays(tenantID: UUID, db: any Database) async throws -> Int {
+    ///
+    /// `timezone` (IANA) decides which calendar day an activity falls on; the
+    /// dashboard keeps its UTC days. `asOfDay` (`yyyy-MM-dd` in that zone)
+    /// makes it a streak *as of* that day: later activity is ignored, and a
+    /// run that ended before the day before `asOfDay` counts as broken (0).
+    /// Without it, the most recent run counts however long ago it ended.
+    static func currentStreakDays(
+        tenantID: UUID,
+        db: any Database,
+        timezone: String = "UTC",
+        asOfDay: String? = nil
+    ) async throws -> Int {
         guard let sql = db as? any SQLDatabase else { return 0 }
         struct CountRow: Decodable { let count: Int }
         let row = try await sql.raw("""
         WITH activity_days AS (
-            SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date AS day
+            SELECT DISTINCT (created_at AT TIME ZONE \(bind: timezone))::date AS day
             FROM memories
             WHERE tenant_id = \(bind: tenantID)
             UNION
-            SELECT DISTINCT (created_at AT TIME ZONE 'UTC')::date AS day
+            SELECT DISTINCT (created_at AT TIME ZONE \(bind: timezone))::date AS day
             FROM conversations
             WHERE tenant_id = \(bind: tenantID)
+        ),
+        bounded AS (
+            SELECT day FROM activity_days
+            WHERE \(bind: asOfDay)::date IS NULL OR day <= \(bind: asOfDay)::date
         ),
         ranked AS (
             SELECT day,
                    day - (row_number() OVER (ORDER BY day))::int AS island_key
-            FROM activity_days
+            FROM bounded
         ),
         latest AS (
             SELECT island_key
             FROM ranked
+            WHERE \(bind: asOfDay)::date IS NULL OR day >= \(bind: asOfDay)::date - 1
             ORDER BY day DESC
             LIMIT 1
         )

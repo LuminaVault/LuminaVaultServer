@@ -19,6 +19,7 @@ extension MemoryProvenanceResponse: @retroactive ResponseEncodable {}
 extension MemoryFacetsResponse: @retroactive ResponseEncodable {}
 extension LocalMemorySyncResponse: @retroactive ResponseEncodable {}
 extension MemoryReviewResponse: @retroactive ResponseEncodable {}
+extension MemoryRelatedResponse: @retroactive ResponseEncodable {}
 
 // HER-207 — MemoryUpsertRequest now lives in LuminaVaultShared with the
 // four optional geo fields. The server-local definition has been removed.
@@ -136,6 +137,13 @@ struct MemoryController {
     /// Spaces.
     var vaultPaths: VaultPathService?
 
+    /// Cosine-distance ceiling for `GET /v1/memory/{id}/related`
+    /// (`memory.related.maxDistance`). Strict on purpose: "connects to N" is
+    /// only worth saying when the connection is real, and an empty list is a
+    /// better answer than a weak one.
+    var relatedMaxDistance: Float = MemoryController.defaultRelatedMaxDistance
+    static let defaultRelatedMaxDistance: Float = 0.45
+
     private static let defaultLimit = 20
     private static let maxLimit = 100
 
@@ -169,6 +177,7 @@ struct MemoryController {
         }
         router.get("/:id", use: getOne)
         router.get("/:id/lineage", use: lineage)
+        router.get("/:id/related", use: related)
         router.get("/:id/provenance", use: provenance)
         router.post("/:id/review", use: markReviewed)
         router.delete("/:id", use: delete)
@@ -708,6 +717,59 @@ struct MemoryController {
     /// HER-150: Returns the source vault file (when known) the memory was
     /// derived from, plus a human-readable trace string. 404 when the
     /// memory doesn't exist or isn't owned by the caller.
+    /// `GET /v1/memory/{id}/related?limit=5` — the tenant's memories closest
+    /// in meaning to this one, nearest first, using the embedding already
+    /// stored on it (no embedding call). Excludes the memory itself, rejected
+    /// memories, and anything farther than `relatedMaxDistance`. Reading this
+    /// is not recall, so it leaves `query_hit_count` alone.
+    @Sendable
+    func related(_ req: Request, ctx: AppRequestContext) async throws -> MemoryRelatedResponse {
+        let id = try Self.parseID(ctx)
+        let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
+        let limit = min(max(req.uri.queryParameters["limit"].flatMap { Int($0) } ?? 5, 1), 10)
+        guard let stored = try await repository.storedEmbedding(tenantID: tenantID, id: id) else {
+            throw HTTPError(.notFound, message: "memory not found")
+        }
+        guard let embedding = stored, !embedding.isEmpty else {
+            return MemoryRelatedResponse(memoryId: id, items: [])
+        }
+        // One extra so dropping the memory itself still leaves `limit`.
+        let hits = try await repository.semanticSearch(
+            tenantID: tenantID,
+            queryEmbedding: embedding,
+            limit: limit + 1,
+            countHits: false
+        )
+        .filter { $0.id != id && $0.distance <= relatedMaxDistance }
+        .sorted { $0.distance < $1.distance }
+        .prefix(limit)
+        guard !hits.isEmpty else { return MemoryRelatedResponse(memoryId: id, items: []) }
+
+        let rows = try await Memory.query(on: repository.fluent.db(), tenantID: tenantID)
+            .filter(\.$id ~~ hits.map(\.id))
+            .all()
+        let byID = Dictionary(rows.compactMap { row in row.id.map { ($0, row) } }, uniquingKeysWith: { first, _ in first })
+        let items = hits.map { hit in
+            let row = byID[hit.id]
+            return RelatedMemoryDTO(
+                id: hit.id,
+                snippet: Self.relatedSnippet(hit.content),
+                kind: row?.kind.flatMap(MemoryKindDTO.init(rawValue:)),
+                createdAt: hit.createdAt ?? row?.createdAt ?? Date(),
+                spaceId: row?.spaceID,
+                similarity: max(0, min(1, 1 - Double(hit.distance)))
+            )
+        }
+        return MemoryRelatedResponse(memoryId: id, items: items)
+    }
+
+    /// First ~160 characters of `content` on one line.
+    static func relatedSnippet(_ content: String) -> String {
+        let flat = content.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard flat.count > 160 else { return flat }
+        return String(flat.prefix(159)) + "…"
+    }
+
     @Sendable
     func lineage(_ req: Request, ctx: AppRequestContext) async throws -> MemoryLineageResponse {
         let tenantID = try await vaultAccess.resolve(request: req, context: ctx, requiring: .read).vaultID
