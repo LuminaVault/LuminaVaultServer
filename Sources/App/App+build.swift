@@ -1837,6 +1837,33 @@ func buildRouter(
     // fading). Same group and limits as `/v1/me/recap`.
     MeResurfaceController(service: MeResurfaceService(fluent: services.fluent))
         .addRoutes(to: meTodayGroup)
+    // GET /v1/me/recap/period — year / month in review. The one model-written
+    // card is drained by a ServiceGroup worker, off the request path.
+    // `RECAP_THEMES_ENABLED=false` turns that card off.
+    let periodRecapLogger = Logger(label: "lv.me.recap.period")
+    var periodRecapThemes: (store: PeriodRecapThemesStore, scheduler: any PeriodRecapThemesScheduling)?
+    if reader.bool(forKey: ConfigKey("recap.themesEnabled"), default: true) {
+        let store = PeriodRecapThemesStore(fluent: services.fluent)
+        let worker = PeriodRecapThemesWorker(
+            store: store,
+            generator: PeriodRecapThemesGenerator(
+                transport: routedTransport,
+                model: services.hermesDefaultModel,
+                logger: periodRecapLogger
+            ),
+            logger: periodRecapLogger
+        )
+        managedServices.append(worker)
+        periodRecapThemes = (store, worker)
+    }
+    PeriodRecapController(
+        service: PeriodRecapService(
+            fluent: services.fluent,
+            catalog: .current,
+            themes: periodRecapThemes,
+            logger: periodRecapLogger
+        )
+    ).addRoutes(to: meTodayGroup)
 
     // HER-37 — GET /v1/me/suggestions. Static list at scaffold; iterates to
     // per-user dynamic generation in HER-37a. Sibling of `/v1/me/today` —
