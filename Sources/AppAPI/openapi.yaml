@@ -711,6 +711,56 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/me/recap/period:
+    get:
+      tags: [Me]
+      operationId: mePeriodRecap
+      summary: The user's year or month in review, as a deck of cards.
+      description: |
+        Counts follow `/v1/me/recap`: `captures` are memories the user put
+        in, `learned` memories Lumina distilled, and `messagesSent` the
+        user's chat messages. Days, weekdays and hours are local to
+        `users.timezone`. A running period covers up to today
+        (`isComplete=false`) and is compared with the same stretch one
+        period earlier.
+
+        `order` is the deck to play; clients skip kinds they do not know and
+        kinds whose card is absent. `available=false` comes with an
+        `unavailableReason` and no cards.
+
+        `themes` is the one card written by a model. The first view returns
+        `status=pending` with a counted `fallbackSentence`, and the response
+        is `Cache-Control: no-cache` so a later fetch picks up the written
+        card. `shareText` holds numbers only, never memory content.
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [year, month]
+            default: year
+        - name: year
+          in: query
+          required: false
+          description: Four-digit year. Defaults to the current local year.
+          schema: { type: integer, minimum: 2000, maximum: 9999 }
+        - name: month
+          in: query
+          required: false
+          description: 1–12, only with `period=month`. Defaults to the current local month.
+          schema: { type: integer, minimum: 1, maximum: 12 }
+      responses:
+        '200':
+          description: The recap, or `available=false` with a reason.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PeriodRecapResponse' }
+        '400':
+          description: Unknown period, a bad year or month, or `month` with `period=year`.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   # ────────────────── Dashboard — OS Shell Home (HER-244) ───────────────
 
   # ───────────────────────── Me — Suggestions (HER-37) ──────────────────
@@ -10056,6 +10106,170 @@ components:
           maxItems: 5
           items: { $ref: '#/components/schemas/RecapHighlightDTO' }
         shareText: { type: string, description: 'Numbers only, never memory content.' }
+
+    RecapPeriodKind:
+      type: string
+      enum: [year, month]
+    RecapUnavailableReason:
+      type: string
+      enum: [periodInFuture, beforeAccount, notEnoughActivity]
+      description: Clients must read an unknown value as `unknown`.
+    RecapCardKind:
+      type: string
+      enum: [intro, captures, peak, rhythm, topics, chats, skills, streak, achievements, themes, summary]
+      description: Clients must skip an unknown value.
+    RecapPersona:
+      type: string
+      enum: [earlyBird, daytime, evening, nightOwl, balanced]
+      description: |
+        The band with the most activity per hour: earlyBird 05–09,
+        daytime 10–16, evening 17–21, nightOwl 22–04; balanced under ten
+        events. Clients must read an unknown value as `unknown`.
+    RecapThemesStatus:
+      type: string
+      enum: [ready, pending, fallback, disabled]
+      description: Clients must read an unknown value as `unknown`.
+    RecapCountDTO:
+      type: object
+      required: [label, count]
+      properties:
+        label: { type: string }
+        count: { type: integer }
+    RecapBucketDTO:
+      type: object
+      required: [key, count]
+      properties:
+        key: { type: string, description: '`yyyy-MM` in a year recap, `yyyy-MM-dd` in a month recap.' }
+        count: { type: integer }
+    RecapFirstCaptureDTO:
+      type: object
+      required: [memoryId, date, title]
+      properties:
+        memoryId: { type: string, format: uuid }
+        date: { type: string, format: date }
+        title: { type: string, description: 'First line of the memory. App only, never the share card.' }
+    RecapCapturesCardDTO:
+      type: object
+      required: [captures, learned, previousCaptures, previousLearned, series, byKind]
+      properties:
+        captures: { type: integer }
+        learned: { type: integer }
+        previousCaptures: { type: integer }
+        previousLearned: { type: integer }
+        series:
+          type: array
+          description: Captures + learned per month (year) or day (month), zero buckets included, oldest first.
+          items: { $ref: '#/components/schemas/RecapBucketDTO' }
+        byKind:
+          type: array
+          items: { $ref: '#/components/schemas/RecapCountDTO' }
+        firstCapture: { $ref: '#/components/schemas/RecapFirstCaptureDTO' }
+    RecapPeakCardDTO:
+      type: object
+      required: [busiest, weekdayCounts, busiestWeekday]
+      properties:
+        busiest: { $ref: '#/components/schemas/RecapBucketDTO' }
+        weekdayCounts:
+          type: array
+          description: Seven counts, Monday first.
+          items: { type: integer }
+        busiestWeekday: { type: integer, minimum: 1, maximum: 7, description: '1 = Monday … 7 = Sunday.' }
+    RecapRhythmCardDTO:
+      type: object
+      required: [hourCounts, peakHour, persona]
+      properties:
+        hourCounts:
+          type: array
+          description: Twenty-four counts, local hour 0 first.
+          items: { type: integer }
+        peakHour: { type: integer, minimum: 0, maximum: 23 }
+        persona: { $ref: '#/components/schemas/RecapPersona' }
+    RecapTopicsCardDTO:
+      type: object
+      required: [topTags]
+      properties:
+        topTags:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/RecapCountDTO' }
+        topSpace: { $ref: '#/components/schemas/RecapCountDTO' }
+    RecapChatsCardDTO:
+      type: object
+      required: [conversations, messagesSent, previousMessagesSent]
+      properties:
+        conversations: { type: integer }
+        messagesSent: { type: integer }
+        previousMessagesSent: { type: integer }
+    RecapSkillsCardDTO:
+      type: object
+      required: [runs]
+      properties:
+        runs: { type: integer }
+        topSkill: { $ref: '#/components/schemas/RecapCountDTO' }
+    RecapStreakCardDTO:
+      type: object
+      required: [longestDays, activeDays, totalDays]
+      properties:
+        longestDays: { type: integer }
+        longestStart: { type: string, format: date }
+        longestEnd: { type: string, format: date }
+        activeDays: { type: integer }
+        totalDays: { type: integer }
+    RecapAchievementDTO:
+      type: object
+      required: [key, title, unlockedAt]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        unlockedAt: { type: string, format: date-time }
+    RecapAchievementsCardDTO:
+      type: object
+      required: [unlocked, items]
+      properties:
+        unlocked: { type: integer }
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/RecapAchievementDTO' }
+    RecapThemesCardDTO:
+      type: object
+      required: [status, themes, fallbackSentence]
+      properties:
+        status: { $ref: '#/components/schemas/RecapThemesStatus' }
+        headline: { type: string }
+        sentence: { type: string }
+        themes:
+          type: array
+          maxItems: 3
+          items: { type: string }
+        fallbackSentence: { type: string, description: Built from counts and tags; always present. }
+    PeriodRecapResponse:
+      type: object
+      required: [period, year, start, end, timezone, isComplete, available, order, shareText, generatedAt]
+      properties:
+        period: { $ref: '#/components/schemas/RecapPeriodKind' }
+        year: { type: integer }
+        month: { type: integer, minimum: 1, maximum: 12 }
+        start: { type: string, description: 'First local day covered, `yyyy-MM-dd`; empty for a future period.' }
+        end: { type: string, description: 'Last local day covered (today while running).' }
+        timezone: { type: string }
+        isComplete: { type: boolean }
+        available: { type: boolean }
+        unavailableReason: { $ref: '#/components/schemas/RecapUnavailableReason' }
+        order:
+          type: array
+          items: { $ref: '#/components/schemas/RecapCardKind' }
+        captures: { $ref: '#/components/schemas/RecapCapturesCardDTO' }
+        peak: { $ref: '#/components/schemas/RecapPeakCardDTO' }
+        rhythm: { $ref: '#/components/schemas/RecapRhythmCardDTO' }
+        topics: { $ref: '#/components/schemas/RecapTopicsCardDTO' }
+        chats: { $ref: '#/components/schemas/RecapChatsCardDTO' }
+        skills: { $ref: '#/components/schemas/RecapSkillsCardDTO' }
+        streak: { $ref: '#/components/schemas/RecapStreakCardDTO' }
+        achievements: { $ref: '#/components/schemas/RecapAchievementsCardDTO' }
+        themes: { $ref: '#/components/schemas/RecapThemesCardDTO' }
+        shareText: { type: string, description: 'Numbers only, never memory content.' }
+        generatedAt: { type: string, format: date-time }
 
     TaskState:
       type: string

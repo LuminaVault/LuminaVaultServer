@@ -146,4 +146,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M140_AddDeviceTokenBundleID())
     await fluent.migrations.add(M141_CreateProactivePushLog())
     await fluent.migrations.add(M142_AddMemoryResurfacing())
+    await fluent.migrations.add(M143_CreateRecapThemes())
 }
