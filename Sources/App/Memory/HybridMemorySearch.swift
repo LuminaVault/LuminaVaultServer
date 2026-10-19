@@ -1,3 +1,4 @@
+import Algorithms
 import Foundation
 import Logging
 
@@ -86,22 +87,7 @@ struct HybridMemorySearch: Sendable {
         documents: [MemorySearchResult],
         limit: Int
     ) -> [MemorySearchResult] {
-        var seen = Set<UUID>()
-        var merged: [MemorySearchResult] = []
-        merged.reserveCapacity(limit)
-
-        for hit in chunks where seen.insert(hit.id).inserted {
-            merged.append(hit)
-            if merged.count == limit {
-                return merged
-            }
-        }
-        for hit in documents where seen.insert(hit.id).inserted {
-            merged.append(hit)
-            if merged.count == limit {
-                return merged
-            }
-        }
-        return merged
+        // Lazy, so it stops reading as soon as `limit` unique hits are found.
+        Array(chain(chunks, documents).lazy.uniqued(on: \.id).prefix(limit))
     }
 }

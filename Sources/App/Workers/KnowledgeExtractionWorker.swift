@@ -1,3 +1,4 @@
+import Algorithms
 import Crypto
 import FluentKit
 import Foundation
@@ -706,9 +707,7 @@ actor KnowledgeExtractionWorker: Service {
             }
         }
         flush()
-        var seen: Set<String> = []
-        let unique = result.filter { seen.insert(canonical($0)).inserted }
-        return Array(unique.prefix(12))
+        return Array(result.uniqued(on: canonical).prefix(12))
     }
 
     static func looksLikeEvent(_ statement: String) -> Bool {

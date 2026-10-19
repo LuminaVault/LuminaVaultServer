@@ -1,3 +1,4 @@
+import Algorithms
 import LuminaVaultShared
 
 extension ModelDisclosurePolicy {
@@ -31,10 +32,9 @@ enum RouterPlaceholderRoutes {
 
         func resolve(_ action: RouterActionDTO) -> RouterActionDTO {
             guard carriesPlaceholder(action) else { return action }
-            var seen = Set<String>()
             let routes = action.routes
                 .flatMap { isPlaceholder($0) ? chain : [$0] }
-                .filter { seen.insert($0.id).inserted }
+                .uniqued(on: \.id)
             // Synthesis is one model, so it takes the chain's primary.
             let synthesis = action.synthesisRoute.map { isPlaceholder($0) ? primary : $0 }
             return RouterActionDTO(

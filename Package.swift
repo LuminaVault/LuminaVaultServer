@@ -38,6 +38,7 @@ let package = Package(
         // HER-236: OTLPHTTPLogExporter posts JSON log batches to the otel-collector.
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.33.0"),
         .package(url: "https://github.com/valkey-io/valkey-swift.git", from: "1.4.0"),
+        .package(url: "https://github.com/apple/swift-algorithms.git", from: "1.2.0"),
     ],
     targets: [
         .executableTarget(name: "App",
@@ -63,6 +64,7 @@ let package = Package(
                               .product(name: "Valkey", package: "valkey-swift"),
                               .product(name: "LuminaVaultShared", package: "LuminaVaultShared"),
                               .product(name: "Yams", package: "Yams"),
+                              .product(name: "Algorithms", package: "swift-algorithms"),
                               .byName(name: "AppAPI"),
                               .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
                               .product(name: "OpenAPIHummingbird", package: "swift-openapi-hummingbird"),

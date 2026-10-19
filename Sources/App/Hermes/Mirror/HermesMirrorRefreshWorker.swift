@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import HummingbirdFluent
@@ -119,9 +120,7 @@ actor HermesMirrorRefreshWorker: Service, HermesMirrorNudging {
             guard !page.isEmpty else { break }
             cursor = page.last?.rowID
             let tenantIDs = page.map(\.tenantID)
-            var index = 0
-            while index < tenantIDs.count {
-                let batch = Array(tenantIDs[index ..< min(index + maxConcurrent, tenantIDs.count)])
+            for batch in tenantIDs.chunks(ofCount: maxConcurrent) {
                 let outcomes = await withTaskGroup(of: Outcome.self, returning: [Outcome].self) { group in
                     for tenantID in batch {
                         group.addTask { [service, perTenantBudget, logger] in
@@ -142,7 +141,6 @@ actor HermesMirrorRefreshWorker: Service, HermesMirrorNudging {
                     case .timedOut: summary.timedOut += 1
                     }
                 }
-                index += maxConcurrent
             }
             if page.count < pageSize {
                 break

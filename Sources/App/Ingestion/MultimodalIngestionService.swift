@@ -1,3 +1,4 @@
+import Algorithms
 import Crypto
 import FluentKit
 import Foundation
@@ -790,7 +791,7 @@ struct MultimodalIngestionService {
                 fileName: item.file_name
             )
         }
-        for item in Dictionary(grouping: stale, by: \.batch_id).values.compactMap(\.first) {
+        for item in stale.uniqued(on: \.batch_id) {
             try await refreshBatch(tenantID: item.tenant_id, batchID: item.batch_id)
         }
     }

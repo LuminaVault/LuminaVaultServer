@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import Hummingbird
@@ -480,8 +481,7 @@ struct MemoryController {
                 )
             }
         )
-        .sorted(by: LocalMemorySyncEvent.ordered)
-        .prefix(limit)
+        .min(count: limit, sortedBy: LocalMemorySyncEvent.ordered)
         let items = events.compactMap { event -> LocalMemorySyncItemDTO? in
             guard case let .memory(row) = event.payload else { return nil }
             let createdAt = row.createdAt ?? .distantPast

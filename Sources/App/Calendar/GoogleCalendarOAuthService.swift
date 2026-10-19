@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import HummingbirdFluent
@@ -149,11 +150,7 @@ actor GoogleCalendarOAuthService {
         if let returned, !returned.isEmpty {
             return returned
         }
-        var seen: [String] = []
-        for part in ((existing ?? "") + " " + requested).split(separator: " ").map(String.init) where !seen.contains(part) {
-            seen.append(part)
-        }
-        return seen.joined(separator: " ")
+        return ((existing ?? "") + " " + requested).split(separator: " ").uniqued().joined(separator: " ")
     }
 
     /// `returnTo` is a web page to come back to after Google; it must be on
