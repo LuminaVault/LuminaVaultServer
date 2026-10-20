@@ -149,4 +149,6 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M143_CreateRecapThemes())
     await fluent.migrations.add(M144_CreateCommunityBoard())
     await fluent.migrations.add(M145_CreateLearnedDigestLog())
+    await fluent.migrations.add(M146_CreateCommitments())
+    await fluent.migrations.add(M147_CreateBriefs())
 }

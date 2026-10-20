@@ -42,20 +42,9 @@ struct ProactiveChatDelivery {
     @discardableResult
     func deliver(tenantID: UUID, content: String, sourceLabel: String) async throws -> Delivered {
         let body = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let conversation = try await hermieConversation(tenantID: tenantID)
-        let conversationID = try conversation.requireID()
-        let message = ConversationMessage(
-            conversationID: conversationID,
-            role: .assistant,
-            content: body,
-            origin: .proactive,
-            sourceLabel: sourceLabel
-        )
-        try await message.save(on: fluent.db())
-        let messageID = try message.requireID()
-        // Bump so the thread sorts to the top of the conversation list.
-        conversation.updatedAt = Date()
-        try await conversation.save(on: fluent.db())
+        let delivered = try await append(tenantID: tenantID, body: body, sourceLabel: sourceLabel)
+        let conversationID = delivered.conversationID
+        let messageID = delivered.messageID
 
         do {
             try await apns.notify(
@@ -75,6 +64,102 @@ struct ProactiveChatDelivery {
         } catch {
             logger.warning("proactive chat push failed tenant=\(tenantID) source=\(sourceLabel): \(error)")
         }
+        return Delivered(conversationID: conversationID, messageID: messageID)
+    }
+
+    // MARK: - Daily brief (Wave 4)
+
+    static let briefDeepLink = "luminavault://brief"
+    static let briefBudgetKind = "brief"
+    static let briefActionCategory = "brief"
+    static let briefThreadID = "brief"
+    static let briefTitle = "Your daily brief"
+
+    /// "Your brief is ready — 4 cards".
+    static func briefLine(cardCount: Int) -> String {
+        "Your brief is ready — \(cardCount) \(cardCount == 1 ? "card" : "cards")"
+    }
+
+    /// Whether the brief's push went out, and if not, why.
+    enum BriefPush: String, Equatable {
+        case sent
+        case optedOut = "opted_out"
+        case noDevice = "no_device"
+        case budgetSpent = "budget_spent"
+    }
+
+    /// The daily brief's chat message: one line linking to the cards
+    /// (`luminavault://brief`) instead of the whole text. Its push is
+    /// proactive: `passive`, action category `brief`, and it spends the
+    /// day's `ProactivePushBudget` slot (shared with the weekly learned
+    /// digest). The base category stays `chat`, so the chat opt-out still
+    /// gates it. Opted out or no device → the budget is left alone; a slot
+    /// already spent today → the message lands, the push does not.
+    @discardableResult
+    func deliverBrief(tenantID: UUID, cardCount: Int, sourceLabel: String, now: Date = Date()) async throws -> BriefPush {
+        let line = Self.briefLine(cardCount: cardCount)
+        let delivered = try await append(
+            tenantID: tenantID,
+            body: "[\(line)](\(Self.briefDeepLink))",
+            sourceLabel: sourceLabel
+        )
+        let db = fluent.db()
+        if try await APNSNotificationService.isCategorySuppressed(.chat, tenantID: tenantID, on: db) {
+            return .optedOut
+        }
+        if try await DeviceToken.query(on: db, tenantID: tenantID).count() == 0 {
+            return .noDevice
+        }
+        let timezone = try await User.find(tenantID, on: db)?.timezone ?? "UTC"
+        guard try await ProactivePushBudget(fluent: fluent).claim(
+            tenantID: tenantID,
+            kind: Self.briefBudgetKind,
+            timezone: timezone,
+            now: now
+        ) else {
+            logger.info("brief push dropped tenant=\(tenantID): today's proactive push already spent")
+            return .budgetSpent
+        }
+        do {
+            try await apns.notify(
+                userID: tenantID,
+                title: Self.briefTitle,
+                subtitle: nil,
+                body: line,
+                category: .chat,
+                payload: [
+                    "conversationID": delivered.conversationID.uuidString,
+                    "messageID": delivered.messageID.uuidString,
+                    "origin": ConversationMessageOrigin.proactive.rawValue,
+                    "sourceLabel": sourceLabel,
+                    "deepLink": Self.briefDeepLink,
+                ],
+                interruptionLevel: .passive,
+                threadID: Self.briefThreadID,
+                actionCategory: Self.briefActionCategory
+            )
+        } catch {
+            logger.warning("brief push failed tenant=\(tenantID): \(error)")
+        }
+        return .sent
+    }
+
+    /// Appends an assistant message marked `proactive` to the Hermie thread
+    /// and bumps the thread to the top of the list.
+    private func append(tenantID: UUID, body: String, sourceLabel: String) async throws -> Delivered {
+        let conversation = try await hermieConversation(tenantID: tenantID)
+        let conversationID = try conversation.requireID()
+        let message = ConversationMessage(
+            conversationID: conversationID,
+            role: .assistant,
+            content: body,
+            origin: .proactive,
+            sourceLabel: sourceLabel
+        )
+        try await message.save(on: fluent.db())
+        let messageID = try message.requireID()
+        conversation.updatedAt = Date()
+        try await conversation.save(on: fluent.db())
         return Delivered(conversationID: conversationID, messageID: messageID)
     }
 

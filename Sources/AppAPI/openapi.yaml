@@ -754,6 +754,153 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/me/commitments:
+    get:
+      tags: [Me]
+      operationId: meCommitmentsList
+      summary: The user's commitments (open loops kb-compile found in their notes).
+      description: |
+        First-person promises ("I'll…", "I need to…", "I promised…") that
+        kb-compile extracted from the user's own notes. Deterministic read, no
+        model call. Open ones come due first (soonest), then oldest; done and
+        dropped ones most recently closed first. At most 200.
+
+        Up to three open ones ride in the daily brief's "Open loops" card,
+        each in at most three briefs (`surfacedCount`); after that they live
+        only here.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: Which commitments to list. Default `open`; anything else is a 400.
+          schema:
+            type: string
+            enum: [open, done, dropped, all]
+            default: open
+      responses:
+        '200':
+          description: The commitments; may be empty.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommitmentsResponse' }
+        '400':
+          description: "`state` is not open, done, dropped or all."
+        '401':
+          description: Missing or invalid token.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/me/commitments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Me]
+      operationId: meCommitmentUpdate
+      summary: Mark a commitment done, dropped, or open again.
+      description: |
+        `done` and `dropped` stamp `doneAt`; `open` clears it. Done and
+        dropped commitments never appear in a brief again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommitmentUpdateRequest' }
+      responses:
+        '200':
+          description: The updated commitment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommitmentDTO' }
+        '400':
+          description: Invalid id, or `state` is not open, done or dropped.
+        '401':
+          description: Missing or invalid token.
+        '404':
+          description: No such commitment for this user (another user's id is a 404 too).
+        '409':
+          description: Reopening it would duplicate a commitment that is already open with the same text.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/me/brief:
+    get:
+      tags: [Me]
+      operationId: meBrief
+      summary: The day's brief as cards, with a why on each and an end.
+      description: |
+        Written when the `daily-brief` skill runs (07:00 local by default).
+        Deterministic cards first — `today` (calendar), `openLoops` (≤3
+        open commitments), `toRevisit` (one resurfaced memory), `learned`
+        (while the "What I learned" digest has something waiting) — then the
+        skill's own sections (`weather`, `inbox`, `onYourMind`, `other`).
+        Empty cards are left out. A card kind the user marked down (net
+        up − down − dismiss ≤ −2 over 14 days) moves to the bottom.
+
+        One brief per local day; re-running the skill the same day replaces
+        the cards and keeps the brief's id. The daily-brief chat message and
+        its quiet push open `luminavault://brief`, which reads this endpoint.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: Local day `yyyy-MM-dd`. Default today in the user's timezone. Not a real day is a 400.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: "The brief, or `{\"brief\": null}` when there is none for that day (not a 404)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeBriefResponse' }
+        '400':
+          description: "`date` is not `yyyy-MM-dd`."
+        '401':
+          description: Missing or invalid token.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/me/brief/{briefId}/cards/{cardId}/feedback:
+    parameters:
+      - name: briefId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: cardId
+        in: path
+        required: true
+        description: The card's `id` within that brief (e.g. `weather`, `openLoops`).
+        schema: { type: string, maxLength: 64 }
+    post:
+      tags: [Me]
+      operationId: meBriefCardFeedback
+      summary: React to one card of a brief (up, down or dismiss).
+      description: |
+        One reaction per card per brief; a second one replaces the first.
+        Feeds the ordering of later briefs (see `GET /v1/me/brief`). A
+        `down` on a `toRevisit` card also means "later" for its memory: the
+        same 30-day snooze as `POST /v1/memory/{id}/review` with
+        `{"action": "later"}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BriefCardFeedbackRequest' }
+      responses:
+        '204':
+          description: Recorded.
+        '400':
+          description: Invalid brief id, card id or action.
+        '401':
+          description: Missing or invalid token.
+        '404':
+          description: No such brief for this user, or no such card in it.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /v1/me/recap/period:
     get:
       tags: [Me]
@@ -10367,6 +10514,91 @@ components:
           type: array
           maxItems: 20
           items: { $ref: '#/components/schemas/LearnedMemoryDTO' }
+
+    CommitmentState:
+      type: string
+      enum: [open, done, dropped]
+      description: Clients should treat an unknown value as unknown, not fail.
+    CommitmentDTO:
+      type: object
+      required: [id, text, state, surfacedCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string, description: 'What the user said they would do, e.g. "Send Ana the deck".' }
+        dueAt: { type: string, format: date-time, description: 'A date-only due day is stored at 12:00 UTC that day.' }
+        state: { $ref: '#/components/schemas/CommitmentState' }
+        surfacedCount: { type: integer, minimum: 0, description: 'Briefs that have shown it; it stops appearing in briefs at 3.' }
+        memoryId: { type: string, format: uuid, description: 'The memory it was extracted with, when one says the same thing.' }
+        sourceVaultFileId: { type: string, format: uuid, description: 'The vault file it came from.' }
+        createdAt: { type: string, format: date-time }
+        doneAt: { type: string, format: date-time, description: 'When it was marked done or dropped.' }
+    CommitmentsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/CommitmentDTO' }
+    CommitmentUpdateRequest:
+      type: object
+      required: [state]
+      properties:
+        state: { $ref: '#/components/schemas/CommitmentState' }
+
+    BriefCardKind:
+      type: string
+      enum: [today, openLoops, toRevisit, learned, onYourMind, weather, inbox, other]
+      description: Clients should treat an unknown value as unknown, not fail.
+    BriefCardRefKind:
+      type: string
+      enum: [memory, commitment, event, soulChange]
+      description: Clients should treat an unknown value as unknown, not fail.
+    BriefCardRefDTO:
+      type: object
+      required: [kind, id]
+      properties:
+        kind: { $ref: '#/components/schemas/BriefCardRefKind' }
+        id: { type: string, description: 'Memory, commitment or SOUL change UUID; the calendar event row id for events.' }
+    BriefCardDTO:
+      type: object
+      required: [id, kind, title, body, refs]
+      properties:
+        id: { type: string, description: 'Stable within the brief: the kind, or `<kind>-2` for a second card of the same kind.' }
+        kind: { $ref: '#/components/schemas/BriefCardKind' }
+        title: { type: string }
+        body: { type: string, description: 'Plain text or light markdown (bullets).' }
+        why: { type: string, description: 'One short line on why the card is here today.' }
+        refs:
+          type: array
+          items: { $ref: '#/components/schemas/BriefCardRefDTO' }
+    BriefDTO:
+      type: object
+      required: [id, date, cards, endNote, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date, description: 'Local day in the user''s timezone.' }
+        cards:
+          type: array
+          items: { $ref: '#/components/schemas/BriefCardDTO' }
+        endNote: { type: string, description: 'Always "That''s it for today."' }
+        createdAt: { type: string, format: date-time }
+    MeBriefResponse:
+      type: object
+      properties:
+        brief:
+          description: The brief, or null when there is none for that day.
+          oneOf:
+            - { $ref: '#/components/schemas/BriefDTO' }
+            - { type: 'null' }
+    BriefCardFeedbackAction:
+      type: string
+      enum: [up, down, dismiss]
+    BriefCardFeedbackRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { $ref: '#/components/schemas/BriefCardFeedbackAction' }
 
     RelatedMemoryDTO:
       type: object
