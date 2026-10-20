@@ -392,6 +392,10 @@ extension RateLimitPolicy {
     /// way around the test cap. 30/min/user keyed via `userOrIPKey`
     /// falls back to per-IP if auth degrades.
     static let settingsByUser = RateLimitPolicy(name: "settingsByUser", max: 30, window: 60, keyBuilder: userOrIPKey)
+    /// Community board writes (posts, replies, reports, blocks, profile).
+    /// Every post also costs a moderation call, so keep bursts small; the
+    /// service adds per-day caps on top.
+    static let communityWriteByUser = RateLimitPolicy(name: "communityWriteByUser", max: 10, window: 60, keyBuilder: userOrIPKey)
 
     /// Unauthenticated `/v1/mcp` attempts from one address. Floor so a
     /// token-guessing loop costs a map lookup rather than a user query.
@@ -428,7 +432,7 @@ extension RateLimitPolicy {
         emailMagicStartByIPPerMinute, emailMagicStartByIPDaily, transcribeByUserPerMinute,
         transcribeByUserDaily, audioTranscriptionsByUserPerMinute, audioTranscriptionsByUserDaily,
         audioSpeechByUserPerMinute, audioSpeechByUserDaily, visionEmbedByUserPerMinute,
-        visionEmbedByUserDaily, ttsByUserPerMinute, ttsByUserDaily, settingsByUser,
+        visionEmbedByUserDaily, ttsByUserPerMinute, ttsByUserDaily, settingsByUser, communityWriteByUser,
         mcpAnonymousByIP, mcpByUser, meTodayByUser, skillOutputsByUser,
     ]
 }
