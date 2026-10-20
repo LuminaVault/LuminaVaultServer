@@ -4,7 +4,8 @@ description: Sunday-evening synthesis of the past week — themes, accomplishmen
 allowed-tools: session_search vault_read memory_upsert
 metadata:
   capability: medium
-  schedule: "0 18 * * 0"
+  # Manual only until HER-173 writes the prompt below; the learned digest (LearnedDigestScheduler) owns the Sunday 18:00 slot.
+  schedule: ""
   outputs:
     - kind: memo
       path: memos/weekly/{year}-W{week}.md

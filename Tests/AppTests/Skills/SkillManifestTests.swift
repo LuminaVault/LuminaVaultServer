@@ -260,4 +260,35 @@ struct SkillManifestTests {
         let manifest = try SkillManifestParser().parse(source: .builtin, contents: yaml)
         #expect(manifest.body == "First body line.\n\nSecond body line.")
     }
+
+    /// HER-173 placeholders: no schedule until their prompts are written.
+    /// The learned digest owns the Sunday-evening slot weekly-memo had.
+    @Test
+    func `placeholder skills are manual only`() throws {
+        let parser = SkillManifestParser()
+        for name in ["weekly-memo", "health-correlate"] {
+            let manifest = try parser.parse(source: .builtin, contents: Self.loadBuiltin(name))
+            #expect(manifest.schedule == nil, "\(name) must not run on a schedule")
+        }
+        let daily = try parser.parse(source: .builtin, contents: Self.loadBuiltin("daily-brief"))
+        #expect(daily.schedule != nil)
+    }
+
+    @Test
+    func `a blank schedule parses as none`() throws {
+        let yaml = """
+        ---
+        name: blank-schedule
+        description: Blank schedule means manual only.
+        allowed-tools: vault_read
+        metadata:
+          capability: low
+          # a comment line in the frontmatter is fine
+          schedule: "  "
+        ---
+        body
+        """
+        let manifest = try SkillManifestParser().parse(source: .builtin, contents: yaml)
+        #expect(manifest.schedule == nil)
+    }
 }

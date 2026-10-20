@@ -1837,6 +1837,10 @@ func buildRouter(
     // fading). Same group and limits as `/v1/me/recap`.
     MeResurfaceController(service: MeResurfaceService(fluent: services.fluent))
         .addRoutes(to: meTodayGroup)
+    // GET /v1/me/learned — what Lumina learned this week and is waiting for
+    // the user to keep, edit or forget. Same group and limits.
+    MeLearnedController(service: MeLearnedService(fluent: services.fluent))
+        .addRoutes(to: meTodayGroup)
     // GET /v1/me/recap/period — year / month in review. The one model-written
     // card is drained by a ServiceGroup worker, off the request path.
     // `RECAP_THEMES_ENABLED=false` turns that card off.
@@ -3538,6 +3542,18 @@ func buildRouter(
     )
     if fluentEnabled, lvEnvironment != "test" {
         managedServices.append(reminderScheduler)
+    }
+    // Wave 3 — "What I learned this week": Sunday 18:00 local, at most one
+    // per user per week, spends the day's proactive push budget.
+    // Config `learnedDigest.enabled=false` turns it off.
+    if fluentEnabled, lvEnvironment != "test",
+       reader.bool(forKey: ConfigKey("learnedDigest.enabled"), default: true)
+    {
+        managedServices.append(LearnedDigestScheduler(
+            fluent: services.fluent,
+            push: pushService,
+            logger: Logger(label: "lv.learned.digest")
+        ))
     }
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
