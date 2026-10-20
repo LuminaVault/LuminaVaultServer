@@ -713,6 +713,47 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /v1/me/learned:
+    get:
+      tags: [Me]
+      operationId: meLearned
+      summary: What Lumina learned about the user and is waiting for them to confirm.
+      description: |
+        Deterministic, no model call. `soulChanges` are proposed SOUL.md
+        changes (`kind: soul`, still `pending`), and `memories` are
+        preference and decision memories still `pending` or `auto` — never
+        rejected, never already approved — both created since `since`, newest
+        first, at most 20 each. Keep / edit / forget go through the existing
+        endpoints: `PATCH /v1/memory/{id}`, `DELETE /v1/memory/{id}` and
+        `POST /v1/me/improvement/changes/{id}/approve|reject`.
+
+        The weekly "What I learned this week" push (Sunday 18:00 local, at
+        most once a week, only when this is non-empty) opens
+        `luminavault://learned`, which reads this endpoint.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: |
+            ISO 8601 date-time, with or without fractional seconds. Default
+            seven days ago. In the future, more than 90 days ago, or not a
+            date is a 400.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: The digest; both lists may be empty.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearnedDigestResponse' }
+        '400':
+          description: "`since` is not a date-time, is in the future, or is more than 90 days ago."
+        '401':
+          description: Missing or invalid token.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /v1/me/recap/period:
     get:
       tags: [Me]
@@ -10294,6 +10335,38 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/ResurfaceItemDTO' }
+
+    LearnedSoulChangeDTO:
+      type: object
+      required: [id, title, summary, createdAt]
+      properties:
+        id: { type: string, format: uuid, description: 'Self-improvement change id; approve or reject it by this id.' }
+        title: { type: string }
+        summary: { type: string }
+        createdAt: { type: string, format: date-time }
+    LearnedMemoryDTO:
+      type: object
+      required: [id, snippet, kind, reviewState, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        snippet: { type: string, description: 'First ~160 characters, one line.' }
+        kind: { type: string, description: 'Raw memory kind (preference, decision).' }
+        reviewState: { type: string, description: 'Raw review state (pending, auto).' }
+        createdAt: { type: string, format: date-time }
+    LearnedDigestResponse:
+      type: object
+      required: [since, until, soulChanges, memories]
+      properties:
+        since: { type: string, format: date-time }
+        until: { type: string, format: date-time }
+        soulChanges:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/LearnedSoulChangeDTO' }
+        memories:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/LearnedMemoryDTO' }
 
     RelatedMemoryDTO:
       type: object
