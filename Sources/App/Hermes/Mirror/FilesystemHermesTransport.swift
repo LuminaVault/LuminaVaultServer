@@ -1,3 +1,4 @@
+import Algorithms
 import AsyncHTTPClient
 import Crypto
 import Foundation
@@ -432,7 +433,7 @@ struct FilesystemHermesTransport: HermesMirrorTransport {
                 let stamp = HermesDates.iso(lastRun)
                 runs.append(HermesMirrorJobRun(key: "error-\(stamp)", status: .error, startedAt: lastRun, finishedAt: lastRun, error: (job["last_error"] as? String) ?? "run failed"))
             }
-            return Array(runs.sorted { $0.startedAt > $1.startedAt }.prefix(bounded))
+            return runs.min(count: bounded, sortedBy: { $0.startedAt > $1.startedAt })
         }
     }
 

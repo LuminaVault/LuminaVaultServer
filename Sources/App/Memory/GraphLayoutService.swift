@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import Hummingbird
@@ -229,12 +230,10 @@ struct GraphLayoutService {
         // of round-trips, not 2k. All values are server-computed (UUIDs +
         // doubles) — no user input in the spliced literal.
         let batchSize = 250
-        var index = 0
-        while index < ids.count {
-            let end = min(index + batchSize, ids.count)
+        for batch in ids.indices.chunks(ofCount: batchSize) {
             var values = SQLQueryString("")
-            for i in index ..< end {
-                if i > index {
+            for i in batch {
+                if i > batch.lowerBound {
                     values += SQLQueryString(", ")
                 }
                 let c = coords[i]
@@ -246,7 +245,6 @@ struct GraphLayoutService {
             FROM (VALUES \(values)) AS v(id, x, y, z)
             WHERE m.id = v.id AND m.tenant_id = \(bind: tenantID)
             """).run()
-            index = end
         }
     }
 }

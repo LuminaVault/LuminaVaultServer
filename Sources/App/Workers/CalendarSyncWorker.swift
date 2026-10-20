@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import HummingbirdFluent
@@ -32,7 +33,7 @@ actor CalendarSyncWorker: Service {
         self.syncService = syncService
         self.logger = logger
         self.tickInterval = tickInterval
-        self.maxConcurrent = maxConcurrent
+        self.maxConcurrent = max(1, maxConcurrent)
     }
 
     func run() async throws {
@@ -61,9 +62,7 @@ actor CalendarSyncWorker: Service {
         guard !tenantIDs.isEmpty else { return 0 }
 
         var processed = 0
-        var index = 0
-        while index < tenantIDs.count {
-            let batch = tenantIDs[index ..< min(index + maxConcurrent, tenantIDs.count)]
+        for batch in tenantIDs.chunks(ofCount: maxConcurrent) {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for tenantID in batch {
                     let service = syncService
@@ -74,7 +73,6 @@ actor CalendarSyncWorker: Service {
                 try await group.waitForAll()
             }
             processed += batch.count
-            index += maxConcurrent
         }
         return processed
     }

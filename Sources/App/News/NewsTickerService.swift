@@ -1,3 +1,4 @@
+import Algorithms
 import Foundation
 import Hummingbird
 import Logging
@@ -119,28 +120,26 @@ struct NewsTickerService: Sendable {
     /// must still render for everyone else's feeds.
     static func userFeeds(from config: [String: String], max: Int) -> [String] {
         let raw = config["feed_urls"] ?? ""
-        var seen = Set<String>()
-        var out: [String] = []
-        for part in raw.split(whereSeparator: { $0 == "," || $0 == "\n" }) {
-            let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let url = URL(string: trimmed), URLEnricherGuard.isPublic(url) else { continue }
-            guard seen.insert(trimmed).inserted else { continue }
-            out.append(trimmed)
-            if out.count >= max {
-                break
+        // Lazy, so parsing stops once `max` feeds are kept.
+        let feeds = raw.split(whereSeparator: { $0 == "," || $0 == "\n" }).lazy
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { trimmed in
+                guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+                return URLEnricherGuard.isPublic(url)
             }
-        }
-        return out
+            .uniqued()
+        return Array(feeds.prefix(max))
     }
 
     /// Curated first, then the tenant's, deduped, capped at one aggregator call.
     static func feedList(curated: [String], user: [String]) -> [String] {
-        var seen = Set<String>()
-        return (curated + user)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
-            .prefix(maxFeedsPerCall)
-            .map(\.self)
+        Array(
+            (curated + user)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .uniqued()
+                .prefix(maxFeedsPerCall)
+        )
     }
 }
 

@@ -1,3 +1,4 @@
+import Algorithms
 import FluentKit
 import Foundation
 import Hummingbird
@@ -210,7 +211,7 @@ struct KnowledgeGraphService {
         }
         let nodeEvidence = selected.flatMap(\.evidence)
         let edgeEvidence = edges.flatMap(\.evidence)
-        let evidence = Self.uniqueEvidence(nodeEvidence + edgeEvidence)
+        let evidence = (nodeEvidence + edgeEvidence).uniqued(on: \.id)
         let suggestions = edges.filter { $0.state == KnowledgeEdgeStateDTO.suggested }
         guard !selected.isEmpty else {
             return ReasoningQueryResponse(
@@ -231,7 +232,7 @@ struct KnowledgeGraphService {
         let pathEvidence = paths.flatMap { path in
             path.nodes.flatMap(\.evidence) + path.edges.flatMap(\.evidence)
         }
-        let groundedEvidence = Self.uniqueEvidence(evidence + pathEvidence)
+        let groundedEvidence = (evidence + pathEvidence).uniqued(on: \.id)
         let totalConfidence = selected.reduce(into: 0.0) { total, node in
             total += node.confidence
         }
@@ -420,23 +421,17 @@ struct KnowledgeGraphService {
         return "ARRAY[" + escaped.joined(separator: ",") + "]::text[]"
     }
 
-    private static func uniqueEvidence(_ values: [KnowledgeEvidenceDTO]) -> [KnowledgeEvidenceDTO] {
-        var seen: Set<UUID> = []
-        return values.filter { seen.insert($0.id).inserted }
-    }
-
     static func searchExpression(for query: String) -> String {
         let stopWords: Set = [
             "a", "an", "and", "are", "as", "at", "be", "by", "did", "do", "does", "for", "from",
             "how", "i", "in", "is", "it", "of", "on", "or", "the", "this", "to", "was", "what",
             "when", "where", "which", "who", "why", "with",
         ]
-        var seen: Set<String> = []
         let terms = query.lowercased().split { character in
             character.isLetter == false && character.isNumber == false
         }.map(String.init).filter {
-            $0.count > 1 && !stopWords.contains($0) && seen.insert($0).inserted
-        }
+            $0.count > 1 && !stopWords.contains($0)
+        }.uniqued()
         return terms.prefix(16).map { "\($0):*" }.joined(separator: " | ")
     }
 

@@ -1,3 +1,4 @@
+import Algorithms
 import Foundation
 import Logging
 
@@ -77,14 +78,7 @@ struct UserPreferenceModelRouter: ModelRouter {
         // Primary first, then user chain, then the static table cascade so a
         // user whose entire chain lacks creds still gets a route. Dedupe by
         // provider+model and drop anything the lists exclude.
-        var seen = Set<ModelRoute>()
-        var allowed: [ModelRoute] = []
-        for route in [primary] + chain + tableDecision.candidates {
-            guard isAllowed(route.provider) else { continue }
-            guard !seen.contains(route) else { continue }
-            seen.insert(route)
-            allowed.append(route)
-        }
+        let allowed = Array(([primary] + chain + tableDecision.candidates).filter { isAllowed($0.provider) }.uniqued())
 
         guard let newPrimary = allowed.first else {
             // Lists filtered everything out — never hand back an empty
