@@ -63,6 +63,9 @@ actor SkillRunner {
     private let weatherForecast: OpenMeteoClient
     /// `mail_inbox_recent` tool. Nil where Google OAuth is not configured.
     private let gmailInbox: GmailInboxService?
+    /// Wave 4 — turns a `daily-brief` run into the day's brief cards. Nil
+    /// keeps the old behaviour: the whole brief lands in chat.
+    private let briefComposer: BriefComposer?
     private let logger: Logger
     private var eventSubscriptions: [Task<Void, Never>] = []
 
@@ -81,6 +84,7 @@ actor SkillRunner {
         proactiveChat: ProactiveChatDelivery? = nil,
         weatherForecast: OpenMeteoClient = OpenMeteoClient(),
         gmailInbox: GmailInboxService? = nil,
+        briefComposer: BriefComposer? = nil,
         logger: Logger
     ) {
         self.catalog = catalog
@@ -97,6 +101,7 @@ actor SkillRunner {
         self.proactiveChat = proactiveChat
         self.weatherForecast = weatherForecast
         self.gmailInbox = gmailInbox
+        self.briefComposer = briefComposer
         self.logger = logger
     }
 
@@ -776,6 +781,17 @@ actor SkillRunner {
         trigger: SkillTrigger,
         content: String
     ) async throws {
+        // Wave 4 — the daily brief becomes cards first; its chat message is
+        // then a one-line pointer to them. A failed compose falls back to
+        // the old full-text message rather than losing the brief.
+        var brief: BriefDTO?
+        if skill.name == BriefComposer.skillName, let briefComposer {
+            do {
+                brief = try await briefComposer.compose(tenantID: tenantID, skillMarkdown: content)
+            } catch {
+                logger.warning("skills.runner brief compose failed tenant=\(tenantID.uuidString): \(error)")
+            }
+        }
         for output in skill.outputs {
             switch output.kind {
             case .memo:
@@ -792,6 +808,11 @@ actor SkillRunner {
             case .chatMessage:
                 guard let proactiveChat else {
                     throw HTTPError(.internalServerError, message: "chat_message output is not wired on this server")
+                }
+                if let brief {
+                    guard !brief.cards.isEmpty else { continue }
+                    try await proactiveChat.deliverBrief(tenantID: tenantID, cardCount: brief.cards.count, sourceLabel: skill.name)
+                    continue
                 }
                 // An empty result is not worth interrupting anyone for.
                 guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }

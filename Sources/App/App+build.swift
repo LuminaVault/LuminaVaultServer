@@ -1841,6 +1841,13 @@ func buildRouter(
     // the user to keep, edit or forget. Same group and limits.
     MeLearnedController(service: MeLearnedService(fluent: services.fluent))
         .addRoutes(to: meTodayGroup)
+    // Wave 4 — GET/PATCH /v1/me/commitments (open loops kb-compile found)
+    // and GET /v1/me/brief + card feedback (the daily brief as cards; the
+    // daily-brief skill composes it through SkillRunner). Same group and limits.
+    MeCommitmentsController(service: CommitmentsService(fluent: services.fluent))
+        .addRoutes(to: meTodayGroup)
+    MeBriefController(service: MeBriefService(fluent: services.fluent))
+        .addRoutes(to: meTodayGroup)
     // GET /v1/me/recap/period — year / month in review. The one model-written
     // card is drained by a ServiceGroup worker, off the request path.
     // `RECAP_THEMES_ENABLED=false` turns that card off.
@@ -3515,6 +3522,7 @@ func buildRouter(
             logger: Logger(label: "lv.chat.proactive")
         ),
         gmailInbox: gmailInbox,
+        briefComposer: BriefComposer(fluent: services.fluent),
         logger: skillsLogger
     )
     // HER-171 — fire-and-forget; the actor stores the subscription Tasks

@@ -269,11 +269,18 @@ actor MemoryCompileService {
         having a file (e.g. avoid "User captured a Wikipedia article" or "User \
         maintains a knowledge base"). Skip navigation/boilerplate. \
         Return ONLY a JSON object of the form \
-        {"memories": [{"text": "<memory>", "kind": "<kind>", "source": "<file path>"}, ...]}, \
-        or {"memories": []} when there is nothing durable to store. `kind` is \
+        {"memories": [{"text": "<memory>", "kind": "<kind>", "source": "<file path>"}, ...], \
+        "commitments": [{"text": "<commitment>", "due": "<YYYY-MM-DD or null>", "source": "<file path>"}, ...]}, \
+        with empty arrays when there is nothing to store. `kind` is \
         "preference" (how the user likes things), "decision" (something the user \
         settled), "fact" (about the user, their work, or the material), or "note". \
-        `source` is the FILE path the memory came from, exactly as given below.
+        `source` is the FILE path the item came from, exactly as given below. \
+        `commitments` are only promises the user made in the first person in \
+        their own notes ("I'll…", "I need to…", "I promised…", "I have to…"), \
+        never claims from saved articles. Write each as a short action in the \
+        user's voice ("Send Ana the deck"). `due` is a calendar date only when \
+        the note states or clearly implies one (today is \(Self.promptDate(Date())) UTC), \
+        otherwise null.
         \(hint.map { "User hint: \($0)" } ?? "")
         """
 
@@ -359,8 +366,53 @@ actor MemoryCompileService {
             await progress.publish(.memorySaved(.init(runId: runId, memory: dto)), tenantID: tenantID)
         }
 
+        await recordCommitments(
+            from: content,
+            tenantID: tenantID,
+            fileIDsByPath: fileIDsByPath,
+            saved: collectedMemories
+        )
+
         let noun = collectedMemories.count == 1 ? "memory" : "memories"
         return CompileSummary(text: "Learned \(collectedMemories.count) \(noun).", memories: collectedMemories)
+    }
+
+    /// Wave 4 — store the response's first-person commitments as open loops.
+    /// Never fails the compile: a missing or malformed `commitments` key is
+    /// no commitments, and a storage error is logged. Lineage: the vault file
+    /// when `source` is one of this batch's files; the memory when one saved
+    /// in this batch says the same thing.
+    private func recordCommitments(
+        from content: String,
+        tenantID: UUID,
+        fileIDsByPath: [String: UUID],
+        saved: [InternalKBCompileMemoryRef]
+    ) async {
+        let extracted = Self.parseExtractedCommitments(content)
+        guard !extracted.isEmpty else { return }
+        let memoryByText = Dictionary(
+            saved.map { (CommitmentsService.normalize($0.content), $0.id) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let items = extracted.map { item in
+            CommitmentsService.NewCommitment(
+                text: item.text,
+                due: item.due,
+                memoryID: memoryByText[CommitmentsService.normalize(item.text)],
+                sourceVaultFileID: item.source.flatMap { fileIDsByPath[$0] }
+            )
+        }
+        do {
+            let added = try await CommitmentsService(fluent: memories.fluent).record(tenantID: tenantID, items)
+            logger.info("kb-compile recorded \(added) new commitments (\(extracted.count) extracted) for tenant \(tenantID)")
+        } catch {
+            logger.warning("kb-compile commitments not recorded for tenant \(tenantID): \(error)")
+        }
+    }
+
+    /// `yyyy-MM-dd` in UTC, for resolving "by Friday" in the prompt.
+    static func promptDate(_ date: Date) -> String {
+        ProactivePushBudget.localDay(date, timezone: "UTC")
     }
 
     /// Lenient parse of the model's JSON memory list. Accepts the canonical
