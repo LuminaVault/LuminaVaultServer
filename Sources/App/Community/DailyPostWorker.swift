@@ -178,8 +178,19 @@ actor DailyPostWorker: Service {
         var threads: [String] = []
         switch source {
         case .trend:
-            news = await (try? headlines?.headlines(limit: 10)) ?? []
+            // Falling back is fine; falling back silently is not — the first
+            // production trend day went curated with no trace of why.
+            if let headlines {
+                do {
+                    news = try await headlines.headlines(limit: 10)
+                } catch {
+                    logger.warning("community.daily day=\(today) headlines failed: \(String(reflecting: error))")
+                }
+            } else {
+                logger.warning("community.daily day=\(today) no headline source configured")
+            }
             if news.count < Self.minHeadlines {
+                logger.notice("community.daily day=\(today) trend -> curated (\(news.count) headlines, need \(Self.minHeadlines))")
                 source = .curated; news = []
             }
         case .community:
