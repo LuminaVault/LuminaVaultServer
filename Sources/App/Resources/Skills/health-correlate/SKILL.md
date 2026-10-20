@@ -4,7 +4,8 @@ description: Correlate HealthKit signals (sleep, HRV, workouts) with notes and m
 allowed-tools: session_search vault_read memory_upsert
 metadata:
   capability: high
-  schedule: "0 3 * * *"
+  # Manual only until HER-173 writes the prompt below; it ran nightly for every user.
+  schedule: ""
   outputs:
     - kind: memory_emit
     - kind: apns_nudge

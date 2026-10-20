@@ -218,7 +218,13 @@ struct SkillManifestParser {
             description: description,
             allowedTools: allowedTools,
             capability: capability,
-            schedule: raw.metadata?.schedule,
+            // A blank `schedule: ""` means manual only. Normalised to nil so
+            // every consumer (CronScheduler, the legacy-job migrator, the
+            // curator's job/skill split) reads it the same way, instead of
+            // each failing to parse "" as a cron expression.
+            schedule: raw.metadata?.schedule.flatMap {
+                $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0
+            },
             onEvent: raw.metadata?.onEvent ?? [],
             outputs: outputs,
             dailyRunCap: dailyRunCap,
