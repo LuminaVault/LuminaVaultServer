@@ -57,6 +57,8 @@ tags:
     description: Knowledge-base compile (Hermes learning loop).
   - name: Import
     description: Feed Your Brain bulk import (links, bookmarks, files into Spaces).
+  - name: Community
+    description: Global community board shared across vaults, and the AI Daily Post.
   - name: Plugins
     description: Declarative plugin foundation — catalog, per-tenant installs, connector sync (HER-43).
   - name: Marketplace
@@ -7485,6 +7487,271 @@ paths:
 
   # ──────────────────────────────── Kanban ────────────────────────────────
 
+  /v1/community/me:
+    get:
+      tags: [Community]
+      operationId: communityMe
+      summary: Whether the board is on, and the caller's community profile.
+      description: >-
+        Always 200. `enabled: false` means the server has the board switched
+        off — hide every community entry point. `postingEnabled: false` means
+        read-only. A member without a profile (or with an older
+        `termsVersion` than `termsVersionRequired`) must complete profile
+        setup before posting.
+      responses:
+        '200':
+          description: Community status for the caller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityMeDTO' }
+  /v1/community/profile:
+    put:
+      tags: [Community]
+      operationId: communityUpsertProfile
+      summary: Create or update the caller's public community profile.
+      description: >-
+        The handle (`^[a-z0-9_]{3,20}$`, not reserved, not the account
+        username) and display name are the only things other members ever
+        see. Accepting the current Community Guidelines is required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityProfileUpsertRequest' }
+      responses:
+        '200':
+          description: Saved profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityProfileDTO' }
+        '409': { description: '`handle_taken`.' }
+        '422': { description: '`invalid_handle`, `invalid_display_name` or `terms_required`.' }
+        '503': { description: '`community_disabled`.' }
+  /v1/community/posts:
+    get:
+      tags: [Community]
+      operationId: communityListThreads
+      summary: Threads on the board, most recently active first.
+      description: >-
+        Keyset-paged. Visible threads plus the caller's own `pending` ones;
+        never anything by a member the caller blocked.
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostPageDTO' }
+        '400': { description: '`invalid_cursor`.' }
+        '503': { description: '`community_disabled`.' }
+    post:
+      tags: [Community]
+      operationId: communityCreateThread
+      summary: Start a thread.
+      description: >-
+        Moderated before anyone else sees it. 201 with `status: visible`, or
+        `status: pending` when the automatic check could not run (only the
+        author sees it until it does). 422 `moderation_rejected:<category>`
+        when rejected. Capped at 10 threads a day per member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityPostCreateRequest' }
+      responses:
+        '201':
+          description: The new thread.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostDTO' }
+        '403': { description: '`community_profile_required`, `terms_required` or `posting_suspended`.' }
+        '422': { description: '`invalid_title`, `invalid_body` or `moderation_rejected:<category>`.' }
+        '429': { description: '`daily_limit_reached`.' }
+        '503': { description: '`community_disabled` or `community_posting_disabled`.' }
+  /v1/community/posts/{postID}:
+    parameters:
+      - { name: postID, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Community]
+      operationId: communityGetPost
+      summary: One thread or reply.
+      responses:
+        '200':
+          description: The post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostDTO' }
+        '404': { description: '`post_not_found` (also for hidden posts and blocked authors).' }
+    delete:
+      tags: [Community]
+      operationId: communityDeletePost
+      summary: Delete your own post.
+      responses:
+        '204': { description: Deleted. }
+        '404': { description: '`post_not_found`.' }
+  /v1/community/posts/{postID}/replies:
+    parameters:
+      - { name: postID, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Community]
+      operationId: communityListReplies
+      summary: Replies to a thread, oldest first.
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostPageDTO' }
+        '404': { description: '`post_not_found`.' }
+    post:
+      tags: [Community]
+      operationId: communityCreateReply
+      summary: Reply to a thread (one level deep).
+      description: Same moderation, statuses and errors as creating a thread; 60 replies a day per member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityReplyCreateRequest' }
+      responses:
+        '201':
+          description: The new reply.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostDTO' }
+        '404': { description: '`post_not_found`.' }
+        '422': { description: '`invalid_body` or `moderation_rejected:<category>`.' }
+  /v1/community/posts/{postID}/report:
+    parameters:
+      - { name: postID, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Community]
+      operationId: communityReportPost
+      summary: Report a post.
+      description: >-
+        One report per member per post; a repeat is a no-op. The third
+        distinct open report hides the post until a moderator decides.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityReportRequest' }
+      responses:
+        '202': { description: Report filed. }
+        '400': { description: '`cannot_report_own_post`.' }
+        '404': { description: '`post_not_found`.' }
+  /v1/community/daily/today:
+    get:
+      tags: [Community]
+      operationId: communityTodayDaily
+      summary: Today's (UTC) AI Daily Post.
+      responses:
+        '200':
+          description: The Daily Post (`author.kind` `ai`, `isDailyPost` true, `aiLabel` set).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityPostDTO' }
+        '204': { description: Not published yet today. }
+  /v1/community/blocks:
+    get:
+      tags: [Community]
+      operationId: communityListBlocks
+      summary: Members the caller has blocked.
+      responses:
+        '200':
+          description: Blocked members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityBlockListDTO' }
+    post:
+      tags: [Community]
+      operationId: communityBlock
+      summary: Block a member; their posts disappear for the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityBlockRequest' }
+      responses:
+        '204': { description: Blocked. }
+        '400': { description: '`cannot_block_self`.' }
+        '404': { description: '`profile_not_found`.' }
+  /v1/community/blocks/{profileID}:
+    delete:
+      tags: [Community]
+      operationId: communityUnblock
+      summary: Unblock a member.
+      parameters:
+        - { name: profileID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Unblocked. }
+  /v1/community/admin/queue:
+    get:
+      tags: [Community]
+      operationId: communityAdminQueue
+      summary: Moderator queue (`isAdmin` only).
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [all, open, pending, hidden], default: all }
+      responses:
+        '200':
+          description: Posts needing a decision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunityAdminQueueDTO' }
+        '403': { description: '`admin_required`.' }
+  /v1/community/admin/posts/{postID}/decision:
+    post:
+      tags: [Community]
+      operationId: communityAdminDecision
+      summary: Hide, restore or remove a post (`isAdmin` only).
+      parameters:
+        - { name: postID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityAdminDecisionRequest' }
+      responses:
+        '204': { description: Applied; open reports resolved. }
+        '403': { description: '`admin_required`.' }
+        '404': { description: '`post_not_found`.' }
+  /v1/community/admin/profiles/{profileID}/suspend:
+    post:
+      tags: [Community]
+      operationId: communityAdminSuspend
+      summary: Suspend (or with `until` null, reinstate) a member's posting (`isAdmin` only).
+      parameters:
+        - { name: profileID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommunityProfileSuspendRequest' }
+      responses:
+        '204': { description: Saved. }
+        '403': { description: '`admin_required`.' }
+  /v1/admin/community/daily/run:
+    post:
+      tags: [Admin]
+      operationId: adminCommunityDailyRun
+      summary: Publish today's AI Daily Post now (same path as the worker).
+      description: A second call the same UTC day reports the day's row without publishing again.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: The day's outcome.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminCommunityDailyRunResult' }
   /v1/boards:
     get:
       tags: [Kanban]
@@ -14032,6 +14299,145 @@ components:
         source: { type: string }
         sourceUrl: { type: string, nullable: true }
         publishedAt: { type: string, format: date-time }
+    CommunityAuthorDTO:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [user, ai] }
+        profileId: { type: string, format: uuid, nullable: true }
+        handle: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+    CommunityPostDTO:
+      type: object
+      required: [id, body, author, isDailyPost, status, replyCount, reactionCount, viewerReacted, isOwn, createdAt, lastActivityAt]
+      properties:
+        id: { type: string, format: uuid }
+        parentId: { type: string, format: uuid, nullable: true }
+        title: { type: string, nullable: true, description: Threads only. }
+        body: { type: string }
+        author: { $ref: '#/components/schemas/CommunityAuthorDTO' }
+        isDailyPost: { type: boolean }
+        aiLabel: { type: string, nullable: true, description: 'Set on AI posts; show verbatim ("AI-generated · Daily Post").' }
+        status: { type: string, enum: [pending, visible, rejected, hidden, deleted] }
+        replyCount: { type: integer }
+        reactionCount: { type: integer }
+        viewerReacted: { type: boolean }
+        isOwn: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastActivityAt: { type: string, format: date-time }
+    CommunityPostPageDTO:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommunityPostDTO' }
+        nextCursor: { type: string, nullable: true }
+    CommunityProfileDTO:
+      type: object
+      required: [id, handle, displayName, termsVersion, termsAcceptedAt]
+      properties:
+        id: { type: string, format: uuid }
+        handle: { type: string }
+        displayName: { type: string }
+        termsVersion: { type: integer }
+        termsAcceptedAt: { type: string, format: date-time }
+        postingSuspendedUntil: { type: string, format: date-time, nullable: true }
+    CommunityMeDTO:
+      type: object
+      required: [enabled, postingEnabled, termsVersionRequired, isModerator]
+      properties:
+        enabled: { type: boolean }
+        postingEnabled: { type: boolean }
+        profile:
+          allOf: [{ $ref: '#/components/schemas/CommunityProfileDTO' }]
+          nullable: true
+        termsVersionRequired: { type: integer }
+        isModerator: { type: boolean }
+    CommunityProfileUpsertRequest:
+      type: object
+      required: [handle, displayName, acceptTerms, termsVersion]
+      properties:
+        handle: { type: string, pattern: '^[a-z0-9_]{3,20}$' }
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        acceptTerms: { type: boolean }
+        termsVersion: { type: integer }
+    CommunityPostCreateRequest:
+      type: object
+      required: [title, body]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120 }
+        body: { type: string, minLength: 1, maxLength: 4000 }
+    CommunityReplyCreateRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 4000 }
+    CommunityReportRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, enum: [spam, harassment, hate, sexual, violence, self_harm, misinformation, other] }
+        note: { type: string, maxLength: 500, nullable: true }
+    CommunityBlockRequest:
+      type: object
+      required: [profileId]
+      properties:
+        profileId: { type: string, format: uuid }
+    CommunityBlockedProfileDTO:
+      type: object
+      required: [profileId, handle, displayName, blockedAt]
+      properties:
+        profileId: { type: string, format: uuid }
+        handle: { type: string }
+        displayName: { type: string }
+        blockedAt: { type: string, format: date-time }
+    CommunityBlockListDTO:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommunityBlockedProfileDTO' }
+    CommunityAdminQueueItemDTO:
+      type: object
+      required: [post, openReports, reportReasons]
+      properties:
+        post: { $ref: '#/components/schemas/CommunityPostDTO' }
+        moderationCategory: { type: string, nullable: true }
+        hiddenReason: { type: string, nullable: true }
+        openReports: { type: integer }
+        reportReasons:
+          type: array
+          items: { type: string, enum: [spam, harassment, hate, sexual, violence, self_harm, misinformation, other] }
+        latestReportAt: { type: string, format: date-time, nullable: true }
+    CommunityAdminQueueDTO:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommunityAdminQueueItemDTO' }
+    CommunityAdminDecisionRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [hide, restore, remove] }
+        reason: { type: string, nullable: true }
+    CommunityProfileSuspendRequest:
+      type: object
+      required: [until]
+      properties:
+        until: { type: string, format: date-time, nullable: true }
+    AdminCommunityDailyRunResult:
+      type: object
+      required: [day, status]
+      properties:
+        day: { type: string, format: date }
+        status: { type: string, enum: [claimed, published, failed, skipped, none] }
+        postId: { type: string, format: uuid, nullable: true }
+        sourceKind: { type: string, enum: [curated, trend, community], nullable: true }
+        topicKey: { type: string, nullable: true }
     NewsTickerResponse:
       type: object
       required: [items, stale, generatedAt]

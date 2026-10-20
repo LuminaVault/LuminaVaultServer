@@ -87,6 +87,27 @@ struct NewsTickerService: Sendable {
         return response
     }
 
+    /// The curated feeds alone, for callers with no tenant (the community
+    /// Daily Post). Shares the cache; never reads a tenant's own feeds.
+    func curatedHeadlines(limit: Int) async throws -> NewsTickerResponse {
+        guard isConfigured else {
+            throw HTTPError(.serviceUnavailable, message: ErrorCode.notConfigured.rawValue)
+        }
+        let clamped = min(max(limit, 1), 100)
+        let feeds = Array(curatedFeeds.prefix(Self.maxFeedsPerCall))
+        let now = Date()
+        guard !feeds.isEmpty else {
+            return NewsTickerResponse(items: [], stale: false, generatedAt: now)
+        }
+        let key = "curated|\(clamped)|" + feeds.joined(separator: "\n")
+        if let cached = await cache.get(key, now: now) {
+            return cached
+        }
+        let response = try await fetch(feeds: feeds, limit: clamped, now: now)
+        await cache.set(key, response, now: now)
+        return response
+    }
+
     private func fetch(feeds: [String], limit: Int, now: Date) async throws -> NewsTickerResponse {
         var components = URLComponents(string: baseURL + "/v1/items")
         components?.queryItems = [
@@ -241,5 +262,13 @@ actor NewsTickerCache {
             }
         }
         entries[key] = NewsTickerCacheEntry(response: response, expires: now.addingTimeInterval(ttl))
+    }
+}
+
+/// For a `NewsTickerService` that only ever serves `curatedHeadlines`: no
+/// tenant installs exist from its point of view.
+struct NoNewsTickerInstalls: NewsTickerInstalls {
+    func newsTickerInstall(tenantID _: UUID) async throws -> NewsTickerInstallState? {
+        nil
     }
 }

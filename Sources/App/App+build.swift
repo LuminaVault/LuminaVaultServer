@@ -3745,6 +3745,58 @@ func buildRouter(
         }
     }
 
+    // Community board — one board shared by every signed-in user, across
+    // vaults, plus the AI Daily Post. Off by default; `COMMUNITY_ENABLED`,
+    // `COMMUNITY_POSTING_ENABLED` and `COMMUNITY_DAILY_POST_ENABLED` are the
+    // kill switches (see CommunityConfig). Moderation and the Daily Post run on
+    // the managed chain with no user in the routing context — a platform cost.
+    let communityConfig = CommunityConfig(reader: reader)
+    let communityModerator = LLMCommunityModerator(
+        transport: routedTransport,
+        model: services.hermesDefaultModel,
+        logger: Logger(label: "lv.community.moderation")
+    )
+    let communityService = CommunityService(
+        fluent: services.fluent,
+        config: communityConfig,
+        moderator: communityModerator,
+        logger: Logger(label: "lv.community")
+    )
+    let communityController = CommunityController(service: communityService)
+    communityController.addReadRoutes(to: router.group("/v1/community")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .settingsByUser, storage: rateLimitStorage)))
+    communityController.addWriteRoutes(to: router.group("/v1/community")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .communityWriteByUser, storage: rateLimitStorage)))
+    if fluentEnabled, communityConfig.enabled {
+        let dailyPostWorker = DailyPostWorker(
+            fluent: services.fluent,
+            community: communityService,
+            transport: routedTransport,
+            model: services.hermesDefaultModel,
+            headlines: services.feedsBaseURL.isEmpty ? nil : NewsTickerService(
+                baseURL: services.feedsBaseURL,
+                curatedFeeds: services.newsTickerFeeds,
+                http: URLSessionConnectorHTTPClient(),
+                installs: NoNewsTickerInstalls(),
+                logger: Logger(label: "lv.community.headlines"),
+                cacheTTL: 15 * 60
+            ),
+            config: communityConfig,
+            logger: Logger(label: "lv.community.daily")
+        )
+        // The tick loop never ends, so tests (lv.environment=test) drive
+        // `tick(at:)` / the admin trigger instead.
+        if lvEnvironment != "test" {
+            managedServices.append(dailyPostWorker)
+        }
+        CommunityDailyAdminController(worker: dailyPostWorker).addRoutes(
+            to: router.group("/v1/admin/community")
+                .add(middleware: AdminTokenMiddleware<AppRequestContext>(expectedToken: services.adminToken))
+        )
+    }
+
     // Native Kanban — LuminaVault-owned boards. JWT + per-user rate limit.
     let kanbanController = KanbanController(
         service: KanbanService(fluent: services.fluent, authoring: jobAuthoring),
