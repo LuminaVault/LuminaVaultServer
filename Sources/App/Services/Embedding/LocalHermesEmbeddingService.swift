@@ -67,16 +67,14 @@ final class LocalHermesEmbeddingService: EmbeddingService {
         guard let http = response as? HTTPURLResponse else {
             throw EmbeddingProviderError.network(reason: "hermesLocal: non-http response")
         }
-        switch http.statusCode {
-        case 200 ..< 300: break
-        case 404:
-            throw EmbeddingProviderError.permanent(reason: .endpointMissing)
-        case 401, 403:
-            throw EmbeddingProviderError.permanent(reason: .authRejected)
-        case 408, 429, 500 ..< 600:
-            throw EmbeddingProviderError.transient(reason: "hermesLocal http \(http.statusCode)")
-        default:
-            throw EmbeddingProviderError.permanent(reason: .requestRejected)
+        if http.statusCode == 404 {
+            throw EmbeddingProviderError.permanent(
+                reason: .endpointMissing,
+                response: EmbeddingProviderError.ProviderResponse(status: 404, body: data)
+            )
+        }
+        if let error = EmbeddingProviderError.fromHTTP(status: http.statusCode, body: data, providerLabel: "hermesLocal") {
+            throw error
         }
         let decoded: ResponseBody
         do {

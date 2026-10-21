@@ -46,16 +46,16 @@ struct MemoryRepository {
     }
 
     /// Inserts a memory + its embedding via raw SQL (Fluent has no native pgvector type).
-    func create(content: String, embedding: [Float], context: AppRequestContext) async throws -> Memory {
+    /// A nil `embedding` stores NULL — see `EmbeddingService.embedForWrite`.
+    func create(content: String, embedding: [Float]?, context: AppRequestContext) async throws -> Memory {
         let tenantID = try context.requireTenantID()
         guard let sql = fluent.db() as? any SQLDatabase else {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
         }
         let id = UUID()
-        let vec = MemoryRepository.formatVector(embedding)
         try await sql.raw("""
         INSERT INTO memories (id, tenant_id, content, embedding, created_at)
-        VALUES (\(bind: id), \(bind: tenantID), \(bind: content), \(unsafeRaw: "'\(vec)'::vector"), NOW())
+        VALUES (\(bind: id), \(bind: tenantID), \(bind: content), \(unsafeRaw: MemoryRepository.vectorLiteral(embedding)), NOW())
         """).run()
         guard let m = try await Memory.find(id, on: fluent.db()) else {
             throw HTTPError(.internalServerError, message: "memory vanished after insert")
@@ -86,6 +86,7 @@ struct MemoryRepository {
                embedding <=> \(unsafeRaw: "'\(vec)'::vector") AS distance
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
+          AND embedding IS NOT NULL
           AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
         LIMIT \(bind: max(limit, limit * 3))
@@ -110,10 +111,11 @@ struct MemoryRepository {
     /// `tags TEXT[]` column for `= ANY(tags)` lookup via the GIN index (M18).
     /// `sourceVaultFileID` (HER-150) records the vault file the memory was
     /// derived from so `GET /v1/memory/{id}/lineage` can build the trace.
+    /// A nil `embedding` stores NULL — see `EmbeddingService.embedForWrite`.
     func create(
         tenantID: UUID,
         content: String,
-        embedding: [Float],
+        embedding: [Float]?,
         tags: [String]? = nil,
         sourceVaultFileID: UUID? = nil,
         spaceID: UUID? = nil,
@@ -126,7 +128,7 @@ struct MemoryRepository {
             throw HTTPError(.internalServerError, message: "SQL driver required for vector insert")
         }
         let id = UUID()
-        let vec = MemoryRepository.formatVector(embedding)
+        let vec = MemoryRepository.vectorLiteral(embedding)
         if let tags, !tags.isEmpty {
             // `embedding` and `tags` cannot use `bind:` here — SQLKit has no
             // type encoders for pgvector or TEXT[]. Both are spliced as raw
@@ -141,7 +143,7 @@ struct MemoryRepository {
                 origin_provider, origin_model, origin_conversation_message_id, kind, created_at
             )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
-                    \(unsafeRaw: "'\(vec)'::vector"),
+                    \(unsafeRaw: vec),
                     \(unsafeRaw: MemoryRepository.formatTextArray(tags)),
                     \(bind: sourceVaultFileID),
                     \(bind: spaceID),
@@ -162,7 +164,7 @@ struct MemoryRepository {
                 origin_provider, origin_model, origin_conversation_message_id, kind, created_at
             )
             VALUES (\(bind: id), \(bind: tenantID), \(bind: content),
-                    \(unsafeRaw: "'\(vec)'::vector"),
+                    \(unsafeRaw: vec),
                     \(bind: sourceVaultFileID),
                     \(bind: spaceID),
                     \(bind: reviewState),
@@ -248,11 +250,78 @@ struct MemoryRepository {
         FROM memories
         WHERE tenant_id = \(bind: tenantID)
           AND (\(bind: spaceID) IS NULL OR space_id = \(bind: spaceID))
+          AND embedding IS NOT NULL
           AND review_state <> \(bind: MemoryReviewState.rejected)
         ORDER BY distance ASC
         LIMIT \(bind: max(limit, limit * 3))
         """).all(decoding: MemorySearchRow.self)
 
+        return await finishSearch(rows, limit: limit, countHits: countHits)
+    }
+
+    /// Tenant-direct full-text search over `memories.content_tsv` (M39).
+    ///
+    /// The document arm's fallback when the query could not be embedded (the
+    /// provider is down or out of credit). It finds a memory by its words,
+    /// including one saved with `embedding = NULL` during the same outage,
+    /// which `semanticSearch` cannot see. `distance` is reported as 1.0
+    /// ("maximally far"), as the chunk arm does for a lexical-only hit.
+    /// Bumps hit counts like `semanticSearch` unless `countHits` is false.
+    func lexicalSearch(
+        tenantID: UUID,
+        query: String,
+        limit: Int,
+        spaceID: UUID? = nil,
+        countHits: Bool = true
+    ) async throws -> [MemorySearchResult] {
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw HTTPError(.internalServerError, message: "SQL driver required for lexical query")
+        }
+        // `websearch_to_tsquery` cannot raise on user input; see
+        // `MemoryChunkRepository.hybridSearch`.
+        let rows = try await sql.raw("""
+        WITH tsq AS (
+            SELECT websearch_to_tsquery('english', \(bind: query)) AS query
+        )
+        SELECT m.id, m.tenant_id, m.content, m.created_at, m.origin_kind, m.origin_provider, m.origin_model,
+               1.0::float8 AS distance,
+               ts_rank_cd(m.content_tsv, tsq.query)::float8 AS lexical_score
+        FROM memories m
+        CROSS JOIN tsq
+        WHERE m.tenant_id = \(bind: tenantID)
+          AND (\(bind: spaceID) IS NULL OR m.space_id = \(bind: spaceID))
+          AND m.review_state <> \(bind: MemoryReviewState.rejected)
+          AND m.content_tsv @@ tsq.query
+        ORDER BY ts_rank_cd(m.content_tsv, tsq.query) DESC, m.created_at DESC
+        LIMIT \(bind: max(limit, limit * 3))
+        """).all(decoding: MemorySearchRow.self)
+
+        return await finishSearch(rows, limit: limit, countHits: countHits)
+    }
+
+    /// Whole-memory search by vector, or by words when there is no vector
+    /// (`EmbeddingService.embedForQuery` returned nil because the provider
+    /// failed). The fallback for callers without a `HybridMemorySearch`.
+    func searchDocuments(
+        tenantID: UUID,
+        query: String,
+        queryEmbedding: [Float]?,
+        limit: Int,
+        spaceID: UUID? = nil,
+        countHits: Bool = true
+    ) async throws -> [MemorySearchResult] {
+        guard let queryEmbedding else {
+            return try await lexicalSearch(
+                tenantID: tenantID, query: query, limit: limit, spaceID: spaceID, countHits: countHits
+            )
+        }
+        return try await semanticSearch(
+            tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit, spaceID: spaceID, countHits: countHits
+        )
+    }
+
+    /// Balance, bump hit counts, map. Shared by the semantic and lexical paths.
+    private func finishSearch(_ rows: [MemorySearchRow], limit: Int, countHits: Bool) async -> [MemorySearchResult] {
         let selected = Self.balanced(rows, limit: limit)
         let hitIDs = selected.map(\.id)
         if countHits, !hitIDs.isEmpty {
@@ -280,7 +349,8 @@ struct MemoryRepository {
                 distance: $0.distance,
                 source: MemorySourceKindDTO(rawValue: $0.origin_kind) ?? .legacy,
                 provider: $0.origin_provider,
-                model: $0.origin_model
+                model: $0.origin_model,
+                lexicalScore: $0.lexical_score
             )
         }
     }
@@ -516,15 +586,16 @@ struct MemoryRepository {
     /// after a correction. The document arm finds the memory by its new
     /// embedding until the chunks are rebuilt. `updated_at` is bumped by hand
     /// because raw SQL bypasses Fluent's timestamp, and the local-sync cursor
-    /// reads it.
+    /// reads it. A nil `embedding` (the provider failed) stores NULL rather
+    /// than keep a vector of the old text; the heal pass embeds it later.
     func updateContent(
         tenantID: UUID,
         id: UUID,
         content: String,
-        embedding: [Float],
+        embedding: [Float]?,
         contribution: MemoryContributionInput? = nil
     ) async throws -> Bool {
-        let vec = MemoryRepository.formatVector(embedding)
+        let vec = MemoryRepository.vectorLiteral(embedding)
         let rows = try await fluent.db().transaction { db in
             guard let tx = db as? any SQLDatabase else {
                 throw HTTPError(.internalServerError, message: "SQL driver required for vector update")
@@ -532,7 +603,7 @@ struct MemoryRepository {
             let rows = try await tx.raw("""
             UPDATE memories
             SET content = \(bind: content),
-                embedding = \(unsafeRaw: "'\(vec)'::vector"),
+                embedding = \(unsafeRaw: vec),
                 updated_at = NOW()
             WHERE tenant_id = \(bind: tenantID) AND id = \(bind: id)
             RETURNING id
@@ -605,6 +676,13 @@ struct MemoryRepository {
 
     static func formatVector(_ v: [Float]) -> String {
         "[" + v.map { String($0) }.joined(separator: ",") + "]"
+    }
+
+    /// The SQL literal for an embedding column: a `vector` cast, or `NULL`
+    /// when the provider failed and the row is saved without one.
+    static func vectorLiteral(_ v: [Float]?) -> String {
+        guard let v else { return "NULL" }
+        return "'\(formatVector(v))'::vector"
     }
 
     /// Prefer direct memories while still admitting relevant prior model
@@ -798,4 +876,6 @@ private struct MemorySearchRow: Decodable {
     let origin_kind: String
     let origin_provider: String?
     let origin_model: String?
+    /// Only `lexicalSearch` selects it; absent (nil) on the semantic path.
+    let lexical_score: Float?
 }

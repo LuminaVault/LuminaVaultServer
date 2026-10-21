@@ -507,7 +507,9 @@ struct MultimodalIngestionService {
             try await item.save(on: fluent.db())
             let sourceFileID = item.vaultFileID
             let content = "# \(result.title)\n\n\(result.markdown)\n\n## Source assessment\n\n\(result.credibility.rationale)"
-            let embedding = try await embeddings.embed(content, tenantID: tenantID)
+            // The analysis already cost a Hermes run; an embedding outage
+            // saves the memory without a vector rather than fail the item.
+            let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "ingestion.save", logger: logger)
             let memory = try await memories.create(
                 tenantID: tenantID, content: content, embedding: embedding, tags: result.tags,
                 sourceVaultFileID: sourceFileID, spaceID: spaceID, reviewState: "auto"
@@ -675,7 +677,9 @@ struct MultimodalIngestionService {
               .filter(\.$id == sourceMemoryID).first()
         else { return false }
 
-        let embedding = try await embeddings.embed(sourceMemory.content, tenantID: tenantID)
+        let embedding = try await embeddings.embedForWrite(
+            sourceMemory.content, tenantID: tenantID, operation: "ingestion.reuse", logger: logger
+        )
         let memory = try await memories.create(
             tenantID: tenantID, content: sourceMemory.content, embedding: embedding,
             tags: sourceMemory.tags ?? [], sourceVaultFileID: item.vaultFileID,

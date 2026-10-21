@@ -438,12 +438,15 @@ actor WorkflowEngine: Service {
             return ["text": result.markdown, "model": result.modelUsed ?? ""]
         case .memorySearch:
             let query = interpolate(node.configuration["query"] ?? node.configuration["value"] ?? "", context: context)
-            let vector = try await embeddings.embed(query, tenantID: run.tenantID)
-            let hits = try await memories.semanticSearch(tenantID: run.tenantID, queryEmbedding: vector, limit: min(20, Int(node.configuration["limit"] ?? "5") ?? 5))
+            let vector = try await embeddings.embedForQuery(query, tenantID: run.tenantID, operation: "workflow.memorySearch", logger: logger)
+            let hits = try await memories.searchDocuments(
+                tenantID: run.tenantID, query: query, queryEmbedding: vector,
+                limit: min(20, Int(node.configuration["limit"] ?? "5") ?? 5)
+            )
             return ["text": hits.map(\.content).joined(separator: "\n\n")]
         case .memoryWrite:
             let text = interpolate(node.configuration["content"] ?? node.configuration["value"] ?? "", context: context)
-            let vector = try await embeddings.embed(text, tenantID: run.tenantID)
+            let vector = try await embeddings.embedForWrite(text, tenantID: run.tenantID, operation: "workflow.memoryWrite", logger: logger)
             let memory = try await memories.create(tenantID: run.tenantID, content: text, embedding: vector)
             return try ["text": text, "memoryID": (memory.requireID()).uuidString]
         case .parallel:

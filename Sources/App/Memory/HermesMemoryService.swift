@@ -474,7 +474,9 @@ actor HermesMemoryService {
         case "memory_upsert":
             do {
                 let args = try decoder.decode(MemoryUpsertArgs.self, from: argsData)
-                let embedding = try await embeddings.embed(args.content, tenantID: tenantID)
+                let embedding = try await embeddings.embedForWrite(
+                    args.content, tenantID: tenantID, operation: "hermes.memoryUpsert", logger: logger
+                )
                 let saved = try await memories.create(
                     tenantID: tenantID,
                     content: args.content,
@@ -521,7 +523,9 @@ actor HermesMemoryService {
                     resolvedSpaceID = try await memories.spaceTopology(tenantID: tenantID)
                         .first { $0.slug == slug }?.id
                 }
-                let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
+                let embedding = try await embeddings.embedForQuery(
+                    args.query, tenantID: tenantID, operation: "hermes.sessionSearch", logger: logger
+                )
                 let hits: [MemorySearchResult] = if let hybridSearch {
                     try await hybridSearch.search(
                         tenantID: tenantID,
@@ -531,8 +535,9 @@ actor HermesMemoryService {
                         spaceID: resolvedSpaceID
                     )
                 } else {
-                    try await memories.semanticSearch(
+                    try await memories.searchDocuments(
                         tenantID: tenantID,
+                        query: args.query,
                         queryEmbedding: embedding,
                         limit: effectiveLimit,
                         spaceID: resolvedSpaceID

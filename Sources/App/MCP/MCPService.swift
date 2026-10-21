@@ -127,7 +127,7 @@ struct MCPService: Sendable {
         )
 
         let spaceID = try await resolveSpace(arguments["space"]?.stringValue, tenantID: tenantID)
-        let embedding = try await embeddings.embed(query, tenantID: tenantID)
+        let embedding = try await embeddings.embedForQuery(query, tenantID: tenantID, operation: "mcp.search", logger: logger)
         let hits = try await search.search(
             tenantID: tenantID,
             query: query,
@@ -197,7 +197,7 @@ struct MCPService: Sendable {
             ])
         }
 
-        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "mcp.memorySave", logger: logger)
         let memory = try await memories.create(
             tenantID: tenantID,
             content: content,
@@ -235,7 +235,7 @@ struct MCPService: Sendable {
     ) async throws -> JSONValue {
         let memoryID = try memoryID(arguments)
         let content = try memoryContent(arguments)
-        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "mcp.memoryUpdate", logger: logger)
         let updated = try await memories.updateContent(
             tenantID: tenantID,
             id: memoryID,

@@ -114,7 +114,7 @@ struct TodosController {
         // in chat. Best-effort — the row already exists.
         if let memories, let embeddings {
             do {
-                let embedding = try await embeddings.embed(title, tenantID: tenantID)
+                let embedding = try await embeddings.embedForWrite(title, tenantID: tenantID, operation: "todo.create", logger: logger)
                 _ = try await memories.create(
                     tenantID: tenantID, content: title, embedding: embedding,
                     sourceVaultFileID: row.requireID(), reviewState: "auto"

@@ -594,9 +594,12 @@ actor SkillRunner {
         case AvailableTool.sessionSearch.rawValue:
             do {
                 let args = try decoder.decode(SessionSearchArgs.self, from: argsData)
-                let embedding = try await embeddings.embed(args.query, tenantID: tenantID)
-                let hits = try await memories.semanticSearch(
+                let embedding = try await embeddings.embedForQuery(
+                    args.query, tenantID: tenantID, operation: "skill.sessionSearch", logger: logger
+                )
+                let hits = try await memories.searchDocuments(
                     tenantID: tenantID,
+                    query: args.query,
                     queryEmbedding: embedding,
                     limit: max(1, min(args.limit ?? 5, 20))
                 )
@@ -835,8 +838,10 @@ actor SkillRunner {
         }
     }
 
+    /// The skill already ran (and was paid for); an embedding outage keeps its
+    /// output as a memory without a vector rather than throw it away.
     private func persistMemory(tenantID: UUID, content: String, sourceVaultFileID: UUID?) async throws -> Memory {
-        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "skill.memory", logger: logger)
         return try await memories.create(
             tenantID: tenantID,
             content: content,

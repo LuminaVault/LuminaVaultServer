@@ -27,14 +27,17 @@ struct HybridMemorySearch: Sendable {
     /// Search both arms and merge.
     ///
     /// - Parameter query: the raw user text, used by the lexical arm.
-    /// - Parameter queryEmbedding: its vector, used by both dense paths.
+    /// - Parameter queryEmbedding: its vector, used by both dense paths. Nil
+    ///   when the provider could not embed the query (`embedForQuery`): both
+    ///   arms then search lexically, so an embedding outage costs ranking
+    ///   quality instead of failing the request.
     /// - Parameter countHits: `false` for lookups that are not recall (the
     ///   pre-meeting brief), so they leave `query_hit_count` alone. Only the
     ///   document arm counts hits; the chunk arm is read-only either way.
     func search(
         tenantID: UUID,
         query: String,
-        queryEmbedding: [Float],
+        queryEmbedding: [Float]?,
         limit: Int,
         spaceID: UUID? = nil,
         countHits: Bool = true
@@ -46,8 +49,9 @@ struct HybridMemorySearch: Sendable {
             limit: limit,
             spaceID: spaceID
         )
-        async let documentHits = memories.semanticSearch(
+        async let documentHits = memories.searchDocuments(
             tenantID: tenantID,
+            query: query,
             queryEmbedding: queryEmbedding,
             limit: limit,
             spaceID: spaceID,
@@ -64,7 +68,7 @@ struct HybridMemorySearch: Sendable {
     private func chunkArm(
         tenantID: UUID,
         query: String,
-        queryEmbedding: [Float],
+        queryEmbedding: [Float]?,
         limit: Int,
         spaceID: UUID?
     ) async -> [MemorySearchResult] {

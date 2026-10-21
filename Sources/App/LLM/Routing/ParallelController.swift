@@ -67,9 +67,10 @@ struct ParallelController {
         let tenantID = try user.requireID()
         let grounding: [String]
         if let spaceID = effective.spaceID {
-            let embedding = try await embeddings.embed(prompt, tenantID: tenantID)
-            grounding = try await memories.semanticSearch(
+            let embedding = try await embeddings.embedForQuery(prompt, tenantID: tenantID, operation: "parallel.grounding")
+            grounding = try await memories.searchDocuments(
                 tenantID: tenantID,
+                query: prompt,
                 queryEmbedding: embedding,
                 limit: 5,
                 spaceID: spaceID

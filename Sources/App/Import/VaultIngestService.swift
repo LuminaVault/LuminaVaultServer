@@ -140,7 +140,9 @@ struct VaultIngestService {
         }
 
         // Embed + create/update the recall memory (grounding + graph source).
-        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        // The file is already written, so an embedding outage stores the
+        // memory without a vector rather than half-import it.
+        let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "vault.ingest", logger: logger)
         let memoryID: UUID
         if let memID = try await memories.idBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: savedID) {
             _ = try await memories.updateContent(tenantID: tenantID, id: memID, content: content, embedding: embedding)

@@ -222,7 +222,9 @@ struct URLEnrichmentService {
             return
         }
         do {
-            let embedding = try await embeddings.embed(text, tenantID: tenantID)
+            // Without a vector the link is still a memory (lexically
+            // searchable); the heal pass embeds it later.
+            let embedding = try await embeddings.embedForWrite(text, tenantID: tenantID, operation: "capture.link", logger: logger)
             if let existing = try await memories.idBySourceVaultFileID(tenantID: tenantID, sourceVaultFileID: vaultFileID) {
                 _ = try await memories.updateContent(tenantID: tenantID, id: existing, content: text, embedding: embedding)
                 logger.info("link memory updated tenant=\(tenantID) file=\(vaultFileID) chars=\(text.count)")

@@ -295,7 +295,9 @@ struct VaultController {
            let content = String(data: data, encoding: .utf8), !content.isEmpty
         {
             do {
-                let embedding = try await embeddings.embed(content, tenantID: tenantID)
+                // An embedding outage still writes the note's memory, without
+                // a vector, so the note is listed and lexically searchable.
+                let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "vault.note", logger: logger)
                 if let existingMemID = try await memories.idBySourceVaultFileID(
                     tenantID: tenantID, sourceVaultFileID: savedID
                 ) {

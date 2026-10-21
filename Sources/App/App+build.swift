@@ -25,9 +25,13 @@ import Tracing
 ///     `routedTransport` inside `MemoryCompileService`. Test-only escape hatch
 ///     for happy-path coverage that needs a deterministic chat backend.
 ///     Production callers leave this `nil`.
+///   - embeddingServiceOverride: when non-nil, replaces the text embedder every
+///     route uses. Test-only, for exercising provider failures (a 402, an
+///     outage) without a key or a network. Production callers leave this `nil`.
 func buildApplication(
     reader: ConfigReader,
-    kbCompileTransportOverride: (any HermesChatTransport)? = nil
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
+    embeddingServiceOverride: (any EmbeddingService)? = nil
 ) async throws -> some ApplicationProtocol {
     let logger = {
         var logger = Logger(label: "LuminaVaultServer")
@@ -246,7 +250,8 @@ func buildApplication(
         reader: reader,
         services: services,
         managedServices: &appServices,
-        kbCompileTransportOverride: kbCompileTransportOverride
+        kbCompileTransportOverride: kbCompileTransportOverride,
+        embeddingServiceOverride: embeddingServiceOverride
     )
     if fluentEnabled {
         // Template v2: backfill the locked SOULCore covenant into every
@@ -321,7 +326,8 @@ func buildRouter(
     reader: ConfigReader,
     services: ServiceContainer,
     managedServices: inout [any Service],
-    kbCompileTransportOverride: (any HermesChatTransport)? = nil
+    kbCompileTransportOverride: (any HermesChatTransport)? = nil,
+    embeddingServiceOverride: (any EmbeddingService)? = nil
 ) throws -> Router<AppRequestContext> {
     let router = Router(context: AppRequestContext.self)
     // HER-310 — gate DB-ticking background services (cron, reconciler, the
@@ -1980,7 +1986,9 @@ func buildRouter(
     // (identical vector space → no re-embedding). Falls through to global for
     // everyone else, and BYO is only buildable for keyable kinds (openai/nomic).
     let embeddingService: any EmbeddingService
-    if let secretBox = secretBoxRef {
+    if let embeddingServiceOverride {
+        embeddingService = embeddingServiceOverride
+    } else if let secretBox = secretBoxRef {
         let activeKind = embeddingRegistry.activeKind
         let openaiBaseRaw = reader.string(forKey: "llm.provider.openai.baseURL", default: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3080,16 +3088,27 @@ func buildRouter(
     // Off by default — each row is a paid embed call. Turn on with
     // `EMBEDDING_REEMBED_ENABLED=true` after `EMBEDDING_PROVIDER` is real; the
     // job refuses under deterministic and idles once every target is done.
-    if fluentEnabled, lvEnvironment != "test",
-       reader.bool(forKey: ConfigKey("embedding.reembed.enabled"), default: false)
-    {
+    //
+    // The same service then runs the heal pass, which embeds rows a write
+    // path saved without a vector because the provider failed. On by default
+    // with a real provider (`EMBEDDING_HEAL_ENABLED=false` turns it off); every
+    // `EMBEDDING_HEAL_INTERVAL_MINUTES` (10) once caught up, backing off to
+    // `EMBEDDING_HEAL_MAX_BACKOFF_MINUTES` (60) while the provider refuses.
+    let reembedEnabled = reader.bool(forKey: ConfigKey("embedding.reembed.enabled"), default: false)
+    let healEnabled = reader.bool(forKey: ConfigKey("embedding.heal.enabled"), default: true)
+        && embeddingRegistry.activeKind != .deterministic
+    if fluentEnabled, lvEnvironment != "test", reembedEnabled || healEnabled {
         managedServices.append(EmbeddingReembedService(
             fluent: services.fluent,
             embeddings: embeddingService,
             activeKind: embeddingRegistry.activeKind,
+            reembedEnabled: reembedEnabled,
+            healEnabled: healEnabled,
             configuration: EmbeddingReembedService.Configuration(
                 batchSize: reader.int(forKey: "embedding.reembed.batchSize", default: 50),
-                pause: .milliseconds(reader.int(forKey: "embedding.reembed.pauseMilliseconds", default: 2000))
+                pause: .milliseconds(reader.int(forKey: "embedding.reembed.pauseMilliseconds", default: 2000)),
+                healInterval: .seconds(60 * max(1, reader.int(forKey: "embedding.heal.intervalMinutes", default: 10))),
+                healMaxBackoff: .seconds(60 * max(1, reader.int(forKey: "embedding.heal.maxBackoffMinutes", default: 60)))
             ),
             logger: Logger(label: "lv.embedding.reembed")
         ))

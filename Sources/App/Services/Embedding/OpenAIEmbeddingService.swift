@@ -78,14 +78,8 @@ final class OpenAIEmbeddingService: EmbeddingService {
         guard let http = response as? HTTPURLResponse else {
             throw EmbeddingProviderError.network(reason: "\(providerLabel): non-http response")
         }
-        switch http.statusCode {
-        case 200 ..< 300: break
-        case 401, 403:
-            throw EmbeddingProviderError.permanent(reason: .authRejected)
-        case 408, 429, 500 ..< 600:
-            throw EmbeddingProviderError.transient(reason: "\(providerLabel) http \(http.statusCode)")
-        default:
-            throw EmbeddingProviderError.permanent(reason: .requestRejected)
+        if let error = EmbeddingProviderError.fromHTTP(status: http.statusCode, body: data, providerLabel: providerLabel) {
+            throw error
         }
         let decoded: ResponseBody
         do {

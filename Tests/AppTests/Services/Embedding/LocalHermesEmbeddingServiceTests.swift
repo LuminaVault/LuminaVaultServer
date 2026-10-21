@@ -66,7 +66,7 @@ struct LocalHermesEmbeddingServiceTests {
             Issue.record("expected throw")
         } catch let e as EmbeddingProviderError {
             #expect(!e.isRecoverable)
-            if case let .permanent(r) = e {
+            if case let .permanent(r, _) = e {
                 #expect(r == .endpointMissing)
             } else {
                 Issue.record("wrong case")
@@ -92,7 +92,7 @@ struct LocalHermesEmbeddingServiceTests {
             _ = try await svc.embed("x", tenantID: UUID())
             Issue.record("expected throw")
         } catch let e as EmbeddingProviderError {
-            if case let .permanent(r) = e {
+            if case let .permanent(r, _) = e {
                 #expect(r == .endpointMissing)
             } else {
                 Issue.record("wrong case")

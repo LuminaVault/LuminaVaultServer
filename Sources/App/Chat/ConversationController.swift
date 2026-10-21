@@ -276,7 +276,7 @@ struct ConversationController {
             .filter(\.$conversationID == conversationID)
             .sort(\.$createdAt, .ascending)
             .all()
-        let embedding = try await embeddings.embed(content, tenantID: memoryTenantID)
+        let embedding = try await embeddings.embedForQuery(content, tenantID: memoryTenantID, operation: "chat.localReply", logger: logger)
         let semanticHits = try await grounding.retrieve(
             tenantID: memoryTenantID, query: content, queryEmbedding: embedding, limit: 5
         )
@@ -368,7 +368,7 @@ struct ConversationController {
 
         switch body.name {
         case .memorySearch:
-            let embedding = try await embeddings.embed(query, tenantID: memoryTenantID)
+            let embedding = try await embeddings.embedForQuery(query, tenantID: memoryTenantID, operation: "chat.localTool", logger: logger)
             let hits = try await grounding.retrieve(
                 tenantID: memoryTenantID,
                 query: query,
@@ -694,9 +694,10 @@ struct ConversationController {
                 .all()
         }
 
-        // Retrieve grounding memories on the latest user turn.
+        // Retrieve grounding memories on the latest user turn. An embedding
+        // outage grounds lexically instead of failing the turn.
         let queryEmbedding = try await loggedStage("chat.embed", logger: log) {
-            try await embeddings.embed(content, tenantID: memoryTenantID)
+            try await embeddings.embedForQuery(content, tenantID: memoryTenantID, operation: "chat.send", logger: log)
         }
         let semanticHits = try await loggedStage("chat.search", logger: log) {
             try await grounding.retrieve(

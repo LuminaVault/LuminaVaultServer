@@ -17,8 +17,8 @@ import SQLKit
 /// embedder: `memories`, `memory_chunks`, `memories_archive` (an archived row
 /// is revived by copying it back, vector included, so it has to be in the
 /// same space). `photo_index` is embedded by the vision provider and is left
-/// alone. Only rows that already have an embedding are rewritten: a NULL is a
-/// choice some writer made, not a fake vector.
+/// alone. Only rows that already have an embedding are rewritten: a NULL is
+/// not a fake vector but a missing one, and the heal pass below fills it in.
 ///
 /// Each write sets the embedding column and nothing else (no `updated_at`,
 /// no review state), and only while the row's text is still the text that was
@@ -53,6 +53,26 @@ import SQLKit
 /// from the real vectors on its next tick; the client force-directs nodes
 /// without coordinates in the meantime.
 ///
+/// ## Heal pass (missing embeddings)
+/// Write paths save a row with `embedding = NULL` when the provider fails
+/// (`EmbeddingService.embedForWrite`), so a capture is never lost to an
+/// outage or an empty balance. Once the re-embed is complete (or straight
+/// away when it is not enabled) the service keeps running a heal pass over
+/// `healTargets` (`memories`, `memory_chunks`): rows with a NULL embedding
+/// and non-blank text, in primary-key order, `batchSize` at a time with
+/// `pause` between full batches, until it reaches the end; then it waits
+/// `healInterval` and starts again from the top. It writes only while the
+/// row is still NULL and its text unchanged, so it never overwrites a vector
+/// a writer set in the meantime.
+///
+/// A row that fails on its own (a rejected input) is skipped and retried on
+/// the next pass. A failure that means the provider cannot serve anyone
+/// (`EmbeddingProviderError.isProviderUnavailable`: outage, 402, bad key)
+/// ends the pass after that one call, and the next attempt waits
+/// `healInterval` doubling up to `healMaxBackoff` — one probe per window,
+/// not one per row. The cursor stays past the failed row, so a single
+/// BYO-key tenant with a revoked key cannot stall everyone behind it.
+///
 /// Single replica, like `GraphLayoutWorker`: a second replica would redo
 /// batches (an idempotent overwrite, but paid twice).
 actor EmbeddingReembedService: Service {
@@ -81,6 +101,9 @@ actor EmbeddingReembedService: Service {
         )
         /// Live recall first: whole-memory vectors, then chunks, then cold storage.
         static let all: [Target] = [.memories, .memoryChunks, .memoriesArchive]
+        /// What the heal pass fills in. The archive is cold storage nobody
+        /// writes to with a NULL on purpose; it is left to the re-embed.
+        static let healable: [Target] = [.memories, .memoryChunks]
     }
 
     struct Configuration: Sendable {
@@ -89,6 +112,21 @@ actor EmbeddingReembedService: Service {
         var failedBatchesBeforeBackoff = 3
         var backoffBase: Duration = .seconds(30)
         var maxBackoff: Duration = .seconds(900)
+        /// Wait between heal passes once caught up, and the first backoff
+        /// after a pass the provider refused.
+        var healInterval: Duration = .seconds(600)
+        /// Ceiling for the doubling heal backoff.
+        var healMaxBackoff: Duration = .seconds(3600)
+    }
+
+    /// What one heal pass did.
+    enum HealResult: Equatable {
+        /// Reached the end of every heal target.
+        case caughtUp(healed: Int, failed: Int)
+        /// Stopped at a failure that means the provider is unavailable.
+        case providerUnavailable(healed: Int)
+        /// The deterministic stub is active.
+        case refused
     }
 
     /// What one batch did.
@@ -114,17 +152,33 @@ actor EmbeddingReembedService: Service {
     private let embeddings: any EmbeddingService
     private let activeKind: EmbeddingProviderKind
     private let targets: [Target]
+    private let healTargets: [Target]
+    private let reembedEnabled: Bool
+    private let healEnabled: Bool
     private let configuration: Configuration
     private let logger: Logger
     private let sleep: @Sendable (Duration) async throws -> Void
 
     private var consecutiveFailedBatches = 0
+    private var consecutiveFailedHeals = 0
+    /// Heal position per target (last id looked at), in memory only: after a
+    /// restart the first pass simply starts from the top.
+    private var healCursors: [String: String] = [:]
 
+    /// - Parameters:
+    ///   - reembedEnabled: run the one-shot re-embed first
+    ///     (`EMBEDDING_REEMBED_ENABLED`). When false the heal pass starts
+    ///     straight away.
+    ///   - healEnabled: keep running the heal pass afterwards
+    ///     (`EMBEDDING_HEAL_ENABLED`).
     init(
         fluent: Fluent,
         embeddings: any EmbeddingService,
         activeKind: EmbeddingProviderKind,
         targets: [Target] = Target.all,
+        healTargets: [Target] = Target.healable,
+        reembedEnabled: Bool = true,
+        healEnabled: Bool = true,
         configuration: Configuration = Configuration(),
         logger: Logger = Logger(label: "lv.embedding.reembed"),
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
@@ -133,9 +187,13 @@ actor EmbeddingReembedService: Service {
         self.embeddings = embeddings
         self.activeKind = activeKind
         self.targets = targets
+        self.healTargets = healTargets
+        self.reembedEnabled = reembedEnabled
+        self.healEnabled = healEnabled
         var configuration = configuration
         configuration.batchSize = max(1, configuration.batchSize)
         configuration.failedBatchesBeforeBackoff = max(1, configuration.failedBatchesBeforeBackoff)
+        configuration.healMaxBackoff = max(configuration.healInterval, configuration.healMaxBackoff)
         self.configuration = configuration
         self.logger = logger
         self.sleep = sleep
@@ -144,7 +202,12 @@ actor EmbeddingReembedService: Service {
     func run() async throws {
         do {
             try await cancelWhenGracefulShutdown { [self] in
-                _ = try await runToCompletion()
+                if reembedEnabled {
+                    guard try await runToCompletion() else { return }
+                }
+                if healEnabled {
+                    try await runHealLoop()
+                }
             }
         } catch is CancellationError {
             return
@@ -289,6 +352,109 @@ actor EmbeddingReembedService: Service {
         return capped
     }
 
+    // MARK: - Heal pass
+
+    /// Heal passes until shutdown, `delayAfterHeal` apart. A pass that throws
+    /// (the database, not the provider) counts as failed and backs off too,
+    /// so one bad query does not end healing for the life of the process.
+    private func runHealLoop() async throws {
+        logger.info(
+            "embedding.heal started provider=\(activeKind.rawValue) targets=\(healTargets.map(\.name).joined(separator: ",")) interval=\(configuration.healInterval)"
+        )
+        while true {
+            try Task.checkCancellation()
+            let result: HealResult
+            do {
+                result = try await healMissing()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                logger.error("embedding.heal pass failed: \(error)")
+                result = .providerUnavailable(healed: 0)
+            }
+            if result == .refused {
+                return
+            }
+            try await sleep(delayAfterHeal(result))
+        }
+    }
+
+    /// One heal pass over every heal target, resuming each where the last
+    /// pass stopped. Exposed so tests drive it without a `ServiceGroup`.
+    @discardableResult
+    func healMissing() async throws -> HealResult {
+        guard activeKind != .deterministic else {
+            logger.warning("embedding.heal refused: active embedding provider is deterministic")
+            return .refused
+        }
+        guard let sql = fluent.db() as? any SQLDatabase else {
+            throw ReembedError.sqlRequired
+        }
+        var healed = 0
+        var failed = 0
+        for target in healTargets {
+            while true {
+                try Task.checkCancellation()
+                let rows = try await fetchBatch(sql, target: target, after: healCursors[target.name], missing: true)
+                for row in rows {
+                    do {
+                        let vector = try await embeddings.embed(row.text, tenantID: row.tenant_id)
+                        guard vector.count == OpenAIEmbeddingService.targetDim else {
+                            throw EmbeddingProviderError.dimMismatch(expected: OpenAIEmbeddingService.targetDim, got: vector.count)
+                        }
+                        if try await write(sql, target: target, row: row, vector: vector, onlyIfMissing: true) {
+                            healed += 1
+                        }
+                        healCursors[target.name] = row.id
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // Shutdown surfaces from URLSession as a network error.
+                        try Task.checkCancellation()
+                        healCursors[target.name] = row.id
+                        if let providerError = error as? EmbeddingProviderError, !providerError.isProviderUnavailable {
+                            failed += 1
+                            logger.warning("embedding.heal row failed target=\(target.name) id=\(row.id) tenant=\(row.tenant_id): \(error)")
+                            continue
+                        }
+                        logger.warning(
+                            "embedding.heal provider unavailable target=\(target.name) tenant=\(row.tenant_id) healed=\(healed): \(error)"
+                        )
+                        return .providerUnavailable(healed: healed)
+                    }
+                }
+                if rows.count < configuration.batchSize {
+                    // End of the table: the next pass starts from the top, so
+                    // rows skipped this time are tried again.
+                    healCursors[target.name] = nil
+                    break
+                }
+                try await sleep(configuration.pause)
+            }
+        }
+        if healed > 0 || failed > 0 {
+            logger.info("embedding.heal pass complete healed=\(healed) failed=\(failed)")
+        }
+        return .caughtUp(healed: healed, failed: failed)
+    }
+
+    /// `healInterval` after a pass that caught up; after a refused one,
+    /// `healInterval` doubling per consecutive refusal up to `healMaxBackoff`.
+    func delayAfterHeal(_ result: HealResult) -> Duration {
+        switch result {
+        case .caughtUp, .refused:
+            consecutiveFailedHeals = 0
+            return configuration.healInterval
+        case .providerUnavailable:
+            consecutiveFailedHeals += 1
+            let exponent = min(consecutiveFailedHeals - 1, 16)
+            let delay = min(configuration.healInterval * (1 << exponent), configuration.healMaxBackoff)
+            logger.warning("embedding.heal next probe in \(delay) after \(consecutiveFailedHeals) refused passes")
+            return delay
+        }
+    }
+
     // MARK: - SQL
 
     private struct CandidateRow: Decodable {
@@ -299,13 +465,25 @@ actor EmbeddingReembedService: Service {
 
     /// Table and column names come from the static `Target` constants, never
     /// from input, so `unsafeRaw` is safe here.
-    private func fetchBatch(_ sql: any SQLDatabase, target: Target, after cursor: String?) async throws -> [CandidateRow] {
+    ///
+    /// The re-embed reads rows that have a vector; the heal pass (`missing`)
+    /// reads rows without one whose text is not blank — a blank row has
+    /// nothing to embed and would otherwise be read on every pass.
+    private func fetchBatch(
+        _ sql: any SQLDatabase,
+        target: Target,
+        after cursor: String?,
+        missing: Bool = false
+    ) async throws -> [CandidateRow] {
         let id = target.idColumn
+        let filter = missing
+            ? "embedding IS NULL AND btrim(\(target.textColumn)) <> ''"
+            : "embedding IS NOT NULL"
         if let cursor {
             return try await sql.raw("""
             SELECT \(unsafeRaw: id)::text AS id, tenant_id, \(unsafeRaw: target.textColumn) AS text
             FROM \(unsafeRaw: target.table)
-            WHERE embedding IS NOT NULL
+            WHERE \(unsafeRaw: filter)
               AND \(unsafeRaw: id) > \(bind: cursor)::\(unsafeRaw: target.idType)
             ORDER BY \(unsafeRaw: id)
             LIMIT \(bind: configuration.batchSize)
@@ -314,7 +492,7 @@ actor EmbeddingReembedService: Service {
         return try await sql.raw("""
         SELECT \(unsafeRaw: id)::text AS id, tenant_id, \(unsafeRaw: target.textColumn) AS text
         FROM \(unsafeRaw: target.table)
-        WHERE embedding IS NOT NULL
+        WHERE \(unsafeRaw: filter)
         ORDER BY \(unsafeRaw: id)
         LIMIT \(bind: configuration.batchSize)
         """).all(decoding: CandidateRow.self)
@@ -322,15 +500,25 @@ actor EmbeddingReembedService: Service {
 
     /// Writes the embedding column only, and only if the text is unchanged.
     /// Returns false when the row was edited or deleted since it was read.
-    private func write(_ sql: any SQLDatabase, target: Target, row: CandidateRow, vector: [Float]) async throws -> Bool {
+    /// `onlyIfMissing` (the heal pass) also leaves alone a row a writer gave
+    /// a vector in the meantime.
+    private func write(
+        _ sql: any SQLDatabase,
+        target: Target,
+        row: CandidateRow,
+        vector: [Float],
+        onlyIfMissing: Bool = false
+    ) async throws -> Bool {
         struct Written: Decodable { let id: String }
         let literal = "'\(MemoryRepository.formatVector(vector))'::vector"
+        let missingGuard = onlyIfMissing ? "AND embedding IS NULL" : ""
         let written = try await sql.raw("""
         UPDATE \(unsafeRaw: target.table)
         SET embedding = \(unsafeRaw: literal)
         WHERE \(unsafeRaw: target.idColumn) = \(bind: row.id)::\(unsafeRaw: target.idType)
           AND tenant_id = \(bind: row.tenant_id)
           AND \(unsafeRaw: target.textColumn) = \(bind: row.text)
+          \(unsafeRaw: missingGuard)
         RETURNING \(unsafeRaw: target.idColumn)::text AS id
         """).first(decoding: Written.self)
         return written != nil
