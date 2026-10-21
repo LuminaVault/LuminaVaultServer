@@ -235,6 +235,10 @@ actor EmbeddingReembedService: Service {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                // Shutdown surfaces from URLSession as a network error, not a
+                // CancellationError. Counting it would advance the cursor past
+                // rows that never got a real vector, so stop without saving.
+                try Task.checkCancellation()
                 failed += 1
                 logger.warning("embedding.reembed row failed target=\(target.name) id=\(row.id) tenant=\(row.tenant_id): \(error)")
             }
