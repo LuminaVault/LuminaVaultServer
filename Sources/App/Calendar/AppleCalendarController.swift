@@ -80,6 +80,9 @@ struct AppleCalendarController {
             // an explicit `status == "cancelled"` from the client tombstones.
             let status = (input.status?.trimmingCharacters(in: .whitespaces).lowercased() == "cancelled")
                 ? "cancelled" : "confirmed"
+            // Nil (a client from before attendees) keeps what is stored; the
+            // same `{"list": […]}` shape the Google sync writes.
+            let attendeesJSON = Self.attendeesJSON(input.attendees)
 
             // INSERT … ON CONFLICT upsert. Last-writer-wins guard: only overwrite
             // when the incoming remote_updated_at is newer than the stored one, or
@@ -87,13 +90,14 @@ struct AppleCalendarController {
             let result = try await sql.raw("""
             INSERT INTO calendar_events
                 (tenant_id, source, external_id, calendar_id, title, notes, location,
-                 starts_at, ends_at, all_day, status, organizer, remote_updated_at,
+                 starts_at, ends_at, all_day, status, organizer, attendees, remote_updated_at,
                  created_at, updated_at)
             VALUES
                 (\(bind: tenantID), \(bind: Self.source), \(bind: externalID), \(bind: input.calendarID),
                  \(bind: title), \(bind: input.notes), \(bind: input.location),
                  \(bind: input.startsAt), \(bind: input.endsAt), \(bind: input.allDay),
-                 \(bind: status), \(bind: input.organizer), COALESCE(\(bind: input.remoteUpdatedAt), NOW()),
+                 \(bind: status), \(bind: input.organizer), \(bind: attendeesJSON)::jsonb,
+                 COALESCE(\(bind: input.remoteUpdatedAt), NOW()),
                  NOW(), NOW())
             ON CONFLICT (tenant_id, source, external_id) DO UPDATE
                 SET calendar_id = EXCLUDED.calendar_id,
@@ -105,6 +109,7 @@ struct AppleCalendarController {
                     all_day = EXCLUDED.all_day,
                     status = EXCLUDED.status,
                     organizer = EXCLUDED.organizer,
+                    attendees = COALESCE(EXCLUDED.attendees, calendar_events.attendees),
                     remote_updated_at = EXCLUDED.remote_updated_at,
                     updated_at = NOW()
                 WHERE calendar_events.remote_updated_at IS NULL
@@ -140,5 +145,29 @@ struct AppleCalendarController {
 
     private struct UpsertRow: Decodable {
         let inserted: Bool
+    }
+
+    static let maxAttendees = 100
+    private static let maxAttendeeFieldLength = 256
+
+    /// `calendar_events.attendees` JSON for the sync's attendees, or nil to
+    /// leave the column alone. Blank fields are dropped, an attendee with
+    /// neither a name nor an email is skipped, and the list is capped.
+    static func attendeesJSON(_ attendees: [CalendarAttendeeDTO]?) -> String? {
+        guard let attendees else { return nil }
+        func clean(_ raw: String?) -> String? {
+            guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            return String(value.prefix(maxAttendeeFieldLength))
+        }
+        let list = attendees.lazy
+            .compactMap { attendee -> CalendarAttendees.Attendee? in
+                let name = clean(attendee.name)
+                let email = clean(attendee.email)
+                guard name != nil || email != nil else { return nil }
+                return CalendarAttendees.Attendee(email: email, displayName: name, responseStatus: nil)
+            }
+            .prefix(maxAttendees)
+        guard let data = try? JSONEncoder().encode(CalendarAttendees(list: Array(list))) else { return nil }
+        return String(bytes: data, encoding: .utf8)
     }
 }

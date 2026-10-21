@@ -8,8 +8,9 @@ import LuminaVaultShared
 extension APNSCategoryPrefsResponse: @retroactive ResponseEncodable {}
 
 /// HER-179 — `GET/PUT /v1/me/apns-categories`. Per-tenant opt-out for
-/// the three APNS notification categories (`chat`, `nudge`, `digest`).
-/// Absence of a row defaults all categories to enabled.
+/// the APNS notification categories (`chat`, `nudge`, `digest`, …).
+/// Absence of a row defaults all categories to enabled, except the opt-in
+/// meeting brief (`meetingBriefEnabled`), which defaults to off.
 struct ApnsCategoryPrefsController {
     let fluent: HummingbirdFluent.Fluent
     let logger: Logger
@@ -33,7 +34,8 @@ struct ApnsCategoryPrefsController {
             nudgeEnabled: true,
             digestEnabled: true,
             approvalEnabled: true,
-            runCompletedEnabled: true
+            runCompletedEnabled: true,
+            meetingBriefEnabled: false
         )
     }
 
@@ -61,6 +63,9 @@ struct ApnsCategoryPrefsController {
         if let runCompleted = body.runCompletedEnabled {
             row.runCompletedEnabled = runCompleted
         }
+        if let meetingBrief = body.meetingBriefEnabled {
+            row.meetingBriefEnabled = meetingBrief
+        }
         try await row.save(on: db)
 
         return Self.response(for: row)
@@ -72,7 +77,8 @@ struct ApnsCategoryPrefsController {
             nudgeEnabled: row.nudgeEnabled,
             digestEnabled: row.digestEnabled,
             approvalEnabled: row.approvalEnabled,
-            runCompletedEnabled: row.runCompletedEnabled
+            runCompletedEnabled: row.runCompletedEnabled,
+            meetingBriefEnabled: row.meetingBriefEnabled
         )
     }
 }

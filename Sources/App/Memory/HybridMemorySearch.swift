@@ -28,12 +28,16 @@ struct HybridMemorySearch: Sendable {
     ///
     /// - Parameter query: the raw user text, used by the lexical arm.
     /// - Parameter queryEmbedding: its vector, used by both dense paths.
+    /// - Parameter countHits: `false` for lookups that are not recall (the
+    ///   pre-meeting brief), so they leave `query_hit_count` alone. Only the
+    ///   document arm counts hits; the chunk arm is read-only either way.
     func search(
         tenantID: UUID,
         query: String,
         queryEmbedding: [Float],
         limit: Int,
-        spaceID: UUID? = nil
+        spaceID: UUID? = nil,
+        countHits: Bool = true
     ) async throws -> [MemorySearchResult] {
         async let chunkHits = chunkArm(
             tenantID: tenantID,
@@ -46,7 +50,8 @@ struct HybridMemorySearch: Sendable {
             tenantID: tenantID,
             queryEmbedding: queryEmbedding,
             limit: limit,
-            spaceID: spaceID
+            spaceID: spaceID,
+            countHits: countHits
         )
 
         return try await Self.merge(chunks: chunkHits, documents: documentHits, limit: limit)

@@ -31,6 +31,9 @@ enum APNSPushCategory: String {
     case runCompleted
     /// A phone write (reminder, event) waiting for the app to open.
     case deviceCommand
+    /// The opt-in pre-meeting brief. Gated by `meeting_brief_enabled`, which
+    /// is off unless the user turned it on — so no row means suppressed.
+    case meeting
 }
 
 // MARK: - Delivery options
@@ -450,11 +453,12 @@ struct APNSNotificationService {
             // category opt-out table in v1. A device command is something
             // the user asked for; muting it would silently drop the write.
             return false
-        case .chat, .nudge, .digest, .approval, .runCompleted:
+        case .chat, .nudge, .digest, .approval, .runCompleted, .meeting:
             break
         }
         guard let prefs = try await ApnsCategoryPrefs.find(tenantID, on: db) else {
-            return false
+            // No row: everything on, except the one category that is opt-in.
+            return category == .meeting
         }
         switch category {
         case .chat: return !prefs.chatEnabled
@@ -462,6 +466,7 @@ struct APNSNotificationService {
         case .digest: return !prefs.digestEnabled
         case .approval: return !prefs.approvalEnabled
         case .runCompleted: return !prefs.runCompletedEnabled
+        case .meeting: return !prefs.meetingBriefEnabled
         case .achievement, .reminder, .cron, .ingestion, .workflow, .deviceCommand: return false
         }
     }
