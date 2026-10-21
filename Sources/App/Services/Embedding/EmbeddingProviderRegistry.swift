@@ -1,5 +1,8 @@
 import Configuration
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import HummingbirdFluent
 import Logging
 
@@ -21,6 +24,7 @@ struct EmbeddingProviderRegistry {
         reader: ConfigReader,
         fluent: Fluent,
         hermesHandleResolver: @escaping LocalHermesEmbeddingService.HandleResolver,
+        session: URLSession = .shared,
         logger: Logger = Logger(label: "lv.embedding.registry")
     ) -> EmbeddingProviderRegistry {
         let activeRaw = reader.string(forKey: "embedding.provider", default: "deterministic")
@@ -45,7 +49,28 @@ struct EmbeddingProviderRegistry {
             let rawBase = reader.string(forKey: "llm.provider.openai.baseURL", default: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let base = URL(string: rawBase) ?? OpenAIEmbeddingService.defaultBaseURL
-            built[.openai] = OpenAIEmbeddingService(apiKey: openaiKey, baseURL: base, logger: Logger(label: "lv.embedding.openai"))
+            built[.openai] = OpenAIEmbeddingService(apiKey: openaiKey, baseURL: base, session: session, logger: Logger(label: "lv.embedding.openai"))
+        }
+
+        // OpenRouter reuses the platform OpenRouter key the LLM routing reads
+        // (`ProviderRegistry.loadConfigs`: canonical, legacy spelling, then the
+        // `openrouter.*` aliases) so there is no second secret to seal. The
+        // base URL and model are embedding-specific: the LLM's OpenRouter base
+        // URL may already end in `/v1`, and the service appends `v1/embeddings`.
+        if let openRouterKey = openRouterAPIKey(reader: reader) {
+            let rawBase = reader.string(forKey: "embedding.openRouter.baseURL", default: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let base = rawBase.isEmpty ? OpenAIEmbeddingService.openRouterBaseURL : (URL(string: rawBase) ?? OpenAIEmbeddingService.openRouterBaseURL)
+            let rawModel = reader.string(forKey: "embedding.openRouter.model", default: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            built[.openRouter] = OpenAIEmbeddingService(
+                apiKey: openRouterKey,
+                baseURL: base,
+                model: rawModel.isEmpty ? OpenAIEmbeddingService.openRouterModel : rawModel,
+                providerLabel: "openrouter",
+                session: session,
+                logger: Logger(label: "lv.embedding.openrouter")
+            )
         }
 
         let nomicKey = reader.string(forKey: "embedding.nomic.apiKey", isSecret: true, default: "")
@@ -69,7 +94,9 @@ struct EmbeddingProviderRegistry {
             activeInner = svc
             resolvedActiveKind = activeKind
         } else {
-            logger.warning("embedding provider \(activeKind.rawValue) requested but not configured; falling back to deterministic")
+            logger.warning(
+                "embedding provider \(activeKind.rawValue) requested but not configured (\(missingCredentialHint(for: activeKind))); falling back to deterministic — semantic search, recall and related memories run on hash-based fake vectors"
+            )
             activeInner = built[.deterministic]!
             resolvedActiveKind = .deterministic
         }
@@ -102,5 +129,24 @@ struct EmbeddingProviderRegistry {
             activeKind: resolvedActiveKind,
             fallbackKinds: fallbackPairs.map(\.0)
         )
+    }
+
+    /// The OpenRouter key exactly as the LLM routing resolves it, or nil when
+    /// none of its spellings is set.
+    static func openRouterAPIKey(reader: ConfigReader) -> String? {
+        ProviderRegistry.loadConfigs(from: reader)
+            .first { $0.kind == .openRouter }?
+            .apiKey
+    }
+
+    /// Names the env var an operator has to set, so the boot warning says
+    /// what to fix rather than only that something is wrong.
+    static func missingCredentialHint(for kind: EmbeddingProviderKind) -> String {
+        switch kind {
+        case .openai: "LLM_PROVIDER_OPENAI_API_KEY is empty"
+        case .openRouter: "no OpenRouter key: LLM_PROVIDER_OPEN_ROUTER_API_KEY / OPENROUTER_API_KEY / OPENROUTER_FALLBACK_API_KEY are all empty"
+        case .nomic: "EMBEDDING_NOMIC_API_KEY is empty"
+        case .hermesLocal, .deterministic: "adapter not registered"
+        }
     }
 }

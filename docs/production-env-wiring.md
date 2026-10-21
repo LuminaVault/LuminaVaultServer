@@ -34,18 +34,33 @@ If phone auth is **not** in the launch scope, leave unset — but then disable/h
 
 > **Note — these are AUTH secrets, not Hermes gateways.** `EMAIL_KIND`/`SMS_KIND` (Resend/Twilio above) deliver **login OTPs**. They are unrelated to the Hermes **Email** and **SMS messaging gateways** (chatting with the agent over email/SMS), which are configured per-tenant from the iOS app and activate via different env-vars inside each tenant's Hermes container. See §7 for gateway coverage.
 
-## 3. Embedding provider — **VERIFY, likely a stub in prod**
+## 3. Embedding provider — **REQUIRED: prod runs on the stub**
 
-Code/`.env.example` default is `EMBEDDING_PROVIDER=deterministic` (hash-based fake vectors). If prod inherits that default, **semantic search and chat grounding return garbage relevance**. `docker-compose.production.yml` does not pin a real provider, so it inherits the code default.
+Code/`.env.example` default is `EMBEDDING_PROVIDER=deterministic` (hash-based fake vectors), and production inherits it: the boot log says `lv.embedding.registry: embedding registry active=deterministic`. So **semantic search, chat recall, `/v1/memory/{id}/related` and meeting briefs all rank on noise, and every vector already stored is fake.** Production has no OpenAI key; the only LLM provider it has is OpenRouter, which also serves `openai/text-embedding-3-small` (same model and vector space as OpenAI direct, 1536 dims).
 
-Set a real provider + key:
+Production setting:
 
-| Secret | Value |
+| Env | Value |
 |---|---|
-| `EMBEDDING_PROVIDER` | `openai` \| `nomic` \| `hermesLocal` |
-| (provider key) | e.g. `OPENAI_API_KEY` for the `openai` provider |
+| `EMBEDDING_PROVIDER` | `openrouter` |
+| `EMBEDDING_REEMBED_ENABLED` | `true` |
 
-Verify after deploy: capture a note, ask a related question in chat, confirm the recall is topically relevant (not random).
+No new secret: `openrouter` reuses the OpenRouter key the LLM routing already loads (`LLM_PROVIDER_OPEN_ROUTER_API_KEY`, then the legacy `LLM_PROVIDER_OPENROUTER_APIKEY`, then `OPENROUTER_API_KEY`, then the platform `OPENROUTER_FALLBACK_API_KEY` — first non-empty wins). If none is set the registry logs `embedding provider openRouter requested but not configured (…); falling back to deterministic` and nothing changes. Optional overrides: `EMBEDDING_OPEN_ROUTER_BASE_URL` (default `https://openrouter.ai/api`; the service appends `v1/embeddings`, so do not include `/v1`) and `EMBEDDING_OPEN_ROUTER_MODEL` (default `openai/text-embedding-3-small`; any replacement must return 1536 dims or every embed fails with `dimMismatch`).
+
+Switching the provider only fixes rows written afterwards. `EMBEDDING_REEMBED_ENABLED=true` starts `EmbeddingReembedService`, which rewrites every stored text vector (`memories`, `memory_chunks`, `memories_archive`; `photo_index` uses the vision embedder and is untouched) through the new provider:
+
+- 50 rows per batch, 2 s between batches (`EMBEDDING_REEMBED_BATCH_SIZE`, `EMBEDDING_REEMBED_PAUSE_MILLISECONDS`). One paid embed call per row, counted against each tenant's `EMBEDDING_MONTHLY_TOKEN_CAP_DEFAULT`.
+- Cursor in `embedding_reembed_progress` (M149), written after every batch, so a restart resumes. A finished target gets `completed_at` and is not walked again; once all three are done the job idles. Delete a target's row to re-run it.
+- Refuses to run (warning, no work) while the active provider is `deterministic`.
+- A row whose embed fails keeps its old vector and is counted in `rows_failed`. A batch where every row fails (no credit, auth, outage) does not advance the cursor and backs off.
+- When `memories` finishes, the persisted 3D graph layout (`graph_x/y/z`) is cleared so `GraphLayoutWorker` recomputes it from real vectors within the hour.
+- Single replica only (a second replica would redo batches — harmless, but paid twice).
+
+Progress: `SELECT * FROM embedding_reembed_progress;` and the `lv.embedding.reembed` logger (per-target summary at info, per-batch at debug). The flag can be left on after completion; turning it off is tidier.
+
+Verify after deploy: the boot log says `active=openRouter`; capture a note, ask a related question in chat, confirm the recall is topically relevant (not random).
+
+**Then recalibrate the distance floors.** `memory.related.maxDistance` (0.45, `MEMORY_RELATED_MAX_DISTANCE`) and `meeting.brief.maxDistance` (0.40, `MEETING_BRIEF_MAX_DISTANCE`) were picked without ever seeing a real vector — production has only had hash noise. After the re-embed completes, sample real pairs of notes (related and unrelated) and check both floors before trusting "related" and meeting briefs; either floor may need to move.
 
 ## 4. `.env.production` placeholder sweep
 
