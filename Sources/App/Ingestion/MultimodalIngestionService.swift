@@ -160,6 +160,10 @@ struct MultimodalIngestionService {
     /// `VaultFile` writers (capture, memo generator, skill runner) persist
     /// text — so this is where a total-bytes quota actually binds.
     var storageQuota: StorageQuotaService?
+    /// Refuses uploads when the data volume is nearly full (507). The tenant
+    /// quota above cannot do this: it knows what a plan allows, not how big
+    /// the disk is.
+    var diskSpaceGuard: DiskSpaceGuard?
 
     func create(tenantID: UUID, request: IngestionCreateRequest) async throws -> IngestionBatchDTO {
         guard !request.items.isEmpty, request.items.count <= Self.maxItems else {
@@ -180,6 +184,7 @@ struct MultimodalIngestionService {
                 throw HTTPError(.contentTooLarge, message: StorageQuotaService.message(used: used, limit: limit))
             }
         }
+        try diskSpaceGuard?.check(incomingBytes: batchBytes)
         if let spaceID = request.spaceID {
             guard try await Space.query(on: fluent.db(), tenantID: tenantID).filter(\.$id == spaceID).first() != nil else {
                 throw HTTPError(.badRequest, message: "unknown space")
@@ -215,6 +220,7 @@ struct MultimodalIngestionService {
         guard item.state == IngestionItemStateDTO.awaitingUpload.rawValue else {
             throw HTTPError(.conflict, message: "item is not awaiting upload")
         }
+        try diskSpaceGuard?.check(incomingBytes: Int64(data.count))
         let directory = chunkDirectory(tenantID: tenantID, itemID: itemID)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let target = directory.appendingPathComponent(String(index))
@@ -238,6 +244,9 @@ struct MultimodalIngestionService {
             return try await detail(tenantID: tenantID, batchID: batchID)
         }
         guard item.uploadedBytes == item.sizeBytes else { throw HTTPError(.badRequest, message: "upload is incomplete") }
+        // Assembly writes a second full copy before the chunks are removed,
+        // so the file's whole size lands on the volume again here.
+        try diskSpaceGuard?.check(incomingBytes: item.uploadedBytes)
         let batch = try await requireBatch(tenantID: tenantID, batchID: batchID)
         let fileID = try await assembleAndStore(item: item, batch: batch, tenantID: tenantID)
         item.vaultFileID = fileID.id

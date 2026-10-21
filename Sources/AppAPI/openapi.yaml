@@ -4856,6 +4856,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CaptureSafariResponse' }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
 
   # ─────────────────────────────── Query ────────────────────────────────
 
@@ -5236,6 +5237,7 @@ paths:
               schema: { $ref: '#/components/schemas/VaultUploadResponse' }
         '400':
           description: Malformed `path`, malformed `space_id`, cross-tenant space, empty body, or content-type mismatch.
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
     get:
       tags: [Vault]
       operationId: vaultList
@@ -5681,6 +5683,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ImportCreateResponse' }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
 
   /v1/import/files:
     post:
@@ -5775,6 +5778,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
     get:
       tags: [Ingestion]
       operationId: ingestionList
@@ -5862,6 +5866,7 @@ paths:
             schema: { type: string, format: binary }
       responses:
         '204': { description: Chunk accepted. }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
 
   /v1/ingestions/{batchID}/items/{itemID}/complete:
     post:
@@ -5877,6 +5882,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IngestionBatchDTO' }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
 
   /v1/ingestions/{batchID}/items/{itemID}/retry:
     post:
@@ -7344,6 +7350,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '507': { $ref: '#/components/responses/InsufficientStorage' }
 
   /v1/todos/{id}:
     parameters:
@@ -8529,6 +8536,22 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InsufficientStorage:
+      description: |
+        The server's data volume is nearly full, so the write was refused
+        before anything was stored (`insufficient_storage`). This is not the
+        plan quota (that is a 413), and nothing the user can buy or configure
+        fixes it: show the message and let them retry later. No `cta`, no
+        `Retry-After`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/StructuredAPIErrorEnvelope' }
+          examples:
+            insufficientStorage:
+              value:
+                error:
+                  code: insufficient_storage
+                  message: LuminaVault is short on storage space right now, so this wasn't saved. Please try again later.
 
   schemas:
 

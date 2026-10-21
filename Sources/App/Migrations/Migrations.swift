@@ -153,4 +153,5 @@ func registerMigrations(on fluent: Fluent) async {
     await fluent.migrations.add(M147_CreateBriefs())
     await fluent.migrations.add(M148_CreateMeetingBriefs())
     await fluent.migrations.add(M149_CreateEmbeddingReembedProgress())
+    await fluent.migrations.add(M150_PurgeOrphanedTenantRows())
 }

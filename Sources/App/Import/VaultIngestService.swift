@@ -24,6 +24,9 @@ struct VaultIngestService {
     /// still written and remains searchable through the document arm, just
     /// without line-level citations.
     var chunkIndexer: DocumentChunkIndexer?
+    /// Refuses the batch when the data volume is nearly full (507 on the
+    /// import route; a logged failure for the Hermes Mirror worker).
+    var diskSpaceGuard: DiskSpaceGuard?
 
     struct FileInput: Decodable {
         let path: String
@@ -45,6 +48,9 @@ struct VaultIngestService {
     /// `provenance` is stamped on every written row's metadata (e.g.
     /// `hermes-mirror`, `hermes-session`) so imports stay traceable.
     func ingestBatch(tenantID: UUID, spaceName: String, files: [FileInput], provenance: String? = nil) async throws -> Result {
+        // Checked once for the whole batch, before the Space is created, so a
+        // refused import leaves nothing half-written behind.
+        try diskSpaceGuard?.check(incomingBytes: files.reduce(Int64(0)) { $0 + Int64($1.content.utf8.count) })
         let space = try await ensureSpace(tenantID: tenantID, name: spaceName)
         let spaceID = try space.requireID()
         try vaultPaths.ensureTenantDirectories(for: tenantID)

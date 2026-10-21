@@ -23,6 +23,8 @@ struct LinkCaptureService {
     let onboardingLatches: OnboardingLatches?
     let enrichmentService: URLEnrichmentService
     let logger: Logger
+    /// Refuses the write when the data volume is nearly full (507).
+    var diskSpaceGuard: DiskSpaceGuard?
 
     enum CaptureError: Error {
         case invalidURL
@@ -101,6 +103,7 @@ struct LinkCaptureService {
         let suffix = UUID().uuidString.prefix(8).lowercased()
         let relativePath = "\(spaceSlug)/\(timestamp)-\(cleanHost)-\(suffix).md"
 
+        try diskSpaceGuard?.check(incomingBytes: sizeBytes)
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: relativePath)

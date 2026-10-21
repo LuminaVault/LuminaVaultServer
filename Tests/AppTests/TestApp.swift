@@ -51,6 +51,9 @@ let noDBTestReader = ConfigReader(providers: [
         // both readers keeps local and CI runs agreeing.
         "hermes.dataRoot": "/tmp/luminavault-test-hermes",
         "vault.rootPath": "/tmp/luminavault-test",
+        // See `dbTestConfigValuesBase`.
+        "storage.minFreeBytes": 0,
+        "storage.minFreeRatio": cfg(0.0),
     ]),
 ])
 
@@ -82,6 +85,12 @@ private let dbTestConfigValuesBase: [AbsoluteConfigKey: ConfigValue] = [
     // is stable on macOS.
     "hermes.dataRoot": "/tmp/luminavault-test-hermes",
     "vault.rootPath": "/tmp/luminavault-test",
+    // The disk-space floors (3 GiB / 10%) are sized for the production
+    // volume. A dev laptop is often past 90% full, which would turn every
+    // upload test into a 507. `DiskSpaceGuardTests` covers the floors with an
+    // injected free-space source instead.
+    "storage.minFreeBytes": 0,
+    "storage.minFreeRatio": cfg(0.0),
     // HER-137: pin the phone OTP generator to a fixed code so
     // `/v1/auth/phone/verify` tests are deterministic. Production must
     // never set this — non-empty value disables randomness.
