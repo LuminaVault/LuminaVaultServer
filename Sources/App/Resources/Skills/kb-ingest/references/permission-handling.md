@@ -54,4 +54,4 @@ cd /opt/data && make fix-permissions
 
 ## Step 5: Alternative Vault
 
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `~/.claude/kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.

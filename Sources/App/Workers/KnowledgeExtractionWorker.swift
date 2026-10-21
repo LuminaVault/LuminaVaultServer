@@ -620,7 +620,7 @@ actor KnowledgeExtractionWorker: Service {
         """
         let user = """
         Review these claim pairs. Return JSON only:
-        {"relations":[{"candidate":"C1","predicate":"contradicts","direction":"a_to_b","confidence":0.86,"rationale":"...","counterEvidence":"optional ambiguity"}]}
+        {"relations":[{"candidate":"<candidate id>","predicate":"<allowed predicate>","direction":"a_to_b|b_to_a","confidence":<0 to 1>,"rationale":"...","counterEvidence":"optional ambiguity"}]}
 
         Allowed predicates: supports, contradicts, causes, precedes, related_to.
         Direction must be a_to_b or b_to_a. Omit unrelated or uncertain pairs. For contradictions and causes require confidence >= 0.80; for other predicates require >= 0.72. Keep rationale and counterEvidence grounded in the two claims.

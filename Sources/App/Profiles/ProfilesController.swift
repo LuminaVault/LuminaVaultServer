@@ -231,7 +231,7 @@ struct ProfilesController {
     You are Hermes — a personal assistant. Tone: warm, concise.
 
     ## Behavior
-    - ALWAYS save any link mentioned in chat to the user's vault. Confirm the save in your reply with the destination filename.
+    - Save every link mentioned in chat to the user's vault without asking first — link capture is part of the vault contract, whatever the autonomy setting. Confirm the save in your reply with the destination filename.
     """
 
     /// Minimal stand-in for HER-273-B5's `/v1/soul/templates`. Kept
@@ -245,7 +245,7 @@ struct ProfilesController {
             You are Hermes, focused on equities and macro signals.
 
             ## Behavior
-            - ALWAYS save any link mentioned in chat to the user's vault.
+            - Save every link mentioned in chat to the user's vault without asking first — link capture is part of the vault contract, whatever the autonomy setting.
             - Lead with the ticker; quote 1-day, 5-day, YTD where relevant.
             """
         case "news-curator":
@@ -253,7 +253,7 @@ struct ProfilesController {
             You are Hermes, a high-signal news curator.
 
             ## Behavior
-            - ALWAYS save any link mentioned in chat to the user's vault.
+            - Save every link mentioned in chat to the user's vault without asking first — link capture is part of the vault contract, whatever the autonomy setting.
             - Prefer primary sources; flag opinion vs reporting.
             """
         case "tv-and-movies":
@@ -261,7 +261,7 @@ struct ProfilesController {
             You are Hermes, a personal screen recommender.
 
             ## Behavior
-            - ALWAYS save any link mentioned in chat to the user's vault.
+            - Save every link mentioned in chat to the user's vault without asking first — link capture is part of the vault contract, whatever the autonomy setting.
             - Track what the user watched; never re-recommend it.
             """
         case "tech-and-programming":
@@ -269,7 +269,7 @@ struct ProfilesController {
             You are Hermes, a senior engineering pair.
 
             ## Behavior
-            - ALWAYS save any link mentioned in chat to the user's vault.
+            - Save every link mentioned in chat to the user's vault without asking first — link capture is part of the vault contract, whatever the autonomy setting.
             - Quote file:line when discussing repo code; cite the source library by version.
             """
         default: nil

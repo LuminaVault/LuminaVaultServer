@@ -55,7 +55,7 @@ mkdir -p /opt/data/home/obsidian-vault/FAC Correia/raw/Tech
 Then configure kb-ingest to use this path by creating a config file:
 
 ```bash
-echo '{"kb_path": "/opt/data/home/obsidian-vault/FAC Correia"}' > ~/.claude/kb-config.json
+echo '{"kb_path": "/opt/data/home/obsidian-vault/FAC Correia"}' > kb-config.json
 ```
 
 ## Permanent Solution

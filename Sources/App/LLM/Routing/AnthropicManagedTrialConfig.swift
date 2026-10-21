@@ -13,7 +13,8 @@ import Foundation
 /// | `ANTHROPIC_FIRST`    | `anthropic.first`    | `true` turns the trial on. Rollback flag. |
 /// | `ANTHROPIC_MODEL`    | `anthropic.model`    | Default `claude-haiku-5-5`.               |
 /// | `ANTHROPIC_EFFORT`   | `anthropic.effort`   | `low` … `max`; unset = model default.     |
-/// | `ANTHROPIC_THINKING` | `anthropic.thinking` | `adaptive` (default) or `disabled`.       |
+/// | `ANTHROPIC_THINKING` | `anthropic.thinking` | `adaptive` (default) or `disabled`; on    |
+/// |                      |                      | Opus 5.5 `disabled` means low effort.     |
 /// | `ANTHROPIC_SCOPE`    | `anthropic.scope`    | `all` (default) or `paid` (skip free lane)|
 ///
 /// `swift-configuration` encodes `anthropic.apiKey` as `ANTHROPIC_API_KEY`

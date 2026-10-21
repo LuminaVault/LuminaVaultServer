@@ -38,7 +38,7 @@ For each clipping file, read its YAML frontmatter and move it to the appropriate
 
 Run:
 ```bash
-cat ~/.claude/kb-config.json
+cat kb-config.json
 ```
 
 Extract `kb_path`. Expand `~` to the actual home directory path.

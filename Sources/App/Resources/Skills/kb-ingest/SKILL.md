@@ -26,7 +26,7 @@ The Hermes knowledge base at `/opt/data/obsidian-vault/FACorreia` uses a differe
 ### 1. Read Config (if available)
 
 ```bash
-cat ~/.claude/kb-config.json
+cat kb-config.json
 ```
 
 Extract `kb_path`. Expand `~` to the actual home directory path (run `echo ~` if needed).
@@ -278,7 +278,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `~/.claude/kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 
@@ -535,7 +535,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `~/.claude/kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 
@@ -616,7 +616,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `~/.claude/kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 

@@ -196,7 +196,7 @@ actor HealthCorrelationService {
     their captured notes / thoughts.
 
     Output rules:
-    * Single tight paragraph followed by a `- ` bullet list of 2-5
+    * Single tight paragraph followed by a `- ` bullet list of 1-5
       concrete correlations. No headers, no preamble, no apologies.
     * Each bullet pairs a health observation with a note observation
       using the format: `When X happened in the metrics, Y appeared in

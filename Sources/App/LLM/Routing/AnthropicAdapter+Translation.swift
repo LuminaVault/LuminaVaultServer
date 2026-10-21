@@ -71,10 +71,22 @@ struct AnthropicStreamState {
 extension AnthropicAdapter {
     /// Model used when a non-managed request names none.
     static let defaultModel = "claude-sonnet-4-6"
-    /// Anthropic requires `max_tokens`; OpenAI treats it optional.
-    static let defaultMaxTokens = 4096
+    /// Anthropic requires `max_tokens`; OpenAI treats it optional. Thinking
+    /// counts toward it, so leave room for both.
+    static let defaultMaxTokens = 16000
     /// Thinking counts toward `max_tokens`; below this it is switched off.
     static let thinkingMinimumMaxTokens = 1024
+
+    /// Models that reject `thinking: {type: "disabled"}` at every effort.
+    static func thinkingAlwaysOn(_ model: String) -> Bool {
+        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5"].contains { model.hasPrefix($0) }
+    }
+
+    /// Models that reject forced `tool_choice` (`any` / `tool`).
+    static func rejectsForcedToolChoice(_ model: String) -> Bool {
+        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"].contains { model.hasPrefix($0) }
+    }
+
     static let jsonOnlyInstruction = "Respond with a single JSON object, no code fences."
     /// Sent as a user turn when the transcript would otherwise end on the
     /// assistant: current models reject assistant prefill.
@@ -160,7 +172,7 @@ extension AnthropicAdapter {
         }
         if !tools.isEmpty {
             body["tools"] = tools
-            if let choice = translateToolChoice(openAI["tool_choice"]) {
+            if let choice = translateToolChoice(openAI["tool_choice"], model: model) {
                 body["tool_choice"] = choice
             }
         }
@@ -170,14 +182,20 @@ extension AnthropicAdapter {
             body["stop_sequences"] = stops
         }
         if let trial {
-            // Thinking is adaptive by default. It must be off when the
-            // transcript carries earlier tool turns — their thinking blocks
-            // cannot survive the OpenAI-shaped transcript to be replayed — and
-            // when `max_tokens` leaves no room for it.
-            let disableThinking = transcript.hasToolTurns
+            // Thinking is adaptive by default. On models that allow it, it is
+            // off when the transcript carries earlier tool turns — their
+            // thinking blocks cannot survive the OpenAI-shaped transcript to
+            // be replayed — and when `max_tokens` leaves no room for it.
+            // Models that reject `disabled` get low effort instead.
+            let alwaysOn = thinkingAlwaysOn(model)
+            let wantsOff = transcript.hasToolTurns
                 || trial.thinking == .disabled
                 || maxTokens < thinkingMinimumMaxTokens
+            let disableThinking = wantsOff && !alwaysOn
             var effort = trial.effort
+            if wantsOff, alwaysOn, effort == nil {
+                effort = "low"
+            }
             if disableThinking {
                 body["thinking"] = ["type": "disabled"]
                 // `disabled` is accepted only at effort `high` or below.
@@ -358,19 +376,21 @@ extension AnthropicAdapter {
         }
     }
 
-    /// `auto` (or absent) is Anthropic's default and is omitted.
-    static func translateToolChoice(_ value: Any?) -> [String: Any]? {
+    /// `auto` (or absent) is Anthropic's default and is omitted. Models that
+    /// reject forced tool use fall back to `auto` and rely on the prompt.
+    static func translateToolChoice(_ value: Any?, model: String) -> [String: Any]? {
+        let forcedAllowed = !rejectsForcedToolChoice(model)
         if let choice = value as? String {
             switch choice {
             case "none": return ["type": "none"]
-            case "required": return ["type": "any"]
+            case "required": return forcedAllowed ? ["type": "any"] : nil
             default: return nil
             }
         }
         if let choice = value as? [String: Any],
            let name = (choice["function"] as? [String: Any])?["name"] as? String
         {
-            return ["type": "tool", "name": name]
+            return forcedAllowed ? ["type": "tool", "name": name] : nil
         }
         return nil
     }

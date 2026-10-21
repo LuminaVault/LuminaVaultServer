@@ -15,7 +15,7 @@ Walk the local vault's `raw/` folder, extract every HTTP(S) hyperlink found in m
 ### 1. Read config
 
 ```bash
-cat ~/.claude/kb-config.json
+cat kb-config.json
 ```
 
 Required keys:
@@ -183,6 +183,6 @@ If `failed > 0`, list the failed URLs so the user knows what to investigate (aut
 
 - **Dedup contract**: client-side manifest (`vacuum_seen.json`) is primary. Server also dedupes via `VaultFile (tenant_id, source_url)` unique constraint, so re-POSTing the same URL accidentally is idempotent.
 - **To re-vacuum everything**: delete `.kb/vacuum_seen.json` and re-run. Server-side dedup keeps you safe from duplicate `VaultFile` rows.
-- **Token rotation**: when the JWT expires, update `auth_token` in `~/.claude/kb-config.json` and re-run.
+- **Token rotation**: when the JWT expires, update `auth_token` in `kb-config.json` and re-run.
 - **Why client-side, not server-cron**: the vault lives on the user's machine. The server has no filesystem read access. Mirrors the kb-ingest / kb-compile / kb-import pattern.
 - **iOS in-app surface**: the iOS app has Safari share-extension capture but no "Vacuum vault" button yet. That's a separate ticket targeting a future `/v1/capture/bulk` endpoint.

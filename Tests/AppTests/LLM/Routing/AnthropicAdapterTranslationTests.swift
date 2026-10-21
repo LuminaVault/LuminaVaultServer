@@ -275,6 +275,46 @@ struct AnthropicAdapterTranslationTests {
     }
 
     @Test
+    func `Opus 5_5 never gets disabled thinking and falls back to low effort`() throws {
+        let trial = AnthropicManagedTrialConfig(apiKey: "k", model: "claude-opus-5-5", thinking: .disabled)
+        let request = try Self.translate(
+            [
+                "max_tokens": 200,
+                "tools": [["type": "function", "function": ["name": "lookup"]]],
+                "messages": [
+                    ["role": "user", "content": "go"],
+                    ["role": "assistant", "tool_calls": [["id": "c", "type": "function", "function": ["name": "lookup", "arguments": "{}"]]]],
+                    ["role": "tool", "tool_call_id": "c", "content": "ok"],
+                ],
+            ],
+            options: AnthropicRequestOptions(managed: true, trial: trial)
+        )
+        #expect(request.body["thinking"] == nil)
+        #expect((request.body["output_config"] as? [String: Any])?["effort"] as? String == "low")
+    }
+
+    @Test
+    func `Opus 5_5 keeps a configured effort when thinking would be disabled`() throws {
+        let trial = AnthropicManagedTrialConfig(apiKey: "k", model: "claude-opus-5-5", effort: "max", thinking: .disabled)
+        let request = try Self.translate(
+            ["messages": [["role": "user", "content": "hi"]]],
+            options: AnthropicRequestOptions(managed: true, trial: trial)
+        )
+        #expect(request.body["thinking"] == nil)
+        #expect((request.body["output_config"] as? [String: Any])?["effort"] as? String == "max")
+    }
+
+    @Test
+    func `forced tool_choice is dropped to auto on Opus 5_5 and kept on Haiku 5_5`() {
+        let named: [String: Any] = ["type": "function", "function": ["name": "lookup"]]
+        #expect(AnthropicAdapter.translateToolChoice("required", model: "claude-opus-5-5") == nil)
+        #expect(AnthropicAdapter.translateToolChoice(named, model: "claude-opus-5-5") == nil)
+        #expect(AnthropicAdapter.translateToolChoice("none", model: "claude-opus-5-5")?["type"] as? String == "none")
+        #expect(AnthropicAdapter.translateToolChoice("required", model: "claude-haiku-5-5")?["type"] as? String == "any")
+        #expect(AnthropicAdapter.translateToolChoice(named, model: "claude-haiku-5-5")?["name"] as? String == "lookup")
+    }
+
+    @Test
     func `byok requests never get trial thinking or effort`() throws {
         let request = try Self.translate(
             ["model": "claude-opus-5-5", "max_tokens": 100, "messages": [["role": "user", "content": "hi"]]],

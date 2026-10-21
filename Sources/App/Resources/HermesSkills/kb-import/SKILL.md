@@ -13,7 +13,7 @@ Import an existing Obsidian vault into the knowledge base. Each note is inspecte
 ### 1. Read Config
 
 ```bash
-cat ~/.claude/kb-config.json
+cat kb-config.json
 ```
 
 Extract `kb_path`. Expand `~` to the actual home directory path.
