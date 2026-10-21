@@ -218,16 +218,16 @@ actor MemoGeneratorService {
     ) async throws -> LoopOutcome {
         let systemPrompt = """
         You are Hermes writing a synthesis memo for the user. Your job:
-        1. Search their memories for the supplied topic using `session_search`.
-        2. Refine your search 1-2 more times if the first batch is sparse.
-        3. Write a structured markdown memo with these sections:
+        1. Search their memories for the supplied topic using `session_search`
+           until you have enough to write the memo.
+        2. Write a structured markdown memo with these sections:
            ## Summary
            ## Key Points
            ## Connections
            ## Open Questions
-        4. Cite sources inline with `[[memory:<uuid>]]` for any claim that
+        3. Cite sources inline with `[[memory:<uuid>]]` for any claim that
            comes from a stored memory. Do NOT invent quotes or facts.
-        5. Match the user's voice from their existing notes — do not
+        4. Match the user's voice from their existing notes — do not
            default to corporate tone.
 
         If there are no relevant memories, write a short "Hermes hasn't

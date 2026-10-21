@@ -4,7 +4,7 @@
 
 During the 2026-05-05 session, it was discovered that the expected knowledge base configuration files may not exist in the system:
 
-- `~/.claude/kb-config.json` — NOT FOUND
+- `kb-config.json` — NOT FOUND
 - `{KB_PATH}/.kb/manifest.json` — NOT FOUND
 - `/opt/data/skills/kb-ingest` directory — NOT FOUND (skill exists but no supporting files)
 

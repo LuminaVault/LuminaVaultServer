@@ -13,7 +13,7 @@ Render wiki content as a Marp slideshow or matplotlib chart. Supports two format
 ### 1. Read Config
 
 ```bash
-cat ~/.claude/kb-config.json
+cat kb-config.json
 ```
 
 Extract `kb_path`. Expand `~` to the actual home directory path.
