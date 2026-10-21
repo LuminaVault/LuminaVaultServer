@@ -3563,6 +3563,35 @@ func buildRouter(
             logger: Logger(label: "lv.learned.digest")
         ))
     }
+    // Wave 5 — the opt-in pre-meeting brief. One embedding call per event,
+    // no LLM. `meeting.brief.maxDistance` is the similarity floor (default
+    // 0.40, stricter than "connects to"); `meetingBrief.enabled=false` stops
+    // the scheduler. Exempt from the one-a-day proactive budget.
+    let meetingBriefService = MeetingBriefService(
+        fluent: services.fluent,
+        embeddings: embeddingService,
+        search: hybridMemorySearch,
+        maxDistance: Float(reader.double(
+            forKey: "meeting.brief.maxDistance",
+            default: Double(MeetingBriefService.defaultMaxDistance)
+        ))
+    )
+    if fluentEnabled, lvEnvironment != "test",
+       reader.bool(forKey: ConfigKey("meetingBrief.enabled"), default: true)
+    {
+        managedServices.append(MeetingBriefScheduler(
+            fluent: services.fluent,
+            push: pushService,
+            briefs: meetingBriefService,
+            logger: Logger(label: "lv.meeting.brief")
+        ))
+    }
+    // Matching live costs an embedding, so it shares the query bucket.
+    let meetingBriefGroup = router.group("/v1/calendar")
+        .add(middleware: jwtAuthenticator)
+        .add(middleware: RateLimitMiddleware(policy: .queryByUser, storage: rateLimitStorage))
+    MeetingBriefController(service: meetingBriefService).addRoutes(to: meetingBriefGroup)
+
     let skillsGroup = router.group("/v1/skills")
         .add(middleware: jwtAuthenticator)
         .add(middleware: RateLimitMiddleware(policy: .skillRunByUser, storage: rateLimitStorage))

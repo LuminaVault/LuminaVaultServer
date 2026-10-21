@@ -1070,6 +1070,9 @@ paths:
         Hermes tool reads in the background. Consent-gated on the `calendar`
         domain. Upsert key is `(tenant_id, source, external_id)`; last-writer-wins
         on `remoteUpdatedAt`. Cancelled events are tombstoned, not deleted.
+        `attendees` replaces the stored attendees when present (an empty array
+        clears them) and leaves them alone when absent, so an older client
+        does not wipe them.
       requestBody:
         required: true
         content:
@@ -7162,6 +7165,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
+  /v1/calendar/events/{id}/brief:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The calendar event id (`CalendarEventDTO.id`, the id in `luminavault://meeting/<eventId>`).
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Calendar]
+      operationId: calendarEventBrief
+      summary: The notes that bear on one upcoming meeting (pre-meeting brief).
+      description: |
+        The event, the caller's notes that match it, and one line on why.
+        Matching embeds the event's title, attendee names and notes once and
+        keeps only notes within the cosine-distance floor
+        (`meeting.brief.maxDistance`, default 0.40 — stricter than "connects
+        to"), nearest first, at most five, never rejected ones. When the
+        opt-in pre-meeting push went out for this event, these are the notes
+        it counted (minus any rejected or deleted since); otherwise they are
+        matched now. `memories` is empty when nothing passes the floor.
+
+        The push (opt-in via `meetingBriefEnabled` on
+        `PUT /v1/me/apns-categories`, off by default) goes out 25–35 minutes
+        before a timed, non-cancelled event, only when at least one note
+        passes the floor: `passive`, `aps.category` `meeting`, thread
+        `meeting`, deep link `luminavault://meeting/<eventId>`. It is exempt
+        from the one-a-day proactive push budget.
+      responses:
+        '200':
+          description: The brief.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingBriefResponse' }
+        '400':
+          description: The id is not a UUID.
+        '404':
+          description: No such event in the caller's calendar.
+
   /v1/calendar/oauth/callback:
     get:
       tags: [Calendar]
@@ -9327,6 +9368,19 @@ components:
         status: { type: string, description: '"confirmed" | "cancelled"; cancelled rows are tombstoned.' }
         organizer: { type: string }
         remoteUpdatedAt: { type: string, format: date-time, description: EventKit lastModifiedDate — drives last-writer-wins. }
+        attendees:
+          type: array
+          description: >-
+            EventKit attendees (EKParticipant name and email). Absent leaves
+            the stored attendees unchanged; an empty array clears them. At most
+            100 are kept; an attendee with neither name nor email is skipped.
+          items: { $ref: '#/components/schemas/CalendarAttendeeDTO' }
+
+    CalendarAttendeeDTO:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
 
     AppleCalendarSyncRequest:
       type: object
@@ -9718,6 +9772,12 @@ components:
         runCompletedEnabled:
           type: boolean
           description: Phase 1 `runCompleted` pushes — the terminal banner for a run.
+        meetingBriefEnabled:
+          type: boolean
+          description: >-
+            The pre-meeting brief push. Opt-in: false unless the user turned
+            it on. Always sent by this server; a client should read an absent
+            value as false.
 
     APNSCategoryPrefsPutRequest:
       type: object
@@ -9730,6 +9790,7 @@ components:
         digestEnabled: { type: boolean }
         approvalEnabled: { type: boolean }
         runCompletedEnabled: { type: boolean }
+        meetingBriefEnabled: { type: boolean, description: Turns the opt-in pre-meeting brief push on or off. }
 
     # ── Sessions (HER-245 / HER-259) ──
 
@@ -10618,6 +10679,43 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/RelatedMemoryDTO' }
+
+    MeetingBriefEventDTO:
+      type: object
+      required: [id, title, startsAt, endsAt, attendees]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        location: { type: string }
+        attendees:
+          type: array
+          items: { $ref: '#/components/schemas/CalendarAttendeeDTO' }
+    MeetingBriefMemoryDTO:
+      type: object
+      required: [id, snippet, createdAt, similarity]
+      properties:
+        id: { type: string, format: uuid }
+        snippet: { type: string, description: 'First ~160 characters, one line.' }
+        kind: { type: string, description: 'Raw memory kind (preference, decision, fact, note, …).' }
+        createdAt: { type: string, format: date-time }
+        similarity: { type: number, format: double, minimum: 0, maximum: 1, description: 'Cosine similarity.' }
+    MeetingBriefResponse:
+      type: object
+      required: [event, memories, why]
+      properties:
+        event: { $ref: '#/components/schemas/MeetingBriefEventDTO' }
+        memories:
+          type: array
+          description: Nearest first, at most five. Empty when nothing passes the floor.
+          items: { $ref: '#/components/schemas/MeetingBriefMemoryDTO' }
+        why:
+          type: string
+          description: >-
+            Deterministic: "You mentioned Ana in 3 notes" when an attendee is
+            named in the notes, else "3 notes match this meeting", or
+            "Nothing in your notes matches this meeting yet".
 
     RecapTotalsDTO:
       type: object

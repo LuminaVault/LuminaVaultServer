@@ -2,7 +2,8 @@ import FluentKit
 import Foundation
 
 /// HER-179 — per-tenant APNS category opt-out. Schema in M43.
-/// Absence of a row means all categories enabled.
+/// Absence of a row means all categories enabled, except the opt-in
+/// meeting brief, which is off.
 final class ApnsCategoryPrefs: Model, @unchecked Sendable {
     static let schema = "apns_category_prefs"
 
@@ -13,6 +14,8 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
     /// Phase 1 (M119) — Hermes run pushes: tool-call approvals and completions.
     @Field(key: "approval_enabled") var approvalEnabled: Bool
     @Field(key: "run_completed_enabled") var runCompletedEnabled: Bool
+    /// M148 — the pre-meeting brief. Opt-in: the column defaults to FALSE.
+    @Field(key: "meeting_brief_enabled") var meetingBriefEnabled: Bool
     @Timestamp(key: "updated_at", on: .update) var updatedAt: Date?
 
     init() {}
@@ -23,7 +26,8 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
         nudgeEnabled: Bool = true,
         digestEnabled: Bool = true,
         approvalEnabled: Bool = true,
-        runCompletedEnabled: Bool = true
+        runCompletedEnabled: Bool = true,
+        meetingBriefEnabled: Bool = false
     ) {
         id = tenantID
         self.chatEnabled = chatEnabled
@@ -31,5 +35,6 @@ final class ApnsCategoryPrefs: Model, @unchecked Sendable {
         self.digestEnabled = digestEnabled
         self.approvalEnabled = approvalEnabled
         self.runCompletedEnabled = runCompletedEnabled
+        self.meetingBriefEnabled = meetingBriefEnabled
     }
 }
