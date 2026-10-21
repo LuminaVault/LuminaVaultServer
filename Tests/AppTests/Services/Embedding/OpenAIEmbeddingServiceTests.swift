@@ -106,6 +106,47 @@ struct OpenAIEmbeddingServiceTests {
     }
 
     @Test
+    func `input over the character cap is truncated instead of sent whole`() async throws {
+        nonisolated(unsafe) var captured: URLRequest?
+        StubProtocol.handler = { req in
+            captured = req
+            let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, okPayload())
+        }
+        defer { StubProtocol.handler = nil }
+
+        let svc = try OpenAIEmbeddingService(
+            apiKey: "sk",
+            baseURL: #require(URL(string: "https://api.example.com")),
+            maxInputCharacters: 10,
+            session: makeSession()
+        )
+        _ = try await svc.embed(String(repeating: "a", count: 25), tenantID: UUID())
+
+        let req = try #require(captured)
+        let data: Data = {
+            if let d = req.httpBody {
+                return d
+            }
+            guard let s = req.httpBodyStream else { return Data() }
+            s.open(); defer { s.close() }
+            var out = Data()
+            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
+            defer { buf.deallocate() }
+            while s.hasBytesAvailable {
+                let n = s.read(buf, maxLength: 4096)
+                if n <= 0 {
+                    break
+                }
+                out.append(buf, count: n)
+            }
+            return out
+        }()
+        let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        #expect(decoded["input"] as? String == String(repeating: "a", count: 10))
+    }
+
+    @Test
     func `missing API key throws .permanent(.missingAPIKey)`() async {
         let svc = OpenAIEmbeddingService(apiKey: "", session: makeSession())
         await #expect(throws: EmbeddingProviderError.self) {

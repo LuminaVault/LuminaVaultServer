@@ -10,6 +10,10 @@ struct EmbeddingKindAndErrorTests {
     func `kind init accepts canonical + aliased + case-insensitive inputs`() {
         #expect(EmbeddingProviderKind(rawConfigValue: "openai") == .openai)
         #expect(EmbeddingProviderKind(rawConfigValue: "OpenAI") == .openai)
+        #expect(EmbeddingProviderKind(rawConfigValue: "openrouter") == .openRouter)
+        #expect(EmbeddingProviderKind(rawConfigValue: "OpenRouter") == .openRouter)
+        #expect(EmbeddingProviderKind(rawConfigValue: "open_router") == .openRouter)
+        #expect(EmbeddingProviderKind(rawConfigValue: "open-router") == .openRouter)
         #expect(EmbeddingProviderKind(rawConfigValue: "  nomic  ") == .nomic)
         #expect(EmbeddingProviderKind(rawConfigValue: "hermesLocal") == .hermesLocal)
         #expect(EmbeddingProviderKind(rawConfigValue: "hermes_local") == .hermesLocal)

@@ -1926,7 +1926,7 @@ func buildRouter(
     }
 
     // HER-134 — text-embedding registry. Selectable provider via
-    // `EMBEDDING_PROVIDER` env (openai|hermesLocal|nomic|deterministic),
+    // `EMBEDDING_PROVIDER` env (openai|openrouter|hermesLocal|nomic|deterministic),
     // optional fallback chain via `EMBEDDING_FALLBACK_CHAIN`, monthly per-
     // tenant token cap via `EMBEDDING_MONTHLY_TOKEN_CAP_DEFAULT`. The
     // returned `active` is already wrapped in the usage tracker + fallback
@@ -1957,7 +1957,10 @@ func buildRouter(
                 OpenAIEmbeddingService(apiKey: apiKey, baseURL: openaiBase, logger: Logger(label: "lv.embedding.openai.byok"))
             case .nomic:
                 NomicEmbeddingService(apiKey: apiKey, logger: Logger(label: "lv.embedding.nomic.byok"))
-            case .hermesLocal, .deterministic:
+            // Not BYO-keyable yet: the plugin asks for an OpenAI or Nomic key,
+            // and an OpenAI key sent to OpenRouter is a 401 on every embed.
+            // BYO tenants fall through to the platform OpenRouter key instead.
+            case .openRouter, .hermesLocal, .deterministic:
                 nil
             }
         }
@@ -3030,6 +3033,26 @@ func buildRouter(
        reader.string(forKey: "graphLayout.workerEnabled", default: "true").lowercased() == "true"
     {
         managedServices.append(GraphLayoutWorker(fluent: services.fluent))
+    }
+
+    // One-shot re-embed of every stored text vector through the active
+    // provider (prod ran on the deterministic stub, so they are all noise).
+    // Off by default — each row is a paid embed call. Turn on with
+    // `EMBEDDING_REEMBED_ENABLED=true` after `EMBEDDING_PROVIDER` is real; the
+    // job refuses under deterministic and idles once every target is done.
+    if fluentEnabled, lvEnvironment != "test",
+       reader.bool(forKey: ConfigKey("embedding.reembed.enabled"), default: false)
+    {
+        managedServices.append(EmbeddingReembedService(
+            fluent: services.fluent,
+            embeddings: embeddingService,
+            activeKind: embeddingRegistry.activeKind,
+            configuration: EmbeddingReembedService.Configuration(
+                batchSize: reader.int(forKey: "embedding.reembed.batchSize", default: 50),
+                pause: .milliseconds(reader.int(forKey: "embedding.reembed.pauseMilliseconds", default: 2000))
+            ),
+            logger: Logger(label: "lv.embedding.reembed")
+        ))
     }
 
     // Cross-model context: final grounded answers are persisted first, then

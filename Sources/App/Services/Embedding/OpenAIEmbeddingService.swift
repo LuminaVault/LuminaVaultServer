@@ -9,14 +9,29 @@ import Logging
 /// `usage.total_tokens` field is captured by an out-of-band callback so
 /// `EmbeddingUsageTracker` can attribute spend per tenant without taking
 /// a dependency on the service here.
+///
+/// Also backs `EmbeddingProviderKind.openRouter`: OpenRouter serves the same
+/// wire format at `https://openrouter.ai/api/v1/embeddings` and accepts
+/// `dimensions` + `encoding_format`, so only the base URL, model slug
+/// (`openai/text-embedding-3-small`) and `providerLabel` differ.
 final class OpenAIEmbeddingService: EmbeddingService {
     static let defaultBaseURL = URL(string: "https://api.openai.com")!
     static let defaultModel = "text-embedding-3-small"
+    static let openRouterBaseURL = URL(string: "https://openrouter.ai/api")!
+    static let openRouterModel = "openai/text-embedding-3-small"
     static let targetDim = 1536
+    /// text-embedding-3-small rejects inputs over 8191 tokens with a 400.
+    /// Whole-document embeds (vault files, link captures) are not chunked, so
+    /// cap the input instead of failing the ingest. 16k characters stays under
+    /// the token limit even for token-dense text (code, non-Latin scripts); a
+    /// document vector is a coarse signal anyway — chunks carry the detail.
+    static let defaultMaxInputCharacters = 16000
 
     private let apiKey: String
     private let baseURL: URL
     private let model: String
+    private let providerLabel: String
+    private let maxInputCharacters: Int
     private let session: URLSession
     private let logger: Logger
     private let usageCallback: (@Sendable (UUID, Int64) async -> Void)?
@@ -25,6 +40,8 @@ final class OpenAIEmbeddingService: EmbeddingService {
         apiKey: String,
         baseURL: URL = OpenAIEmbeddingService.defaultBaseURL,
         model: String = OpenAIEmbeddingService.defaultModel,
+        providerLabel: String = "openai",
+        maxInputCharacters: Int = OpenAIEmbeddingService.defaultMaxInputCharacters,
         session: URLSession = .shared,
         logger: Logger = Logger(label: "lv.embedding.openai"),
         usageCallback: (@Sendable (UUID, Int64) async -> Void)? = nil
@@ -32,6 +49,8 @@ final class OpenAIEmbeddingService: EmbeddingService {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.model = model
+        self.providerLabel = providerLabel
+        self.maxInputCharacters = max(1, maxInputCharacters)
         self.session = session
         self.logger = logger
         self.usageCallback = usageCallback
@@ -46,24 +65,25 @@ final class OpenAIEmbeddingService: EmbeddingService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let body = RequestBody(model: model, input: text, dimensions: Self.targetDim, encodingFormat: "float")
+        let input = text.count > maxInputCharacters ? String(text.prefix(maxInputCharacters)) : text
+        let body = RequestBody(model: model, input: input, dimensions: Self.targetDim, encodingFormat: "float")
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw EmbeddingProviderError.network(reason: "openai: \(error.localizedDescription)")
+            throw EmbeddingProviderError.network(reason: "\(providerLabel): \(error.localizedDescription)")
         }
         guard let http = response as? HTTPURLResponse else {
-            throw EmbeddingProviderError.network(reason: "openai: non-http response")
+            throw EmbeddingProviderError.network(reason: "\(providerLabel): non-http response")
         }
         switch http.statusCode {
         case 200 ..< 300: break
         case 401, 403:
             throw EmbeddingProviderError.permanent(reason: .authRejected)
         case 408, 429, 500 ..< 600:
-            throw EmbeddingProviderError.transient(reason: "openai http \(http.statusCode)")
+            throw EmbeddingProviderError.transient(reason: "\(providerLabel) http \(http.statusCode)")
         default:
             throw EmbeddingProviderError.permanent(reason: .requestRejected)
         }
