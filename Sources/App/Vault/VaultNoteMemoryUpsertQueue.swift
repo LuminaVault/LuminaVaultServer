@@ -80,7 +80,11 @@ actor VaultNoteMemoryUpsertQueue {
         do {
             let data = try Data(contentsOf: job.fileURL)
             guard let content = String(data: data, encoding: .utf8), !content.isEmpty else { return }
-            let embedding = try await embeddings.embed(content, tenantID: job.tenantID)
+            // No retry here: a provider failure writes the memory without a
+            // vector and leaves it to the heal pass.
+            let embedding = try await embeddings.embedForWrite(
+                content, tenantID: job.tenantID, operation: "vault.noteQueue", logger: logger
+            )
             if let existingMemID = try await memories.idBySourceVaultFileID(
                 tenantID: job.tenantID,
                 sourceVaultFileID: job.sourceVaultFileID

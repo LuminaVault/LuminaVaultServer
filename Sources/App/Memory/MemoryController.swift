@@ -211,8 +211,10 @@ struct MemoryController {
         // replied in plain text and never emitted the tool call, 502-ing every
         // text/photo capture ("hermes did not call memory_upsert"). Saving a
         // note is mechanical (embed + insert); the agent loop only added
-        // latency and a failure mode.
-        let embedding = try await embeddings.embed(content, tenantID: tenantID)
+        // latency and a failure mode. For the same reason an embedding
+        // provider failure saves the note without a vector (the heal pass
+        // fills it in) instead of a 500 that loses it.
+        let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "memory.upsert")
         let memory = try await repository.create(
             tenantID: tenantID,
             content: content,
@@ -603,7 +605,7 @@ struct MemoryController {
             guard !content.isEmpty else {
                 throw HTTPError(.badRequest, message: "content cannot be empty")
             }
-            let embedding = try await embeddings.embed(content, tenantID: tenantID)
+            let embedding = try await embeddings.embedForWrite(content, tenantID: tenantID, operation: "memory.patch")
             let updated = try await repository.updateContent(
                 tenantID: tenantID,
                 id: id,

@@ -63,9 +63,14 @@ struct DocumentChunkIndexer: Sendable {
             tenantID: tenantID,
             path: sourcePath ?? memoryID.uuidString
         )
-        let vectors = try await embeddings.embedBatch(
+        // A provider failure stores the chunks without vectors instead of
+        // dropping them: the lexical arm still finds them, with citations, and
+        // the heal pass in `EmbeddingReembedService` embeds them later.
+        let vectors = try await embeddings.embedBatchForWrite(
             documentChunks.map(\.text),
-            tenantID: tenantID
+            tenantID: tenantID,
+            operation: "chunk.index",
+            logger: logger
         )
 
         try await chunks.replaceChunks(

@@ -21,10 +21,12 @@ struct ChatGrounding: Sendable {
     /// (`chat.retrieval.maxDistance`) because it depends on the embedder.
     static let defaultMaxDistance: Float = 0.6
 
+    /// A nil `queryEmbedding` (the provider could not embed the turn) grounds
+    /// on lexical hits only, which `relevant` keeps by their lexical score.
     func retrieve(
         tenantID: UUID,
         query: String,
-        queryEmbedding: [Float],
+        queryEmbedding: [Float]?,
         limit: Int
     ) async throws -> [MemorySearchResult] {
         // Ask for more than we need: the floor removes some of them.
@@ -36,7 +38,9 @@ struct ChatGrounding: Sendable {
                 limit: limit * 2
             )
         } else {
-            try await memories.semanticSearch(tenantID: tenantID, queryEmbedding: queryEmbedding, limit: limit * 2)
+            try await memories.searchDocuments(
+                tenantID: tenantID, query: query, queryEmbedding: queryEmbedding, limit: limit * 2
+            )
         }
         return Array(Self.relevant(candidates, maxDistance: maxDistance).prefix(limit))
     }

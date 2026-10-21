@@ -217,4 +217,75 @@ struct OpenAIEmbeddingServiceTests {
         #expect(captured?.0 == tenantID)
         #expect(captured?.1 == 42)
     }
+
+    private func failure(status: Int, body: String) async throws -> EmbeddingProviderError {
+        StubProtocol.handler = { req in
+            let resp = HTTPURLResponse(url: req.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (resp, Data(body.utf8))
+        }
+        defer { StubProtocol.handler = nil }
+        let svc = try OpenAIEmbeddingService(
+            apiKey: "sk-test",
+            baseURL: #require(URL(string: "https://api.example.com")),
+            providerLabel: "openrouter",
+            session: makeSession()
+        )
+        do {
+            _ = try await svc.embed("x", tenantID: UUID())
+        } catch let e as EmbeddingProviderError {
+            return e
+        }
+        Issue.record("expected an EmbeddingProviderError")
+        throw CancellationError()
+    }
+
+    @Test
+    func `HTTP 402 (OpenRouter out of credit) → .permanent(.paymentRequired) with status and message`() async throws {
+        // The body OpenRouter sends when the balance is empty.
+        let e = try await failure(
+            status: 402,
+            body: #"{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}"#
+        )
+        guard case let .permanent(reason, response) = e else {
+            Issue.record("expected permanent, got \(e)")
+            return
+        }
+        #expect(reason == .paymentRequired)
+        #expect(response?.status == 402)
+        #expect(response?.message?.hasPrefix("Insufficient credits.") == true)
+        #expect(!e.isRecoverable)
+        #expect(e.isProviderUnavailable)
+        #expect(e.description.contains(#"reason=paymentRequired http=402 msg="Insufficient credits."#))
+    }
+
+    @Test
+    func `HTTP 400 → .permanent(.requestRejected), message truncated and key-shaped tokens redacted`() async throws {
+        let long = String(repeating: "too long ", count: 60)
+        let e = try await failure(status: 400, body: #"{"error":{"message":"Bad key sk-or-v1-abc123 \#(long)"}}"#)
+        guard case let .permanent(reason, response) = e else {
+            Issue.record("expected permanent, got \(e)")
+            return
+        }
+        #expect(reason == .requestRejected)
+        #expect(response?.status == 400)
+        let message = try #require(response?.message)
+        #expect(!message.contains("sk-or"))
+        #expect(message.contains("[redacted]"))
+        #expect(message.count <= EmbeddingProviderError.ProviderResponse.maxMessageLength + 1)
+        // A bad input is not a provider outage.
+        #expect(!e.isProviderUnavailable)
+    }
+
+    @Test
+    func `HTTP 503 → .transient carrying the status`() async throws {
+        let e = try await failure(status: 503, body: "upstream unavailable")
+        guard case let .transient(_, response) = e else {
+            Issue.record("expected transient, got \(e)")
+            return
+        }
+        #expect(response?.status == 503)
+        #expect(response?.message == "upstream unavailable")
+        #expect(e.isRecoverable)
+        #expect(e.isProviderUnavailable)
+    }
 }

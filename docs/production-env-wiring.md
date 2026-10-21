@@ -58,6 +58,18 @@ Switching the provider only fixes rows written afterwards. `EMBEDDING_REEMBED_EN
 
 Progress: `SELECT * FROM embedding_reembed_progress;` and the `lv.embedding.reembed` logger (per-target summary at info, per-batch at debug). The flag can be left on after completion; turning it off is tidier.
 
+**When the provider fails, captures still save.** An embed that fails after the fallback chain (OpenRouter's `402 Insufficient credits`, an outage, a bad key) no longer fails the request: the memory (and its chunks) is saved with `embedding = NULL`, logged by `lv.embedding.degraded` as `embedding.degraded op=memory.upsert …`, and search falls back to full-text (`content_tsv`) for a query that cannot be embedded. The provider's status and message are in the log (`embedding permanent failure: provider=openRouter reason=paymentRequired http=402 msg="Insufficient credits…"`); a 402 is logged at **error**, so the Loki error-rate alert fires on an empty balance.
+
+The NULLs are filled in by the **heal pass** in the same service, on by default whenever the provider is not `deterministic` (independent of `EMBEDDING_REEMBED_ENABLED`; with the re-embed on, it starts once the re-embed is complete):
+
+| Env | Default | |
+|---|---|---|
+| `EMBEDDING_HEAL_ENABLED` | `true` | `false` turns it off |
+| `EMBEDDING_HEAL_INTERVAL_MINUTES` | `10` | wait between passes once caught up |
+| `EMBEDDING_HEAL_MAX_BACKOFF_MINUTES` | `60` | ceiling while the provider refuses |
+
+Each pass walks `memories` and `memory_chunks` rows with a NULL embedding (batch size and pause as above) to the end, then waits the interval. A provider-wide failure ends the pass after that single call, and the next probe waits interval × 2ⁿ up to the ceiling, so a 402ing provider sees one request per window. Logger: `lv.embedding.reembed` (`embedding.heal …`). Rows still waiting: `SELECT count(*) FROM memories WHERE embedding IS NULL;`.
+
 Verify after deploy: the boot log says `active=openRouter`; capture a note, ask a related question in chat, confirm the recall is topically relevant (not random).
 
 **Then recalibrate the distance floors.** `memory.related.maxDistance` (0.45, `MEMORY_RELATED_MAX_DISTANCE`) and `meeting.brief.maxDistance` (0.40, `MEETING_BRIEF_MAX_DISTANCE`) were picked without ever seeing a real vector — production has only had hash noise. After the re-embed completes, sample real pairs of notes (related and unrelated) and check both floors before trusting "related" and meeting briefs; either floor may need to move.

@@ -37,7 +37,9 @@ struct MemoryChunkRepository {
     ///
     /// `embeddings` is positional — index `i` is the vector for `chunks[i]`.
     /// A count mismatch is a programming error and throws rather than silently
-    /// storing chunks with no vector.
+    /// storing chunks with no vector. A nil entry is a deliberate NULL: the
+    /// provider failed, the chunk is still found lexically, and the heal pass
+    /// in `EmbeddingReembedService` embeds it later.
     func replaceChunks(
         tenantID: UUID,
         memoryID: UUID,
@@ -46,7 +48,7 @@ struct MemoryChunkRepository {
         spaceID: UUID?,
         sourcePath: String?,
         chunks: [DocumentChunk],
-        embeddings: [[Float]]
+        embeddings: [[Float]?]
     ) async throws {
         guard chunks.count == embeddings.count else {
             throw HTTPError(.internalServerError, message: "chunk/embedding count mismatch")
@@ -66,7 +68,7 @@ struct MemoryChunkRepository {
                     ordinal: chunk.ordinal,
                     contentSHA256: chunk.contentSHA256
                 )
-                let vector = MemoryRepository.formatVector(embeddings[index])
+                let vector = MemoryRepository.vectorLiteral(embeddings[index])
                 let headingPathJSON = Self.encodeHeadingPath(chunk.headingPath)
 
                 try await tx.raw("""
@@ -79,7 +81,7 @@ struct MemoryChunkRepository {
                     \(bind: vaultFileID), \(bind: spaceID), \(bind: sourcePath), \(bind: chunk.ordinal),
                     \(bind: headingPathJSON)::jsonb, \(bind: chunk.startLine), \(bind: chunk.endLine),
                     \(bind: chunk.text), \(bind: chunk.contentSHA256),
-                    \(unsafeRaw: "'\(vector)'::vector"), NOW()
+                    \(unsafeRaw: vector), NOW()
                 )
                 ON CONFLICT (chunk_id) DO NOTHING
                 """).run()
@@ -132,10 +134,13 @@ struct MemoryChunkRepository {
     ///
     /// Read-only. No hit-count bump, no analytics insert — see
     /// `MemoryRepository.semanticSearch` for the side-effecting variant.
+    ///
+    /// A nil `queryEmbedding` runs the lexical arm alone. Chunks stored with a
+    /// NULL embedding are never in the dense arm but are in the lexical one.
     func hybridSearch(
         tenantID: UUID,
         query: String,
-        queryEmbedding: [Float],
+        queryEmbedding: [Float]?,
         limit: Int,
         spaceID: UUID? = nil
     ) async throws -> [MemorySearchResult] {
@@ -162,7 +167,7 @@ struct MemoryChunkRepository {
     private func hybridSearchRaw(
         tenantID: UUID,
         query: String,
-        queryEmbedding: [Float],
+        queryEmbedding: [Float]?,
         limit: Int,
         spaceID: UUID?
     ) async throws -> [MemorySearchResult] {
@@ -171,8 +176,11 @@ struct MemoryChunkRepository {
         }
         let limit = max(1, limit)
         let depth = limit * Self.armDepthMultiplier
-        let vector = MemoryRepository.formatVector(queryEmbedding)
-        let distance = "embedding <=> '\(vector)'::vector"
+        // No query vector (the provider failed to embed the query): the dense
+        // arm selects nothing and the fusion is lexical-only.
+        let distance = queryEmbedding.map { "embedding <=> '\(MemoryRepository.formatVector($0))'::vector" }
+            ?? "NULL::float8"
+        let denseGate = queryEmbedding == nil ? "AND FALSE" : ""
 
         let rows = try await sql.raw("""
         WITH tsq AS (
@@ -186,6 +194,7 @@ struct MemoryChunkRepository {
             WHERE tenant_id = \(bind: tenantID)
               AND (\(bind: spaceID) IS NULL OR space_id = \(bind: spaceID))
               AND embedding IS NOT NULL
+              \(unsafeRaw: denseGate)
             ORDER BY \(unsafeRaw: distance) ASC
             LIMIT \(bind: depth)
         ),

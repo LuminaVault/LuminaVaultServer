@@ -338,7 +338,9 @@ actor MemoryCompileService {
                 logger.info("kb-compile skipped rejected memory hash for tenant \(tenantID)")
                 continue
             }
-            let embedding = try await embeddings.embed(capped, tenantID: tenantID)
+            // The extraction already cost an LLM run; keep what it learned
+            // even when the embedder is down (the heal pass embeds it later).
+            let embedding = try await embeddings.embedForWrite(capped, tenantID: tenantID, operation: "kb.compile", logger: logger)
             let saved = try await memories.create(
                 tenantID: tenantID,
                 content: capped,

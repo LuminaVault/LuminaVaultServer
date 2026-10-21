@@ -118,7 +118,8 @@ actor HealthCorrelationService {
         }
 
         // 5) Persist as a tagged memory so it shows up in semantic search.
-        let embedding = try await embeddings.embed(trimmed, tenantID: tenantID)
+        // The synthesis was paid for; keep it even if the embedder is down.
+        let embedding = try await embeddings.embedForWrite(trimmed, tenantID: tenantID, operation: "health.correlation", logger: logger)
         let memory = try await memories.create(
             tenantID: tenantID,
             content: trimmed,

@@ -147,9 +147,10 @@ struct QueryController {
 
         // Retrieve up-front. If retrieval itself fails, surface a 502
         // through the normal HTTP path — easier to debug than a
-        // partial SSE stream.
+        // partial SSE stream. An embedding provider failure is not a
+        // retrieval failure: the search runs lexically instead.
         let queryEmbedding = try await loggedStage("query.embed", logger: log) {
-            try await embeddings.embed(userQuery, tenantID: tenantID)
+            try await embeddings.embedForQuery(userQuery, tenantID: tenantID, operation: "query", logger: log)
         }
         let hits = try await loggedStage("query.search", logger: log) {
             if let hybridSearch {
@@ -163,8 +164,9 @@ struct QueryController {
                     limit: limit
                 )
             }
-            return try await memories.semanticSearch(
+            return try await memories.searchDocuments(
                 tenantID: tenantID,
+                query: userQuery,
                 queryEmbedding: queryEmbedding,
                 limit: limit
             )

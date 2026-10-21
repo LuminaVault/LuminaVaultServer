@@ -38,10 +38,17 @@ final class EmbeddingFallbackService: EmbeddingService {
             } catch let err as EmbeddingProviderError {
                 lastError = err
                 if !err.isRecoverable {
-                    logger.warning("embedding permanent failure: provider=\(kind.rawValue) err=\(err)")
+                    // An empty balance fails every embed until someone tops
+                    // up, so it is an error (the Loki error-rate alert sees
+                    // it), not one more warning.
+                    if case .permanent(reason: .paymentRequired, _) = err {
+                        logger.error("embedding permanent failure: provider=\(kind.rawValue) \(err)")
+                    } else {
+                        logger.warning("embedding permanent failure: provider=\(kind.rawValue) \(err)")
+                    }
                     throw err
                 }
-                logger.warning("embedding recoverable failure: provider=\(kind.rawValue) err=\(err)")
+                logger.warning("embedding recoverable failure: provider=\(kind.rawValue) \(err)")
                 continue
             } catch {
                 lastError = error
