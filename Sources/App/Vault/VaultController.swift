@@ -79,6 +79,9 @@ struct VaultController {
     /// Suggests a Space for an unfiled note after upload. Nil (the default,
     /// and whenever `capture.autoFile.enabled` is off) means no suggestion.
     var captureFiling: CaptureFilingService?
+    /// Refuses the write when the data volume is nearly full (507). Nil in
+    /// test wirings that do not exercise it.
+    var diskSpaceGuard: DiskSpaceGuard?
 
     private static let defaultLimit = 50
     private static let maxLimit = 200
@@ -211,6 +214,7 @@ struct VaultController {
             throw HTTPError(.badRequest, message: "empty body")
         }
 
+        try diskSpaceGuard?.check(incomingBytes: Int64(data.count))
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let target = try Self.resolveInside(rawRoot: rawRoot, relative: safeRelative)

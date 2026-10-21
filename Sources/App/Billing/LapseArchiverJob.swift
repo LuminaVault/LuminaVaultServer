@@ -5,6 +5,7 @@ import HummingbirdFluent
 import Logging
 import LuminaVaultShared
 import ServiceLifecycle
+import SQLKit
 
 struct LapseArchiverSummary: Codable, ResponseEncodable {
     /// Paid subscriptions that ended. Distinct from `movedToFree`: only these
@@ -150,7 +151,14 @@ struct LapseArchiverJob {
         }
         let userID = try user.requireID()
         try deleteColdStorageVault(userID: userID)
-        try await user.delete(force: true, on: fluent.db())
+        // Same erasure as a user-requested deletion: the cascade from `users`
+        // misses a handful of tables (`TenantDataEraser` lists them).
+        try await fluent.db().transaction { tx in
+            if let sql = tx as? any SQLDatabase {
+                try await TenantDataEraser.erase(tenantID: userID, on: sql)
+            }
+            try await user.delete(force: true, on: tx)
+        }
         logger.warning("billing.user_hard_deleted", metadata: ["userID": .string(userID.uuidString)])
         return true
     }

@@ -3,6 +3,7 @@ import Foundation
 import Hummingbird
 import HummingbirdFluent
 import Logging
+import SQLKit
 
 /// HER-92: GDPR / CCPA account-deletion service.
 ///
@@ -11,14 +12,20 @@ import Logging
 ///      OR present a JWT whose `iat` is within `freshAuthWindow` (default 5 minutes).
 ///      OAuth-only users with no remembered password use the fresh-JWT path: log in
 ///      again immediately before calling DELETE.
-///   2. Drop the `users` row. Every child table has `ON DELETE CASCADE` on
-///      `users(id)`, so refresh_tokens, memories, hermes_profile, mfa_challenges,
-///      oauth_identities, vault_files, spaces, health_events, device_tokens,
-///      webauthn_credentials, password_reset_tokens, email_verification_tokens,
-///      and onboarding_state are wiped atomically.
+///   2. In one transaction: erase the tenant rows no cascade reaches
+///      (`TenantDataEraser` — agent rooms, the device command queue,
+///      idempotency replays, telemetry, spend buckets; billing records are
+///      anonymized, not deleted), then drop the `users` row. Every other
+///      per-tenant table has `ON DELETE CASCADE` on `users(id)` (refresh
+///      tokens, memories, hermes_profile, vault_files, spaces, …), so the
+///      delete wipes them atomically with the rest.
 ///   3. Soft-delete on-disk artifacts — rename `<vaultRoot>/tenants/<id>` and
-///      `<hermesDataRoot>/<hermesProfileID>` to `_deleted_<ts>_<id>` siblings.
-///      Operator cron erases anything older than 30 days.
+///      `<hermesDataRoot>/profiles/<hermesProfileID>` to `_deleted_<ts>_<id>` siblings,
+///      where `<ts>` is Unix seconds. `DeletedDataPurgeService` permanently
+///      removes them once older than `account.deletion.purgeAfterDays`
+///      (default 30); the window exists so an operator can recover from a
+///      mistaken deletion. A rename that fails is logged and the directory
+///      stays where it was — nothing purges it, so that log line needs a human.
 ///   4. Audit log — `tenantID` only. NEVER log the deleted user's email,
 ///      username, or any payload field (GDPR right-to-erasure includes audit
 ///      trails that re-leak the data).
@@ -52,13 +59,23 @@ struct AccountDeletionService {
             .first()?
             .hermesProfileID
 
-        // CASCADE drops every FK-owned row across 13 child tables.
-        try await user.delete(force: true, on: fluent.db())
+        try await fluent.db().transaction { tx in
+            guard let sql = tx as? any SQLDatabase else {
+                throw HTTPError(.internalServerError, message: "account deletion requires SQL")
+            }
+            try await TenantDataEraser.erase(tenantID: tenantID, on: sql)
+            // CASCADE drops every FK-owned row in the remaining child tables.
+            try await user.delete(force: true, on: tx)
+        }
 
-        let suffix = "_deleted_\(Int(now.timeIntervalSince1970))_\(tenantID.uuidString)"
+        let suffix = DeletedDataPurgeJob.directoryName(tenantID: tenantID, deletedAt: now)
         softRename(vaultPaths.tenantRoot(for: tenantID), siblingName: suffix)
-        if let hpid = hermesProfileID, !hpid.isEmpty {
-            let hermesDir = URL(fileURLWithPath: hermesDataRoot).appendingPathComponent(hpid)
+        // Profiles live under `<hermesDataRoot>/profiles/` (`HermesDataPathService`).
+        // This used to rename `<hermesDataRoot>/<id>`, which never exists, so
+        // Hermes data survived every deletion. The id is checked to be a plain
+        // name before it is joined onto a path.
+        if let hpid = hermesProfileID, DeletedDataPurgeJob.isSafeProfileName(hpid) {
+            let hermesDir = HermesDataPathService(hermesDataRoot: hermesDataRoot).profileDirectory(for: hpid)
             softRename(hermesDir, siblingName: suffix)
         }
 
@@ -95,8 +112,10 @@ struct AccountDeletionService {
         do {
             try fm.moveItem(at: url, to: target)
         } catch {
-            // Best-effort. We do not block the DB delete on a filesystem hiccup;
-            // the operator cron will catch orphan dirs separately.
+            // Best-effort. The DB rows are already gone and we do not fail the
+            // request on a filesystem hiccup — but the directory is left in
+            // place under its live name, which the purge job never touches.
+            // This error is the only signal; it needs an operator.
             logger.error(
                 "account.deletion.rename_failed",
                 metadata: ["path": .string(url.path), "error": .string("\(error)")]

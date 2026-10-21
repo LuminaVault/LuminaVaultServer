@@ -28,6 +28,8 @@ struct TodosController {
     let memories: MemoryRepository?
     let embeddings: (any EmbeddingService)?
     let logger: Logger
+    /// Refuses the write when the data volume is nearly full (507).
+    var diskSpaceGuard: DiskSpaceGuard?
 
     func addRoutes(to router: RouterGroup<AppRequestContext>) {
         router.get("", use: list)
@@ -81,6 +83,7 @@ struct TodosController {
         let safeRelative = try VaultController.sanitizePath("inbox/\(id.uuidString).md")
         let bytes = Data(title.utf8)
 
+        try diskSpaceGuard?.check(incomingBytes: Int64(bytes.count))
         try vaultPaths.ensureTenantDirectories(for: tenantID)
         let rawRoot = vaultPaths.rawDirectory(for: tenantID)
         let target = try VaultController.resolveInside(rawRoot: rawRoot, relative: safeRelative)

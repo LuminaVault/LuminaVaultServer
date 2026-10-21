@@ -273,6 +273,22 @@ func buildApplication(
             job: lapseArchiver,
             logger: Logger(label: "lv.billing.lapse-archiver")
         ))
+        // Account deletion only renames a tenant's directories; this is what
+        // actually erases them once the recovery window has passed.
+        appServices.append(DeletedDataPurgeService(
+            job: DeletedDataPurgeJob(
+                roots: DeletedDataPurgeJob.roots(
+                    vaultPaths: VaultPathService(rootPath: services.vaultRootPath),
+                    hermesDataRoot: services.hermesDataRoot
+                ),
+                retentionDays: reader.int(
+                    forKey: ConfigKey("account.deletion.purgeAfterDays"),
+                    default: DeletedDataPurgeJob.defaultRetentionDays
+                ),
+                logger: Logger(label: "lv.account.purge")
+            ),
+            logger: Logger(label: "lv.account.purge")
+        ))
     }
     if let otelServices {
         appServices.append(otelServices.metrics)
@@ -398,6 +414,24 @@ func buildRouter(
     let verifySender = makeEmailSender("lv.verify")
     let verifyGen = DefaultOTPCodeGenerator()
     let vaultPaths = VaultPathService(rootPath: services.vaultRootPath)
+    // The vault PVC is `local-path`: a directory on the node's root disk with
+    // no size of its own. Plan quotas go up to 1 TiB, so nothing else stops
+    // uploads from filling the disk and taking the whole node down. Every
+    // user-file write path below gets this guard (507 when it would cross a
+    // floor); the monitor logs once a minute while the volume is low.
+    let diskSpaceGuard = DiskSpaceGuard(
+        path: services.vaultRootPath,
+        minFreeBytes: Int64(reader.int(
+            forKey: ConfigKey("storage.minFreeBytes"),
+            default: Int(DiskSpaceGuard.defaultMinFreeBytes)
+        )),
+        minFreeRatio: reader.double(
+            forKey: ConfigKey("storage.minFreeRatio"),
+            default: DiskSpaceGuard.defaultMinFreeRatio
+        ),
+        logger: Logger(label: "lv.storage.disk")
+    )
+    managedServices.append(DiskSpaceMonitorService(guardrail: diskSpaceGuard))
     let hermesLogger = Logger(label: "lv.hermes")
     let hermesGateway: any HermesGateway = makeHermesGateway(
         kind: services.hermesGatewayKind,
@@ -2102,7 +2136,8 @@ func buildRouter(
         achievements: achievementsWorker,
         onboardingLatches: onboardingLatches,
         enrichmentService: capturingEnrichmentService,
-        logger: Logger(label: "lv.capture")
+        logger: Logger(label: "lv.capture"),
+        diskSpaceGuard: diskSpaceGuard
     )
     let captureController = CaptureController(service: linkCaptureService)
     // HER-274 — global kill-switch for the chat auto-save-link
@@ -2328,6 +2363,7 @@ func buildRouter(
         embeddings: embeddingService,
         vaultAccess: vaultAccessService
     )
+    vaultController.diskSpaceGuard = diskSpaceGuard
     // Off by default: each unfiled note costs one model call. Turned on per
     // deploy (CAPTURE_AUTOFILE_ENABLED) so the rollout is a deliberate step.
     if reader.string(forKey: "capture.autoFile.enabled", default: "false").lowercased() == "true" {
@@ -2624,7 +2660,8 @@ func buildRouter(
             ),
             enabled: reader.bool(forKey: ConfigKey("storage.quota.enabled"), default: true),
             logger: Logger(label: "lv.storage-quota")
-        )
+        ),
+        diskSpaceGuard: diskSpaceGuard
     )
     let ingestionController = MultimodalIngestionController(service: multimodalIngestionService, vaultAccess: vaultAccessService)
     ingestionController.addPublicSourceRoute(to: router)
@@ -2647,7 +2684,8 @@ func buildRouter(
             memories: makeMemoryRepository(),
             embeddings: embeddingService,
             logger: Logger(label: "lv.import.vault"),
-            chunkIndexer: chunkIndexer
+            chunkIndexer: chunkIndexer,
+            diskSpaceGuard: diskSpaceGuard
         )
     )
     vaultImportController.addRoutes(to: importGroup)
@@ -2762,7 +2800,8 @@ func buildRouter(
                     memories: makeMemoryRepository(),
                     embeddings: embeddingService,
                     logger: Logger(label: "lv.hermes-mirror.ingest"),
-                    chunkIndexer: chunkIndexer
+                    chunkIndexer: chunkIndexer,
+                    diskSpaceGuard: diskSpaceGuard
                 ),
                 compileController: memoryCompileController,
                 logger: Logger(label: "lv.hermes-mirror")
@@ -2990,7 +3029,8 @@ func buildRouter(
         vaultPaths: vaultPaths,
         memories: makeMemoryRepository(),
         embeddings: embeddingService,
-        logger: Logger(label: "lv.todos")
+        logger: Logger(label: "lv.todos"),
+        diskSpaceGuard: diskSpaceGuard
     )
     let todosGroup = router.group("/v1/todos").add(middleware: jwtAuthenticator)
     todosController.addRoutes(to: todosGroup)
