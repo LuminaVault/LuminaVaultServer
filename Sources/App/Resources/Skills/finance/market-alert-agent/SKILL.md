@@ -8,7 +8,6 @@ triggers:
   - daemon/service management
   - deployment (systemd/Docker)
 related_skills:
-  - cron-deployment
   - scheduled-reports
   - stock-trading
 ---

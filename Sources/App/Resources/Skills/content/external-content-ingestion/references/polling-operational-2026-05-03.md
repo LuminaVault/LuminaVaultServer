@@ -18,7 +18,7 @@ timeout 90s python3 /opt/data/home/.hermes/scripts/x_link_poller_v2.py 2>&1
 Observed timestamps:
 ```
 2026-05-03 20:08:23 — startup
-2026-05-03 20:08:23 — Discord 403 (missing Read Message History in 1498025894751768776)
+2026-05-03 20:08:23 — Discord 403 (missing Read Message History in YOUR_DISCORD_CHANNEL_ID)
 2026-05-03 20:08:27 — Telegram 409 (webhook active on bot 8708552435)
 2026-05-03 20:08:28 — Slack OK (no X URLs found)
 2026-05-03 20:08:28 — "Sleeping 300s before next poll cycle…" (timed out before sleep elapsed)
@@ -80,8 +80,8 @@ Ensures consistent state across users/cron contexts.
 
 Relevant env vars in `/opt/data/.env`:
 ```bash
-DISCORD_MONITOR_CHANNEL=1498025894751768776   # channel to poll (differs from default 1498030416496558150)
-DISCORD_HOME_CHANNEL=1498025894751768776      # for bot responses (unused by poller)
+DISCORD_MONITOR_CHANNEL=YOUR_DISCORD_CHANNEL_ID   # channel to poll (differs from default YOUR_DISCORD_CHANNEL_ID)
+DISCORD_HOME_CHANNEL=YOUR_DISCORD_CHANNEL_ID      # for bot responses (unused by poller)
 TELEGRAM_HOME_CHANNEL=476978568
 SLACK_HOME_CHANNEL=C0B0BDGEJTT
 ```

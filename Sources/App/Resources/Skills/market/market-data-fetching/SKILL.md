@@ -129,6 +129,5 @@ config = {
 - [Alpha Vantage API documentation](https://www.alphavantage.co/documentation)
 
 ## Related Skills
-- `cron-deployment` - For scheduling and delivering script output
 - `market-alert` - For market alerting logic
 - `linear` - For Linear board integrations

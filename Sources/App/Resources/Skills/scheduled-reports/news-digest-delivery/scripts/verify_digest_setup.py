@@ -20,7 +20,7 @@ HERMES_HOME = Path.home() / ".hermes"
 PRIMARY_SCRIPT_DIR = Path("/opt/data/home/.hermes/scripts")
 FALLBACK_SCRIPT_DIR = Path("/root/.hermes/home/.hermes/scripts")
 LOG_FILE = HERMES_HOME / "logs" / "news_digest_verify.log"
-DISCORD_CHANNEL_ID = "1498025894751768776"
+DISCORD_CHANNEL_ID = "YOUR_DISCORD_CHANNEL_ID"
 
 
 def log(msg, level="INFO"):

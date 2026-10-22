@@ -148,4 +148,3 @@ Edit `config.json` to customize:
 - **market-alert**: Conceptual framework for market alert systems
 - **stock-trading**: Portfolio management and price alerts
 - **scheduled-reports**: Automated report generation
-- **cron-deployment**: Scheduled task deployment

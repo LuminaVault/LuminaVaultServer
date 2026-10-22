@@ -383,7 +383,7 @@ Compile script must be case-insensitive to `Raw/` vs `raw/` vs `RAW` directories
 | `DISCORD_BOT_TOKEN` | For Discord polling | Bot token (Hermes daemon provides) |
 | `TELEGRAM_BOT_TOKEN` | For Telegram polling | Bot token |
 | `SLACK_BOT_TOKEN` | For Slack polling | Bot token (xoxb-...) |
-| `DISCORD_MONITOR_CHANNEL` | Discord channel ID to poll (default: `1498030416496558150`) |
+| `DISCORD_MONITOR_CHANNEL` | Discord channel ID to poll (default: `YOUR_DISCORD_CHANNEL_ID`) |
 | `TELEGRAM_HOME_CHANNEL` | Telegram chat ID (default: `476978568`) |
 | `SLACK_HOME_CHANNEL` | Slack channel/IM ID (default: `C0B0BDGEJTT`) |
 | `OPENROUTER_API_KEY` | Optional | Enables LLM classification |
@@ -396,7 +396,7 @@ Compile script must be case-insensitive to `Raw/` vs `raw/` vs `RAW` directories
 
 - **Demo script trap:** `/opt/data/scripts/multi_link_poller.py` is a DEMO/TEMPLATE that only processes `--urls` and prints \"platform polling not yet implemented\" when run without arguments. **Always use** `/opt/data/home/.hermes/scripts/x_link_poller_v2.py` for actual platform polling.
 - **Infinite-loop daemon behavior:** `x_link_poller_v2.py` runs as a persistent process with `while True: … time.sleep(300)` after each poll cycle. It does **not** accept `--limit` or one-shot flags. For cron/debug, either kill after one cycle or wrap with `timeout`. To stop, `kill` the process; the state file persists cursors so next run resumes correctly.
-- **Discord channel ID confusion:** There are two channel env vars: `DISCORD_HOME_CHANNEL` (for bot responses/notifications) and `DISCORD_MONITOR_CHANNEL` (the source channel to poll). These can be different. The poller uses `DISCORD_MONITOR_CHANNEL` (default `1498030416496558150`). If the bot has Read Message History on a different channel but not the monitor channel, polling fails with `403 Forbidden` even though the token is valid. Verify the bot can actually read the monitor channel.
+- **Discord channel ID confusion:** There are two channel env vars: `DISCORD_HOME_CHANNEL` (for bot responses/notifications) and `DISCORD_MONITOR_CHANNEL` (the source channel to poll). These can be different. The poller uses `DISCORD_MONITOR_CHANNEL` (default `YOUR_DISCORD_CHANNEL_ID`). If the bot has Read Message History on a different channel but not the monitor channel, polling fails with `403 Forbidden` even though the token is valid. Verify the bot can actually read the monitor channel.
 - **Telegram webhook conflict (409):** `getUpdates` long-poll fails if a webhook is active. Error: `Telegram 409 Conflict: Webhook is active. Long-poll and webhook cannot coexist.` Fix: `curl -X POST \"https://api.telegram.org/bot<TOKEN>/deleteWebhook\"`; ensure `TELEGRAM_WEBHOOK_URL` is unset in `.env`; verify bot is added to the target chat.
 - **Environment variable newlines:** `.env` files may store tokens with trailing newlines. When reading `.env` directly in subprocesses, strip values. Hermes daemon automatically strips before export.
 - **Discord permission error (403 Forbidden):** The bot token may be valid but the bot lacks **Read Message History** permission in the monitor channel. Error signature: `HTTP 403 on channel <id>: Bot needs 'Read Message History' permission`. Fix: grant the bot's role the permission at server and channel override levels; ensure bot role is above @everyone in role hierarchy.

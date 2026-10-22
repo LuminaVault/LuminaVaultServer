@@ -200,7 +200,7 @@ ls -lh /tmp/knowledge-graph-final.mp4
 - **Node.js version**: HyperFrames requires Node.js ≥22. Check with `node --version`.
 - **Performance**: For large graphs (>200 nodes), consider simplifying the visualization or increasing render quality.
 - **Permission issues**: If the rendered file is owned by a different user (e.g., `hermes`), use `sudo cp` or change permissions with `chmod 644 /tmp/knowledge-graph-final.mp4`.
-- **File transfer**: When copying from VPS to Mac, ensure you're running the command from the Mac, not the VPS. Use `rsync -avz hermes@78.46.192.73:/tmp/knowledge-graph-final.mp4 ~/Downloads/` from your Mac terminal.
+- **File transfer**: When copying from VPS to Mac, ensure you're running the command from the Mac, not the VPS. Use `rsync -avz <user>@<host>:/tmp/knowledge-graph-final.mp4 ~/Downloads/` from your Mac terminal.
 - **SSH authentication**: If key-based auth fails, use password authentication. Default password for `hermes` user: `Hermes2024!`.
 - **Docker containers**: If HyperFrames ran in Docker, copy the file out with `docker cp <container_id>:/tmp/knowledge-graph-final.mp4 /tmp/`.
 - **File not found as root**: If root can't list the file due to ownership, use `cp /tmp/knowledge-graph-final.mp4 /tmp/knowledge-graph-final-root-copy.mp4` then transfer the copy.

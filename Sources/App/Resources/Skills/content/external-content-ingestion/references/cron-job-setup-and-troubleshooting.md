@@ -88,8 +88,8 @@ exit $EXIT_CODE
 **Observed on:** Discord  
 **Symptoms:**
 ```
-[ERROR] HTTP 403 fetching https://discord.com/api/v10/channels/1498025894751768776/messages?limit=50: Forbidden
-[ERROR] Discord 403 Forbidden on channel 1498025894751768776. Bot needs 'Read Message History' permission in this channel.
+[ERROR] HTTP 403 fetching https://discord.com/api/v10/channels/YOUR_DISCORD_CHANNEL_ID/messages?limit=50: Forbidden
+[ERROR] Discord 403 Forbidden on channel YOUR_DISCORD_CHANNEL_ID. Bot needs 'Read Message History' permission in this channel.
 ```
 
 **Cause:** Discord bot token is valid but the bot lacks **Read Message History** permission in the target channel.
@@ -141,7 +141,7 @@ All tokens must be present in `/opt/data/.env` and sourced by the wrapper:
 - `DISCORD_BOT_TOKEN` — Discord bot token
 - `TELEGRAM_BOT_TOKEN` — Telegram bot token
 - `SLACK_BOT_TOKEN` — Slack bot token (xoxb-...)
-- `DISCORD_MONITOR_CHANNEL` — Channel ID to poll (default: `1498030416496558150`)
+- `DISCORD_MONITOR_CHANNEL` — Channel ID to poll (default: `YOUR_DISCORD_CHANNEL_ID`)
 - `TELEGRAM_HOME_CHANNEL` — Chat ID (default: `476978568`)
 - `SLACK_HOME_CHANNEL` — Channel/IM ID (default: `C0B0BDGEJTT`)
 - `OPENROUTER_API_KEY` — Optional; enables LLM classification (Claude Haiku)
@@ -151,6 +151,6 @@ All tokens must be present in `/opt/data/.env` and sourced by the wrapper:
 ## Current Channel Status (2026-05-03)
 | Platform | Channel ID | Status |
 |----------|-----------|--------|
-| Discord | `1498025894751768776` (monitor) | 403 — Read Message History permission missing |
+| Discord | `YOUR_DISCORD_CHANNEL_ID` (monitor) | 403 — Read Message History permission missing |
 | Telegram | `476978568` (home) | 409 — Webhook active; must delete before polling |
 | Slack | `C0B0BDGEJTT` (home) | OK — but no X links found in last scan |
