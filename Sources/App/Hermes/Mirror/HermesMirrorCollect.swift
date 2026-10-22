@@ -61,6 +61,14 @@ extension HermesMirrorService {
                 summary.jobs += 1
                 summary.inserted += result.inserted
                 summary.filesWritten += result.filesWritten
+            } catch let error as HermesMirrorTransportError where error.isTenantWide {
+                // No job on this box can be collected, so trying the rest
+                // only repeats the same failure once per job, every tick.
+                summary.unavailable = error.code
+                logger.debug("hermes mirror collect unavailable", metadata: [
+                    "tenant": .string(tenantID.uuidString), "error": "\(Self.describe(error))",
+                ])
+                break
             } catch {
                 summary.failed += 1
                 logger.warning("hermes mirror collect failed", metadata: [
@@ -108,6 +116,9 @@ extension HermesMirrorService {
         var inserted = 0
         var filesWritten = 0
         var failed = 0
+        /// Set when the pass stopped on a tenant-wide error (the error's
+        /// stable `code`); not counted in `failed`.
+        var unavailable: String?
     }
 
     // MARK: - One job

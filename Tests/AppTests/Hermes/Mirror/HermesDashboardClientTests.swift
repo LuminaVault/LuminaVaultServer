@@ -180,6 +180,21 @@ struct HermesDashboardClientTests {
     }
 
     @Test
+    func `jobRuns tells an unknown job from a missing runs route`() async throws {
+        let http = StubHermesHTTP()
+        http.respond("GET", "/api/cron/jobs/gone/runs", status: 404, json: #"{"detail":"Job not found"}"#)
+        // The gateway `api_server` has no `/api/cron/*`; its 404 is aiohttp's.
+        http.respond("GET", "/api/cron/jobs/digest/runs", status: 404, json: #"{"detail":"Not Found"}"#)
+        let client = makeClient(http)
+        await #expect(throws: HermesMirrorTransportError.notFound("job:gone")) {
+            try await client.jobRuns(jobID: "gone", limit: 5)
+        }
+        await #expect(throws: HermesMirrorTransportError.unsupported("jobRuns")) {
+            try await client.jobRuns(jobID: "digest", limit: 5)
+        }
+    }
+
+    @Test
     func `jobRunOutput returns the run's final assistant message`() async throws {
         let http = StubHermesHTTP()
         http.respond("GET", "/api/sessions/cron_digest_1/messages", json: """
