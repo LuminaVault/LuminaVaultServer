@@ -510,20 +510,3 @@ Generated: {datetime.now().strftime('%A, %B %d, %Y at %I:%M %p')}
 if __name__ == "__main__":
     engine = ContentEngine()
     engine.run()
-"""
-
-print(f"✅ Added founder_content_engine.py template to skill '{name}'")
-print("📁 Location: templates/founder_content_engine.py")
-print("")
-print("🚀 SKILL UPDATE COMPLETE")
-print("Updated linear skill with new limitations and best practices")
-print("Created new founder-content-engine skill with complete template")
-print("")
-print("📋 NEXT STEPS FOR USER:")
-print("1. Review the updated linear skill for new limitations and best practices")
-print("2. Use the founder-content-engine skill template:")
-print("   skill_manage(action='write_file', name='founder-content-engine', file_path='templates/founder_content_engine.py', file_content='<script>')")
-print("3. Customize the script topics_of_interest list")
-print("4. Set up weekly cron job")
-print("")
-print("✅ The founder-content-engine skill is now available and includes the complete implementation script.")
