@@ -249,7 +249,14 @@ struct HermesDashboardClient: Sendable {
         let bounded = max(1, min(limit, 100))
         let response = try await get("/api/cron/jobs/\(id)/runs", query: [("limit", String(bounded))], cap: Self.listBodyCap)
         if response.status == 404 {
-            throw HermesMirrorTransportError.notFound("job:\(id)")
+            // web_server.py answers an unknown job with `{"detail":"Job not
+            // found"}`. Any other 404 means the route itself is missing — e.g.
+            // the linked URL is the gateway `api_server`, not the dashboard —
+            // which no job on this box can get past.
+            if (response.jsonObject()?["detail"] as? String) == "Job not found" {
+                throw HermesMirrorTransportError.notFound("job:\(id)")
+            }
+            throw HermesMirrorTransportError.unsupported("jobRuns")
         }
         try Self.requireSuccess(response, path: "/api/cron/jobs/{id}/runs")
         return Self.parseRuns(response.json())

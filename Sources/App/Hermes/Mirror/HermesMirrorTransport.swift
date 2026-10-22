@@ -397,6 +397,16 @@ enum HermesMirrorTransportError: Error, Equatable, CustomStringConvertible {
         }
     }
 
+    /// Errors that say the operation cannot work for this tenant at all, as
+    /// opposed to one item failing. Unreachable stays per-item: a blip on one
+    /// call says nothing about the next.
+    var isTenantWide: Bool {
+        switch self {
+        case .unsupported, .dashboardAuthModeUnsupported, .dashboardUnauthorized, .notConfigured: true
+        case .http, .bodyTooLarge, .invalidPath, .notFound, .invalidResponse, .dashboardUnreachable: false
+        }
+    }
+
     /// Stable client-facing code (no host names, no reasons).
     var code: String {
         switch self {

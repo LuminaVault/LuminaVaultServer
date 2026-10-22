@@ -727,6 +727,22 @@ struct HermesMirrorServiceTests {
             }
         }
     }
+
+    @Test
+    func `collectAllJobRuns stops at a tenant-wide error instead of failing every job`() async throws {
+        try await withTestFluent(label: "lv.test.mirror.collect.tenant-wide") { fluent in
+            let h = try await makeHarness(fluent: fluent)
+            await h.transport.setJobs([job("j1", name: "A"), job("j2", name: "B"), job("j3", name: "C")])
+            _ = try await h.service.sync(tenantID: h.tenantID, scopes: [.jobs])
+            await h.transport.fail("jobRuns:j1", with: .unsupported("jobRuns"))
+
+            let summary = try await h.service.collectAllJobRuns(tenantID: h.tenantID)
+            #expect(summary.failed == 0)
+            #expect(summary.jobs == 0)
+            #expect(summary.unavailable == "hermes_mirror_unsupported")
+            #expect(await h.transport.calls.filter { $0.hasPrefix("jobRuns:") } == ["jobRuns:j1"])
+        }
+    }
 }
 
 /// Pure helpers on the service (no database).
