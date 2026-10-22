@@ -1,7 +1,9 @@
 ---
 name: kb-vacuum
-description: Scan vault raw/ folder for hyperlinks embedded in markdown notes; POST each unseen URL to LuminaVault server /v1/capture/safari so Hermes ingests + memorizes. Usage: /kb-vacuum [folder=raw/]
+description: "Scan vault raw/ folder for hyperlinks embedded in markdown notes; POST each unseen URL to LuminaVault server /v1/capture/safari so Hermes ingests + memorizes. Usage: /kb-vacuum [folder=raw/]"
 trigger: /kb-vacuum
+metadata:
+  capability: medium
 ---
 
 # KB Vacuum

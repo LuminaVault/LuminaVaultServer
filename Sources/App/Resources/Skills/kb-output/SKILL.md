@@ -1,7 +1,9 @@
 ---
 name: kb-output
-description: Render knowledge base content as a Marp slideshow or matplotlib chart. Accepts a question (researches the wiki) or an existing outputs/ file path. Usage: /kb-output --slides <question|file> or /kb-output --chart <question|file>
+description: "Render knowledge base content as a Marp slideshow or matplotlib chart. Accepts a question (researches the wiki) or an existing outputs/ file path. Usage: /kb-output --slides <question|file> or /kb-output --chart <question|file>"
 trigger: /kb-output
+metadata:
+  capability: medium
 ---
 
 # KB Output

@@ -5,6 +5,7 @@ license: MIT
 version: 1.0.0
 author: Hermes Agent
 metadata:
+  capability: medium
   tags: [media, trakt, youtube, monitoring, content-ingestion]
   related_skills: [trakt-watcher, youtube-content, media]
 ---

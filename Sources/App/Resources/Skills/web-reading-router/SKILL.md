@@ -10,6 +10,7 @@ version: 1.0.0
 author: Hermes Agent
 license: MIT
 metadata:
+  capability: medium
   hermes:
     tags: [web, routing, browser, extraction, reading]
 ---

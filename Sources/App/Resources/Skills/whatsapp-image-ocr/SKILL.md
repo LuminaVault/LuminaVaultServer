@@ -2,6 +2,8 @@
 name: whatsapp-image-ocr
 description: OCR images received via WhatsApp with Tesseract and save extracted text to the Obsidian vault. Use when an inbound WhatsApp message has an image attachment that should be transcribed and archived.
 license: MIT
+metadata:
+  capability: medium
 ---
 
 # WhatsApp Image OCR

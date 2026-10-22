@@ -1,7 +1,9 @@
 ---
 name: product-strategy
-description: Strategic analytical skills for product decisions: assessing brand legitimacy and mapping product features to monetization tiers.
+description: "Strategic analytical skills for product decisions: assessing brand legitimacy and mapping product features to monetization tiers."
 license: MIT
+metadata:
+  capability: medium
 ---
 # Product Strategy
 
