@@ -2,6 +2,8 @@
 name: swift-development
 description: Comprehensive Swift expertise umbrella covering UI, data, concurrency, testing, architecture, and production hardening across the Apple ecosystem.
 license: MIT
+metadata:
+  capability: medium
 ---
 # Swift Development
 

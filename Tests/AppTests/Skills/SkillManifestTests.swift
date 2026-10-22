@@ -66,6 +66,29 @@ struct SkillManifestTests {
         }
     }
 
+    /// `SkillCatalog` logs and skips a built-in that fails to parse, so a bad
+    /// frontmatter only shows up as a warning in production. Walk the whole
+    /// bundled tree instead of the hand-kept list above.
+    @Test
+    func `every bundled top level skill parses with a name matching its directory`() throws {
+        let root = try #require(Bundle.module.resourceURL?.appendingPathComponent("Skills", isDirectory: true))
+        let dirs = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        let parser = SkillManifestParser()
+        var parsed = 0
+        for dir in dirs {
+            let skillFile = dir.appendingPathComponent("SKILL.md")
+            guard FileManager.default.fileExists(atPath: skillFile.path) else { continue }
+            do {
+                let manifest = try parser.parse(source: .builtin, contents: String(contentsOf: skillFile, encoding: .utf8))
+                #expect(manifest.name == dir.lastPathComponent)
+                parsed += 1
+            } catch {
+                Issue.record("\(dir.lastPathComponent) failed to parse: \(error)")
+            }
+        }
+        #expect(parsed >= Self.builtinSkillNames.count)
+    }
+
     @Test
     func `allowed-tools accepts space separated string`() throws {
         let yaml = """

@@ -1,5 +1,5 @@
 ---
-name: hv-analysis
+name: hv-analyses
 description: |
  横纵分析法（Horizontal-Vertical Analysis）深度研究Skill。由数字生命卡兹克提出，融合了索绪尔的历时-共时分析、社会科学的纵向-横截面研究设计、商学院案例研究法与竞争战略分析的核心思想。
   当用户想要系统性研究一个产品、公司、概念、技术或人物时使用。核心是双轴分析：纵轴追踪从诞生到当下的完备演进路径；横轴同时考察产品、技术、市场、用户、竞争及财经等六大维度。
@@ -7,6 +7,7 @@ version: 1.0.0
 author: Hermes Agent
 license: MIT
 metadata:
+  capability: medium
   hermes:
     tags: [research, analysis, deep-dive]
 ---

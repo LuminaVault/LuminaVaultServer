@@ -1,7 +1,9 @@
 ---
 name: kb-import
-description: Import an existing Obsidian vault into the knowledge base. Inspects each note and routes it intelligently — structured concept articles go to wiki/concepts/, raw research notes go to raw/notes/ for later compilation. Usage: /kb-import <vault-path>
+description: "Import an existing Obsidian vault into the knowledge base. Inspects each note and routes it intelligently — structured concept articles go to wiki/concepts/, raw research notes go to raw/notes/ for later compilation. Usage: /kb-import <vault-path>"
 trigger: /kb-import
+metadata:
+  capability: medium
 ---
 
 # KB Import

@@ -2,6 +2,8 @@
 name: kb-ingest
 description: Ingest a URL, PDF, image path, or plain text note into your personal knowledge base Raw directory. This skill adapts to the actual Hermes knowledge base structure.
 trigger: /kb-ingest
+metadata:
+  capability: medium
 ---
 
 # KB Ingest

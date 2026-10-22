@@ -1,7 +1,9 @@
 ---
 name: kb-merge-vault
-description: Merge a second KB vault into the current one. Copies non-conflicting content, auto-merges conflicting concept articles using LLM synthesis, merges manifests and index, and resets reflect state for a full re-synthesis. Usage: /kb-merge-vault <vault-path>
+description: "Merge a second KB vault into the current one. Copies non-conflicting content, auto-merges conflicting concept articles using LLM synthesis, merges manifests and index, and resets reflect state for a full re-synthesis. Usage: /kb-merge-vault <vault-path>"
 trigger: /kb-merge-vault
+metadata:
+  capability: medium
 ---
 
 # KB Merge Vault
