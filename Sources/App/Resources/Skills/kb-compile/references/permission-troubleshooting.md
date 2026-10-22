@@ -3,7 +3,7 @@
 ## Common Issues
 
 ### 1. Permission Denied Errors
-**Symptom**: `ls: cannot access '/opt/data/obsidian-vault/FACorreia': Permission denied`
+**Symptom**: `ls: cannot access '/opt/data/obsidian-vault/Vault': Permission denied`
 
 **Cause**: The vault directory is owned by `root:root` with permissions `drwxr-x---`. The Hermes agent user (`hermes`) is not in the root group and cannot access the directory.
 
@@ -22,7 +22,7 @@ docker compose exec -u root hermes chown -R hermes:hermes /opt/data
 #### Method B: Manual chown
 If Docker is not running:
 ```bash
-sudo chown -R hermes:hermes /opt/data/obsidian-vault/FACorreia
+sudo chown -R hermes:hermes /opt/data/obsidian-vault/Vault
 ```
 
 ### 2. Docker Daemon Not Running
@@ -40,7 +40,7 @@ sudo docker compose up -d
 ```
 
 ### 3. Vault Directory Missing
-**Symptom**: `File not found: /opt/data/obsidian-vault/FACorreia`
+**Symptom**: `File not found: /opt/data/obsidian-vault/Vault`
 
 **Cause**: The vault hasn't been set up yet, or the symlink is broken.
 
@@ -62,7 +62,7 @@ sudo docker compose up -d
 **Solution**: 
 1. Initialize git if needed:
    ```bash
-   cd /opt/data/obsidian-vault/FACorreia
+   cd /opt/data/obsidian-vault/Vault
    git init
    git config user.email "hermes@agent"
    git config user.name "Hermes Agent"
@@ -80,16 +80,16 @@ To avoid permission issues in the future:
 
 After fixing permissions, verify access:
 ```bash
-ls -la /opt/data/obsidian-vault/FACorreia
-ls ~/.hermes/obsidian-vault/FACorreia/Raw/
-python3 -c "import pathlib; p = pathlib.Path('~/.hermes/obsidian-vault/FACorreia/Raw'); print(p.exists(), p.is_dir())"
+ls -la /opt/data/obsidian-vault/Vault
+ls ~/.hermes/obsidian-vault/Vault/Raw/
+python3 -c "import pathlib; p = pathlib.Path('~/.hermes/obsidian-vault/Vault/Raw'); print(p.exists(), p.is_dir())"
 ```
 
 ## Related Resources
 - `~/.hermes/scripts/compile_wiki.py` — Main compilation script
 - `Makefile` — Contains `fix-permissions` target
-- `/opt/data/obsidian-vault/FACorreia` — Actual vault location
-- `~/.hermes/obsidian-vault/FACorreia` — Symlink location
+- `/opt/data/obsidian-vault/Vault` — Actual vault location
+- `~/.hermes/obsidian-vault/Vault` — Symlink location
 
 ---
 *Documented by Hermes Agent during routine operations. This reference captures permission troubleshooting steps for future agents.*

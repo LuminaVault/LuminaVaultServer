@@ -14,7 +14,7 @@ The Hermes multi-platform X link poller is implemented as a daemon (`x_link_poll
 ```
 
 State file: `/opt/data/home/.hermes/state/x_link_poller_state.json`  
-Vault Raw: `/opt/data/obsidian-vault/FACorreia/Raw/`
+Vault Raw: `/opt/data/obsidian-vault/Vault/Raw/`
 
 ## One-Shot Cron Wrapper Pattern
 
@@ -133,7 +133,7 @@ The poller automatically runs `kb-compile` only when `new_count > 0`. If no new 
 
 Manual compile (if needed):
 ```bash
-python3 /opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py --root /opt/data/obsidian-vault/FACorreia
+python3 /opt/data/obsidian-vault/Vault/scripts/compile_wiki.py --root /opt/data/obsidian-vault/Vault
 ```
 
 ## Environment Variables Required

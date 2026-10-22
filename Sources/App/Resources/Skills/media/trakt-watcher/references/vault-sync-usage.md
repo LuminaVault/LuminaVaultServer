@@ -1,4 +1,4 @@
-# Trakt -> FACorreia vault sync usage
+# Trakt -> vault sync usage
 
 This note captures the workflow used by the current standalone implementation.
 
@@ -9,9 +9,9 @@ This note captures the workflow used by the current standalone implementation.
 
 ## Default output layout
 - TV episodes:
-  /opt/data/home/obsidian-vault/FACorreia/Raw/tvshows/<show-slug>/<YYYY-MM-DD> - SxxEyy - <episode title> - trakt-<history-id>.md
+  /opt/data/home/obsidian-vault/Vault/Raw/tvshows/<show-slug>/<YYYY-MM-DD> - SxxEyy - <episode title> - trakt-<history-id>.md
 - Movies:
-  /opt/data/home/obsidian-vault/FACorreia/Raw/movies/<movie-slug>/<YYYY-MM-DD> - <title> - trakt-<history-id>.md
+  /opt/data/home/obsidian-vault/Vault/Raw/movies/<movie-slug>/<YYYY-MM-DD> - <title> - trakt-<history-id>.md
 
 ## Auth flow
 If the user only has a Trakt PIN:

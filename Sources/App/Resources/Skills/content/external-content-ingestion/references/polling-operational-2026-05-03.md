@@ -62,7 +62,7 @@ Telegram 409 Conflict: Webhook is active. Long-poll and webhook are mutually exc
 ## Compile Script Discovery
 
 The poller tries, in order:
-1. `VAULT_ROOT/scripts/compile_wiki.py` (`/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`)
+1. `VAULT_ROOT/scripts/compile_wiki.py` (`/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`)
 2. `~/.hermes/scripts/compile_wiki.py` (`/opt/data/home/.hermes/scripts/compile_wiki.py`)
 
 On this system, only the second path exists — poller would find it at runtime. Skill docs previously assumed only vault-location; updated in SKILL.md to reflect fallback.

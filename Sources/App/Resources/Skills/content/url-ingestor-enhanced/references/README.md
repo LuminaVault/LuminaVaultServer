@@ -38,8 +38,8 @@ Create or update your `.env` file with:
 
 ```env
 # Obsidian vault configuration
-OBSIDIAN_VAULT_PATH=/opt/data/obsidian-vault/FACorreia
-OBSIDIAN_VAULT_NAME=FACorreia
+OBSIDIAN_VAULT_PATH=/opt/data/obsidian-vault/Vault
+OBSIDIAN_VAULT_NAME=Vault
 
 # Optional: GitHub token for higher API limits
 # GITHUB_TOKEN=your_github_personal_access_token
@@ -53,7 +53,7 @@ OBSIDIAN_VAULT_NAME=FACorreia
 Ensure your vault has the following structure:
 
 ```
-FACorreia/
+Vault/
 ├── Raw/
 │   ├── AI/
 │   ├── Development/
@@ -69,7 +69,7 @@ FACorreia/
 If any topic folders are missing, create them:
 
 ```bash
-cd /opt/data/obsidian-vault/FACorreia/Raw
+cd /opt/data/obsidian-vault/Vault/Raw
 mkdir -p AI Development Stocks Health Technology Business Entertainment Science Other
 ```
 

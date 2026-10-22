@@ -26,7 +26,7 @@ params:
     default: ""  # required for token refresh
   - name: trakt_vault_root
     description: Obsidian Raw root used for note output
-    default: /opt/data/home/obsidian-vault/FACorreia/Raw
+    default: /opt/data/home/obsidian-vault/Vault/Raw
 
 # State
 state:
@@ -45,8 +45,8 @@ modes:
 
 # Vault Output Contract
 vault_output:
-  tv_episode_path: /opt/data/home/obsidian-vault/FACorreia/Raw/tvshows/<show-slug>/<date> - SxxEyy - <episode title> - trakt-<id>.md
-  movie_path: /opt/data/home/obsidian-vault/FACorreia/Raw/movies/<movie-slug>/<date> - <title> - trakt-<id>.md
+  tv_episode_path: /opt/data/home/obsidian-vault/Vault/Raw/tvshows/<show-slug>/<date> - SxxEyy - <episode title> - trakt-<id>.md
+  movie_path: /opt/data/home/obsidian-vault/Vault/Raw/movies/<movie-slug>/<date> - <title> - trakt-<id>.md
   note_fields: [source, type, watched_at, history_id, show/title, season/episode/year, trakt_ids]
 
 # Pitfalls

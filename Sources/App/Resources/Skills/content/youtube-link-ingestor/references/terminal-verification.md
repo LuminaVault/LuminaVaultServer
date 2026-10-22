@@ -9,13 +9,13 @@ The YouTube-Links.md file uses markdown format: `YYYY-MM-DD - [Title](URL)`. Use
 ### Basic Extraction
 ```bash
 # Extract all video IDs from the file
-cat /opt/data/home/obsidian-vault/FACorreia/Raw/YouTube-Links.md | grep -o 'v=[a-zA-Z0-9_-]\{11\}' | cut -c 3- | sort | uniq
+cat /opt/data/home/obsidian-vault/Vault/Raw/YouTube-Links.md | grep -o 'v=[a-zA-Z0-9_-]\{11\}' | cut -c 3- | sort | uniq
 ```
 
 ### Extract with Line Numbers (for debugging)
 ```bash
 # Show which lines contain YouTube links and their video IDs
-grep -n 'youtube\.com/watch\|youtu\.be/' /opt/data/home/obsidian-vault/FACorreia/Raw/YouTube-Links.md | while read line; do
+grep -n 'youtube\.com/watch\|youtu\.be/' /opt/data/home/obsidian-vault/Vault/Raw/YouTube-Links.md | while read line; do
     linenum=$(echo "$line" | cut -d: -f1)
     url=$(echo "$line" | grep -o 'https://[^)]*')
     if [[ $url =~ v=([a-zA-Z0-9_-]{11}) ]]; then
@@ -48,7 +48,7 @@ comm -13 <(echo "$extracted_ids" | sort) <(sort /tmp/existing_ids.txt)
 # verify_no_new_links.sh - Verify that no new YouTube links exist since last update
 
 LAST_UPDATE="2026-05-06 07:01:00"  # Update this to last successful run time
-YOUTUBE_FILE="/opt/data/home/obsidian-vault/FACorreia/Raw/YouTube-Links.md"
+YOUTUBE_FILE="/opt/data/home/obsidian-vault/Vault/Raw/YouTube-Links.md"
 
 echo "=== Verification Started ==="
 echo "Last update: $LAST_UPDATE"

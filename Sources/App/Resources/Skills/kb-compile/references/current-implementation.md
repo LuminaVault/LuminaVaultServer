@@ -1,6 +1,6 @@
 # Current Implementation
 
-The Hermes knowledge base uses a different structure than the ideal process described in the skill. The actual compilation is performed by `/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`.
+The Hermes knowledge base uses a different structure than the ideal process described in the skill. The actual compilation is performed by `/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`.
 
 ## Script Overview
 
@@ -192,11 +192,11 @@ if __name__ == "__main__":
 ## Usage
 
 ```bash
-python3 /opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py --root /opt/data/obsidian-vault/FACorreia
+python3 /opt/data/obsidian-vault/Vault/scripts/compile_wiki.py --root /opt/data/obsidian-vault/Vault
 ```
 
 ## Troubleshooting
 
-- **0 files found**: Check that the raw directory exists at `/opt/data/obsidian-vault/FACorreia/raw/` and contains `.md` files.
+- **0 files found**: Check that the raw directory exists at `/opt/data/obsidian-vault/Vault/raw/` and contains `.md` files.
 - **Permission denied**: Ensure the script has read access to the raw directory and write access to the wiki directory.
 - **File name too long**: This should be resolved by the current patch. If errors persist, verify the patch is applied to `normalize_filename`.

@@ -1,6 +1,6 @@
 ## AI Cohort Scoreboard Directory Structure
 
-**Location:** `/opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI Cohort/`
+**Location:** `/opt/data/obsidian-vault/Vault/Wiki/Finance/AI Cohort/`
 
 **Expected Files:**
 ```
@@ -38,7 +38,7 @@
 - `ai_scoreboard_alerts.py` - Alert monitoring
 
 **Vault Integration:**
-- Part of the larger FACorreia Obsidian vault
+- Part of the user's Obsidian vault
 - Integrated with Hermes Agent automation
 - Data flows from Yahoo Finance (yfinance) → scoreboard → marketing content → social platforms
 

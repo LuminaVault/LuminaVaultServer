@@ -48,7 +48,7 @@ Load `content-digests` when:
 from pathlib import Path
 import os, datetime
 
-VAULT = Path.home() / "obsidian-vault" / "FACorreia"  # adjust vault name
+VAULT = Path.home() / "obsidian-vault" / "Vault"  # adjust vault name
 RAW_DIR = VAULT / "Raw" / "<Category>"          # e.g. Raw/Dev/Swift, Raw/Entertainment
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 now = datetime.datetime.now()
@@ -135,7 +135,7 @@ However, **prefer letting the cron delivery bot handle chunking** by delivering 
 python3 digest_script.py
 
 # 2. File saved to vault
-ls -l /opt/data/obsidian-vault/FACorreia/Raw/Dev/Swift/$(date +%Y-%m-%d)\ *.md
+ls -l /opt/data/obsidian-vault/Vault/Raw/Dev/Swift/$(date +%Y-%m-%d)\ *.md
 
 # 3. Stdout contains full markdown (not just summary)
 python3 digest_script.py | head -c 500   # should show content, not just "✅ saved"

@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Configuration
-VAULT_ROOT = Path.home() / "obsidian-vault" / "FACorreia"
+VAULT_ROOT = Path.home() / "obsidian-vault" / "Vault"
 RAW_YOUTUBE_DIR = VAULT_ROOT / "Raw" / "YouTube"
 STATE_FILE = Path.home() / ".hermes" / "state" / "youtube_link_saver_state.json"
 

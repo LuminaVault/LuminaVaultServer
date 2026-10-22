@@ -33,18 +33,18 @@ Agent environment sets `$HOME=/opt/data/home`. Scripts resolve the vault differe
 
 | Script | VAULT_ROOT resolution | Target vault |
 |--------|----------------------|--------------|
-| `multi_link_poller.py` | `Path.home() / "obsidian-vault" / "FACorreia"` | `/opt/data/home/obsidian-vault/FACorreia/` |
-| `x_link_poller_v2.py` | Hardcoded `VAULT_ROOT = Path("/opt/data/obsidian-vault/FACorreia")` | `/opt/data/obsidian-vault/FACorreia/` |
-| `compile_wiki.py` (canonical) | Called with `--root /opt/data/obsidian-vault/FACorreia` | `/opt/data/obsidian-vault/FACorreia/` |
+| `multi_link_poller.py` | `Path.home() / "obsidian-vault" / "Vault"` | `/opt/data/home/obsidian-vault/Vault/` |
+| `x_link_poller_v2.py` | Hardcoded `VAULT_ROOT = Path("/opt/data/obsidian-vault/Vault")` | `/opt/data/obsidian-vault/Vault/` |
+| `compile_wiki.py` (canonical) | Called with `--root /opt/data/obsidian-vault/Vault` | `/opt/data/obsidian-vault/Vault/` |
 
 **Impact:** Content ingested by `multi_link_poller.py` lands in the `$HOME`-relative vault and is invisible to the canonical pipeline until manually synced or re-saved. When files appear "missing", check both locations:
 
 ```bash
-ls /opt/data/home/obsidian-vault/FACorreia/Raw/
-ls /opt/data/obsidian-vault/FACorreia/Raw/
+ls /opt/data/home/obsidian-vault/Vault/Raw/
+ls /opt/data/obsidian-vault/Vault/Raw/
 ```
 
-**Best practice:** Always run scripts with explicit `--root /opt/data/obsidian-vault/FACorreia` when available; patch scripts that rely on `Path.home()` for consistent behavior.
+**Best practice:** Always run scripts with explicit `--root /opt/data/obsidian-vault/Vault` when available; patch scripts that rely on `Path.home()` for consistent behavior.
 
 ## Daemon Instance Management
 
@@ -85,7 +85,7 @@ compile_script = VAULT_ROOT / "scripts" / "compile_wiki.py"
 # else: skip
 ```
 
-On this system the canonical compile script lives at `/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`. Since VAULT_ROOT for `multi_link_poller.py` resolves to `/opt/data/home/obsidian-vault/FACorreia`, the first candidate would be `/opt/data/home/obsidian-vault/FACorreia/scripts/compile_wiki.py` — which does not exist. The second candidate `~/.hermes/scripts/compile_wiki.py` also did not exist. The script therefore prints "compile_wiki.py not found" even though the canonical compile script exists at a third, unlisted path.
+On this system the canonical compile script lives at `/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`. Since VAULT_ROOT for `multi_link_poller.py` resolves to `/opt/data/home/obsidian-vault/Vault`, the first candidate would be `/opt/data/home/obsidian-vault/Vault/scripts/compile_wiki.py` — which does not exist. The second candidate `~/.hermes/scripts/compile_wiki.py` also did not exist. The script therefore prints "compile_wiki.py not found" even though the canonical compile script exists at a third, unlisted path.
 
 **Fix options:**
 
@@ -94,13 +94,13 @@ On this system the canonical compile script lives at `/opt/data/obsidian-vault/F
    for cand in [
        VAULT_ROOT / "scripts" / "compile_wiki.py",
        HOME / ".hermes" / "scripts" / "compile_wiki.py",
-       Path("/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py"),  # ← add
+       Path("/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py"),  # ← add
    ]:
    ```
 
 2. **Manual compile** after poller runs:
    ```bash
-   python3 /opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py --root /opt/data/obsidian-vault/FACorreia
+   python3 /opt/data/obsidian-vault/Vault/scripts/compile_wiki.py --root /opt/data/obsidian-vault/Vault
    ```
 
 3. **Rely on scheduled pipeline** (the nightly/daily compile job) which already calls the canonical script.

@@ -8,9 +8,9 @@ Always test both the main vault and home vault before proceeding:
 
 ```bash
 # Test main vault
-touch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 # Test home vault (if main fails)
-touch /opt/data/home/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/home/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 ```
 
 ## Step 2: Use Temporary Directory (If Both Vaults Fail)
@@ -40,7 +40,7 @@ After ingestion, inform the user to copy the files manually:
 ```markdown
 Files saved to: {RAW_PATH}
 Copy these files to your Obsidian vault raw directory:
-  cp {RAW_PATH}/* /opt/data/obsidian-vault/FACorreia/raw/Tech/
+  cp {RAW_PATH}/* /opt/data/obsidian-vault/Vault/raw/Tech/
 ```
 
 ## Step 4: Fix Permissions (Permanent Solution)
@@ -54,4 +54,4 @@ cd /opt/data && make fix-permissions
 
 ## Step 5: Alternative Vault
 
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/Vault`. Create it and configure kb-ingest via `kb-config.json`.

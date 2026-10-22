@@ -131,6 +131,6 @@ To change an issue's status, you need the `stateId` (UUID) of the target state â
 
 ## References
 - Linear GraphQL API Documentation: https://linear.app/docs/graphql
-- HermesVault Kanban: `/opt/data/home/obsidian-vault/FACorreia/Kanban/`
+- HermesVault Kanban: `/opt/data/home/obsidian-vault/Vault/Kanban/`
 - Linear Board: https://linear.app/hermiesvault
 - Practical Linear Usage: `/root/.hermes/skills/productivity/linear/references/practical-linear-usage.md`

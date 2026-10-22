@@ -9,7 +9,7 @@ last_updated: 2026-05-12
 
 # Swift Concurrency Under the Hood
 
-Load this skill when reviewing Fernando's Swift/Vapor code for concurrency correctness, performance, or architecture decisions. It covers the actual runtime behavior — not just the syntax.
+Load this skill when reviewing Swift/Vapor code for concurrency correctness, performance, or architecture decisions. It covers the actual runtime behavior — not just the syntax.
 
 ## Key Principles to Enforce
 

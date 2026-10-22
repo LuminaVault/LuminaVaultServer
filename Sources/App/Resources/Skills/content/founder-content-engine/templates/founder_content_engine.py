@@ -12,8 +12,8 @@ from typing import List, Dict, Tuple
 from hermes_tools import web_search, terminal, send_message, session_search
 
 class ContentEngine:
-    def __init__(self):
-        self.user = "Fernando Correia"
+    def __init__(self, user: str = "Your Name"):
+        self.user = user
         self.topics_of_interest = [
             "Swift programming", "iOS development", "Swift on Server", 
             "AI agents", "autonomous systems", "content engines",

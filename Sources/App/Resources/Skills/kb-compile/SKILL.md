@@ -8,10 +8,10 @@ metadata:
 
 ## Environment Reality
 
-**Use `compile_wiki.py` — ignore the manifest.** The vault at `/opt/data/obsidian-vault/FACorreia` is Syncthing-managed (not git). Both `/opt/data/home/obsidian-vault/FACorreia` and `/opt/data/obsidian-vault/FACorreia` resolve to the same location.
+**Use `compile_wiki.py` — ignore the manifest.** The vault at `/opt/data/obsidian-vault/Vault` is Syncthing-managed (not git). Both `/opt/data/home/obsidian-vault/Vault` and `/opt/data/obsidian-vault/Vault` resolve to the same location.
 
 ```bash
-python3 /opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py --root /opt/data/obsidian-vault/FACorreia
+python3 /opt/data/obsidian-vault/Vault/scripts/compile_wiki.py --root /opt/data/obsidian-vault/Vault
 ```
 
 Key facts:
@@ -197,7 +197,7 @@ If the file doesn't exist (first run before search tool is installed), skip this
 cd {KB_PATH} && git add -A && git commit -m "kb: compile {N} source(s) into wiki"
 ```
 
-**PITFALL**: The vault at `/opt/data/obsidian-vault/FACorreia` is Syncthing-managed, NOT a git repo. If `git commit` fails with "fatal: not a git repository", this is expected behavior. Syncthing handles file synchronization. Skip the commit silently.
+**PITFALL**: The vault at `/opt/data/obsidian-vault/Vault` is Syncthing-managed, NOT a git repo. If `git commit` fails with "fatal: not a git repository", this is expected behavior. Syncthing handles file synchronization. Skip the commit silently.
 
 Where N is the count of files just compiled.
 
@@ -225,7 +225,7 @@ Invoke the `/kb-reflect` skill to discover connections across newly compiled con
 2. Find the configuration section (around lines 14-18):
    ```python
 # Configuration
-VAULT_ROOT = "/opt/data/obsidian-vault/FACorreia"
+VAULT_ROOT = "/opt/data/obsidian-vault/Vault"
 RAW_DIR = os.path.join(VAULT_ROOT, "raw")
 WIKI_DIR = os.path.join(VAULT_ROOT, "wiki")
    ```
@@ -238,12 +238,12 @@ WIKI_DIR = os.path.join(VAULT_ROOT, "wiki")
 
 4. Save and exit, then re-run the compilation.
 
-**Prevention:** Ensure the script matches the actual vault structure. The Hermes knowledge base at `/opt/data/obsidian-vault/FACorreia` uses lowercase `raw/` and `wiki/` directories.
-The most common issue when running kb-compile is permission problems with the vault directory. The vault at `/opt/data/obsidian-vault/FACorreia` is often owned by `root:root` with permissions `drwxr-x---`, which prevents the `hermes` user from accessing it.
+**Prevention:** Ensure the script matches the actual vault structure. The Hermes knowledge base at `/opt/data/obsidian-vault/Vault` uses lowercase `raw/` and `wiki/` directories.
+The most common issue when running kb-compile is permission problems with the vault directory. The vault at `/opt/data/obsidian-vault/Vault` is often owned by `root:root` with permissions `drwxr-x---`, which prevents the `hermes` user from accessing it.
 
 **Symptoms**:
-- `ls: cannot access '/opt/data/obsidian-vault/FACorreia': Permission denied`
-- `python3: can't open file '~/.hermes/obsidian-vault/FACorreia/Raw/file.md': [Errno 13] Permission denied`
+- `ls: cannot access '/opt/data/obsidian-vault/Vault': Permission denied`
+- `python3: can't open file '~/.hermes/obsidian-vault/Vault/Raw/file.md': [Errno 13] Permission denied`
 
 **Solution**: Change ownership of the vault directory to the `hermes` user.
 
@@ -256,13 +256,13 @@ The most common issue when running kb-compile is permission problems with the va
 
 2. **Manual chown** (if Docker is not running):
    ```bash
-   sudo chown -R hermes:hermes /opt/data/obsidian-vault/FACorreia
+   sudo chown -R hermes:hermes /opt/data/obsidian-vault/Vault
    ```
 
 After fixing permissions, verify access:
 ```bash
-ls -la /opt/data/obsidian-vault/FACorreia
-ls ~/.hermes/obsidian-vault/FACorreia/Raw/
+ls -la /opt/data/obsidian-vault/Vault
+ls ~/.hermes/obsidian-vault/Vault/Raw/
 ```
 
 #### Docker Daemon Issues
@@ -291,6 +291,6 @@ Compiled {N} file(s):
 
 - [clippings-relocation.md](references/clippings-relocation.md) — Pattern for classifying and moving files from a Clippings/ directory to raw/ subdirectories before compilation
 - For the **actual implementation** in this environment, see: [references/current-implementation.md](references/current-implementation.md)
-- This describes the ideal process; the working script is at `/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`
+- This describes the ideal process; the working script is at `/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`
 - [File Name Too Long Errors](references/file-name-too-long.md) — Troubleshooting long filename errors during compilation
 - [Permission troubleshooting guide](references/permission-troubleshooting.md) — Common issues and solutions

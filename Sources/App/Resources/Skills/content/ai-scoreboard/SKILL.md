@@ -25,7 +25,7 @@ These scripts write their output to the Obsidian vault in the `Wiki/Finance/AI C
 The scripts use a `VAULT_ROOT` constant to define the vault location. This should be set to:
 
 ```
-'/opt/data/home/.hermes/obsidian-vault/FACorreia'
+'/opt/data/home/.hermes/obsidian-vault/Vault'
 ```
 
 **Steps to configure:**
@@ -33,12 +33,12 @@ The scripts use a `VAULT_ROOT` constant to define the vault location. This shoul
 1. **Create symlink** (if not already present):
    ```bash
    mkdir -p ~/.hermes/obsidian-vault
-   ln -s /opt/data/obsidian-vault/FACorreia ~/.hermes/obsidian-vault/FACorreia
+   ln -s /opt/data/obsidian-vault/Vault ~/.hermes/obsidian-vault/Vault
    ```
 
 2. **Create required directories**:
    ```bash
-   mkdir -p ~/.hermes/obsidian-vault/FACorreia/Wiki/Finance/AI\ Cohort/Enriched
+   mkdir -p ~/.hermes/obsidian-vault/Vault/Wiki/Finance/AI\ Cohort/Enriched
    ```
 
 ### Script Updates
@@ -48,9 +48,9 @@ To update any of the AI Cohort scripts to use the new vault path:
 1. **Add VAULT_ROOT constant** after imports (typically after the last import statement or after a Config header)
 
 2. **Replace hardcoded paths**:
-   - In `ai_scoreboard.py`: Replace `vault_dir = '/opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI Cohort'` with `vault_dir = VAULT_ROOT`
-   - In `generate_marketing_content.py`: Replace `path = f'/opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI Cohort/{today} — AI Scoreboard.md'` with `path = f'{VAULT_ROOT}/{today} — AI Scoreboard.md'`
-   - In `weekly_review.py`: Replace `p = f'/opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI Cohort/{date_str} — AI Scoreboard.md'` with `p = f'{VAULT_ROOT}/{date_str} — AI Scoreboard.md'`
+   - In `ai_scoreboard.py`: Replace `vault_dir = '/opt/data/obsidian-vault/Vault/Wiki/Finance/AI Cohort'` with `vault_dir = VAULT_ROOT`
+   - In `generate_marketing_content.py`: Replace `path = f'/opt/data/obsidian-vault/Vault/Wiki/Finance/AI Cohort/{today} — AI Scoreboard.md'` with `path = f'{VAULT_ROOT}/{today} — AI Scoreboard.md'`
+   - In `weekly_review.py`: Replace `p = f'/opt/data/obsidian-vault/Vault/Wiki/Finance/AI Cohort/{date_str} — AI Scoreboard.md'` with `p = f'{VAULT_ROOT}/{date_str} — AI Scoreboard.md'`
 
 ## Troubleshooting
 
@@ -73,7 +73,7 @@ import os
 import sys
 sys.path.insert(0, '/opt/data/home/.local/lib/python3.13/site_packages')
 
-test_path = os.path.join(os.path.expanduser('~'), '.hermes', 'obsidian-vault', 'FACorreia', 'Wiki', 'Finance', 'AI Cohort', 'test.txt')
+test_path = os.path.join(os.path.expanduser('~'), '.hermes', 'obsidian-vault', 'Vault', 'Wiki', 'Finance', 'AI Cohort', 'test.txt')
 with open(test_path, 'w') as f:
     f.write("Test successful")
 os.remove(test_path)
@@ -82,5 +82,5 @@ os.remove(test_path)
 ## References
 
 - Script locations: `/opt/data/home/.hermes/scripts/ai-scoreboard/`
-- Vault location: `~/.hermes/obsidian-vault/FACorreia/`
+- Vault location: `~/.hermes/obsidian-vault/Vault/`
 - Original script source: `/opt/data/scripts/ai-scoreboard/`

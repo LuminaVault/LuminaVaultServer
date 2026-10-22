@@ -58,7 +58,7 @@ Tail the log and look for:
 ### 4. Vault Output Check
 Verify that articles are being saved:
 ```bash
-find /opt/data/obsidian-vault/FACorreia/Raw -name "*.md" -mtime -1 | wc -l
+find /opt/data/obsidian-vault/Vault/Raw -name "*.md" -mtime -1 | wc -l
 ```
 This shows how many articles were saved in the last 24 hours. Compare with expected volume based on social media activity.
 

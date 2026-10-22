@@ -18,8 +18,8 @@ python3 scripts/whatsapp_image_ocr.py
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OBSIDIAN_VAULT_PATH` | yes | `~/obsidian-vault/FACorreia` | Vault root |
-| `OBSIDIAN_VAULT_NAME` | yes | `FACorreia` | Vault name |
+| `OBSIDIAN_VAULT_PATH` | yes | `~/obsidian-vault/Vault` | Vault root |
+| `OBSIDIAN_VAULT_NAME` | yes | `Vault` | Vault name |
 | `OCR_LANGUAGE` | no | `eng+deu` | Tesseract language codes |
 | `SAVE_IMAGES` | no | `false` | Persist original image files |
 

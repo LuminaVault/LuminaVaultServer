@@ -52,7 +52,7 @@ Compare extracted links against the existing file to confirm they're already pre
 
 ```bash
 # Extract all video IDs from existing file
-grep -o 'v=[a-zA-Z0-9_-]\{11\}' /opt/data/home/obsidian-vault/FACorreia/Raw/YouTube-Links.md | sort -u > /tmp/existing_ids.txt
+grep -o 'v=[a-zA-Z0-9_-]\{11\}' /opt/data/home/obsidian-vault/Vault/Raw/YouTube-Links.md | sort -u > /tmp/existing_ids.txt
 
 # Compare with newly extracted IDs
 comm -23 <(extracted_ids) <(sort -u /tmp/existing_ids.txt)

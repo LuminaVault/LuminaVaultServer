@@ -27,7 +27,7 @@ State file only prevented re-processing of the exact URL. `fixupx.com` variant w
 
 **Check:** Search for files with matching tweet IDs or URL query parameters across `Raw/*/`:
 ```bash
-grep -r "status/2049907157341180299" /opt/data/obsidian-vault/FACorreia/Raw/
+grep -r "status/2049907157341180299" /opt/data/obsidian-vault/Vault/Raw/
 ```
 
 **State audit:** Cross-reference `processed_urls` entries by URL hash:
