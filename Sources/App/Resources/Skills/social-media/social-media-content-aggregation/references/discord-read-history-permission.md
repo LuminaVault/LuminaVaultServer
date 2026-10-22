@@ -65,5 +65,4 @@ curl -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
 
 ## Related
 
-- `discord-bot-operations` skill — full permissions matrix, role hierarchy, channel access patterns
 - Discord Developer docs: [Channel Permissions](https://discord.com/developers/docs/topics/permissions)

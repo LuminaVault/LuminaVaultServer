@@ -14,7 +14,6 @@ The Hermes knowledge base at `/opt/data/obsidian-vault/FACorreia` uses a differe
 
 - **Raw directory:** `raw/` (lowercase) not `Raw/`
 - **Subdirectories:** `AI`, `Books`, `Business`, `Careers`, `Health`, `NBA`, `News`, `Stocks`, `Swift`, `TV and Movies`, `Tech`, `WWE`
-- **No manifest:** There is no `.kb/manifest.json` file; the compilation script reads directly from `raw/`
 - **Wiki output:** Compiled pages go to `wiki/` (lowercase) not `Wiki/`
 
 **Note on Content Organization:** Unlike the type-based subdirectories (`raw/web/`, `raw/pdfs/`, etc.) mentioned in some steps, the actual vault organizes content by topic (AI, Tech, Business, etc.). When ingesting content, choose the subdirectory that best matches the content's topic. For mixed or general content, use `raw/AI` or `raw/Tech` as defaults.

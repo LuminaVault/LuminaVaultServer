@@ -171,9 +171,7 @@ For production deployments, implement a layered monitoring approach:
 ## Related Skills
 
 - `social-media-content-aggregation` — main poller implementation
-- `discord-bot-operations` — Discord permissions troubleshooting
 - `x-social-monitor-auth-troubleshooting` — X/Twitter auth issues
-- `cron-deployment` — cron job monitoring patterns
 
 ## See Also
 

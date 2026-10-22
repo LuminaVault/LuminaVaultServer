@@ -88,7 +88,6 @@ Fetching channel messages (`GET /channels/{id}/messages`) requires the bot's rol
 
 **Why this is separate from View Channel:** View Channel allows seeing the channel in the UI; Read Message History allows reading past messages via API. Reading history is a stricter permission.
 
-**Related skill:** See `discord-bot-operations` for full 403 diagnosis and role hierarchy rules.
 
 ### Telegram — Webhook Conflicts with Long-Poll
 
@@ -305,6 +304,5 @@ No URLs processed in multiple cycles?
 
 ## Related Skills
 
-- `discord-bot-operations` — Discord permissions, 403 diagnosis, channel access
 - `x-social-monitor` — X/Twitter monitoring (different domain, similar poll/compile pattern)
 - `superpowers-executing-plans` — deploy multi-script automation fleets

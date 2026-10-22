@@ -141,7 +141,7 @@ status: uncompiled
               f.write(text)
           
           print(f"✅ Ingested {url} to {filepath}")
-          send_message(target="discord:1499362823342653471", message=f"✅ Ingested URL from X post: {title}")
+          send_message(target="discord:YOUR_DISCORD_CHANNEL_ID", message=f"✅ Ingested URL from X post: {title}")
           
       except Exception as e:
           print(f"Error ingesting {url}: {e}")

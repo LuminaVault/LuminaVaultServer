@@ -17,8 +17,6 @@ python3 /opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py --root /opt/d
 Key facts:
 - **raw/ directory** (lowercase): subdirs include `AI`, `Books`, `Business`, `Careers`, `Dev`, `Health`, `Hermes`, `HermesPortfolio`, `NBA`, `News`, `Sports`, `Stocks`, `Swift`, `TV and Movies`, `Tech`, `WWE`, `XFeed`, `YouTube`, `uncategorized`
 - **wiki/ directory** (lowercase): compiled output
-- **No manifest tracking**: `.kb/manifest.json` exists but is stale (~4 entries vs 300+ raw files). Ignore it.
-- **No git**: Syncthing handles sync. Skip `git commit` silently.
 - **Clippings cleanup**: If a `Clippings/` directory exists with loose markdown files, move them to the correct `raw/<Topic>/` subdirectory before compiling. Read YAML frontmatter `tags` or `topic` fields, or infer from filename/content (YouTube → appropriate topic directory, X/Twitter threads → `Stocks` or `News`, App Store/indie dev → `Business`, etc.). See `references/clippings-relocation.md` for the pattern.
 
 ## Steps

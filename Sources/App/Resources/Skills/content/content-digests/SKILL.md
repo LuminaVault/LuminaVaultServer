@@ -122,10 +122,10 @@ However, **prefer letting the cron delivery bot handle chunking** by delivering 
 
 | Digest | Vault Category | Channel (Discord) | Frequency | Sources |
 |--------|----------------|-------------------|-----------|---------|
-| Swift News | `Raw/Dev/Swift/` | `#swift-news` (1499908671847661578) | Daily 09:00 | Hacking with Swift, Swift Forums, HN, GitHub |
-| Go News | `Raw/Dev/Go/` | `#go-news` (1499908914500862123) | Daily 09:00 | Go Blog, Go Forum, HN, GitHub |
-| Stock News | `Raw/Dev/Stock/` | `#stock-plan` (1499338003334561843) | Daily 09:00 | Yahoo Finance, Motley Fool |
-| Entertainment | `Raw/Entertainment/` | `#entertainment` (1499331939469889656) | Daily/Weekly | TVmaze, MyAnimeList, IMDb |
+| Swift News | `Raw/Dev/Swift/` | `#swift-news` (YOUR_DISCORD_CHANNEL_ID) | Daily 09:00 | Hacking with Swift, Swift Forums, HN, GitHub |
+| Go News | `Raw/Dev/Go/` | `#go-news` (YOUR_DISCORD_CHANNEL_ID) | Daily 09:00 | Go Blog, Go Forum, HN, GitHub |
+| Stock News | `Raw/Dev/Stock/` | `#stock-plan` (YOUR_DISCORD_CHANNEL_ID) | Daily 09:00 | Yahoo Finance, Motley Fool |
+| Entertainment | `Raw/Entertainment/` | `#entertainment` (YOUR_DISCORD_CHANNEL_ID) | Daily/Weekly | TVmaze, MyAnimeList, IMDb |
 | IMDb Weekly | `Raw/Movies/`, `Raw/TV/Seasonal/`, `Raw/Anime/` | `#entertainment` | Weekly (Fri) | IMDb datasets |
 
 ## Validation
@@ -164,7 +164,7 @@ hermes cron create "0 9 * * *" \
   --prompt "Aggregate Swift news and deliver to Discord #swift-news" \
   --script "swift_news_digest.py" \
   --model "anthropic/claude-sonnet-4.6" \
-  --deliver "discord:1499908671847661578"
+  --deliver "discord:YOUR_DISCORD_CHANNEL_ID"
 ```
 
 **Multi-platform variant** — Create separate jobs with same script but different `--deliver` targets (Discord, Telegram, Slack) to ensure all channels receive the digest:
@@ -173,7 +173,7 @@ hermes cron create "0 9 * * *" \
 # Discord
 hermes cron create "0 9 * * *" --name "swift-news-discord" \
   --script "swift_news_digest.py" --model "anthropic/claude-sonnet-4.6" \
-  --deliver "discord:1499908671847661578"
+  --deliver "discord:YOUR_DISCORD_CHANNEL_ID"
 
 # Telegram Home
 hermes cron create "0 9 * * *" --name "swift-news-telegram" \
