@@ -221,7 +221,7 @@ recent_proposals = sorted(proposal_files, key=lambda x: x[0], reverse=True)[:10]
 for num, prop in recent_proposals:
     content = requests.get(prop['download_url']).text
     filename = prop['name']
-    path = f"/opt/data/obsidian-vault/FACorreia/raw/Swift/{filename}"
+    path = f"/opt/data/obsidian-vault/Vault/raw/Swift/{filename}"
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(content)

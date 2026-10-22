@@ -17,7 +17,7 @@ Update the script's configuration to use the correct path. The configuration is 
 2. Find the configuration section (around lines 14-18):
    ```python
    # Configuration
-   VAULT_ROOT = "/opt/data/obsidian-vault/FACorreia"
+   VAULT_ROOT = "/opt/data/obsidian-vault/Vault"
    RAW_DIR = os.path.join(VAULT_ROOT, "Raw")
    WIKI_DIR = os.path.join(VAULT_ROOT, "_wiki")
    ```
@@ -31,4 +31,4 @@ Update the script's configuration to use the correct path. The configuration is 
 4. Save and exit, then re-run the compilation.
 
 ## Prevention
-Ensure the script matches the actual vault structure. The Hermes knowledge base at `/opt/data/obsidian-vault/FACorreia` uses lowercase `raw/` and `wiki/` directories.
+Ensure the script matches the actual vault structure. The Hermes knowledge base at `/opt/data/obsidian-vault/Vault` uses lowercase `raw/` and `wiki/` directories.

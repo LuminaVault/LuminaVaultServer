@@ -60,7 +60,7 @@ def find_auth_wall_files(root: Path, min_size: int = 0):
 
 def main():
     parser = argparse.ArgumentParser(description="Clean X auth-wall placeholder files from vault Raw/")
-    parser.add_argument("--root", default="/opt/data/obsidian-vault/FACorreia", help="Vault root path")
+    parser.add_argument("--root", default="/opt/data/obsidian-vault/Vault", help="Vault root path")
     parser.add_argument("--dry-run", action="store_true", help="List files but take no action")
     parser.add_argument("--delete", action="store_true", help="Permanently delete matched files")
     parser.add_argument("--rename", action="store_true", help="Rename matched files to .ignored extension")

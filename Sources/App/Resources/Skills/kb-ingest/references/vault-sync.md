@@ -28,7 +28,7 @@ This shows what would happen without making changes.
 The safest long-term solution is to put your vault under version control:
 
 ```bash
-cd /opt/data/obsidian-vault/FACorreia
+cd /opt/data/obsidian-vault/Vault
 git init
 git add .
 git commit -m "Initial commit"

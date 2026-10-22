@@ -17,7 +17,7 @@ When the expected configuration is missing, use this manual approach to ingest c
 ### 1. Determine Vault Path
 The user's Obsidian vault is located at:
 ```
-/opt/data/home/obsidian-vault/FACorreia/
+/opt/data/home/obsidian-vault/Vault/
 ```
 
 ### 2. Manual Ingest Steps
@@ -34,7 +34,7 @@ curl -s "URL" > /tmp/content.html
 slug=$(echo "URL" | sed -e 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]' | cut -c1-60)
 
 # Save to raw/web directory with proper frontmatter
-cat > "/opt/data/home/obsidian-vault/FACorreia/Raw/web/$slug.md" << EOF
+cat > "/opt/data/home/obsidian-vault/Vault/Raw/web/$slug.md" << EOF
 ---
 source: URL
 ingested_at: $(date -u +'%Y-%m-%dT%H:%M:%SZ')

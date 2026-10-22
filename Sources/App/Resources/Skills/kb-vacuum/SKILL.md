@@ -19,7 +19,7 @@ cat kb-config.json
 ```
 
 Required keys:
-- `vault_path` — absolute path to the local vault root (e.g. `/opt/data/obsidian-vault/FACorreia`)
+- `vault_path` — absolute path to the local vault root (e.g. `/opt/data/obsidian-vault/Vault`)
 - `server_base_url` — LuminaVault server origin (e.g. `https://your-tenant.luminavault.app`)
 - `auth_token` — JWT for the authenticated user (Bearer token used against `/v1/capture/safari`)
 

@@ -53,7 +53,7 @@ The ingested markdown file includes:
 - Human-readable summary of the tweet
 - Original URL and link
 
-**File saved to:** `/opt/data/obsidian-vault/FACorreia/raw/Tech/https-x-com-jackprescottx-status-2052837514260471860-s-46.md`
+**File saved to:** `/opt/data/obsidian-vault/Vault/raw/Tech/https-x-com-jackprescottx-status-2052837514260471860-s-46.md`
 
 ## Key Takeaway
 

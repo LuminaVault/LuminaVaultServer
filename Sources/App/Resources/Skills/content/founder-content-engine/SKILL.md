@@ -215,8 +215,8 @@ Check logs in `~/content_engine/outputs/` for detailed error information.
 
 ### External Resources
 - Linear Board: https://linear.app/hermiesvault
-- HermesVault Kanban: `/opt/data/home/obsidian-vault/FACorreia/Kanban/`
-- Obsidian Knowledge Base: `/opt/data/home/obsidian-vault/FACorreia/_wiki/`
+- HermesVault Kanban: `/opt/data/home/obsidian-vault/Vault/Kanban/`
+- Obsidian Knowledge Base: `/opt/data/home/obsidian-vault/Vault/_wiki/`
 
 ## Version History
 - **1.0.0** (2025-06-20): Initial release with full content generation capabilities

@@ -26,8 +26,8 @@ from hermes_tools.patch import patch
 from hermes_tools.execute_code import execute_code
 
 # Configuration
-VAULT_PATH = os.environ.get('OBSIDIAN_VAULT_PATH', os.path.expanduser('~/obsidian-vault/FACorreia'))
-VAULT_NAME = os.environ.get('OBSIDIAN_VAULT_NAME', 'FACorreia')
+VAULT_PATH = os.environ.get('OBSIDIAN_VAULT_PATH', os.path.expanduser('~/obsidian-vault/Vault'))
+VAULT_NAME = os.environ.get('OBSIDIAN_VAULT_NAME', 'Vault')
 IMAGE_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.hermes', 'image_cache')
 OCR_LANGUAGE = os.environ.get('OCR_LANGUAGE', 'eng+deu')
 SAVE_IMAGES = os.environ.get('SAVE_IMAGES', 'false').lower() == 'true'

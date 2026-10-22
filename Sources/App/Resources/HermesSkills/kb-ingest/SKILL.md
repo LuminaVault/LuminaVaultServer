@@ -10,7 +10,7 @@ Stage content into the knowledge base `raw` directory. Does not compile or modif
 
 ## Important: Vault Structure
 
-The Hermes knowledge base at `/opt/data/obsidian-vault/FACorreia` uses a different structure than described in older documentation:
+The Hermes knowledge base at `/opt/data/obsidian-vault/Vault` uses a different structure than described in older documentation:
 
 - **Raw directory:** `raw/` (lowercase) not `Raw/`
 - **Subdirectories:** `AI`, `Books`, `Business`, `Careers`, `Health`, `NBA`, `News`, `Stocks`, `Swift`, `TV and Movies`, `Tech`, `WWE`
@@ -31,12 +31,12 @@ cat kb-config.json
 Extract `kb_path`. Expand `~` to the actual home directory path (run `echo ~` if needed).
 Set this as `KB_PATH` for all subsequent steps.
 
-If the file doesn't exist, default to `/opt/data/obsidian-vault/FACorreia`.
+If the file doesn't exist, default to `/opt/data/obsidian-vault/Vault`.
 
-**Note:** In some environments, the default vault may not be writable. If you encounter permission errors, try the home vault path: `/opt/data/home/obsidian-vault/FACorreia`. This path is often owned by the hermes user and is writable. To test writability, you can create a test file:
+**Note:** In some environments, the default vault may not be writable. If you encounter permission errors, try the home vault path: `/opt/data/home/obsidian-vault/Vault`. This path is often owned by the hermes user and is writable. To test writability, you can create a test file:
 
 ```bash
-touch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 ```
 
 If both vaults fail, the skill will use a temporary directory and provide copy instructions.
@@ -211,7 +211,7 @@ Ingested: {RAW_KEY}
 
 #### Vault Structure Mismatch - Enhanced Adaptation Guide
 
-The skill assumes a `.kb/` directory and specific `raw/web/`, `raw/pdfs/`, etc. subdirectories. However, the actual vault at `/opt/data/obsidian-vault/FACorreia` uses:
+The skill assumes a `.kb/` directory and specific `raw/web/`, `raw/pdfs/`, etc. subdirectories. However, the actual vault at `/opt/data/obsidian-vault/Vault` uses:
 
 - `raw()` as the root raw directory (lowercase, not `Raw()`)
 - Subdirectories: `AI()`, `Books()`, `Business()`, `Careers()`, `Health()`, `NBA()`, `News()`, `Stocks()`, `Swift()`, `TV and Movies()`, `Tech()`, `WWE()`
@@ -235,9 +235,9 @@ If you encounter permission errors when writing to the vault, follow this system
 **Step 1: Test Vault Writability**
 ```bash
 # Test main vault
-touch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 # Test home vault (if main fails)
-touch /opt/data/home/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/home/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 ```
 
 **Step 2: If Both Vaults Fail, Use Temporary Directory**
@@ -265,7 +265,7 @@ After ingestion, inform the user to copy the files manually:
 ```markdown
 Files saved to: {RAW_PATH}
 Copy these files to your Obsidian vault raw directory:
-  cp {RAW_PATH}/* /opt/data/obsidian-vault/FACorreia/raw/Tech/
+  cp {RAW_PATH}/* /opt/data/obsidian-vault/Vault/raw/Tech/
 ```
 
 **Step 4: Fix Permissions (Permanent Solution)**
@@ -277,7 +277,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/Vault`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 
@@ -313,7 +313,7 @@ This example demonstrates how to adapt the kb-ingest skill for specialized intel
 
 Many external APIs (especially Twitter/X, some news sites) require authentication or have rate limits. When encountering these issues:
 
-**1. Use Alternative Extraction Methods:**\n- For Twitter/X: Use the oEmbed endpoint (`https://publish.twitter.com/oembed?url={URL}`)\n- For news sites: Use jina.ai (`https://r.jina.ai/http://{URL}`)\n- For JavaScript-heavy sites: Use browser automation if available\n\n**2. Implement Fallback Strategies:**\n- If primary API fails, try secondary endpoints\n- Cache responses for retry later\n- Create placeholder entries with frontmatter for manual updating\n\n**3. HTTPS Requirement:** Always use HTTPS endpoints for external APIs to avoid security issues:\n```python\n# WRONG - triggers security scan\ncurl -s \"http://export.arxiv.org/api/query?\"\n\n# CORRECT\ncurl -s \"https://export.arxiv.org/api/query?\"\n```\n\n**4. Error Handling Pattern:** When fetching from APIs, implement robust error handling:\n```python\nimport json\nimport os\nfrom datetime import datetime\n\ndef safe_api_fetch(url, output_file, max_retries=3):\n    '''Fetch data from API with retry logic and error handling.'''\n    for attempt in range(max_retries):\n        try:\n            cmd = f\"curl -s --max-time 30 \\\"{url}\\\" > {output_file} 2>&1\"\n            result = os.system(cmd)\n            if result == 0 and os.path.getsize(output_file) > 0:\n                return True\n        except Exception as e:\n            print(f\"Exception: {e}\")\n        if attempt < max_retries - 1:\n            import time; time.sleep(2)\n    return False\n```\n\n**5. Permission Testing:** Always test vault writability before bulk ingestion:\n```bash\ntouch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5\n```\n\nIf the main vault is not writable, try the home vault:\n```bash\ntouch /opt/data/home/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5\n```\n\nWhen both vaults fail, use a temporary directory and provide clear copy instructions to the user.
+**1. Use Alternative Extraction Methods:**\n- For Twitter/X: Use the oEmbed endpoint (`https://publish.twitter.com/oembed?url={URL}`)\n- For news sites: Use jina.ai (`https://r.jina.ai/http://{URL}`)\n- For JavaScript-heavy sites: Use browser automation if available\n\n**2. Implement Fallback Strategies:**\n- If primary API fails, try secondary endpoints\n- Cache responses for retry later\n- Create placeholder entries with frontmatter for manual updating\n\n**3. HTTPS Requirement:** Always use HTTPS endpoints for external APIs to avoid security issues:\n```python\n# WRONG - triggers security scan\ncurl -s \"http://export.arxiv.org/api/query?\"\n\n# CORRECT\ncurl -s \"https://export.arxiv.org/api/query?\"\n```\n\n**4. Error Handling Pattern:** When fetching from APIs, implement robust error handling:\n```python\nimport json\nimport os\nfrom datetime import datetime\n\ndef safe_api_fetch(url, output_file, max_retries=3):\n    '''Fetch data from API with retry logic and error handling.'''\n    for attempt in range(max_retries):\n        try:\n            cmd = f\"curl -s --max-time 30 \\\"{url}\\\" > {output_file} 2>&1\"\n            result = os.system(cmd)\n            if result == 0 and os.path.getsize(output_file) > 0:\n                return True\n        except Exception as e:\n            print(f\"Exception: {e}\")\n        if attempt < max_retries - 1:\n            import time; time.sleep(2)\n    return False\n```\n\n**5. Permission Testing:** Always test vault writability before bulk ingestion:\n```bash\ntouch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5\n```\n\nIf the main vault is not writable, try the home vault:\n```bash\ntouch /opt/data/home/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5\n```\n\nWhen both vaults fail, use a temporary directory and provide clear copy instructions to the user.
 
 #### Cloudflare / Anti-Bot Protection
 
@@ -330,8 +330,8 @@ If content cannot be fetched immediately, create a placeholder entry with frontm
 
 If the default vault path does not exist, check for alternative vaults:
 
-- `/opt/data/home/obsidian-vault/FAC Correia` (common home vault)
-- `~/obsidian-vault/FAC Correia`
+- `/opt/data/home/obsidian-vault/Vault` (common home vault)
+- `~/obsidian-vault/Vault`
 
 Use the first writable vault you find.
 
@@ -468,7 +468,7 @@ Ingested: {RAW_KEY}
 
 #### Vault Structure Mismatch - Enhanced Adaptation Guide
 
-The skill assumes a `.kb/` directory and specific `raw/web/`, `raw/pdfs/`, etc. subdirectories. However, the actual vault at `/opt/data/obsidian-vault/FACorreia` uses:
+The skill assumes a `.kb/` directory and specific `raw/web/`, `raw/pdfs/`, etc. subdirectories. However, the actual vault at `/opt/data/obsidian-vault/Vault` uses:
 
 - `raw()` as the root raw directory (lowercase, not `Raw()`)
 - Subdirectories: `AI()`, `Books()`, `Business()`, `Careers()`, `Health()`, `NBA()`, `News()`, `Stocks()`, `Swift()`, `TV and Movies()`, `Tech()`, `WWE()`
@@ -492,9 +492,9 @@ If you encounter permission errors when writing to the vault, follow this system
 **Step 1: Test Vault Writability**
 ```bash
 # Test main vault
-touch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 # Test home vault (if main fails)
-touch /opt/data/home/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/home/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 ```
 
 **Step 2: If Both Vaults Fail, Use Temporary Directory**
@@ -522,7 +522,7 @@ After ingestion, inform the user to copy the files manually:
 ```markdown
 Files saved to: {RAW_PATH}
 Copy these files to your Obsidian vault raw directory:
-  cp {RAW_PATH}/* /opt/data/obsidian-vault/FACorreia/raw/Tech/
+  cp {RAW_PATH}/* /opt/data/obsidian-vault/Vault/raw/Tech/
 ```
 
 **Step 4: Fix Permissions (Permanent Solution)**
@@ -534,7 +534,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/Vault`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 
@@ -573,9 +573,9 @@ If you encounter permission errors when writing to the vault, follow this system
 **Step 1: Test Vault Writability**
 ```bash
 # Test main vault
-touch /opt/data/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 # Test home vault (if main fails)
-touch /opt/data/home/obsidian-vault/FACorreia/raw/test.txt 2>&1 | head -5
+touch /opt/data/home/obsidian-vault/Vault/raw/test.txt 2>&1 | head -5
 ```
 
 **Step 2: If Both Vaults Fail, Use Temporary Directory**
@@ -603,7 +603,7 @@ After ingestion, inform the user to copy the files manually:
 ```markdown
 Files saved to: {RAW_PATH}
 Copy these files to your Obsidian vault raw directory:
-  cp {RAW_PATH}/* /opt/data/obsidian-vault/FACorreia/raw/Tech/
+  cp {RAW_PATH}/* /opt/data/obsidian-vault/Vault/raw/Tech/
 ```
 
 **Step 4: Fix Permissions (Permanent Solution)**
@@ -615,7 +615,7 @@ cd /opt/data && make fix-permissions
 ```
 
 **Step 5: Alternative Vault**
-If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/FACorreia`. Create it and configure kb-ingest via `kb-config.json`.
+If you frequently encounter permission issues, consider using the home vault at `/opt/data/home/obsidian-vault/Vault`. Create it and configure kb-ingest via `kb-config.json`.
 
 **For more detailed permission handling patterns, see:** `references/permission-handling.md`
 
@@ -629,8 +629,8 @@ If you frequently encounter permission issues, consider using the home vault at 
 
 If the default vault path does not exist, check for alternative vaults:
 
-- `/opt/data/home/obsidian-vault/FAC Correia` (common home vault)
-- `~/obsidian-vault/FAC Correia`
+- `/opt/data/home/obsidian-vault/Vault` (common home vault)
+- `~/obsidian-vault/Vault`
 
 Use the first writable vault you find.
 

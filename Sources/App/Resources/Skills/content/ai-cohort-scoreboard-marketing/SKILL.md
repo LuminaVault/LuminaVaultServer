@@ -18,7 +18,7 @@ description: Generate daily Reddit and X/Twitter marketing content from the AI C
    ```python
    eastern = tz.gettz('America/New_York')
    today = datetime.now(eastern).strftime('%Y-%m-%d')
-   # VAULT_ROOT should be: '/opt/data/home/obsidian-vault/FACorreia'
+   # VAULT_ROOT should be: '/opt/data/home/obsidian-vault/Vault'
    scoreboard_path = f"{VAULT_ROOT}/{today} — AI Scoreboard.md"
    ```
    - The scoreboard file is saved directly in the vault root by the scoreboard generator script
@@ -41,7 +41,7 @@ description: Generate daily Reddit and X/Twitter marketing content from the AI C
    - Include error context if generation failed completely
 
 **Pitfalls & Gotchas:**
-- ⚠️ **Path Consistency**: All scripts must use the same VAULT_ROOT path. The correct path is `/opt/data/home/obsidian-vault/FACorreia` (without the `.hermes` prefix). Inconsistent paths cause "scoreboard not found" errors even when the file exists.
+- ⚠️ **Path Consistency**: All scripts must use the same VAULT_ROOT path. The correct path is `/opt/data/home/obsidian-vault/Vault` (without the `.hermes` prefix). Inconsistent paths cause "scoreboard not found" errors even when the file exists.
 - ⚠️ Missing historical data: If NO scoreboard files exist, the task cannot proceed. Verify the cohort directory contains at least one scoreboard file.
 - ⚠️ Date format consistency: Scoreboard files use `YYYY-MM-DD` format with en dash separator. Ensure path construction matches exactly.
 - ⚠️ Output date: Always stamp output files with today's date, even when using fallback data. This maintains cron job consistency.

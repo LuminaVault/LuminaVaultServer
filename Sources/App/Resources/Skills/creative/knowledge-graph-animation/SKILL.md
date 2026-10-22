@@ -48,7 +48,7 @@ def build_graph(vault_path):
     return graph
 
 # Example usage
-vault_path = "/opt/data/obsidian-vault/FACorreia/wiki"
+vault_path = "/opt/data/obsidian-vault/Vault/wiki"
 graph = build_graph(vault_path)
 Path("/tmp/knowledge-graph.json").write_text(json.dumps(graph, indent=2))
 ```

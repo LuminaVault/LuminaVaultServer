@@ -3,7 +3,7 @@ name: x-post-ingestor
 version: 1.1
 description: |
   Ingest content from X/Twitter posts and extract URLs to the vault.
-  Output filename convention: <YYYY-MM-DD>-<author>-<short-title>.md under FACorreia/raw/<category>/.
+  Output filename convention: <YYYY-MM-DD>-<author>-<short-title>.md under Vault/raw/<category>/.
   LLM-driven steps (classification, summarization) should call provider `nous`
   model `arcee-ai/trinity-large-thinking` (free). Keep all other reasoning on the default model.
 author: Hermes Agent
@@ -26,7 +26,7 @@ exec: |
   import time
   
   url = skill.Params.post_url or ""
-  vault = skill.Params.vault_path or "FACorreia"
+  vault = skill.Params.vault_path or "Vault"
   
   if not url:
       print("Error: No URL provided")

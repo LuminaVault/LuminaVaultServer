@@ -12,7 +12,7 @@ stderr:
 **Investigation Steps:**
 
 1. **Check current date:** 2026-05-06
-2. **Search for scoreboard files:** Found multiple files in `/opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI Cohort/`
+2. **Search for scoreboard files:** Found multiple files in `/opt/data/obsidian-vault/Vault/Wiki/Finance/AI Cohort/`
    - 2026-04-27 through 2026-05-04
    - Missing: 2026-05-02, 2026-05-05, 2026-05-06
 3. **Attempt to run scoreboard generator:**
@@ -22,7 +22,7 @@ stderr:
    Result: `PermissionError: [Errno 13] Permission denied` - directory owned by `hermes` with permissions `drwxr-xr-x`
 4. **Check directory ownership:**
    ```bash
-   ls -ld /opt/data/obsidian-vault/FACorreia/Wiki/Finance/AI\ Cohort
+   ls -ld /opt/data/obsidian-vault/Vault/Wiki/Finance/AI\ Cohort
    ```
    Output: `drwxr-xr-x 3 hermes hermes 4096 May  4 12:32`
 

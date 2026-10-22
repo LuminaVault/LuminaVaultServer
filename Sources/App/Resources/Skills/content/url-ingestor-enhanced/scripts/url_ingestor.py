@@ -36,8 +36,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-OBSIDIAN_VAULT_PATH = os.getenv('OBSIDIAN_VAULT_PATH', '/opt/data/obsidian-vault/FACorreia')
-OBSIDIAN_VAULT_NAME = os.getenv('OBSIDIAN_VAULT_NAME', 'FACorreia')
+OBSIDIAN_VAULT_PATH = os.getenv('OBSIDIAN_VAULT_PATH', '/opt/data/obsidian-vault/Vault')
+OBSIDIAN_VAULT_NAME = os.getenv('OBSIDIAN_VAULT_NAME', 'Vault')
 MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', '10000'))
 EXTRACTION_TIMEOUT = int(os.getenv('EXTRACTION_TIMEOUT', '30'))
 

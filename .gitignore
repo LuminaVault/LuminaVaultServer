@@ -19,3 +19,7 @@ data
 # host repo for every concurrent worktree session.
 .claude/worktrees/
 secrets
+
+# Python bytecode from bundled skill scripts
+__pycache__/
+*.pyc

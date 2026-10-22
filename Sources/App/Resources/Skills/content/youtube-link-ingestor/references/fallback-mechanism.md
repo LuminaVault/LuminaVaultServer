@@ -11,7 +11,7 @@ The fallback is activated when:
 ## Fallback Implementation
 
 ### File Scanning Strategy
-1. **Target Directory**: Scans the Obsidian vault wiki directory (`obsidian-vault/FACorreia/wiki/`)
+1. **Target Directory**: Scans the Obsidian vault wiki directory (`obsidian-vault/Vault/wiki/`)
 2. **File Types**: Processes all `.md` files containing conversation history
 3. **Regex Pattern**: Uses the same robust regex as the primary method:
    ```
@@ -40,7 +40,7 @@ To modify fallback behavior, edit the `save_youtube_links.py` script:
 
 ```python
 # Adjust target directory if vault structure differs
-WIKI_DIR = Path("/opt/data/home/obsidian-vault/FACorreia/wiki")
+WIKI_DIR = Path("/opt/data/home/obsidian-vault/Vault/wiki")
 
 # Modify regex pattern if needed
 YOUTUBE_PATTERN = r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})'

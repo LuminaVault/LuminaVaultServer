@@ -3,7 +3,7 @@ name: url-ingestor-enhanced
 description: |
   Autonomous system to capture ANY URL from any platform and automatically add to Obsidian vault
   with proper classification and formatting. Filenames follow <YYYY-MM-DD>-<author>-<short-title>.md
-  under /opt/data/home/obsidian-vault/FACorreia/raw/<category>/. LLM steps (classify, summarize)
+  under /opt/data/home/obsidian-vault/Vault/raw/<category>/. LLM steps (classify, summarize)
   route to provider `nous` model `arcee-ai/trinity-large-thinking` (free) with OpenRouter as fallback.
 license: MIT
 ---
@@ -14,7 +14,7 @@ license: MIT
 
 ## Canonical conventions
 
-- **Vault root**: `/opt/data/home/obsidian-vault/FACorreia/`
+- **Vault root**: `/opt/data/home/obsidian-vault/Vault/`
 - **Raw inbox**: `<vault root>/raw/<category>/`  (lowercase `raw`, not `Raw`)
 - **Filename**: `<YYYY-MM-DD>-<author>-<short-title>.md` (max 8 title words; collisions get `-2`, `-3`, ...)
 - **Frontmatter**: `title`, `url`, `author`, `date`, `ingested_at`, `tags`, `topic`, `status: uncompiled`

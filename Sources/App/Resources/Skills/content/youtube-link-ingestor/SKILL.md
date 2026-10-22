@@ -55,7 +55,7 @@ This is a scheduled cron job, so its output is automatically delivered to the co
 The core implementation is in `scripts/save_youtube_links.py`. This script should be installed in the Hermes scripts directory and made executable.
 
 ## Configuration
-- Vault path: `/opt/data/home/obsidian-vault/FACorreia`
+- Vault path: `/opt/data/home/obsidian-vault/Vault`
 - Output file: `Raw/YouTube-Links.md`
 - Cron schedule: `*/30 * * * *`
 

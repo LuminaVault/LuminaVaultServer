@@ -21,7 +21,7 @@ if newly_saved > 0:
 When triggering compilation, the script searches for `compile_wiki.py` in this specific order:
 
 1. **Primary:** `{VAULT_ROOT}/scripts/compile_wiki.py`  
-   (e.g., `/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`)
+   (e.g., `/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`)
 
 2. **Fallback 1:** `~/.hermes/scripts/compile_wiki.py`  
    (e.g., `/opt/data/home/.hermes/scripts/compile_wiki.py`)
@@ -71,8 +71,8 @@ The script `/opt/data/scripts/multi_link_poller.py` is a **demo/template version
 
 - **Script:** `/opt/data/scripts/multi_link_poller.py`
 - **State:** `~/.hermes/state/multi_link_poller_state.json`
-- **Vault Root:** `~/obsidian-vault/FACorreia/`
-- **Raw directory:** `~/obsidian-vault/FACorreia/Raw/`
+- **Vault Root:** `~/obsidian-vault/Vault/`
+- **Raw directory:** `~/obsidian-vault/Vault/Raw/`
 
 ## See Also
 

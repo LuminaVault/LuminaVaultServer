@@ -64,8 +64,8 @@ Obsidian Vault (compiled)
   - `OPENROUTER_API_KEY` (for classification)
 - [ ] Discord bot has **Read Message History** permission in monitored channel *(see Discord pitfalls)*
 - [ ] Telegram webhook **deleted** if previously set (long-poll mode only) *(see Telegram pitfalls)*
-- [ ] Vault paths exist and are writable: `/opt/data/obsidian-vault/FACorreia/Raw/`
-- [ ] Compile script exists: `/opt/data/obsidian-vault/FACorreia/scripts/compile_wiki.py`
+- [ ] Vault paths exist and are writable: `/opt/data/obsidian-vault/Vault/Raw/`
+- [ ] Compile script exists: `/opt/data/obsidian-vault/Vault/scripts/compile_wiki.py`
 - [ ] Test run produces log output and/or new article files
 
 ---
@@ -212,14 +212,14 @@ The canonical implementation lives at `/opt/data/home/.hermes/scripts/x_link_pol
 When vault file count and `processed_urls` diverge, use this recovery sequence:
 
 1. **Audit current state:** Examine `/opt/data/home/.hermes/state/x_link_poller_state.json` — check `processed_urls` count and timestamps.
-2. **Inventory vault:** `find /opt/data/obsidian-vault/FACorreia/Raw -name "*.md" | wc -l` and cross-reference X URL presence.
+2. **Inventory vault:** `find /opt/data/obsidian-vault/Vault/Raw -name "*.md" | wc -l` and cross-reference X URL presence.
 3. **Identify cause:** Multiple stale daemon instances, corrupted state file, or manual vault edits.
 4. **Reconcile:** If vault is authoritative and state is stale, rebuild state from vault files:
    ```bash
    python3 -c "
    import os, json, hashlib, re
    from pathlib import Path
-   vault = Path('/opt/data/obsidian-vault/FACorreia/Raw')
+   vault = Path('/opt/data/obsidian-vault/Vault/Raw')
    state = {'processed_urls': {}, 'discord_last_msg_id': None, 'telegram_last_update_id': None, 'slack_last_ts': None}
    for f in vault.rglob('*.md'):
        text = f.read_text()
